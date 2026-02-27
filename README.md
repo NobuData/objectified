@@ -23,8 +23,8 @@ As the application evolved, a need for a database with the ability to dynamicall
 the first version of what would be Objectified was born.  JSON was not invented at the time, but MySQL and PostgreSQL were, so these were the
 natural choices due to referential integrity guarantees.
 
-What this application eventually evolved into is a visual editor to shape your data, along with storing instances of that data (eventually).  
-Data can be dynamically shaped and reshaped as needed, stored in both PostgreSQL and MongoDB databases for consistency.
+What this application eventually evolved into is a visual editor to shape your data, along with storing instances of that data (eventually).  Data 
+can be dynamically shaped and reshaped as needed, stored in both PostgreSQL and MongoDB databases for consistency.
 
 This is a passion project that is over 20 years in the making.
 
