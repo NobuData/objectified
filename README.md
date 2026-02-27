@@ -41,3 +41,10 @@ Objectified is officially Apache 2.0 Licensed.  [See here](/LICENSE).
 # Contributing
 
 Contributions are greatly appreciated  Issues are also greatly appreciated.
+
+All project versions follow [semantic versioning](https://semver.org/).  You must do the same.
+
+## AI-Assisted Contributions
+
+We recommend using GPT-5.2 or better for planning.  We recommend using Claude Sonnet 4.6 for code generation, and
+Claude Opus 4.6 for UI/UX design improvements.
