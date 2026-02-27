@@ -2,6 +2,8 @@
 
 Objectified is an OpenAPI 3.1.0 Specification Application that provides a visual editor for creating and editing Schema Objects and Properties.
 
+This top-level project is the base.  Objectified is a monorepo, meaning, each submodule may or may not have its own README file.
+
 ## Framework
 
 Objectified is written using React, NextJS, FastAPI, and PostgreSQL.
