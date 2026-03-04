@@ -9,6 +9,7 @@
 # SQL Instructions
 
 - Any new scripts created in objectified-schema/scripts needs to pull accurate local time and date for the filename
+- Create SQL tests where appropriate
 
 # UI Instructions
 

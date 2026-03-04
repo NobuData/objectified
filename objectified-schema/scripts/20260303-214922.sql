@@ -7,12 +7,8 @@ SET search_path TO objectified, public;
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Ensure uuidv7() function is available (requires pg_uuidv7 extension or custom implementation)
--- The uuidv7() function generates time-ordered UUIDs per RFC 9562
-CREATE EXTENSION IF NOT EXISTS "pg_uuidv7";
-
 -- Enable pgvector extension for future use (e.g., vector search capabilities)
-CREATE EXTENSION IF NOT EXISTS "pgvector";
+CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- Drop, then create objectified schema if it does not exist
 DROP SCHEMA IF EXISTS objectified CASCADE;

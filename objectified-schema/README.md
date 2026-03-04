@@ -19,6 +19,34 @@ sem-apply
 This will apply the latest schema to your database, stored in a schema called "objectified".  This way,
 any database schemas you currently have in your system will not be touched.
 
+## Running Tests
+
+Tests validate every migration SQL file against a live PostgreSQL instance.
+All test data is wrapped in a transaction that is **rolled back** after each
+test, so nothing ever persists to the database.
+
+### Prerequisites
+
+- Python 3.11+
+- A running PostgreSQL 18 instance with the schema already applied (`sem-apply`)
+
+### Setup
+
+```bash
+# 1. Install Python dependencies
+pip install -r requirements.txt
+
+# 2. Configure your connection (copy and edit .env.example)
+cp .env.example .env
+# edit .env with your POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
+# POSTGRES_USERNAME, and POSTGRES_PASSWORD
+
+# 3. Run the tests
+pytest
+```
+
+---
+
 ## Guidelines
 
 Creating new tables or updating existing tables should keep the following in mind:
