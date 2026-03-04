@@ -80,7 +80,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ruby ruby-dev build-essential
-          gem install schema-evolution-manager
+          sudo gem install schema-evolution-manager
           which sem-apply
 
       - name: Apply schema with sem-apply
