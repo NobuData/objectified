@@ -34,7 +34,7 @@ CREATE TABLE objectified.account (
     verified    BOOLEAN NOT NULL DEFAULT false,
     enabled     BOOLEAN NOT NULL DEFAULT true,
     metadata    JSONB NOT NULL DEFAULT '{}',
-    created_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT timezone('utc', clock_timestamp()) NOT NULL,
     updated_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL,
     deleted_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL
 );
