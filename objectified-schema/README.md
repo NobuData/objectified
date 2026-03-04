@@ -2,6 +2,8 @@
 
 This is the Database Schema scripts used by Objectified.
 
+AI is used to assist and create database tables and schemas.
+
 ## Prerequisites
 
 - PostgreSQL 18 or higher
@@ -18,7 +20,9 @@ This is the Database Schema scripts used by Objectified.
 
    Or with explicit user: `createdb -U postgres objectified`
 
-2. Set up your PostgreSQL configurations (POSTGRES_USERNAME, PASSWORD, etc.) then run:
+2. Download and install schema-evolution-manager.
+
+3. Set up your PostgreSQL configurations (POSTGRES_USERNAME, PASSWORD, etc.) then run:
 
    ```bash
    sem-apply
@@ -39,20 +43,18 @@ a transaction that is **rolled back** after each test, so no data persists.
 
 - Python 3.11+
 - A running PostgreSQL 18 instance
+- `pgvector` extension installed for vectorized data storage
 - [schema-evolution-manager](https://github.com/mbryzek/schema-evolution-manager) (`sem-apply` on PATH)
 
 ### Setup
 
 ```bash
-# 1. Install Python dependencies
-pip install -r requirements.txt
-
-# 2. Configure your connection (copy and edit .env.example)
+# 1. Configure your connection (copy and edit .env.example)
 cp .env.example .env
 # edit .env with your POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USERNAME, and POSTGRES_PASSWORD
 
-# 3. Run the tests (test DB is created and migrated automatically if missing)
-pytest
+# 2. Run the tests (test DB is created and migrated automatically if missing)
+make test
 ```
 
 ---
@@ -77,3 +79,9 @@ Updates to tables that already contain data must be done in a way that does not 
 - New columns should be added with a default value, and not set to `NOT NULL` until after the column has been added and populated with data.
 - When changing a column type, a new column should be added with the new type, data should be migrated from the old column to the new column, and then the old column should be dropped.
 
+## Contributions
+
+Database changes are highly volatile and sensitive.  Pull requests are required, and tests must be included, and must be
+extensive, testing for possible violations when able.
+
+Skipped tests of any kind are not allowed.
