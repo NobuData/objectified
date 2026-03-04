@@ -4,6 +4,10 @@ Objectified is an OpenAPI 3.1.0 Specification Application that provides a visual
 
 This top-level project is the base.  Objectified is a monorepo, meaning, each submodule may or may not have its own README file.
 
+## Build Status
+
+[![Objectified Database Schema](https://github.com/NobuData/objectified/actions/workflows/objectified-schema.yml/badge.svg)](https://github.com/NobuData/objectified/actions/workflows/objectified-schema.yml)
+
 ## Framework
 
 Objectified is written using React, NextJS, FastAPI, and PostgreSQL.
