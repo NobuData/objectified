@@ -25,7 +25,7 @@ CREATE TRIGGER trg_tenant_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION objectified.set_updated_at();
 
--- Index for quick lookups on name (memory-based / partial, excludes soft-deleted rows)
+-- Partial indexes for quick lookups on tenant attributes, filtering by deleted_at (soft-delete)
 CREATE INDEX idx_tenant_name       ON objectified.tenant (name)       WHERE deleted_at IS NULL;
 CREATE INDEX idx_tenant_enabled    ON objectified.tenant (enabled)    WHERE deleted_at IS NULL;
 CREATE INDEX idx_tenant_deleted_at ON objectified.tenant (deleted_at) WHERE deleted_at IS NOT NULL;

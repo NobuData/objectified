@@ -66,22 +66,6 @@ def _apply_scripts_directly(dbname: str) -> None:
         conn.close()
 
 
-def _schema_is_applied(dbname: str) -> bool:
-    """Return True if the objectified schema already exists in the test database."""
-    try:
-        conn = psycopg2.connect(_dsn(dbname))
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'objectified'"
-                )
-                return cur.fetchone() is not None
-        finally:
-            conn.close()
-    except psycopg2.OperationalError:
-        return False
-
-
 def _ensure_database_and_schema() -> None:
     """Create the test database if it does not exist and apply the schema."""
     dbname = _test_db_name()

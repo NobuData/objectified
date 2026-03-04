@@ -477,7 +477,7 @@ class TestTenantTableDataIntegrity:
         conn.execute(
             """
             UPDATE objectified.tenant
-            SET deleted_at = CURRENT_TIMESTAMP,
+            SET deleted_at = timezone('utc', clock_timestamp()),
                 enabled    = false
             WHERE slug = %s
             """,
@@ -504,7 +504,7 @@ class TestTenantTableDataIntegrity:
         conn.execute(
             """
             UPDATE objectified.tenant
-            SET deleted_at = CURRENT_TIMESTAMP, enabled = false
+            SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
             WHERE slug = %s
             """,
             ("epsilon-corp",),
