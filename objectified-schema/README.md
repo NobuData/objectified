@@ -10,14 +10,52 @@ This is the Database Schema scripts used by Objectified.
 
 ## Setup Instructions
 
-Set up your PostgreSQL configurations (POSTGRES_USERNAME, PASSWORD, etc.) then run:
+1. Create the PostgreSQL database (if it does not exist):
 
-```bash
-sem-apply
-```
+   ```bash
+   createdb objectified
+   ```
+
+   Or with explicit user: `createdb -U postgres objectified`
+
+2. Set up your PostgreSQL configurations (POSTGRES_USERNAME, PASSWORD, etc.) then run:
+
+   ```bash
+   sem-apply
+   ```
 
 This will apply the latest schema to your database, stored in a schema called "objectified".  This way,
 any database schemas you currently have in your system will not be touched.
+
+## Running Tests
+
+Tests validate the applied database schema and core behaviors against a live PostgreSQL instance.
+They use a **dedicated test database** (`objectified_test` by default) that does not and cannot
+interfere with your application database. If that test database does not exist, the test session
+creates it and runs `sem-apply` against it before running any test. All test data is wrapped in
+a transaction that is **rolled back** after each test, so no data persists.
+
+### Prerequisites
+
+- Python 3.11+
+- A running PostgreSQL 18 instance
+- [schema-evolution-manager](https://github.com/mbryzek/schema-evolution-manager) (`sem-apply` on PATH)
+
+### Setup
+
+```bash
+# 1. Install Python dependencies
+pip install -r requirements.txt
+
+# 2. Configure your connection (copy and edit .env.example)
+cp .env.example .env
+# edit .env with your POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USERNAME, and POSTGRES_PASSWORD
+
+# 3. Run the tests (test DB is created and migrated automatically if missing)
+pytest
+```
+
+---
 
 ## Guidelines
 

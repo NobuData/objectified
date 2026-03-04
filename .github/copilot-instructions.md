@@ -1,10 +1,15 @@
 # General Instructions
 
-- Pull the GitHub ticket https://github.com/NobuData/objectified/issues/[issue_number] before starting work, and refer to it for any questions about the task
-- Use context7 MCP when writing code and referring to the latest framework documentation
+- Code in objectified-commercial is used only for reference; new code should not be part of that repository
+- Use context7 MCP where possible for documentation and code generation
 - Keep the chatting down to a minimum, only ask questions if you need more information
 - Unit tests must be updated and created as necessary, all tests run using yarn test
 - Fix any regressions found during testing
+
+# SQL Instructions
+
+- Any new scripts created in objectified-schema/scripts need to pull accurate local time and date for the filename
+- Create SQL tests where appropriate in the tests directory of objectified-schema, and ensure they are run as part of the test suite
 
 # UI Instructions
 
@@ -30,4 +35,4 @@
 # Summarization tasks
 
 - When writing summarizations, DO NOT INVENT TICKETS OR ISSUES. ONLY SUMMARIZE BASED ON THE PROVIDED INFORMATION.
- 
+- Do not create documents to summarize information, instead write the summary directly in the response.
