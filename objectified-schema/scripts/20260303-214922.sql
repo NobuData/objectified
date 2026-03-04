@@ -1,4 +1,4 @@
--- Ticket #1: Create initial user table
+-- Ticket #1: Create initial account table (renamed from 'user' as it is a reserved word)
 -- Schema: objectified
 -- Uses: uuidv7() for primary key, WITHOUT TIME ZONE for all timestamps
 
@@ -20,13 +20,13 @@ SET search_path TO objectified, public;
 CREATE OR REPLACE FUNCTION objectified.set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
+    NEW.updated_at = timezone('utc', now());
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- user table: stores application users with authentication credentials
-CREATE TABLE objectified."user" (
+-- account table: stores application users with authentication credentials
+CREATE TABLE objectified.account (
     id          UUID PRIMARY KEY DEFAULT uuidv7(),
     name        VARCHAR(255) NOT NULL,
     email       VARCHAR(255) NOT NULL UNIQUE,
@@ -34,23 +34,23 @@ CREATE TABLE objectified."user" (
     verified    BOOLEAN NOT NULL DEFAULT false,
     enabled     BOOLEAN NOT NULL DEFAULT true,
     metadata    JSONB NOT NULL DEFAULT '{}',
-    created_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL,
     deleted_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL
 );
 
 -- Trigger: keep updated_at current on every update
-CREATE TRIGGER trg_user_updated_at
-    BEFORE UPDATE ON objectified."user"
+CREATE TRIGGER trg_account_updated_at
+    BEFORE UPDATE ON objectified.account
     FOR EACH ROW
     EXECUTE FUNCTION objectified.set_updated_at();
 
 -- Indices for quick lookups on email and name
-CREATE INDEX idx_user_email   ON objectified."user" (email)  WHERE deleted_at IS NULL;
-CREATE INDEX idx_user_name    ON objectified."user" (name)   WHERE deleted_at IS NULL;
+CREATE INDEX idx_account_email   ON objectified.account (email)  WHERE deleted_at IS NULL;
+CREATE INDEX idx_account_name    ON objectified.account (name)   WHERE deleted_at IS NULL;
 
 -- Additional useful indices
-CREATE INDEX idx_user_enabled    ON objectified."user" (enabled)    WHERE deleted_at IS NULL;
-CREATE INDEX idx_user_verified   ON objectified."user" (verified)   WHERE deleted_at IS NULL;
-CREATE INDEX idx_user_deleted_at ON objectified."user" (deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX idx_account_enabled    ON objectified.account (enabled)    WHERE deleted_at IS NULL;
+CREATE INDEX idx_account_verified   ON objectified.account (verified)   WHERE deleted_at IS NULL;
+CREATE INDEX idx_account_deleted_at ON objectified.account (deleted_at) WHERE deleted_at IS NOT NULL;
 
