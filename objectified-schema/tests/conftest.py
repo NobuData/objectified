@@ -49,46 +49,87 @@ def _dsn(dbname: Optional[str] = None) -> str:
     )
 
 
+def _apply_scripts_directly(dbname: str) -> None:
+    """Apply all SQL scripts from scripts/ directly via psycopg2 (fallback when sem-apply is absent)."""
+    schema_root = Path(__file__).resolve().parent.parent
+    scripts_dir = schema_root / "scripts"
+    sql_files = sorted(scripts_dir.glob("*.sql"))
+    if not sql_files:
+        return
+    conn = psycopg2.connect(_dsn(dbname))
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            for sql_file in sql_files:
+                cur.execute(sql_file.read_text())
+    finally:
+        conn.close()
+
+
+def _schema_is_applied(dbname: str) -> bool:
+    """Return True if the objectified schema already exists in the test database."""
+    try:
+        conn = psycopg2.connect(_dsn(dbname))
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'objectified'"
+                )
+                return cur.fetchone() is not None
+        finally:
+            conn.close()
+    except psycopg2.OperationalError:
+        return False
+
+
 def _ensure_database_and_schema() -> None:
-    """Create the test database if it does not exist and run sem-apply against it."""
+    """Create the test database if it does not exist and apply the schema."""
     dbname = _test_db_name()
+    db_exists = True
     try:
         psycopg2.connect(_dsn()).close()
-        return
     except psycopg2.OperationalError as e:
         if "does not exist" not in str(e):
             raise
+        db_exists = False
 
-    # Connect to 'postgres' to create the test database
-    bootstrap = psycopg2.connect(_dsn("postgres"))
-    bootstrap.autocommit = True
-    try:
-        with bootstrap.cursor() as cur:
-            cur.execute(f'CREATE DATABASE "{dbname}"')
-    finally:
-        bootstrap.close()
+    if not db_exists:
+        # Connect to 'postgres' to create the test database
+        bootstrap = psycopg2.connect(_dsn("postgres"))
+        bootstrap.autocommit = True
+        try:
+            with bootstrap.cursor() as cur:
+                cur.execute(f'CREATE DATABASE "{dbname}"')
+        finally:
+            bootstrap.close()
 
-    # Run sem-apply against the new test database (from schema project root so it finds scripts/)
-    schema_root = Path(__file__).resolve().parent.parent
-    host = os.getenv("POSTGRES_HOST", "localhost")
-    port = os.getenv("POSTGRES_PORT", "5432")
-    user = os.getenv("POSTGRES_USERNAME", "postgres")
-    password = os.getenv("POSTGRES_PASSWORD", "")
-    # Use URL form so port and password are supported
-    if password:
-        url = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{dbname}"
-    else:
-        url = f"postgresql://{quote_plus(user)}@{host}:{port}/{dbname}"
-    result = subprocess.run(
-        ["sem-apply", "--url", url],
-        cwd=str(schema_root),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"sem-apply failed for test database {dbname!r}: {result.stderr or result.stdout}"
-        )
+    # Apply the schema if it hasn't been applied yet
+    if not _schema_is_applied(dbname):
+        schema_root = Path(__file__).resolve().parent.parent
+        host = os.getenv("POSTGRES_HOST", "localhost")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        user = os.getenv("POSTGRES_USERNAME", "postgres")
+        password = os.getenv("POSTGRES_PASSWORD", "")
+
+        # Try sem-apply first; fall back to direct SQL execution
+        sem_apply_check = subprocess.run(["which", "sem-apply"], capture_output=True, text=True)
+        if sem_apply_check.returncode == 0:
+            if password:
+                url = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{dbname}"
+            else:
+                url = f"postgresql://{quote_plus(user)}@{host}:{port}/{dbname}"
+            result = subprocess.run(
+                ["sem-apply", "--url", url],
+                cwd=str(schema_root),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"sem-apply failed for test database {dbname!r}: {result.stderr or result.stdout}"
+                )
+        else:
+            _apply_scripts_directly(dbname)
 
 
 class _DB:

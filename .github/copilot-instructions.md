@@ -1,6 +1,7 @@
 # General Instructions
 
-- Code in objectified-commercial is used only for reference; new code should not be part of that repository
+- GitHub Tickets are the source of truth for all work to be done from the NobuData/objectified repository.
+- Code in objectified-commercial IS ONLY USED FOR REFERENCE AND SHOULD NOT BE CHANGED IN ANY WAY
 - Use context7 MCP where possible for documentation and code generation
 - Keep the chatting down to a minimum, only ask questions if you need more information
 - Unit tests must be updated and created as necessary, all tests run using yarn test
@@ -10,6 +11,7 @@
 
 - Any new scripts created in objectified-schema/scripts need to pull accurate local time and date for the filename
 - Create SQL tests where appropriate in the tests directory of objectified-schema, and ensure they are run as part of the test suite
+- Tests should be done against the "objectified_test" database when writing any tests for this project
 
 # UI Instructions
 
