@@ -21,9 +21,9 @@ any database schemas you currently have in your system will not be touched.
 
 ## Running Tests
 
-Tests validate every migration SQL file against a live PostgreSQL instance.
+Tests validate the applied database schema and core behaviors against a live PostgreSQL instance.
 All test data is wrapped in a transaction that is **rolled back** after each
-test, so nothing ever persists to the database.
+test, so no test data ever persists in the database.
 
 ### Prerequisites
 
