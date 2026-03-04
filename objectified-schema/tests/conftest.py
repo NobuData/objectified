@@ -103,34 +103,35 @@ def _ensure_database_and_schema() -> None:
         finally:
             bootstrap.close()
 
-    # Apply the schema if it hasn't been applied yet
-    if not _schema_is_applied(dbname):
-        schema_root = Path(__file__).resolve().parent.parent
-        host = os.getenv("POSTGRES_HOST", "localhost")
-        port = os.getenv("POSTGRES_PORT", "5432")
-        user = os.getenv("POSTGRES_USERNAME", "postgres")
-        password = os.getenv("POSTGRES_PASSWORD", "")
+    # Apply or update the schema for the test database on every test session.
+    schema_root = Path(__file__).resolve().parent.parent
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    user = os.getenv("POSTGRES_USERNAME", "postgres")
+    password = os.getenv("POSTGRES_PASSWORD", "")
 
-        # Try sem-apply first; fall back to direct SQL execution
-        sem_apply_check = subprocess.run(["which", "sem-apply"], capture_output=True, text=True)
-        if sem_apply_check.returncode == 0:
-            if password:
-                url = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{dbname}"
-            else:
-                url = f"postgresql://{quote_plus(user)}@{host}:{port}/{dbname}"
-            result = subprocess.run(
-                ["sem-apply", "--url", url],
-                cwd=str(schema_root),
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"sem-apply failed for test database {dbname!r}: {result.stderr or result.stdout}"
-                )
+    # Try sem-apply first; fall back to direct SQL execution
+    sem_apply_check = subprocess.run(["which", "sem-apply"], capture_output=True, text=True)
+
+    if sem_apply_check.returncode == 0:
+        if password:
+            url = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{dbname}"
         else:
-            _apply_scripts_directly(dbname)
+            url = f"postgresql://{quote_plus(user)}@{host}:{port}/{dbname}"
 
+        result = subprocess.run(
+            ["sem-apply", "--url", url],
+            cwd=str(schema_root),
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"sem-apply failed for test database {dbname!r}: {result.stderr or result.stdout}"
+            )
+    else:
+        _apply_scripts_directly(dbname)
 
 class _DB:
     """Thin wrapper around a psycopg2 connection exposing execute/fetchone/fetchall helpers."""

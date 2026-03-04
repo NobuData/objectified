@@ -112,10 +112,10 @@ class TestTenantTableStructure:
         assert row["data_type"] == "jsonb"
         assert row["is_nullable"] == "NO"
 
-    def test_column_created_at_timestamp_no_tz(self, conn):
+    def test_column_created_at_timestamp_no_tz_not_null(self, conn):
         row = conn.fetchone(
             """
-            SELECT data_type
+            SELECT data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
               AND table_name   = 'tenant'
@@ -124,6 +124,7 @@ class TestTenantTableStructure:
         )
         assert row is not None, "Column 'created_at' is missing"
         assert row["data_type"] == "timestamp without time zone"
+        assert row["is_nullable"] == "NO", "created_at must be NOT NULL"
 
     def test_column_updated_at_timestamp_no_tz_nullable(self, conn):
         row = conn.fetchone(
@@ -404,8 +405,35 @@ class TestTenantTableDataIntegrity:
         assert row["slug"] == "acme-corp"
         assert row["enabled"] is True
         assert row["metadata"] == {}
+        assert row["created_at"] is not None
         assert row["deleted_at"] is None
         assert row["id"] is not None
+
+    def test_created_at_is_set_and_recent_on_insert(self, conn):
+        """created_at must be auto-populated to a UTC timestamp close to now on insert."""
+        from datetime import datetime, timezone, timedelta
+
+        before = datetime.now(timezone.utc).replace(tzinfo=None)
+        conn.execute(
+            """
+            INSERT INTO objectified.tenant (name, description, slug)
+            VALUES (%s, %s, %s)
+            """,
+            ("Timestamp Corp", "Timestamp test tenant", "timestamp-corp"),
+        )
+        after = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        row = conn.fetchone(
+            "SELECT created_at, updated_at FROM objectified.tenant WHERE slug = %s",
+            ("timestamp-corp",),
+        )
+        assert row is not None
+        assert row["created_at"] is not None, "created_at must be non-NULL after INSERT"
+        assert before <= row["created_at"] <= after + timedelta(seconds=1), (
+            f"created_at {row['created_at']} is not within the expected range "
+            f"[{before}, {after}]"
+        )
+        assert row["updated_at"] is None, "updated_at must remain NULL until an UPDATE occurs"
 
     def test_default_metadata_is_empty_object(self, conn):
         conn.execute(

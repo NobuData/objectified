@@ -12,7 +12,7 @@ CREATE TABLE objectified.tenant (
     slug        VARCHAR(80) NOT NULL UNIQUE,
     enabled     BOOLEAN NOT NULL DEFAULT true,
     metadata    JSONB NOT NULL DEFAULT '{}',
-    created_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT timezone('utc', clock_timestamp()),
+    created_at  TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT timezone('utc', clock_timestamp()),
     updated_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL,
     deleted_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL,
 
