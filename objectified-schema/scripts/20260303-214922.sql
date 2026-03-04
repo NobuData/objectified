@@ -46,7 +46,6 @@ CREATE TRIGGER trg_account_updated_at
     EXECUTE FUNCTION objectified.set_updated_at();
 
 -- Indices for quick lookups on email and name
-CREATE INDEX idx_account_email   ON objectified.account (email)  WHERE deleted_at IS NULL;
 CREATE INDEX idx_account_name    ON objectified.account (name)   WHERE deleted_at IS NULL;
 
 -- Additional useful indices
