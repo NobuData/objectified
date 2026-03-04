@@ -20,7 +20,7 @@ SET search_path TO objectified, public;
 CREATE OR REPLACE FUNCTION objectified.set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = timezone('utc', now());
+    NEW.updated_at = timezone('utc', clock_timestamp());
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

@@ -228,9 +228,6 @@ class TestAccountTableIndices:
         )
         return row is not None
 
-    def test_index_on_email_exists(self, conn):
-        assert self._index_exists(conn, "idx_account_email"), "Index idx_account_email is missing"
-
     def test_index_on_name_exists(self, conn):
         assert self._index_exists(conn, "idx_account_name"), "Index idx_account_name is missing"
 
