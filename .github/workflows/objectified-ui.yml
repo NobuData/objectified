@@ -1,0 +1,71 @@
+# Build and test objectified-ui (Next.js application).
+# Runs on any branch when files under objectified-ui/ change.
+# Uses Node.js LTS and Yarn.
+
+name: Objectified UI
+
+on:
+  push:
+    paths:
+      - 'objectified-ui/**'
+  pull_request:
+    paths:
+      - 'objectified-ui/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: objectified-ui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Enable Corepack and set Yarn version
+        run: |
+          corepack enable
+          corepack prepare yarn@stable --activate
+
+      - name: Get Yarn cache directory
+        id: yarn-cache-dir
+        run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
+
+      - name: Cache Yarn dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.yarn-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('objectified-ui/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run tests
+        run: yarn test --forceExit --ci
+
+      - name: Run test coverage
+        run: yarn test:coverage --forceExit --ci
+
+      - name: Build
+        run: yarn build
+        env:
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: ci-build-secret-not-used-in-production
+          NEXT_PUBLIC_REST_API_BASE_URL: http://localhost:8000/v1
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: objectified-ui-build
+          path: objectified-ui/.next/
+          retention-days: 7
+
