@@ -277,6 +277,38 @@ class TestTenantUserTableConstraints:
         conn.execute("ROLLBACK TO SAVEPOINT before_null_account")
         conn.execute("RELEASE SAVEPOINT before_null_account")
 
+    def test_unique_constraint_on_tenant_account_exists(self, conn):
+        """UNIQUE constraint uq_tenant_user_tenant_account must exist."""
+        row = conn.fetchone(
+            """
+            SELECT constraint_name
+            FROM information_schema.table_constraints
+            WHERE constraint_type = 'UNIQUE'
+              AND table_schema    = 'objectified'
+              AND table_name      = 'tenant_user'
+              AND constraint_name = 'uq_tenant_user_tenant_account'
+            """
+        )
+        assert row is not None, "UNIQUE constraint 'uq_tenant_user_tenant_account' is missing"
+
+    def test_duplicate_tenant_account_pair_rejected(self, conn):
+        """Inserting the same (tenant_id, account_id) pair twice must raise UniqueViolation."""
+        tenant_id = _insert_tenant(conn, slug="unique-pair-tenant")
+        account_id = _insert_account(conn, email="unique-pair@example.com")
+
+        conn.execute(
+            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            (tenant_id, account_id),
+        )
+        conn.execute("SAVEPOINT before_duplicate_pair")
+        with pytest.raises(psycopg2.errors.UniqueViolation):
+            conn.execute(
+                "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+                (tenant_id, account_id),
+            )
+        conn.execute("ROLLBACK TO SAVEPOINT before_duplicate_pair")
+        conn.execute("RELEASE SAVEPOINT before_duplicate_pair")
+
 
 # ---------------------------------------------------------------------------
 # Indices
