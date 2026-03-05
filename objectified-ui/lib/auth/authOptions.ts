@@ -6,16 +6,29 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        email: { label: 'Email', type: 'email' },
+        username: { label: 'Username', type: 'text' },
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        // TODO: Implement credential validation against backend API
-        if (!credentials?.email || !credentials?.password) {
+        if (!credentials?.username || !credentials?.password) {
           return null;
         }
-        // Placeholder: replace with real authentication logic
-        return null;
+        const baseUrl = process.env.NEXTAUTH_URL
+          ? new URL(process.env.NEXTAUTH_URL).origin
+          : 'http://localhost:3000';
+        const res = await fetch(`${baseUrl}/api/auth/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: credentials.username,
+            password: credentials.password,
+          }),
+        });
+        if (!res.ok) {
+          return null;
+        }
+        const user = await res.json();
+        return user?.id ? { id: user.id, name: user.name, email: user.email } : null;
       },
     }),
   ],
