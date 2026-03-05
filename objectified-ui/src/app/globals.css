@@ -11,14 +11,15 @@
 /* ===== THEME SYSTEM ===== */
 /* Light themes */
 .theme-light,
-[data-theme="light"] {
+[data-theme="light"],
+.light {
   --background: #ffffff;
   --foreground: #171717;
 }
-
 /* Dark themes - also add .dark class for Tailwind compatibility */
 .theme-dark,
-[data-theme="dark"] {
+[data-theme="dark"],
+.dark {
   --background: #0a0a0a;
   --foreground: #ededed;
 }
