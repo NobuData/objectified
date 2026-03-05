@@ -6,7 +6,8 @@ This top-level project is the base.  Objectified is a monorepo, meaning, each su
 
 ## Build Status
 
-[![Objectified Database Schema](https://github.com/NobuData/objectified/actions/workflows/objectified-schema.yml/badge.svg)](https://github.com/NobuData/objectified/actions/workflows/objectified-schema.yml)
+[![Objectified Database Schema](https://github.com/NobuData/objectified/actions/workflows/objectified-schema.yml/badge.svg)](https://github.com/NobuData/objectified/actions/workflows/objectified-schema.yml)\
+[![Objectified UI](https://github.com/NobuData/objectified/actions/workflows/objectified-ui.yml/badge.svg)](https://github.com/NobuData/objectified/actions/workflows/objectified-ui.yml)
 
 ## Framework
 
