@@ -117,10 +117,25 @@ class TestTenantUserTableStructure:
         assert row["is_nullable"] == "NO"
         assert "member" in row["column_default"].lower()
 
-    def test_column_created_at_timestamp_no_tz(self, conn):
+    def test_column_enabled_boolean_not_null_default_true(self, conn):
         row = conn.fetchone(
             """
-            SELECT data_type
+            SELECT data_type, is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_schema = 'objectified'
+              AND table_name   = 'tenant_user'
+              AND column_name  = 'enabled'
+            """
+        )
+        assert row is not None, "Column 'enabled' is missing"
+        assert row["data_type"] == "boolean"
+        assert row["is_nullable"] == "NO"
+        assert "true" in row["column_default"].lower()
+
+    def test_column_created_at_timestamp_no_tz_not_null(self, conn):
+        row = conn.fetchone(
+            """
+            SELECT data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
               AND table_name   = 'tenant_user'
@@ -129,11 +144,12 @@ class TestTenantUserTableStructure:
         )
         assert row is not None, "Column 'created_at' is missing"
         assert row["data_type"] == "timestamp without time zone"
+        assert row["is_nullable"] == "NO", "created_at must be NOT NULL"
 
-    def test_column_updated_at_timestamp_no_tz(self, conn):
+    def test_column_updated_at_timestamp_no_tz_nullable(self, conn):
         row = conn.fetchone(
             """
-            SELECT data_type
+            SELECT data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
               AND table_name   = 'tenant_user'
@@ -142,6 +158,21 @@ class TestTenantUserTableStructure:
         )
         assert row is not None, "Column 'updated_at' is missing"
         assert row["data_type"] == "timestamp without time zone"
+        assert row["is_nullable"] == "YES"
+
+    def test_column_deleted_at_timestamp_no_tz_nullable(self, conn):
+        row = conn.fetchone(
+            """
+            SELECT data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'objectified'
+              AND table_name   = 'tenant_user'
+              AND column_name  = 'deleted_at'
+            """
+        )
+        assert row is not None, "Column 'deleted_at' is missing"
+        assert row["data_type"] == "timestamp without time zone"
+        assert row["is_nullable"] == "YES"
 
     def test_enum_type_values(self, conn):
         """Verify ENUM type has exactly 'member' and 'administrator' values."""
@@ -165,7 +196,7 @@ class TestTenantUserTableStructure:
 # ---------------------------------------------------------------------------
 
 class TestTenantUserTableConstraints:
-    """Verify primary key, foreign key constraints."""
+    """Verify primary key, foreign key, and duplicate-membership constraints."""
 
     def test_primary_key_on_id(self, conn):
         row = conn.fetchone(
@@ -277,22 +308,21 @@ class TestTenantUserTableConstraints:
         conn.execute("ROLLBACK TO SAVEPOINT before_null_account")
         conn.execute("RELEASE SAVEPOINT before_null_account")
 
-    def test_unique_constraint_on_tenant_account_exists(self, conn):
-        """UNIQUE constraint uq_tenant_user_tenant_account must exist."""
+    def test_active_membership_unique_index_exists(self, conn):
+        """Partial unique index uidx_tenant_user_active_membership must exist."""
         row = conn.fetchone(
             """
-            SELECT constraint_name
-            FROM information_schema.table_constraints
-            WHERE constraint_type = 'UNIQUE'
-              AND table_schema    = 'objectified'
-              AND table_name      = 'tenant_user'
-              AND constraint_name = 'uq_tenant_user_tenant_account'
+            SELECT indexname
+            FROM pg_indexes
+            WHERE schemaname = 'objectified'
+              AND tablename  = 'tenant_user'
+              AND indexname  = 'uidx_tenant_user_active_membership'
             """
         )
-        assert row is not None, "UNIQUE constraint 'uq_tenant_user_tenant_account' is missing"
+        assert row is not None, "Partial unique index 'uidx_tenant_user_active_membership' is missing"
 
-    def test_duplicate_tenant_account_pair_rejected(self, conn):
-        """Inserting the same (tenant_id, account_id) pair twice must raise UniqueViolation."""
+    def test_duplicate_active_membership_raises_unique_violation(self, conn):
+        """Inserting the same active (tenant_id, account_id) pair twice must raise UniqueViolation."""
         tenant_id = _insert_tenant(conn, slug="unique-pair-tenant")
         account_id = _insert_account(conn, email="unique-pair@example.com")
 
@@ -308,6 +338,39 @@ class TestTenantUserTableConstraints:
             )
         conn.execute("ROLLBACK TO SAVEPOINT before_duplicate_pair")
         conn.execute("RELEASE SAVEPOINT before_duplicate_pair")
+
+    def test_soft_deleted_membership_does_not_block_reinsertion(self, conn):
+        """A soft-deleted (tenant_id, account_id) row must not prevent a new active row for the same pair."""
+        tenant_id = _insert_tenant(conn, slug="reinsert-tenant")
+        account_id = _insert_account(conn, email="reinsert@example.com")
+
+        # Insert and then soft-delete the membership
+        conn.execute(
+            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            (tenant_id, account_id),
+        )
+        conn.execute(
+            """
+            UPDATE objectified.tenant_user
+               SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
+             WHERE tenant_id = %s AND account_id = %s
+            """,
+            (tenant_id, account_id),
+        )
+
+        # Re-inserting the same pair must succeed because the partial index excludes deleted rows
+        conn.execute(
+            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            (tenant_id, account_id),
+        )
+        rows = conn.fetchall(
+            "SELECT id, deleted_at FROM objectified.tenant_user WHERE tenant_id = %s AND account_id = %s",
+            (tenant_id, account_id),
+        )
+        active = [r for r in rows if r["deleted_at"] is None]
+        assert len(active) == 1, "Exactly one active membership should exist after re-insertion"
+
+
 
 
 # ---------------------------------------------------------------------------
