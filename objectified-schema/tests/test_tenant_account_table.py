@@ -45,7 +45,7 @@ def _insert_account(conn, email="testuser@example.com"):
 # Schema / column existence
 # ---------------------------------------------------------------------------
 
-class TestTenantUserTableStructure:
+class TestTenantAccountTableStructure:
     """Verify the table and its columns exist with the correct types."""
 
     def test_table_exists(self, conn):
@@ -195,7 +195,7 @@ class TestTenantUserTableStructure:
 # Constraints
 # ---------------------------------------------------------------------------
 
-class TestTenantUserTableConstraints:
+class TestTenantAccountTableConstraints:
     """Verify primary key, foreign key, and duplicate-membership constraints."""
 
     def test_primary_key_on_id(self, conn):
@@ -371,13 +371,11 @@ class TestTenantUserTableConstraints:
         assert len(active) == 1, "Exactly one active membership should exist after re-insertion"
 
 
-
-
 # ---------------------------------------------------------------------------
 # Indices
 # ---------------------------------------------------------------------------
 
-class TestTenantUserTableIndices:
+class TestTenantAccountTableIndices:
     """Verify the required indices exist."""
 
     def _index_exists(self, conn, index_name: str) -> bool:
@@ -410,7 +408,7 @@ class TestTenantUserTableIndices:
 # Trigger
 # ---------------------------------------------------------------------------
 
-class TestTenantUserTableTrigger:
+class TestTenantAccountTableTrigger:
     """Verify the updated_at trigger exists and fires correctly."""
 
     def test_updated_at_trigger_exists(self, conn):
@@ -437,15 +435,17 @@ class TestTenantUserTableTrigger:
             """,
             (tenant_id, account_id),
         )
-        conn.execute("SELECT pg_sleep(0.01)")
 
-        original = conn.fetchone(
+        after_insert = conn.fetchone(
             """
             SELECT updated_at FROM objectified.tenant_account
             WHERE tenant_id = %s AND account_id = %s
             """,
             (tenant_id, account_id),
         )
+        assert after_insert["updated_at"] is None, "updated_at must be NULL immediately after INSERT"
+
+        conn.execute("SELECT pg_sleep(0.01)")
 
         conn.execute(
             """
@@ -456,23 +456,21 @@ class TestTenantUserTableTrigger:
             (tenant_id, account_id),
         )
 
-        updated = conn.fetchone(
+        after_update = conn.fetchone(
             """
             SELECT updated_at FROM objectified.tenant_account
             WHERE tenant_id = %s AND account_id = %s
             """,
             (tenant_id, account_id),
         )
-
-        assert updated["updated_at"] is not None, "updated_at must be set after UPDATE"
-        assert updated["updated_at"] >= original["updated_at"]
+        assert after_update["updated_at"] is not None, "updated_at must be set after UPDATE"
 
 
 # ---------------------------------------------------------------------------
 # Data integrity – insert / query / access levels
 # ---------------------------------------------------------------------------
 
-class TestTenantUserTableDataIntegrity:
+class TestTenantAccountTableDataIntegrity:
     """Functional tests for CRUD behaviour. All data is rolled back after each test."""
 
     def test_insert_minimal_tenant_account_defaults_to_member(self, conn):

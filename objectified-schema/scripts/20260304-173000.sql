@@ -17,7 +17,7 @@ CREATE TABLE objectified.tenant_account (
     access_level objectified.tenant_access_level NOT NULL DEFAULT 'member',
     enabled      BOOLEAN NOT NULL DEFAULT true,
     created_at   TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT timezone('utc', clock_timestamp()),
-    updated_at   TIMESTAMP WITHOUT TIME ZONE DEFAULT timezone('utc', clock_timestamp()),
+    updated_at   TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL,
     deleted_at   TIMESTAMP WITHOUT TIME ZONE DEFAULT NULL
 );
 
@@ -27,10 +27,19 @@ CREATE TRIGGER trg_tenant_account_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION objectified.set_updated_at();
 
--- Indices for memory-based quick lookups
-CREATE INDEX idx_tenant_account_tenant_id    ON objectified.tenant_account (tenant_id);
-CREATE INDEX idx_tenant_account_account_id   ON objectified.tenant_account (account_id);
-CREATE INDEX idx_tenant_account_access_level ON objectified.tenant_account (access_level);
+-- Indices for memory-based quick lookups (active memberships only)
+CREATE INDEX idx_tenant_account_tenant_id
+    ON objectified.tenant_account (tenant_id)
+    WHERE deleted_at IS NULL;
+CREATE INDEX idx_tenant_account_account_id
+    ON objectified.tenant_account (account_id)
+    WHERE deleted_at IS NULL;
+CREATE INDEX idx_tenant_account_access_level
+    ON objectified.tenant_account (access_level)
+    WHERE deleted_at IS NULL;
+-- Index to support operations and maintenance on soft-deleted memberships
+CREATE INDEX idx_tenant_account_deleted_at
+    ON objectified.tenant_account (deleted_at);
 
 -- Partial unique index: one active membership per (tenant, account) pair;
 -- soft-deleted rows are excluded so a deleted membership can be re-created.
