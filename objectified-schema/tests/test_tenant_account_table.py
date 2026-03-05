@@ -1,5 +1,5 @@
 """
-test_tenant_user_table.py – SQL tests for the objectified.tenant_user table.
+test_tenant_account_table.py – SQL tests for the objectified.tenant_account table.
 
 Every test runs inside a transaction that is rolled back after completion
 (via the 'conn' fixture in conftest.py), so no data persists to the database.
@@ -20,7 +20,7 @@ def _insert_tenant(conn, slug="test-tenant"):
         VALUES (%s, %s, %s)
         ON CONFLICT (slug) DO NOTHING
         """,
-        ("Test Tenant", "A tenant for testing tenant_user", slug),
+        ("Test Tenant", "A tenant for testing tenant_account", slug),
     )
     return conn.fetchone(
         "SELECT id FROM objectified.tenant WHERE slug = %s", (slug,)
@@ -49,16 +49,16 @@ class TestTenantUserTableStructure:
     """Verify the table and its columns exist with the correct types."""
 
     def test_table_exists(self, conn):
-        """objectified.tenant_user table must exist."""
+        """objectified.tenant_account table must exist."""
         row = conn.fetchone(
             """
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = 'objectified'
-              AND table_name   = 'tenant_user'
+              AND table_name   = 'tenant_account'
             """
         )
-        assert row is not None, "Table objectified.tenant_user does not exist"
+        assert row is not None, "Table objectified.tenant_account does not exist"
 
     def test_column_id_is_uuid_not_null(self, conn):
         row = conn.fetchone(
@@ -66,7 +66,7 @@ class TestTenantUserTableStructure:
             SELECT data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
-              AND table_name   = 'tenant_user'
+              AND table_name   = 'tenant_account'
               AND column_name  = 'id'
             """
         )
@@ -80,7 +80,7 @@ class TestTenantUserTableStructure:
             SELECT data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
-              AND table_name   = 'tenant_user'
+              AND table_name   = 'tenant_account'
               AND column_name  = 'tenant_id'
             """
         )
@@ -94,7 +94,7 @@ class TestTenantUserTableStructure:
             SELECT data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
-              AND table_name   = 'tenant_user'
+              AND table_name   = 'tenant_account'
               AND column_name  = 'account_id'
             """
         )
@@ -108,7 +108,7 @@ class TestTenantUserTableStructure:
             SELECT udt_name, is_nullable, column_default
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
-              AND table_name   = 'tenant_user'
+              AND table_name   = 'tenant_account'
               AND column_name  = 'access_level'
             """
         )
@@ -123,7 +123,7 @@ class TestTenantUserTableStructure:
             SELECT data_type, is_nullable, column_default
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
-              AND table_name   = 'tenant_user'
+              AND table_name   = 'tenant_account'
               AND column_name  = 'enabled'
             """
         )
@@ -138,7 +138,7 @@ class TestTenantUserTableStructure:
             SELECT data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
-              AND table_name   = 'tenant_user'
+              AND table_name   = 'tenant_account'
               AND column_name  = 'created_at'
             """
         )
@@ -152,7 +152,7 @@ class TestTenantUserTableStructure:
             SELECT data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
-              AND table_name   = 'tenant_user'
+              AND table_name   = 'tenant_account'
               AND column_name  = 'updated_at'
             """
         )
@@ -166,7 +166,7 @@ class TestTenantUserTableStructure:
             SELECT data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'objectified'
-              AND table_name   = 'tenant_user'
+              AND table_name   = 'tenant_account'
               AND column_name  = 'deleted_at'
             """
         )
@@ -208,7 +208,7 @@ class TestTenantUserTableConstraints:
              AND tc.table_schema    = kcu.table_schema
             WHERE tc.constraint_type = 'PRIMARY KEY'
               AND tc.table_schema    = 'objectified'
-              AND tc.table_name      = 'tenant_user'
+              AND tc.table_name      = 'tenant_account'
             """
         )
         assert row is not None
@@ -227,7 +227,7 @@ class TestTenantUserTableConstraints:
              AND ccu.table_schema    = tc.table_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
               AND tc.table_schema    = 'objectified'
-              AND tc.table_name      = 'tenant_user'
+              AND tc.table_name      = 'tenant_account'
               AND kcu.column_name    = 'tenant_id'
             """
         )
@@ -248,7 +248,7 @@ class TestTenantUserTableConstraints:
              AND ccu.table_schema    = tc.table_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
               AND tc.table_schema    = 'objectified'
-              AND tc.table_name      = 'tenant_user'
+              AND tc.table_name      = 'tenant_account'
               AND kcu.column_name    = 'account_id'
             """
         )
@@ -257,13 +257,13 @@ class TestTenantUserTableConstraints:
         assert row["foreign_column_name"] == "id"
 
     def test_invalid_tenant_id_raises_foreign_key_violation(self, conn):
-        """Inserting a tenant_user with a non-existent tenant_id must fail."""
+        """Inserting a tenant_account with a non-existent tenant_id must fail."""
         account_id = _insert_account(conn, email="fk-test-account@example.com")
         conn.execute("SAVEPOINT before_bad_fk")
         with pytest.raises(psycopg2.errors.ForeignKeyViolation):
             conn.execute(
                 """
-                INSERT INTO objectified.tenant_user (tenant_id, account_id)
+                INSERT INTO objectified.tenant_account (tenant_id, account_id)
                 VALUES (uuidv7(), %s)
                 """,
                 (account_id,),
@@ -272,13 +272,13 @@ class TestTenantUserTableConstraints:
         conn.execute("RELEASE SAVEPOINT before_bad_fk")
 
     def test_invalid_account_id_raises_foreign_key_violation(self, conn):
-        """Inserting a tenant_user with a non-existent account_id must fail."""
+        """Inserting a tenant_account with a non-existent account_id must fail."""
         tenant_id = _insert_tenant(conn, slug="fk-test-tenant")
         conn.execute("SAVEPOINT before_bad_account_fk")
         with pytest.raises(psycopg2.errors.ForeignKeyViolation):
             conn.execute(
                 """
-                INSERT INTO objectified.tenant_user (tenant_id, account_id)
+                INSERT INTO objectified.tenant_account (tenant_id, account_id)
                 VALUES (%s, uuidv7())
                 """,
                 (tenant_id,),
@@ -291,7 +291,7 @@ class TestTenantUserTableConstraints:
         conn.execute("SAVEPOINT before_null_tenant")
         with pytest.raises(psycopg2.errors.NotNullViolation):
             conn.execute(
-                "INSERT INTO objectified.tenant_user (account_id) VALUES (%s)",
+                "INSERT INTO objectified.tenant_account (account_id) VALUES (%s)",
                 (account_id,),
             )
         conn.execute("ROLLBACK TO SAVEPOINT before_null_tenant")
@@ -302,24 +302,24 @@ class TestTenantUserTableConstraints:
         conn.execute("SAVEPOINT before_null_account")
         with pytest.raises(psycopg2.errors.NotNullViolation):
             conn.execute(
-                "INSERT INTO objectified.tenant_user (tenant_id) VALUES (%s)",
+                "INSERT INTO objectified.tenant_account (tenant_id) VALUES (%s)",
                 (tenant_id,),
             )
         conn.execute("ROLLBACK TO SAVEPOINT before_null_account")
         conn.execute("RELEASE SAVEPOINT before_null_account")
 
     def test_active_membership_unique_index_exists(self, conn):
-        """Partial unique index uidx_tenant_user_active_membership must exist."""
+        """Partial unique index uidx_tenant_account_active_membership must exist."""
         row = conn.fetchone(
             """
             SELECT indexname
             FROM pg_indexes
             WHERE schemaname = 'objectified'
-              AND tablename  = 'tenant_user'
-              AND indexname  = 'uidx_tenant_user_active_membership'
+              AND tablename  = 'tenant_account'
+              AND indexname  = 'uidx_tenant_account_active_membership'
             """
         )
-        assert row is not None, "Partial unique index 'uidx_tenant_user_active_membership' is missing"
+        assert row is not None, "Partial unique index 'uidx_tenant_account_active_membership' is missing"
 
     def test_duplicate_active_membership_raises_unique_violation(self, conn):
         """Inserting the same active (tenant_id, account_id) pair twice must raise UniqueViolation."""
@@ -327,13 +327,13 @@ class TestTenantUserTableConstraints:
         account_id = _insert_account(conn, email="unique-pair@example.com")
 
         conn.execute(
-            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
             (tenant_id, account_id),
         )
         conn.execute("SAVEPOINT before_duplicate_pair")
         with pytest.raises(psycopg2.errors.UniqueViolation):
             conn.execute(
-                "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+                "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
                 (tenant_id, account_id),
             )
         conn.execute("ROLLBACK TO SAVEPOINT before_duplicate_pair")
@@ -346,12 +346,12 @@ class TestTenantUserTableConstraints:
 
         # Insert and then soft-delete the membership
         conn.execute(
-            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
             (tenant_id, account_id),
         )
         conn.execute(
             """
-            UPDATE objectified.tenant_user
+            UPDATE objectified.tenant_account
                SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
              WHERE tenant_id = %s AND account_id = %s
             """,
@@ -360,11 +360,11 @@ class TestTenantUserTableConstraints:
 
         # Re-inserting the same pair must succeed because the partial index excludes deleted rows
         conn.execute(
-            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
             (tenant_id, account_id),
         )
         rows = conn.fetchall(
-            "SELECT id, deleted_at FROM objectified.tenant_user WHERE tenant_id = %s AND account_id = %s",
+            "SELECT id, deleted_at FROM objectified.tenant_account WHERE tenant_id = %s AND account_id = %s",
             (tenant_id, account_id),
         )
         active = [r for r in rows if r["deleted_at"] is None]
@@ -386,7 +386,7 @@ class TestTenantUserTableIndices:
             SELECT indexname
             FROM pg_indexes
             WHERE schemaname = 'objectified'
-              AND tablename  = 'tenant_user'
+              AND tablename  = 'tenant_account'
               AND indexname  = %s
             """,
             (index_name,),
@@ -394,16 +394,16 @@ class TestTenantUserTableIndices:
         return row is not None
 
     def test_index_on_tenant_id_exists(self, conn):
-        assert self._index_exists(conn, "idx_tenant_user_tenant_id"), \
-            "Index idx_tenant_user_tenant_id is missing"
+        assert self._index_exists(conn, "idx_tenant_account_tenant_id"), \
+            "Index idx_tenant_account_tenant_id is missing"
 
     def test_index_on_account_id_exists(self, conn):
-        assert self._index_exists(conn, "idx_tenant_user_account_id"), \
-            "Index idx_tenant_user_account_id is missing"
+        assert self._index_exists(conn, "idx_tenant_account_account_id"), \
+            "Index idx_tenant_account_account_id is missing"
 
     def test_index_on_access_level_exists(self, conn):
-        assert self._index_exists(conn, "idx_tenant_user_access_level"), \
-            "Index idx_tenant_user_access_level is missing"
+        assert self._index_exists(conn, "idx_tenant_account_access_level"), \
+            "Index idx_tenant_account_access_level is missing"
 
 
 # ---------------------------------------------------------------------------
@@ -419,11 +419,11 @@ class TestTenantUserTableTrigger:
             SELECT trigger_name
             FROM information_schema.triggers
             WHERE event_object_schema = 'objectified'
-              AND event_object_table  = 'tenant_user'
-              AND trigger_name        = 'trg_tenant_user_updated_at'
+              AND event_object_table  = 'tenant_account'
+              AND trigger_name        = 'trg_tenant_account_updated_at'
             """
         )
-        assert row is not None, "Trigger trg_tenant_user_updated_at is missing"
+        assert row is not None, "Trigger trg_tenant_account_updated_at is missing"
 
     def test_updated_at_changes_on_update(self, conn):
         """Insert a row, update it, verify updated_at advances."""
@@ -432,7 +432,7 @@ class TestTenantUserTableTrigger:
 
         conn.execute(
             """
-            INSERT INTO objectified.tenant_user (tenant_id, account_id)
+            INSERT INTO objectified.tenant_account (tenant_id, account_id)
             VALUES (%s, %s)
             """,
             (tenant_id, account_id),
@@ -441,7 +441,7 @@ class TestTenantUserTableTrigger:
 
         original = conn.fetchone(
             """
-            SELECT updated_at FROM objectified.tenant_user
+            SELECT updated_at FROM objectified.tenant_account
             WHERE tenant_id = %s AND account_id = %s
             """,
             (tenant_id, account_id),
@@ -449,7 +449,7 @@ class TestTenantUserTableTrigger:
 
         conn.execute(
             """
-            UPDATE objectified.tenant_user
+            UPDATE objectified.tenant_account
             SET access_level = 'administrator'
             WHERE tenant_id = %s AND account_id = %s
             """,
@@ -458,7 +458,7 @@ class TestTenantUserTableTrigger:
 
         updated = conn.fetchone(
             """
-            SELECT updated_at FROM objectified.tenant_user
+            SELECT updated_at FROM objectified.tenant_account
             WHERE tenant_id = %s AND account_id = %s
             """,
             (tenant_id, account_id),
@@ -475,20 +475,20 @@ class TestTenantUserTableTrigger:
 class TestTenantUserTableDataIntegrity:
     """Functional tests for CRUD behaviour. All data is rolled back after each test."""
 
-    def test_insert_minimal_tenant_user_defaults_to_member(self, conn):
+    def test_insert_minimal_tenant_account_defaults_to_member(self, conn):
         tenant_id = _insert_tenant(conn, slug="data-test-tenant")
         account_id = _insert_account(conn, email="data-test@example.com")
 
         conn.execute(
             """
-            INSERT INTO objectified.tenant_user (tenant_id, account_id)
+            INSERT INTO objectified.tenant_account (tenant_id, account_id)
             VALUES (%s, %s)
             """,
             (tenant_id, account_id),
         )
         row = conn.fetchone(
             """
-            SELECT * FROM objectified.tenant_user
+            SELECT * FROM objectified.tenant_account
             WHERE tenant_id = %s AND account_id = %s
             """,
             (tenant_id, account_id),
@@ -506,14 +506,14 @@ class TestTenantUserTableDataIntegrity:
 
         conn.execute(
             """
-            INSERT INTO objectified.tenant_user (tenant_id, account_id, access_level)
+            INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level)
             VALUES (%s, %s, 'administrator')
             """,
             (tenant_id, account_id),
         )
         row = conn.fetchone(
             """
-            SELECT access_level FROM objectified.tenant_user
+            SELECT access_level FROM objectified.tenant_account
             WHERE tenant_id = %s AND account_id = %s
             """,
             (tenant_id, account_id),
@@ -530,7 +530,7 @@ class TestTenantUserTableDataIntegrity:
         with pytest.raises(psycopg2.errors.InvalidTextRepresentation):
             conn.execute(
                 """
-                INSERT INTO objectified.tenant_user (tenant_id, account_id, access_level)
+                INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level)
                 VALUES (%s, %s, 'superuser')
                 """,
                 (tenant_id, account_id),
@@ -544,15 +544,15 @@ class TestTenantUserTableDataIntegrity:
         account_id_2 = _insert_account(conn, email="multi-account-2@example.com")
 
         conn.execute(
-            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
             (tenant_id, account_id_1),
         )
         conn.execute(
-            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
             (tenant_id, account_id_2),
         )
         rows = conn.fetchall(
-            "SELECT account_id FROM objectified.tenant_user WHERE tenant_id = %s",
+            "SELECT account_id FROM objectified.tenant_account WHERE tenant_id = %s",
             (tenant_id,),
         )
         account_ids = [str(r["account_id"]) for r in rows]
@@ -565,15 +565,15 @@ class TestTenantUserTableDataIntegrity:
         tenant_id_2 = _insert_tenant(conn, slug="multi-tenant-2")
 
         conn.execute(
-            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
             (tenant_id_1, account_id),
         )
         conn.execute(
-            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
             (tenant_id_2, account_id),
         )
         rows = conn.fetchall(
-            "SELECT tenant_id FROM objectified.tenant_user WHERE account_id = %s",
+            "SELECT tenant_id FROM objectified.tenant_account WHERE account_id = %s",
             (account_id,),
         )
         tenant_ids = [str(r["tenant_id"]) for r in rows]
@@ -588,13 +588,13 @@ class TestTenantUserTableDataIntegrity:
 
         before = datetime.now(timezone.utc).replace(tzinfo=None)
         conn.execute(
-            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
             (tenant_id, account_id),
         )
         after = datetime.now(timezone.utc).replace(tzinfo=None)
 
         row = conn.fetchone(
-            "SELECT created_at FROM objectified.tenant_user WHERE tenant_id = %s AND account_id = %s",
+            "SELECT created_at FROM objectified.tenant_account WHERE tenant_id = %s AND account_id = %s",
             (tenant_id, account_id),
         )
         assert row is not None
@@ -607,11 +607,11 @@ class TestTenantUserTableDataIntegrity:
         account_id = _insert_account(conn, email="rollback-check@example.com")
 
         conn.execute(
-            "INSERT INTO objectified.tenant_user (tenant_id, account_id) VALUES (%s, %s)",
+            "INSERT INTO objectified.tenant_account (tenant_id, account_id) VALUES (%s, %s)",
             (tenant_id, account_id),
         )
         row = conn.fetchone(
-            "SELECT id FROM objectified.tenant_user WHERE tenant_id = %s AND account_id = %s",
+            "SELECT id FROM objectified.tenant_account WHERE tenant_id = %s AND account_id = %s",
             (tenant_id, account_id),
         )
         assert row is not None, "Row should be visible within the same transaction"
