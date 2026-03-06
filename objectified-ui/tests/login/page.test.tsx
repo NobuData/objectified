@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LoginPage from '../../src/app/login/page';
 
@@ -40,10 +40,12 @@ describe('LoginPage', () => {
     await user.type(screen.getByPlaceholderText(/••••••••/), 'password123');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
     const { signIn } = await import('next-auth/react');
-    expect(signIn).toHaveBeenCalledWith('credentials', {
-      username: 'test@example.com',
-      password: 'password123',
-      redirect: false,
+    await waitFor(() => {
+      expect(signIn).toHaveBeenCalledWith('credentials', {
+        username: 'test@example.com',
+        password: 'password123',
+        redirect: false,
+      });
     });
   });
 });

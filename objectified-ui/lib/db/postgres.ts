@@ -5,23 +5,48 @@
 
 import { Pool, PoolClient } from 'pg';
 
-const poolConfig = {
-  host: process.env.POSTGRES_HOST ?? 'localhost',
-  port: parseInt(process.env.POSTGRES_PORT ?? '5432', 10),
-  user: process.env.POSTGRES_USERNAME ?? 'postgres',
-  password: process.env.POSTGRES_PASSWORD ?? '',
-  database: process.env.POSTGRES_DB ?? 'objectified',
-};
-
+const REQUIRED_POSTGRES_ENV_VARS = [
+  'POSTGRES_HOST',
+  'POSTGRES_PORT',
+  'POSTGRES_USERNAME',
+  'POSTGRES_PASSWORD',
+  'POSTGRES_DB',
+] as const;
+function getPoolConfig() {
+  if (process.env.POSTGRES_URL) {
+    return { connectionString: process.env.POSTGRES_URL };
+  }
+  const nodeEnv = process.env.NODE_ENV;
+  const isDevLike =
+    !nodeEnv || nodeEnv === 'development' || nodeEnv === 'test';
+  if (!isDevLike) {
+    const missing = REQUIRED_POSTGRES_ENV_VARS.filter(
+      (name) => !process.env[name]
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing required PostgreSQL environment variables: ${missing.join(
+          ', '
+        )}`
+      );
+    }
+  }
+  return {
+    host: process.env.POSTGRES_HOST ?? 'localhost',
+    port: parseInt(process.env.POSTGRES_PORT ?? '5432', 10),
+    user: process.env.POSTGRES_USERNAME ?? 'postgres',
+    password: process.env.POSTGRES_PASSWORD ?? '',
+    database: process.env.POSTGRES_DB ?? 'objectified',
+  };
+}
 let pool: Pool | null = null;
-
 /**
  * Returns a shared connection pool for the objectified database.
- * Uses POSTGRES_* env vars from .env.
+ * Uses POSTGRES_* env vars from .env or POSTGRES_URL if provided.
  */
 export function getPool(): Pool {
   if (!pool) {
-    pool = new Pool(poolConfig);
+    pool = new Pool(getPoolConfig());
   }
   return pool;
 }

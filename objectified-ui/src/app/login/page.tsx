@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
@@ -10,10 +10,15 @@ import Image from 'next/image';
 export default function LoginPage() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +40,8 @@ export default function LoginPage() {
     }
   };
 
-  const isDark = resolvedTheme === 'dark';
+  // Use theme only after mount to avoid hydration mismatch (resolvedTheme differs SSR vs client)
+  const isDark = mounted ? resolvedTheme === 'dark' : false;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/30 dark:from-slate-950 dark:via-indigo-950/30 dark:to-purple-950/30">
