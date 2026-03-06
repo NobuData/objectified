@@ -1,16 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { signIn } from 'next-auth/react';
+import { getProviders, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { Mail, Lock } from 'lucide-react';
+import { SiGithub } from 'react-icons/si';
 import Image from 'next/image';
 
 export default function LoginPage() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [providers, setProviders] = useState<Awaited<ReturnType<typeof getProviders>>>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,6 +20,15 @@ export default function LoginPage() {
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    getProviders()
+    .then(setProviders)
+    .catch((err) => {
+      console.error('Failed to load auth providers', err);
+      setProviders(null);
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,6 +48,21 @@ export default function LoginPage() {
       setError('Invalid email or password.');
     } else {
       router.push('/dashboard');
+    }
+  };
+
+  const handleGitHubSignIn = async () => {
+    if (loading) {
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+
+    try {
+      await signIn('github', { callbackUrl: '/dashboard' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -132,6 +158,31 @@ export default function LoginPage() {
             >
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
+
+            {providers?.github && (
+              <>
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-200 dark:border-gray-600" />
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="bg-white/80 dark:bg-gray-900/80 px-3 text-gray-500 dark:text-gray-400">
+                      or continue with
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGitHubSignIn}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 py-3 border border-gray-200 dark:border-gray-600 rounded-xl font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                >
+                  <SiGithub size={20} className="shrink-0" aria-hidden />
+                  Sign in with GitHub
+                </button>
+              </>
+            )}
           </form>
         </div>
       </div>
