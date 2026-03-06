@@ -16,6 +16,7 @@ jest.mock('next-auth/react', () => ({
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('next-themes', () => ({
@@ -30,7 +31,7 @@ jest.mock('next/image', () => ({
 describe('LoginPage', () => {
   it('renders login form with email, password and sign in button', async () => {
     render(<LoginPage />);
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    await screen.findByLabelText(/email/i);
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /sign in with github/i })).toBeInTheDocument();
@@ -54,7 +55,8 @@ describe('LoginPage', () => {
       expect(signIn).toHaveBeenCalledWith('credentials', {
         email: 'test@example.com',
         password: 'password123',
-        redirect: false,
+        callbackUrl: '/dashboard',
+        redirect: true,
       });
     });
   });
@@ -73,6 +75,7 @@ describe('LoginPage', () => {
   it('does not render GitHub button when GitHub provider is not configured', async () => {
     mockGetProviders.mockResolvedValueOnce({ credentials: { id: 'credentials', name: 'Credentials', signinUrl: '', callbackUrl: '' } });
     render(<LoginPage />);
+    await screen.findByRole('button', { name: /^sign in$/i });
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
     await waitFor(() => {
       expect(mockGetProviders).toHaveBeenCalled();

@@ -121,6 +121,20 @@ describe('verifyCredentials', () => {
       expect(result).toBeNull();
       expect(mockCompare).not.toHaveBeenCalled();
     });
+
+    it('returns null when stored hash does not start with bcrypt prefix', async () => {
+      mockQueryOne.mockResolvedValue({
+        id: 'id-1',
+        name: 'User',
+        email: 'user@example.com',
+        password: 'plaintext-not-a-hash',
+      });
+
+      const result = await verifyCredentials('user@example.com', 'secret');
+
+      expect(result).toBeNull();
+      expect(mockCompare).not.toHaveBeenCalled();
+    });
   });
 
   describe('bcrypt verification', () => {
@@ -152,6 +166,20 @@ describe('verifyCredentials', () => {
       await verifyCredentials('user@example.com', 'plain');
 
       expect(mockCompare).toHaveBeenCalledWith('plain', '$2a$10$storedHash');
+    });
+
+    it('trims password before compare', async () => {
+      mockQueryOne.mockResolvedValue({
+        id: 'id-1',
+        name: 'User',
+        email: 'user@example.com',
+        password: '$2a$10$hashed',
+      });
+      mockCompare.mockResolvedValue(true as never);
+
+      await verifyCredentials('user@example.com', '  correct  ');
+
+      expect(mockCompare).toHaveBeenCalledWith('correct', '$2a$10$hashed');
     });
   });
 

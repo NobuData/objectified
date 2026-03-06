@@ -1,22 +1,70 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { getProviders, signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
-import { Mail, Lock } from 'lucide-react';
+import { Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
 import { SiGithub } from 'react-icons/si';
 import Image from 'next/image';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Skeleton } from '@radix-ui/themes';
 
-export default function LoginPage() {
+const CREDENTIALS_ERROR = 'CredentialsSignin';
+
+function LoginFormSkeleton() {
+  return (
+    <div className="space-y-5" role="status" aria-label="Loading login options">
+      <div className="space-y-2">
+        <Skeleton height="16px" width="64px" />
+        <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
+      </div>
+      <div className="space-y-2">
+        <Skeleton height="16px" width="80px" />
+        <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
+      </div>
+      <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-200 dark:border-gray-600" />
+        </div>
+        <div className="relative flex justify-center">
+          <Skeleton height="16px" width="96px" />
+        </div>
+      </div>
+      <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
+    </div>
+  );
+}
+
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [providers, setProviders] = useState<Awaited<ReturnType<typeof getProviders>>>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [submitError, setSubmitError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Show error from URL when NextAuth redirects back after failed credentials (e.g. ?error=CredentialsSignin)
+  const urlError = useMemo(() => {
+    const error = searchParams.get('error');
+    return error === CREDENTIALS_ERROR ? 'Invalid email or password.' : '';
+  }, [searchParams]);
+
+  const error = submitError || urlError;
+
+  // Auto-dismiss alert after 5 seconds when error is shown
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => {
+      setSubmitError('');
+      router.replace('/login', { scroll: false });
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [error, router]);
 
   useEffect(() => {
     setMounted(true);
@@ -34,20 +82,22 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setSubmitError('');
 
-    const result = await signIn('credentials', {
-      email,
-      password,
-      redirect: false,
-    });
-
-    setLoading(false);
-
-    if (result?.error) {
-      setError('Invalid email or password.');
-    } else {
-      router.push('/dashboard');
+    try {
+      // Use redirect: true so NextAuth performs a full redirect on success/failure.
+      // On success: redirects to callbackUrl (/dashboard). On failure: redirects to /login?error=CredentialsSignin.
+      await signIn('credentials', {
+        email,
+        password,
+        callbackUrl: '/dashboard',
+        redirect: true,
+      });
+      // If we get here, redirect did not happen (e.g. signIn returned without redirect in edge cases).
+      setLoading(false);
+    } catch {
+      setSubmitError('Invalid email or password.');
+      setLoading(false);
     }
   };
 
@@ -56,7 +106,7 @@ export default function LoginPage() {
       return;
     }
 
-    setError('');
+    setSubmitError('');
     setLoading(true);
 
     try {
@@ -71,6 +121,39 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/30 dark:from-slate-950 dark:via-indigo-950/30 dark:to-purple-950/30">
+      {/* Error alert at top of page; auto-dismisses after 5 seconds */}
+      {error && (
+        <div
+          role="alert"
+          className="fixed top-0 left-0 right-0 z-[10000] flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white text-sm font-medium shadow-lg dark:bg-red-700"
+        >
+          <AlertCircle className="h-5 w-5 shrink-0" aria-hidden />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Logging in modal: blocks interaction and shows centered message */}
+      <Dialog.Root open={loading} onOpenChange={() => {}}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001] cursor-not-allowed" />
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-xs bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 flex flex-col items-center gap-4"
+            onPointerDownOutside={(e) => e.preventDefault()}
+            onEscapeKeyDown={(e) => e.preventDefault()}
+            aria-describedby={'logging-in-message'}
+          >
+            <Loader2
+              className="h-10 w-10 text-indigo-600 dark:text-indigo-400 animate-spin"
+              aria-hidden
+            />
+            <Dialog.Title className="sr-only">Logging in</Dialog.Title>
+            <p className="text-lg font-medium text-gray-900 dark:text-gray-100" id="logging-in-message">
+              Logging in ...
+            </p>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
       <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-200/40 to-purple-200/40 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-200/40 to-cyan-200/40 dark:from-blue-900/20 dark:to-cyan-900/20 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
 
@@ -98,6 +181,10 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {(providers === null || Object.keys(providers).length === 0) ? (
+            /* Skeleton loading area while login options (credentials + GitHub/SSO) are loading */
+            <LoginFormSkeleton />
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label
@@ -147,10 +234,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {error && (
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-            )}
-
             <button
               type="submit"
               disabled={loading}
@@ -184,6 +267,36 @@ export default function LoginPage() {
               </>
             )}
           </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageSkeletonFallback />}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageSkeletonFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/30 dark:from-slate-950 dark:via-indigo-950/30 dark:to-purple-950/30">
+      <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-200/40 to-purple-200/40 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-200/40 to-cyan-200/40 dark:from-blue-900/20 dark:to-cyan-900/20 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+      <div className="w-full max-w-md relative z-10">
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-2xl shadow-indigo-500/10 dark:shadow-indigo-500/5 p-8 border border-white/50 dark:border-gray-700/50">
+          <div className="flex justify-center mb-8">
+            <div className="h-14 w-[200px] rounded-lg bg-gray-200 dark:bg-gray-700 animate-pulse" />
+          </div>
+          <div className="text-center mb-8">
+            <div className="h-9 w-48 mx-auto rounded bg-gray-200 dark:bg-gray-700 animate-pulse mb-3" />
+            <div className="h-4 w-64 mx-auto rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+          </div>
+          <LoginFormSkeleton />
         </div>
       </div>
     </div>
