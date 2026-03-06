@@ -58,8 +58,12 @@ export const authOptions: NextAuthOptions = {
         if (!email) {
           return false;
         }
-        const dbAccount = await getAccountByEmail(email);
-        if (!dbAccount) {
+        try {
+          const dbAccount = await getAccountByEmail(email);
+          if (!dbAccount) {
+            return false;
+          }
+        } catch {
           return false;
         }
       }
@@ -80,9 +84,13 @@ export const authOptions: NextAuthOptions = {
           (profile as { email?: string })?.email ??
           (profile as { emails?: { value: string }[] })?.emails?.[0]?.value;
         if (email) {
-          const dbAccount = await getAccountByEmail(email);
-          if (dbAccount) {
-            token.sub = dbAccount.id;
+          try {
+            const dbAccount = await getAccountByEmail(email);
+            if (dbAccount) {
+              token.sub = dbAccount.id;
+            }
+          } catch {
+            // Leave token.sub unchanged on DB failure
           }
         }
       }

@@ -60,7 +60,7 @@ describe('verifyCredentials', () => {
       expect(mockQueryOne).toHaveBeenCalledTimes(1);
       const [sql, params] = mockQueryOne.mock.calls[0];
       expect(params).toEqual(['user@example.com']);
-      expect(sql).toContain('LOWER($1)');
+      expect(sql).toContain('LOWER(email)');
       expect(sql).toContain('objectified.account');
     });
 
@@ -218,7 +218,7 @@ describe('getAccountByEmail', () => {
     expect(mockQueryOne).toHaveBeenCalledTimes(1);
     const [sql, params] = mockQueryOne.mock.calls[0];
     expect(params).toEqual(['user@example.com']);
-    expect(sql).toContain('LOWER($1)');
+    expect(sql).toContain('LOWER(email)');
     expect(sql).toContain('objectified.account');
     expect(sql).toContain('deleted_at IS NULL');
     expect(sql).toContain('enabled = true');
