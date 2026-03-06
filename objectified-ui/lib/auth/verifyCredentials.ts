@@ -27,7 +27,7 @@ export async function verifyCredentials(
   const row = await queryOne<{ id: string; name: string; email: string; password: string }>(
     `SELECT id, name, email, password
      FROM objectified.account
-     WHERE email = $1 AND deleted_at IS NULL AND enabled = true`,
+     WHERE email = LOWER($1) AND deleted_at IS NULL AND enabled = true`,
     [normalizedEmail]
   );
   if (!row?.password) {

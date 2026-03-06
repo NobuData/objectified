@@ -191,21 +191,31 @@ class TestAccountTableConstraints:
         assert row is not None
         assert row["column_name"] == "id"
 
-    def test_unique_constraint_on_email(self, conn):
+    def test_unique_index_on_lower_email(self, conn):
+        """Email uniqueness is enforced by unique index on LOWER(email)."""
+        # Check index exists and is on LOWER(email)
         row = conn.fetchone(
             """
-            SELECT kcu.column_name
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-              ON tc.constraint_name = kcu.constraint_name
-             AND tc.table_schema    = kcu.table_schema
-            WHERE tc.constraint_type = 'UNIQUE'
-              AND tc.table_schema    = 'objectified'
-              AND tc.table_name      = 'account'
-              AND kcu.column_name    = 'email'
+            SELECT indexname, indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'objectified'
+              AND tablename  = 'account'
+              AND indexname  = 'idx_account_email_lower'
             """
         )
-        assert row is not None, "UNIQUE constraint on 'email' is missing"
+        assert row is not None, "Unique index idx_account_email_lower on LOWER(email) is missing"
+        indexdef_lower = row["indexdef"].lower()
+        assert "lower" in indexdef_lower and "email" in indexdef_lower, "Index must be on LOWER(email)"
+        # Check index is unique
+        unique_row = conn.fetchone(
+            """
+            SELECT 1
+            FROM pg_index
+            WHERE indexrelid = 'objectified.idx_account_email_lower'::regclass
+              AND indisunique
+            """
+        )
+        assert unique_row is not None, "idx_account_email_lower must be a unique index"
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +249,9 @@ class TestAccountTableIndices:
 
     def test_index_on_deleted_at_exists(self, conn):
         assert self._index_exists(conn, "idx_account_deleted_at"), "Index idx_account_deleted_at is missing"
+
+    def test_index_on_email_lower_exists(self, conn):
+        assert self._index_exists(conn, "idx_account_email_lower"), "Index idx_account_email_lower is missing"
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +380,27 @@ class TestAccountTableDataIntegrity:
             )
         conn.execute("ROLLBACK TO SAVEPOINT before_duplicate")
         conn.execute("RELEASE SAVEPOINT before_duplicate")
+
+    def test_duplicate_email_different_case_raises_unique_violation(self, conn):
+        """Unique index on LOWER(email) rejects same email with different case."""
+        conn.execute(
+            """
+            INSERT INTO objectified.account (name, email, password)
+            VALUES (%s, %s, %s)
+            """,
+            ("Carol", "carol@example.com", "hashed_pw_carol"),
+        )
+        conn.execute("SAVEPOINT before_duplicate_case")
+        with pytest.raises(psycopg2.errors.UniqueViolation):
+            conn.execute(
+                """
+                INSERT INTO objectified.account (name, email, password)
+                VALUES (%s, %s, %s)
+                """,
+                ("Carol Other", "Carol@Example.com", "another_hash"),
+            )
+        conn.execute("ROLLBACK TO SAVEPOINT before_duplicate_case")
+        conn.execute("RELEASE SAVEPOINT before_duplicate_case")
 
     def test_soft_delete_sets_deleted_at_and_enabled(self, conn):
         conn.execute(

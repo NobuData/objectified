@@ -32,7 +32,7 @@ def _insert_account(conn, email="testuser@example.com"):
         """
         INSERT INTO objectified.account (name, email, password)
         VALUES (%s, %s, %s)
-        ON CONFLICT (email) DO NOTHING
+        ON CONFLICT ( (LOWER(email)) ) DO NOTHING
         """,
         ("Test User", email, "hashed_password"),
     )
