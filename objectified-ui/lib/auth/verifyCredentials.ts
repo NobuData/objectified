@@ -60,7 +60,7 @@ export async function getAccountByEmail(
   const row = await queryOne<{ id: string; name: string; email: string }>(
     `SELECT id, name, email
      FROM objectified.account
-     WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL AND enabled = true`,
+     WHERE LOWER(email) = $1 AND deleted_at IS NULL AND enabled = true`,
     [normalizedEmail]
   );
 

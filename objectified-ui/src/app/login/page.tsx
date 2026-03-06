@@ -23,7 +23,12 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    getProviders().then(setProviders);
+    getProviders()
+    .then(setProviders)
+    .catch((err) => {
+      console.error('Failed to load auth providers', err);
+      setProviders(null);
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,9 +51,19 @@ export default function LoginPage() {
     }
   };
 
-  const handleGitHubSignIn = () => {
+  const handleGitHubSignIn = async () => {
+    if (loading) {
+      return;
+    }
+
     setError('');
-    signIn('github', { callbackUrl: '/dashboard' });
+    setLoading(true);
+
+    try {
+      await signIn('github', { callbackUrl: '/dashboard' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Use theme only after mount to avoid hydration mismatch (resolvedTheme differs SSR vs client)
