@@ -32,9 +32,18 @@ function getPoolConfig() {
       );
     }
   }
+
+  const portRaw = process.env.POSTGRES_PORT ?? '5432';
+  const port = parseInt(portRaw, 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(
+      `Invalid POSTGRES_PORT: "${portRaw}" is not a valid port (expected 1-65535). Check your .env or environment.`
+    );
+  }
+
   return {
     host: process.env.POSTGRES_HOST ?? 'localhost',
-    port: parseInt(process.env.POSTGRES_PORT ?? '5432', 10),
+    port,
     user: process.env.POSTGRES_USERNAME ?? 'postgres',
     password: process.env.POSTGRES_PASSWORD ?? '',
     database: process.env.POSTGRES_DB ?? 'objectified',
