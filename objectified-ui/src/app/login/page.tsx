@@ -140,7 +140,7 @@ function LoginPageContent() {
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-xs bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 flex flex-col items-center gap-4"
             onPointerDownOutside={(e) => e.preventDefault()}
             onEscapeKeyDown={(e) => e.preventDefault()}
-            aria-describedby={undefined}
+            aria-describedby={'logging-in-message'}
           >
             <Loader2
               className="h-10 w-10 text-indigo-600 dark:text-indigo-400 animate-spin"
