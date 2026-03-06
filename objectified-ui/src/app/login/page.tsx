@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { getProviders, signIn } from 'next-auth/react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
@@ -12,7 +12,32 @@ import { Skeleton } from '@radix-ui/themes';
 
 const CREDENTIALS_ERROR = 'CredentialsSignin';
 
-export default function LoginPage() {
+function LoginFormSkeleton() {
+  return (
+    <div className="space-y-5" role="status" aria-label="Loading login options">
+      <div className="space-y-2">
+        <Skeleton height="16px" width="64px" />
+        <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
+      </div>
+      <div className="space-y-2">
+        <Skeleton height="16px" width="80px" />
+        <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
+      </div>
+      <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-200 dark:border-gray-600" />
+        </div>
+        <div className="relative flex justify-center">
+          <Skeleton height="16px" width="96px" />
+        </div>
+      </div>
+      <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
+    </div>
+  );
+}
+
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { resolvedTheme } = useTheme();
@@ -158,26 +183,7 @@ export default function LoginPage() {
 
           {providers === null ? (
             /* Skeleton loading area while login options (credentials + GitHub/SSO) are loading */
-            <div className="space-y-5" role="status" aria-label="Loading login options">
-              <div className="space-y-2">
-                <Skeleton height="16px" width="64px" />
-                <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
-              </div>
-              <div className="space-y-2">
-                <Skeleton height="16px" width="80px" />
-                <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
-              </div>
-              <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200 dark:border-gray-600" />
-                </div>
-                <div className="relative flex justify-center">
-                  <Skeleton height="16px" width="96px" />
-                </div>
-              </div>
-              <Skeleton height="48px" width="100%" style={{ borderRadius: '12px' }} />
-            </div>
+            <LoginFormSkeleton />
           ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
@@ -262,6 +268,35 @@ export default function LoginPage() {
             )}
           </form>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageSkeletonFallback />}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageSkeletonFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/30 dark:from-slate-950 dark:via-indigo-950/30 dark:to-purple-950/30">
+      <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-200/40 to-purple-200/40 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-200/40 to-cyan-200/40 dark:from-blue-900/20 dark:to-cyan-900/20 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+      <div className="w-full max-w-md relative z-10">
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-2xl shadow-2xl shadow-indigo-500/10 dark:shadow-indigo-500/5 p-8 border border-white/50 dark:border-gray-700/50">
+          <div className="flex justify-center mb-8">
+            <div className="h-14 w-[200px] rounded-lg bg-gray-200 dark:bg-gray-700 animate-pulse" />
+          </div>
+          <div className="text-center mb-8">
+            <div className="h-9 w-48 mx-auto rounded bg-gray-200 dark:bg-gray-700 animate-pulse mb-3" />
+            <div className="h-4 w-64 mx-auto rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+          </div>
+          <LoginFormSkeleton />
         </div>
       </div>
     </div>
