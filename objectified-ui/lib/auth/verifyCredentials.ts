@@ -25,6 +25,10 @@ export async function verifyCredentials(
   }
 
   const normalizedEmail = email.trim().toLowerCase();
+  const normalizedPassword = typeof password === 'string' ? password.trim() : '';
+  if (!normalizedPassword) {
+    return null;
+  }
   const row = await queryOne<{ id: string; name: string; email: string; password: string }>(
     `SELECT id, name, email, password
      FROM objectified.account
@@ -36,7 +40,18 @@ export async function verifyCredentials(
     return null;
   }
 
-  const match = await compare(password, row.password);
+  const storedHash = String(row.password).trim();
+  if (!storedHash || !storedHash.startsWith('$2')) {
+    return null;
+  }
+
+  let match: boolean;
+  try {
+    // Compare submitted password with stored bcrypt hash (constant-time, secure)
+    match = await compare(normalizedPassword, storedHash);
+  } catch {
+    return null;
+  }
 
   if (!match) {
     return null;
