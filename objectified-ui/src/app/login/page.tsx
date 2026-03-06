@@ -181,7 +181,7 @@ function LoginPageContent() {
             </p>
           </div>
 
-          {providers === null ? (
+          {(providers === null || Object.keys(providers).length === 0) ? (
             /* Skeleton loading area while login options (credentials + GitHub/SSO) are loading */
             <LoginFormSkeleton />
           ) : (
