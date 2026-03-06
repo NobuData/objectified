@@ -12,6 +12,7 @@ const REQUIRED_POSTGRES_ENV_VARS = [
   'POSTGRES_PASSWORD',
   'POSTGRES_DB',
 ] as const;
+
 function getPoolConfig() {
   if (process.env.POSTGRES_URL) {
     return { connectionString: process.env.POSTGRES_URL };
@@ -39,14 +40,27 @@ function getPoolConfig() {
     database: process.env.POSTGRES_DB ?? 'objectified',
   };
 }
+
 let pool: Pool | null = null;
+
 /**
  * Returns a shared connection pool for the objectified database.
  * Uses POSTGRES_* env vars from .env or POSTGRES_URL if provided.
+ *
+ * The pool instance is stored on globalThis to avoid creating multiple
+ * pools in environments with module reloads (e.g. Next.js dev / HMR).
  */
 export function getPool(): Pool {
   if (!pool) {
-    pool = new Pool(getPoolConfig());
+    const globalForPg = globalThis as typeof globalThis & {
+      __OBJECTIFIED_PG_POOL__?: Pool;
+    };
+  
+    if (!globalForPg.__OBJECTIFIED_PG_POOL__) {
+      globalForPg.__OBJECTIFIED_PG_POOL__ = new Pool(getPoolConfig());
+    }
+  
+    pool = globalForPg.__OBJECTIFIED_PG_POOL__;
   }
   return pool;
 }

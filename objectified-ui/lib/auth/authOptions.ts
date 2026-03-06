@@ -1,5 +1,22 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import { verifyCredentials } from '@lib/auth/verifyCredentials';
+
+/**
+ * Internal credential check used by the credentials provider.
+ * Kept in auth layer so verification stays server-side and within NextAuth's CSRF flow.
+ */
+export async function authorizeCredentials(
+  username: string,
+  password: string
+): Promise<{ id: string; name: string; email: string } | null> {
+  try {
+    const user = await verifyCredentials(username, password);
+    return user ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -13,22 +30,7 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.username || !credentials?.password) {
           return null;
         }
-        const baseUrl = process.env.NEXTAUTH_URL
-          ? new URL(process.env.NEXTAUTH_URL).origin
-          : 'http://localhost:3000';
-        const res = await fetch(`${baseUrl}/api/auth/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: credentials.username,
-            password: credentials.password,
-          }),
-        });
-        if (!res.ok) {
-          return null;
-        }
-        const user = await res.json();
-        return user?.id ? { id: user.id, name: user.name, email: user.email } : null;
+        return authorizeCredentials(credentials.username, credentials.password);
       },
     }),
   ],
