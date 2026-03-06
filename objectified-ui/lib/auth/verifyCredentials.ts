@@ -23,6 +23,7 @@ export async function verifyCredentials(
   if (!email?.trim() || !password) {
     return null;
   }
+
   const normalizedEmail = email.trim().toLowerCase();
   const row = await queryOne<{ id: string; name: string; email: string; password: string }>(
     `SELECT id, name, email, password
@@ -30,12 +31,16 @@ export async function verifyCredentials(
      WHERE email = LOWER($1) AND deleted_at IS NULL AND enabled = true`,
     [normalizedEmail]
   );
+
   if (!row?.password) {
     return null;
   }
+
   const match = await compare(password, row.password);
+
   if (!match) {
     return null;
   }
+
   return { id: row.id, name: row.name, email: row.email };
 }

@@ -20,10 +20,12 @@ function getPoolConfig() {
   const nodeEnv = process.env.NODE_ENV;
   const isDevLike =
     !nodeEnv || nodeEnv === 'development' || nodeEnv === 'test';
-  if (!isDevLike) {
-    const missing = REQUIRED_POSTGRES_ENV_VARS.filter(
+  
+    if (!isDevLike) {
+      const missing = REQUIRED_POSTGRES_ENV_VARS.filter(
       (name) => !process.env[name]
     );
+
     if (missing.length > 0) {
       throw new Error(
         `Missing required PostgreSQL environment variables: ${missing.join(
@@ -35,6 +37,7 @@ function getPoolConfig() {
 
   const portRaw = process.env.POSTGRES_PORT ?? '5432';
   const port = parseInt(portRaw, 10);
+
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(
       `Invalid POSTGRES_PORT: "${portRaw}" is not a valid port (expected 1-65535). Check your .env or environment.`
@@ -83,6 +86,7 @@ export async function queryOne<T extends Record<string, unknown>>(
   params?: unknown[]
 ): Promise<T | null> {
   const client = await getPool().connect();
+
   try {
     const result = await client.query(sql, params);
     const row = result.rows[0];
