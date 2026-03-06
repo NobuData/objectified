@@ -28,6 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="antialiased">
+        {/* Follow system light/dark per Radix Themes: https://www.radix-ui.com/themes/docs/theme/dark-mode — use attribute="class" and do not set Theme appearance; next-themes applies .light/.dark for Radix. */}
         <NextThemesProvider
           attribute="class"
           defaultTheme="system"

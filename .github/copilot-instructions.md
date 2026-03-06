@@ -18,8 +18,9 @@
 
 - Use theme-based light/dark support
 - Use lucide-react, NextJS, Radix UI, Tailwind CSS, monaco-editor, and any other relevant libraries as necessary
-- Use Radix UI for components
+- Use Radix UI for all application components and design
 - Use custom alerts and confirm dialogs when needed, do not use browser built-ins
+- Favor using class definitions by name instead of setting them inline in the application: this way the themes can be applied across the board instead if hard-coded
 
 # NextJS Application Instructions
 
