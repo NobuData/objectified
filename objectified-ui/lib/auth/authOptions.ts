@@ -7,11 +7,11 @@ import { verifyCredentials } from '@lib/auth/verifyCredentials';
  * Kept in auth layer so verification stays server-side and within NextAuth's CSRF flow.
  */
 export async function authorizeCredentials(
-  username: string,
+  email: string,
   password: string
 ): Promise<{ id: string; name: string; email: string } | null> {
   try {
-    const user = await verifyCredentials(username, password);
+    const user = await verifyCredentials(email, password);
     return user ?? null;
   } catch {
     return null;
@@ -23,14 +23,14 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        username: { label: 'Username', type: 'text' },
+        email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) {
+        if (!credentials?.email || !credentials?.password) {
           return null;
         }
-        return authorizeCredentials(credentials.username, credentials.password);
+        return authorizeCredentials(credentials.email, credentials.password);
       },
     }),
   ],

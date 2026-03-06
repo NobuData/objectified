@@ -13,22 +13,22 @@ export interface VerifiedUser {
 }
 
 /**
- * Look up account by email (username is treated as email), verify password
- * with bcrypt, and return user if valid. Only considers non-deleted, enabled accounts.
+ * Look up account by email, verify password with bcrypt, and return user if valid.
+ * Only considers non-deleted, enabled accounts.
  */
 export async function verifyCredentials(
-  username: string,
+  email: string,
   password: string
 ): Promise<VerifiedUser | null> {
-  if (!username?.trim() || !password) {
+  if (!email?.trim() || !password) {
     return null;
   }
-  const email = username.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
   const row = await queryOne<{ id: string; name: string; email: string; password: string }>(
     `SELECT id, name, email, password
      FROM objectified.account
      WHERE email = $1 AND deleted_at IS NULL AND enabled = true`,
-    [email]
+    [normalizedEmail]
   );
   if (!row?.password) {
     return null;

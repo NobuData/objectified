@@ -21,9 +21,9 @@ jest.mock('next/image', () => ({
 }));
 
 describe('LoginPage', () => {
-  it('renders login form with username, password and sign in button', () => {
+  it('renders login form with email, password and sign in button', () => {
     render(<LoginPage />);
-    expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
   });
@@ -42,7 +42,7 @@ describe('LoginPage', () => {
     const { signIn } = await import('next-auth/react');
     await waitFor(() => {
       expect(signIn).toHaveBeenCalledWith('credentials', {
-        username: 'test@example.com',
+        email: 'test@example.com',
         password: 'password123',
         redirect: false,
       });

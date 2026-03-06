@@ -42,7 +42,7 @@ describe('Credentials provider authorize()', () => {
     mockVerifyCredentials.mockReset();
   });
 
-  it('returns null when username is missing', async () => {
+  it('returns null when email is missing', async () => {
     const provider = authOptions.providers[0] as { options: { authorize: (c: unknown) => Promise<unknown> } };
     const result = await provider.options.authorize({ password: 'secret' });
     expect(result).toBeNull();
@@ -51,7 +51,7 @@ describe('Credentials provider authorize()', () => {
 
   it('returns null when password is missing', async () => {
     const provider = authOptions.providers[0] as { options: { authorize: (c: unknown) => Promise<unknown> } };
-    const result = await provider.options.authorize({ username: 'user@example.com' });
+    const result = await provider.options.authorize({ email: 'user@example.com' });
     expect(result).toBeNull();
     expect(mockVerifyCredentials).not.toHaveBeenCalled();
   });
@@ -61,7 +61,7 @@ describe('Credentials provider authorize()', () => {
     mockVerifyCredentials.mockResolvedValue(user);
     const provider = authOptions.providers[0] as { options: { authorize: (c: unknown) => Promise<unknown> } };
     const result = await provider.options.authorize({
-      username: 'user@example.com',
+      email: 'user@example.com',
       password: 'correct',
     });
     expect(result).toEqual({ id: user.id, name: user.name, email: user.email });
