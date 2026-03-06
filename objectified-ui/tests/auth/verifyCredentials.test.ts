@@ -3,7 +3,7 @@
  * Mocks queryOne and bcrypt.compare to assert SQL, params, and success/failure paths.
  */
 
-import { verifyCredentials } from '@lib/auth/verifyCredentials';
+import { getAccountByEmail, verifyCredentials } from '@lib/auth/verifyCredentials';
 import { queryOne } from '@lib/db/postgres';
 import { compare } from 'bcryptjs';
 
@@ -189,6 +189,63 @@ describe('verifyCredentials', () => {
       expect(result).not.toBeNull();
       expect(result).toEqual({ id: 'id-1', name: 'Alice', email: 'alice@example.com' });
       expect(Object.keys(result!)).toEqual(['id', 'name', 'email']);
+    });
+  });
+});
+
+describe('getAccountByEmail', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns null when email is empty string', async () => {
+    const result = await getAccountByEmail('');
+    expect(result).toBeNull();
+    expect(mockQueryOne).not.toHaveBeenCalled();
+  });
+
+  it('returns null when email is only whitespace', async () => {
+    const result = await getAccountByEmail('   \t  ');
+    expect(result).toBeNull();
+    expect(mockQueryOne).not.toHaveBeenCalled();
+  });
+
+  it('trims and lowercases email and queries with normalized value', async () => {
+    mockQueryOne.mockResolvedValue(null);
+
+    await getAccountByEmail('  User@Example.COM  ');
+
+    expect(mockQueryOne).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockQueryOne.mock.calls[0];
+    expect(params).toEqual(['user@example.com']);
+    expect(sql).toContain('LOWER($1)');
+    expect(sql).toContain('objectified.account');
+    expect(sql).toContain('deleted_at IS NULL');
+    expect(sql).toContain('enabled = true');
+    expect(sql).not.toContain('password');
+  });
+
+  it('returns null when no account found', async () => {
+    mockQueryOne.mockResolvedValue(null);
+
+    const result = await getAccountByEmail('nobody@example.com');
+
+    expect(result).toBeNull();
+  });
+
+  it('returns VerifiedUser when account exists and is enabled', async () => {
+    mockQueryOne.mockResolvedValue({
+      id: 'uuid-sso',
+      name: 'SSO User',
+      email: 'sso@example.com',
+    });
+
+    const result = await getAccountByEmail('sso@example.com');
+
+    expect(result).toEqual({
+      id: 'uuid-sso',
+      name: 'SSO User',
+      email: 'sso@example.com',
     });
   });
 });
