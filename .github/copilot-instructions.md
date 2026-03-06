@@ -3,6 +3,7 @@
 - GitHub Tickets are the source of truth for all work to be done from the NobuData/objectified repository.
 - Code in objectified-commercial IS ONLY USED FOR REFERENCE AND SHOULD NOT BE CHANGED IN ANY WAY
 - Use context7 MCP where possible for documentation and code generation
+- Python code generation should strictly follow PEP8 guidelines
 - Keep the chatting down to a minimum, only ask questions if you need more information
 - Unit tests must be updated and created as necessary, all tests run using yarn test
 - Fix any regressions found during testing
