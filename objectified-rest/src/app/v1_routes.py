@@ -191,7 +191,11 @@ def create_user(payload: AccountCreate) -> AccountSchema:
     summary="Update user",
     description="Update an existing user account. Only provided fields are updated.",
 )
-def update_user(user_id: str, payload: AccountUpdate) -> AccountSchema:
+def update_user(
+    user_id: str,
+    payload: AccountUpdate,
+    _admin: Annotated[dict[str, Any], Depends(require_admin)] = None,
+) -> AccountSchema:
     """Update a user account by ID."""
     rows = db.execute_query(
         "SELECT id FROM objectified.account WHERE id = %s AND deleted_at IS NULL",
@@ -207,14 +211,16 @@ def update_user(user_id: str, payload: AccountUpdate) -> AccountSchema:
         updates.append("name = %s")
         params.append(payload.name)
     if payload.email is not None:
-        # Ensure email is unique (case-insensitive) before updating, aligned with the DB index.
+        # Ensure email is unique (case-insensitive) before updating.
+        # Do not exclude soft-deleted rows: the DB UNIQUE INDEX on LOWER(email)
+        # is non-partial, so a soft-deleted row with the same email would still
+        # cause a constraint violation on UPDATE.
         existing_email_rows = db.execute_query(
             """
             SELECT 1
             FROM objectified.account
             WHERE lower(email) = lower(%s)
               AND id <> %s
-              AND deleted_at IS NULL
             """,
             (payload.email, user_id),
         )
@@ -505,10 +511,10 @@ def list_tenant_members(tenant_id: str) -> List[TenantAccountSchema]:
     status_code=201,
     summary="Add tenant member",
     description="Add an account to a tenant with a given access level.",
+    dependencies=[Depends(require_admin)],
 )
 def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAccountSchema:
     """Add a member to a tenant."""
-    _assert_tenant_exists(tenant_id)
     _assert_tenant_exists(tenant_id)
     # Ensure the tenant_id in the payload (if provided) matches the path parameter
     payload_tenant_id = getattr(payload, "tenant_id", None)
@@ -517,6 +523,8 @@ def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAcc
             status_code=400,
             detail="Payload tenant_id does not match path tenant_id",
         )
+
+    _assert_account_exists(payload.account_id)
 
     existing = db.execute_query(
         """
