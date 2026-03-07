@@ -14,6 +14,7 @@
 - Any new scripts created in objectified-schema/scripts need to pull accurate local time and date for the filename
 - Create SQL tests where appropriate in the tests directory of objectified-schema, and ensure they are run as part of the test suite
 - Tests should be done against the "objectified_test" database when writing any tests for this project
+- SELECT statements must be done using case-insensitive comparisons where appropriate and should use ILIKE where possible to ensure case-insensitivity
 
 # UI Instructions
 
