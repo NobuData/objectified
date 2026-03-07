@@ -8,8 +8,8 @@ Uses objectified schema: objectified.tenant, objectified.tenant_account.
 import logging
 from typing import Any, Optional
 
-import jwt
 from fastapi import Header, HTTPException
+import jwt
 
 from app.config import settings
 from app.database import db
@@ -61,7 +61,7 @@ def get_user_tenants(user_id: str) -> list[dict[str, Any]]:
         SELECT t.id, t.slug, t.name
         FROM objectified.tenant t
         JOIN objectified.tenant_account tu ON t.id = tu.tenant_id
-        WHERE tu.account_id = %s AND t.deleted_at IS NULL
+        WHERE tu.account_id = %s AND t.deleted_at IS NULL AND tu.deleted_at IS NULL
     """
     return db.execute_query(query, (user_id,))
 
@@ -125,27 +125,32 @@ def validate_authentication(
     """
     if authorization:
         jwt_payload = decode_jwt(authorization)
-        if jwt_payload:
-            user_id = jwt_payload.get("user_id") or jwt_payload.get("sub")
-            if not user_id:
-                raise HTTPException(
-                    status_code=401,
-                    detail="Invalid JWT token: missing user identifier",
-                )
-            tenant_data = validate_user_tenant_access(user_id, tenant_slug)
-            if not tenant_data:
-                raise HTTPException(
-                    status_code=403,
-                    detail="User does not have access to tenant: %s"
-                    % tenant_slug,
-                )
-            return {
-                **tenant_data,
-                "auth_method": "jwt",
-                "user_id": user_id,
-                "user_email": jwt_payload.get("email"),
-                "user_name": jwt_payload.get("name"),
-            }
+        if not jwt_payload:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid JWT token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        user_id = jwt_payload.get("user_id") or jwt_payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid JWT token: missing user identifier",
+            )
+        tenant_data = validate_user_tenant_access(user_id, tenant_slug)
+        if not tenant_data:
+            raise HTTPException(
+                status_code=403,
+                detail="User does not have access to tenant: %s"
+                % tenant_slug,
+            )
+        return {
+            **tenant_data,
+            "auth_method": "jwt",
+            "user_id": user_id,
+            "user_email": jwt_payload.get("email"),
+            "user_name": jwt_payload.get("name"),
+        }
 
     if x_api_key:
         api_key_data = db.validate_api_key(x_api_key)

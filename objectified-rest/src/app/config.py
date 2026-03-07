@@ -35,9 +35,17 @@ class Settings(BaseSettings):
 
     @property
     def effective_jwt_secret(self) -> str:
-        """JWT secret, preferring NEXTAUTH_SECRET over JWT_SECRET."""
-        return self.nextauth_secret or self.jwt_secret or "your-secret-key-here"
-
+        """JWT secret, preferring NEXTAUTH_SECRET over JWT_SECRET.
+        Raises:
+            ValueError: If neither NEXTAUTH_SECRET nor JWT_SECRET is configured.
+        """
+        secret = self.nextauth_secret or self.jwt_secret
+        if not secret:
+            raise ValueError(
+                "JWT secret is not configured. Set NEXTAUTH_SECRET or JWT_SECRET."
+            )
+        return secret
+        
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

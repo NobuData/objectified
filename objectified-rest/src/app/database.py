@@ -4,9 +4,12 @@ Used by auth and future CRUD services. Objectified schema uses
 objectified.account, objectified.tenant, objectified.tenant_account, etc.
 """
 
+import logging
 from typing import Any, Optional
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -29,6 +32,7 @@ class Database:
                     cursor_factory=RealDictCursor,
                 )
             except Exception:
+                logger.exception("Database connection failed")
                 self._connection = None
         return self._connection
 
@@ -55,8 +59,9 @@ class Database:
         except Exception:
             try:
                 conn.rollback()
-            except Exception:
-                pass
+            except Exception as rollback_err:
+                logger.exception("Rollback failed after query error: %s", rollback_err)
+            logger.exception("Query failed: %s", query[:200] if query else "")
             return []
 
     def validate_api_key(self, api_key: str) -> Optional[dict[str, Any]]:
