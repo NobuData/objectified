@@ -1,0 +1,380 @@
+openapi: 3.2.0
+info:
+  title: Objectified REST API
+  description: REST API for the Objectified platform. CRUD scaffolding from database
+    design. Services are used by the platform and can be exposed externally; internal
+    use is via a private API key.
+  version: 1.0.0
+paths:
+  /v1/users:
+    get:
+      tags:
+      - users and tenants
+      summary: List users
+      description: List accounts (users). Not implemented yet.
+      operationId: list_users_v1_users_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AccountSchema'
+                type: array
+                title: Response List Users V1 Users Get
+  /v1/users/{user_id}:
+    get:
+      tags:
+      - users and tenants
+      summary: Get user
+      description: Get a single account by id. Not implemented yet.
+      operationId: get_user_v1_users__user_id__get
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: User Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants:
+    get:
+      tags:
+      - users and tenants
+      summary: List tenants
+      description: List tenants. Not implemented yet.
+      operationId: list_tenants_v1_tenants_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/TenantSchema'
+                type: array
+                title: Response List Tenants V1 Tenants Get
+  /v1/tenants/{tenant_id}:
+    get:
+      tags:
+      - users and tenants
+      summary: Get tenant
+      description: Get a single tenant by id. Not implemented yet.
+      operationId: get_tenant_v1_tenants__tenant_id__get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/members:
+    get:
+      tags:
+      - users and tenants
+      summary: List tenant members
+      description: List tenant_account rows for this tenant (members). Not implemented
+        yet.
+      operationId: list_tenant_members_v1_tenants__tenant_id__members_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TenantAccountSchema'
+                title: Response List Tenant Members V1 Tenants  Tenant Id  Members
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/administrators:
+    get:
+      tags:
+      - users and tenants
+      summary: List tenant administrators
+      description: List tenant_account rows with access_level=administrator. Not implemented
+        yet.
+      operationId: list_tenant_administrators_v1_tenants__tenant_id__administrators_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TenantAccountSchema'
+                title: Response List Tenant Administrators V1 Tenants  Tenant Id  Administrators
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /:
+    get:
+      summary: Root
+      description: Root endpoint.
+      operationId: root__get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Root  Get
+  /health:
+    get:
+      summary: Health
+      description: Health check.
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Health Health Get
+components:
+  schemas:
+    AccountSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        email:
+          type: string
+          title: Email
+        verified:
+          type: boolean
+          title: Verified
+          default: false
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+      type: object
+      required:
+      - id
+      - name
+      - email
+      - created_at
+      title: AccountSchema
+      description: Response schema for objectified.account.
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    TenantAccessLevel:
+      type: string
+      enum:
+      - member
+      - administrator
+      title: TenantAccessLevel
+      description: Enum for objectified.tenant_access_level.
+    TenantAccountSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        account_id:
+          type: string
+          title: Account Id
+        access_level:
+          $ref: '#/components/schemas/TenantAccessLevel'
+          default: member
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+      type: object
+      required:
+      - id
+      - tenant_id
+      - account_id
+      - created_at
+      title: TenantAccountSchema
+      description: Response schema for objectified.tenant_account.
+    TenantSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        slug:
+          type: string
+          title: Slug
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+      type: object
+      required:
+      - id
+      - name
+      - description
+      - slug
+      - created_at
+      title: TenantSchema
+      description: Response schema for objectified.tenant.
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    Bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'JWT token from NextAuth (Authorization: Bearer <token>)'
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for tenant-scoped access (alternative to JWT)

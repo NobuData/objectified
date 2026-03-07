@@ -1,0 +1,1 @@
+"""objectified-rest tests."""
