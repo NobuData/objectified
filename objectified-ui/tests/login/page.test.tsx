@@ -55,7 +55,7 @@ describe('LoginPage', () => {
       expect(signIn).toHaveBeenCalledWith('credentials', {
         email: 'test@example.com',
         password: 'password123',
-        callbackUrl: '/dashboard',
+        callbackUrl: '/',
         redirect: true,
       });
     });
@@ -68,7 +68,7 @@ describe('LoginPage', () => {
     await user.click(githubButton);
     const { signIn } = await import('next-auth/react');
     await waitFor(() => {
-      expect(signIn).toHaveBeenCalledWith('github', { callbackUrl: '/dashboard' });
+      expect(signIn).toHaveBeenCalledWith('github', { callbackUrl: '/' });
     });
   });
 

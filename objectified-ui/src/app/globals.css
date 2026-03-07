@@ -363,6 +363,192 @@
   50% { opacity: 0.5; }
 }
 
+/* ===== HOME PAGE THEME ===== */
+:root {
+  --home-page-bg: linear-gradient(to bottom right, rgb(248 250 252), rgb(238 242 255 / 0.2), rgb(250 245 255 / 0.2));
+  --home-title: rgb(17 24 39);
+  --home-welcome: rgb(55 65 81);
+  --home-subtitle: rgb(75 85 99);
+  --home-card-bg: rgb(255 255 255 / 0.9);
+  --home-card-border: rgb(229 231 235);
+  --home-card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --home-card-hover-border: rgb(99 102 241);
+  --home-card-text: rgb(31 41 55);
+  --home-card-desc: rgb(107 114 128);
+  --home-footer-link: rgb(75 85 99);
+  --home-card-disabled-opacity: 0.65;
+  --home-card-badge-bg: rgb(243 244 246);
+  --home-card-badge-text: rgb(107 114 128);
+  --home-footer-link-hover: rgb(99 102 241);
+  --home-version: rgb(107 114 128);
+}
+
+.dark {
+  --home-page-bg: linear-gradient(to bottom right, rgb(2 6 23), rgb(30 27 75 / 0.2), rgb(30 27 75 / 0.2));
+  --home-title: rgb(243 244 246);
+  --home-welcome: rgb(209 213 219);
+  --home-subtitle: rgb(156 163 175);
+  --home-card-bg: rgb(31 41 55 / 0.9);
+  --home-card-border: rgb(75 85 99);
+  --home-card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.2), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --home-card-hover-border: rgb(129 140 248);
+  --home-card-text: rgb(229 231 235);
+  --home-card-desc: rgb(156 163 175);
+  --home-footer-link: rgb(156 163 175);
+  --home-card-disabled-opacity: 0.6;
+  --home-card-badge-bg: rgb(55 65 81);
+  --home-card-badge-text: rgb(156 163 175);
+  --home-footer-link-hover: rgb(165 180 252);
+  --home-version: rgb(156 163 175);
+}
+
+.home-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  background: var(--home-page-bg);
+}
+
+.home-content {
+  width: 100%;
+  max-width: 56rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.home-title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: var(--home-title);
+  margin-bottom: 1rem;
+}
+
+.home-welcome {
+  font-size: 1.25rem;
+  color: var(--home-welcome);
+  margin-bottom: 0.75rem;
+}
+
+.home-subtitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--home-subtitle);
+  margin-bottom: 4rem;
+}
+
+.home-cards {
+  margin-bottom: 5rem;
+}
+
+.home-card {
+  width: 15rem;
+  height: calc(12rem - 10px);
+  box-sizing: border-box;
+  background: var(--home-card-bg);
+  border: 1px solid var(--home-card-border);
+  border-radius: var(--radius-3, 0.75rem);
+  box-shadow: var(--home-card-shadow);
+  overflow: hidden;
+}
+
+.home-card-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3, 0.75rem);
+  padding: var(--space-4, 1rem);
+  height: 100%;
+  box-sizing: border-box;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+}
+
+.home-card-link:focus-visible {
+  outline: 2px solid var(--home-card-hover-border);
+  outline-offset: 2px;
+}
+
+.home-card:not(.home-card-disabled):hover {
+  border-color: var(--home-card-hover-border);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--home-card-hover-border) 25%, transparent);
+}
+
+.home-card-disabled {
+  pointer-events: none;
+  cursor: default;
+  opacity: var(--home-card-disabled-opacity);
+}
+
+.home-card-disabled .home-card-link {
+  cursor: default;
+}
+
+.home-card-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--home-card-badge-bg);
+  color: var(--home-card-badge-text);
+}
+
+.home-card-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  color: var(--home-card-text);
+}
+
+.home-card-description {
+  line-height: 1.4;
+  max-width: 12rem;
+}
+
+.home-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: center;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--home-card-border);
+  margin-bottom: 1rem;
+}
+
+.home-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--home-footer-link);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.home-footer-link:hover {
+  color: var(--home-footer-link-hover);
+}
+
+.home-footer-link-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.home-version {
+  font-size: 0.75rem;
+  color: var(--home-version);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
