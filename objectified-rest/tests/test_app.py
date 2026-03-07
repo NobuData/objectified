@@ -15,6 +15,7 @@ from app.schemas import (
     TenantAccessLevel,
     VersionVisibility,
 )
+from app.v1_routes import _hash_password, _verify_password
 
 # ---------------------------------------------------------------------------
 # Shared test data
@@ -74,6 +75,49 @@ def admin_client():
     app.dependency_overrides[require_admin] = lambda: _ADMIN_CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Password hashing tests
+# ---------------------------------------------------------------------------
+
+
+def test_hash_password_produces_argon2id_hash():
+    """_hash_password returns an Argon2id encoded string."""
+    hashed = _hash_password("mysecretpassword")
+    assert hashed.startswith("$argon2id$"), f"Expected Argon2id hash, got: {hashed[:30]}"
+
+
+def test_hash_password_is_not_plaintext():
+    """_hash_password does not return the password in plaintext."""
+    password = "mysecretpassword"
+    hashed = _hash_password(password)
+    assert password not in hashed
+
+
+def test_hash_password_different_salts():
+    """_hash_password generates a unique hash each call (random salt)."""
+    h1 = _hash_password("samepassword")
+    h2 = _hash_password("samepassword")
+    assert h1 != h2, "Two hashes of the same password should differ (random salt)"
+
+
+def test_verify_password_correct():
+    """_verify_password returns True for a matching password."""
+    password = "correcthorsebatterystaple"
+    hashed = _hash_password(password)
+    assert _verify_password(password, hashed) is True
+
+
+def test_verify_password_incorrect():
+    """_verify_password returns False for a non-matching password."""
+    hashed = _hash_password("correctpassword")
+    assert _verify_password("wrongpassword", hashed) is False
+
+
+def test_verify_password_invalid_hash():
+    """_verify_password returns False for a completely invalid hash string."""
+    assert _verify_password("anypassword", "not-a-valid-hash") is False
 
 
 # ---------------------------------------------------------------------------

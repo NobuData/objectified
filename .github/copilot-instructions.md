@@ -7,6 +7,7 @@
 - Keep the chatting down to a minimum, only ask questions if you need more information
 - Unit tests must be updated and created as necessary, all tests run using yarn test
 - Fix any regressions found during testing
+- Use logging where appropriate
 
 # SQL Instructions
 

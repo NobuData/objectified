@@ -3,10 +3,11 @@ REST routes for /v1/users, /v1/tenants, /v1/tenants/{id}/members,
 /v1/tenants/{id}/administrators. Documented in OpenAPI.
 """
 
-import hashlib
 import logging
-import os
 from typing import Annotated, Any, List, Optional
+
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -28,16 +29,44 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1", tags=["Users and Tenants"])
 
+# ---------------------------------------------------------------------------
+# Password hashing — Argon2id via argon2-cffi
+# ---------------------------------------------------------------------------
+# Argon2id (RFC 9106) is the current best-practice adaptive password hash.
+# PasswordHasher defaults: time_cost=3, memory_cost=65536 (64 MiB),
+# parallelism=4, hash_len=32, salt_len=16. The encoded string stores all
+# parameters so existing hashes remain verifiable after a cost change.
+
+_ph = PasswordHasher()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _hash_password(password: str) -> str:
-    """Hash a password using SHA-256 (placeholder; use bcrypt in production)."""
-    salt = os.urandom(16).hex()
-    digest = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
-    return f"{salt}:{digest}"
+    """Hash *password* with Argon2id (argon2-cffi).
+
+    Returns a self-describing encoded string that embeds the algorithm variant
+    (argon2id), version, cost parameters, random salt, and digest — suitable
+    for long-term storage and resistant to GPU/ASIC brute-force attacks.
+
+    Example output:
+        $argon2id$v=19$m=65536,t=3,p=4$<salt_b64>$<hash_b64>
+    """
+    return _ph.hash(password)
+
+
+def _verify_password(plain: str, hashed: str) -> bool:
+    """Verify *plain* against a stored Argon2 hash.
+
+    Returns ``True`` if the password matches, ``False`` otherwise.
+    Never raises on a mismatch — only propagates unexpected errors.
+    """
+    try:
+        return _ph.verify(hashed, plain)
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        return False
 
 
 def _not_found(entity: str, entity_id: str) -> HTTPException:
@@ -127,9 +156,9 @@ def get_user(
 )
 def create_user(payload: AccountCreate) -> AccountSchema:
     """Create a new user account (sign-up)."""
-    # Check for duplicate email
+    # Check for duplicate email (case-insensitive, aligned with DB UNIQUE INDEX on LOWER(email))
     existing = db.execute_query(
-        "SELECT id FROM objectified.account WHERE email = %s AND deleted_at IS NULL",
+        "SELECT id FROM objectified.account WHERE LOWER(email) = LOWER(%s)",
         (payload.email,),
     )
     if existing:
@@ -329,7 +358,7 @@ def get_tenant(
 def create_tenant(payload: TenantCreate) -> TenantSchema:
     """Create a new tenant."""
     existing = db.execute_query(
-        "SELECT id FROM objectified.tenant WHERE slug = %s AND deleted_at IS NULL",
+        "SELECT id FROM objectified.tenant WHERE slug = %s",
         (payload.slug,),
     )
     if existing:
@@ -480,7 +509,14 @@ def list_tenant_members(tenant_id: str) -> List[TenantAccountSchema]:
 def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAccountSchema:
     """Add a member to a tenant."""
     _assert_tenant_exists(tenant_id)
-    _assert_account_exists(payload.account_id)
+    _assert_tenant_exists(tenant_id)
+    # Ensure the tenant_id in the payload (if provided) matches the path parameter
+    payload_tenant_id = getattr(payload, "tenant_id", None)
+    if payload_tenant_id is not None and payload_tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Payload tenant_id does not match path tenant_id",
+        )
 
     existing = db.execute_query(
         """
