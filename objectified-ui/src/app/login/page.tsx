@@ -86,11 +86,11 @@ function LoginPageContent() {
 
     try {
       // Use redirect: true so NextAuth performs a full redirect on success/failure.
-      // On success: redirects to callbackUrl (/dashboard). On failure: redirects to /login?error=CredentialsSignin.
+      // On success: redirects to callbackUrl (/). On failure: redirects to /login?error=CredentialsSignin.
       await signIn('credentials', {
         email,
         password,
-        callbackUrl: '/dashboard',
+        callbackUrl: '/',
         redirect: true,
       });
       // If we get here, redirect did not happen (e.g. signIn returned without redirect in edge cases).
@@ -110,7 +110,7 @@ function LoginPageContent() {
     setLoading(true);
 
     try {
-      await signIn('github', { callbackUrl: '/dashboard' });
+      await signIn('github', { callbackUrl: '/' });
     } finally {
       setLoading(false);
     }
