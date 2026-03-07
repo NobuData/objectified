@@ -670,3 +670,275 @@ def test_version_visibility_enum():
     """VersionVisibility has private and public."""
     assert VersionVisibility.PRIVATE.value == "private"
     assert VersionVisibility.PUBLIC.value == "public"
+
+
+# ---------------------------------------------------------------------------
+# include_deleted parameter coverage for user routes
+# ---------------------------------------------------------------------------
+
+
+def test_list_users_include_deleted(admin_client):
+    """GET /v1/users?include_deleted=true returns all accounts including deleted ones."""
+    deleted_row = {**_ACCOUNT_ROW, "deleted_at": _NOW}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_ACCOUNT_ROW, deleted_row]
+        r = admin_client.get("/v1/users?include_deleted=true")
+    assert r.status_code == 200
+    assert len(r.json()) == 2
+
+
+def test_get_user_include_deleted(client):
+    """GET /v1/users/{id}?include_deleted=true returns deleted account."""
+    deleted_row = {**_ACCOUNT_ROW, "deleted_at": _NOW}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [deleted_row]
+        r = client.get(f"/v1/users/{_ACCOUNT_ROW['id']}?include_deleted=true")
+    assert r.status_code == 200
+    assert r.json()["id"] == _ACCOUNT_ROW["id"]
+
+
+def test_create_user_server_error(client):
+    """POST /v1/users returns 500 when DB mutation returns None."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = []
+        mock_db.execute_mutation.return_value = None
+        r = client.post(
+            "/v1/users",
+            json={"name": "Alice", "email": "alice@example.com", "password": "secret123"},
+        )
+    assert r.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# update_user - additional field coverage
+# ---------------------------------------------------------------------------
+
+
+def test_update_user_email_conflict(admin_client):
+    """PUT /v1/users/{id} returns 409 when new email is already in use."""
+    with patch("app.v1_routes.db") as mock_db:
+        # First call: existence check → found; second call: email uniqueness → conflict
+        mock_db.execute_query.side_effect = [[_ACCOUNT_ROW], [_ACCOUNT_ROW]]
+        r = admin_client.put(
+            f"/v1/users/{_ACCOUNT_ROW['id']}",
+            json={"email": "other@example.com"},
+        )
+    assert r.status_code == 409
+
+
+def test_update_user_password_change(admin_client):
+    """PUT /v1/users/{id} successfully updates the password."""
+    updated = {**_ACCOUNT_ROW}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_ACCOUNT_ROW]
+        mock_db.execute_mutation.return_value = updated
+        r = admin_client.put(
+            f"/v1/users/{_ACCOUNT_ROW['id']}",
+            json={"password": "newSecurePassword1"},
+        )
+    assert r.status_code == 200
+
+
+def test_update_user_verified_enabled_metadata(admin_client):
+    """PUT /v1/users/{id} updates verified, enabled, and metadata fields."""
+    updated = {**_ACCOUNT_ROW, "verified": True, "enabled": False, "metadata": {"role": "tester"}}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_ACCOUNT_ROW]
+        mock_db.execute_mutation.return_value = updated
+        r = admin_client.put(
+            f"/v1/users/{_ACCOUNT_ROW['id']}",
+            json={"verified": True, "enabled": False, "metadata": {"role": "tester"}},
+        )
+    assert r.status_code == 200
+    assert r.json()["verified"] is True
+    assert r.json()["enabled"] is False
+
+
+def test_update_user_mutation_returns_none(admin_client):
+    """PUT /v1/users/{id} returns 404 when DB mutation returns None (race condition)."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_ACCOUNT_ROW]
+        mock_db.execute_mutation.return_value = None
+        r = admin_client.put(
+            f"/v1/users/{_ACCOUNT_ROW['id']}",
+            json={"name": "Ghost"},
+        )
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# include_deleted parameter coverage for tenant routes
+# ---------------------------------------------------------------------------
+
+
+def test_list_tenants_include_deleted(client):
+    """GET /v1/tenants?include_deleted=true returns all tenants including deleted."""
+    deleted_row = {**_TENANT_ROW, "deleted_at": _NOW}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_TENANT_ROW, deleted_row]
+        r = client.get("/v1/tenants?include_deleted=true")
+    assert r.status_code == 200
+    assert len(r.json()) == 2
+
+
+def test_get_tenant_include_deleted(client):
+    """GET /v1/tenants/{id}?include_deleted=true returns deleted tenant."""
+    deleted_row = {**_TENANT_ROW, "deleted_at": _NOW}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [deleted_row]
+        r = client.get(f"/v1/tenants/{_TENANT_ROW['id']}?include_deleted=true")
+    assert r.status_code == 200
+    assert r.json()["id"] == _TENANT_ROW["id"]
+
+
+def test_create_tenant_server_error(client):
+    """POST /v1/tenants returns 500 when DB mutation returns None."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = []
+        mock_db.execute_mutation.return_value = None
+        r = client.post("/v1/tenants", json={"name": "Acme", "description": "Acme Corp", "slug": "acme"})
+    assert r.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# update_tenant - additional field coverage
+# ---------------------------------------------------------------------------
+
+
+def test_update_tenant_description_update(client):
+    """PUT /v1/tenants/{id} updates the description field."""
+    updated = {**_TENANT_ROW, "description": "Updated description"}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_TENANT_ROW]
+        mock_db.execute_mutation.return_value = updated
+        r = client.put(f"/v1/tenants/{_TENANT_ROW['id']}", json={"description": "Updated description"})
+    assert r.status_code == 200
+    assert r.json()["description"] == "Updated description"
+
+
+def test_update_tenant_slug_conflict(client):
+    """PUT /v1/tenants/{id} returns 409 when new slug is already in use by another tenant."""
+    other_tenant = {**_TENANT_ROW, "id": "00000000-0000-0000-0000-000000000099"}
+    with patch("app.v1_routes.db") as mock_db:
+        # First call: tenant existence; second call: slug uniqueness conflict
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [other_tenant]]
+        r = client.put(
+            f"/v1/tenants/{_TENANT_ROW['id']}",
+            json={"slug": "other-slug"},
+        )
+    assert r.status_code == 409
+
+
+def test_update_tenant_enabled_metadata(client):
+    """PUT /v1/tenants/{id} updates enabled and metadata fields."""
+    updated = {**_TENANT_ROW, "enabled": False, "metadata": {"tier": "free"}}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_TENANT_ROW]
+        mock_db.execute_mutation.return_value = updated
+        r = client.put(
+            f"/v1/tenants/{_TENANT_ROW['id']}",
+            json={"enabled": False, "metadata": {"tier": "free"}},
+        )
+    assert r.status_code == 200
+    assert r.json()["enabled"] is False
+
+
+def test_update_tenant_mutation_returns_none(client):
+    """PUT /v1/tenants/{id} returns 404 when DB mutation returns None (race condition)."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_TENANT_ROW]
+        mock_db.execute_mutation.return_value = None
+        r = client.put(f"/v1/tenants/{_TENANT_ROW['id']}", json={"name": "Ghost"})
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# add_tenant_member - mismatched tenant_id in payload
+# ---------------------------------------------------------------------------
+
+
+def test_add_tenant_member_mismatched_tenant_id(admin_client):
+    """POST /v1/tenants/{id}/members returns 400 when payload tenant_id differs from path."""
+    different_tenant_id = "00000000-0000-0000-0000-000000000099"
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_TENANT_ROW]
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members",
+            json={
+                "tenant_id": different_tenant_id,
+                "account_id": _ACCOUNT_ROW["id"],
+                "access_level": "member",
+            },
+        )
+    assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# update_tenant_member - additional field coverage
+# ---------------------------------------------------------------------------
+
+
+def test_update_tenant_member_enabled_only(client):
+    """PUT /v1/tenants/{id}/members/{account_id} updates enabled field only."""
+    updated = {**_TENANT_ACCOUNT_ROW, "enabled": False}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_TENANT_ACCOUNT_ROW]
+        mock_db.execute_mutation.return_value = updated
+        r = client.put(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members/{_ACCOUNT_ROW['id']}",
+            json={"enabled": False},
+        )
+    assert r.status_code == 200
+    assert r.json()["enabled"] is False
+
+
+def test_update_tenant_member_mutation_returns_none(client):
+    """PUT /v1/tenants/{id}/members/{account_id} returns 404 when DB mutation returns None."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = [_TENANT_ACCOUNT_ROW]
+        mock_db.execute_mutation.return_value = None
+        r = client.put(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members/{_ACCOUNT_ROW['id']}",
+            json={"access_level": "administrator"},
+        )
+    assert r.status_code == 404
+
+
+def test_update_tenant_member_not_found(client):
+    """PUT /v1/tenants/{id}/members/{account_id} returns 404 when member not found."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.put(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members/{_ACCOUNT_ROW['id']}",
+            json={"access_level": "administrator"},
+        )
+    assert r.status_code == 404
+
+
+def test_update_user_email_success(admin_client):
+    """PUT /v1/users/{id} succeeds when new email is unique (no conflict)."""
+    updated = {**_ACCOUNT_ROW, "email": "newemail@example.com"}
+    with patch("app.v1_routes.db") as mock_db:
+        # First call: existence check → found; second call: email uniqueness → no conflict
+        mock_db.execute_query.side_effect = [[_ACCOUNT_ROW], []]
+        mock_db.execute_mutation.return_value = updated
+        r = admin_client.put(
+            f"/v1/users/{_ACCOUNT_ROW['id']}",
+            json={"email": "newemail@example.com"},
+        )
+    assert r.status_code == 200
+    assert r.json()["email"] == "newemail@example.com"
+
+
+def test_add_tenant_member_server_error(admin_client):
+    """POST /v1/tenants/{id}/members returns 500 when DB mutation returns None."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], []]
+        mock_db.execute_mutation.return_value = None
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members",
+            json={"tenant_id": _TENANT_ROW["id"], "account_id": _ACCOUNT_ROW["id"], "access_level": "member"},
+        )
+    assert r.status_code == 500
+
+
