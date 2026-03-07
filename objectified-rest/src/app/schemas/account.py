@@ -23,13 +23,16 @@ class AccountSchema(BaseModel):
 
 
 class AccountCreate(BaseModel):
-    """Create payload for objectified.account (password required)."""
+    """Create payload for objectified.account (password required).
+
+    ``verified`` and ``enabled`` are intentionally omitted: new sign-ups are
+    always created with ``verified=False`` and ``enabled=True`` on the server
+    side to prevent callers from self-verifying or disabling their account.
+    """
 
     name: str
     email: str
     password: str
-    verified: bool = False
-    enabled: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

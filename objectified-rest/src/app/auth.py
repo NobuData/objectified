@@ -229,6 +229,10 @@ def _resolve_caller(
         }
 
     if x_api_key:
+        # NOTE: API key validation is not yet implemented — validate_api_key is
+        # a placeholder that always returns None (no api_keys table in the
+        # current schema).  All API key requests will receive 401 until the
+        # table and lookup are added.
         api_key_data = db.validate_api_key(x_api_key)
         if not api_key_data:
             raise HTTPException(

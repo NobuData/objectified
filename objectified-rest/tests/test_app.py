@@ -272,30 +272,36 @@ def test_create_user_duplicate_email(client):
     assert r.status_code == 409
 
 
-def test_update_user_success(client):
-    """PUT /v1/users/{id} updates a user and returns updated account."""
+def test_update_user_success(admin_client):
+    """PUT /v1/users/{id} updates a user and returns updated account (admin)."""
     updated = {**_ACCOUNT_ROW, "name": "Alice Updated"}
     with patch("app.v1_routes.db") as mock_db:
         mock_db.execute_query.return_value = [_ACCOUNT_ROW]
         mock_db.execute_mutation.return_value = updated
-        r = client.put(f"/v1/users/{_ACCOUNT_ROW['id']}", json={"name": "Alice Updated"})
+        r = admin_client.put(f"/v1/users/{_ACCOUNT_ROW['id']}", json={"name": "Alice Updated"})
     assert r.status_code == 200
     assert r.json()["name"] == "Alice Updated"
 
 
-def test_update_user_not_found(client):
-    """PUT /v1/users/{id} returns 404 when user does not exist."""
+def test_update_user_requires_auth(client):
+    """PUT /v1/users/{id} returns 401 with no credentials."""
+    r = client.put(f"/v1/users/{_ACCOUNT_ROW['id']}", json={"name": "Ghost"})
+    assert r.status_code == 401
+
+
+def test_update_user_not_found(admin_client):
+    """PUT /v1/users/{id} returns 404 when user does not exist (admin)."""
     with patch("app.v1_routes.db") as mock_db:
         mock_db.execute_query.return_value = []
-        r = client.put("/v1/users/00000000-0000-0000-0000-000000000099", json={"name": "Ghost"})
+        r = admin_client.put("/v1/users/00000000-0000-0000-0000-000000000099", json={"name": "Ghost"})
     assert r.status_code == 404
 
 
-def test_update_user_no_fields(client):
-    """PUT /v1/users/{id} returns 400 when no fields are provided."""
+def test_update_user_no_fields(admin_client):
+    """PUT /v1/users/{id} returns 400 when no fields are provided (admin)."""
     with patch("app.v1_routes.db") as mock_db:
         mock_db.execute_query.return_value = [_ACCOUNT_ROW]
-        r = client.put(f"/v1/users/{_ACCOUNT_ROW['id']}", json={})
+        r = admin_client.put(f"/v1/users/{_ACCOUNT_ROW['id']}", json={})
     assert r.status_code == 400
 
 
@@ -507,12 +513,12 @@ def test_list_tenant_members_tenant_not_found(client):
     assert r.status_code == 404
 
 
-def test_add_tenant_member_success(client):
-    """POST /v1/tenants/{id}/members adds a member."""
+def test_add_tenant_member_success(admin_client):
+    """POST /v1/tenants/{id}/members adds a member (admin)."""
     with patch("app.v1_routes.db") as mock_db:
         mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], []]
         mock_db.execute_mutation.return_value = _TENANT_ACCOUNT_ROW
-        r = client.post(
+        r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/members",
             json={"tenant_id": _TENANT_ROW["id"], "account_id": _ACCOUNT_ROW["id"], "access_level": "member"},
         )
@@ -520,11 +526,32 @@ def test_add_tenant_member_success(client):
     assert r.json()["account_id"] == _ACCOUNT_ROW["id"]
 
 
-def test_add_tenant_member_duplicate(client):
-    """POST /v1/tenants/{id}/members returns 409 when already a member."""
+def test_add_tenant_member_requires_auth(client):
+    """POST /v1/tenants/{id}/members returns 401 with no credentials."""
+    r = client.post(
+        f"/v1/tenants/{_TENANT_ROW['id']}/members",
+        json={"tenant_id": _TENANT_ROW["id"], "account_id": _ACCOUNT_ROW["id"], "access_level": "member"},
+    )
+    assert r.status_code == 401
+
+
+def test_add_tenant_member_account_not_found(admin_client):
+    """POST /v1/tenants/{id}/members returns 404 when account_id does not exist."""
+    with patch("app.v1_routes.db") as mock_db:
+        # Tenant exists, but account does not
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], []]
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members",
+            json={"tenant_id": _TENANT_ROW["id"], "account_id": "00000000-0000-0000-0000-000000000099", "access_level": "member"},
+        )
+    assert r.status_code == 404
+
+
+def test_add_tenant_member_duplicate(admin_client):
+    """POST /v1/tenants/{id}/members returns 409 when already a member (admin)."""
     with patch("app.v1_routes.db") as mock_db:
         mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], [_TENANT_ACCOUNT_ROW]]
-        r = client.post(
+        r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/members",
             json={"tenant_id": _TENANT_ROW["id"], "account_id": _ACCOUNT_ROW["id"], "access_level": "member"},
         )
