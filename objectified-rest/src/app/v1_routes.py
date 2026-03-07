@@ -6,10 +6,11 @@ REST routes for /v1/users, /v1/tenants, /v1/tenants/{id}/members,
 import hashlib
 import logging
 import os
-from typing import List, Optional
+from typing import Annotated, Any, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.auth import require_admin
 from app.database import db
 from app.schemas import (
     AccountCreate,
@@ -21,7 +22,6 @@ from app.schemas import (
     TenantCreate,
     TenantSchema,
     TenantUpdate,
-    TenantAccessLevel,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,12 +53,16 @@ def _not_found(entity: str, entity_id: str) -> HTTPException:
     response_model=List[AccountSchema],
     summary="List users (admin)",
     description=(
-        "List all accounts. This is an admin-only endpoint. "
-        "Soft-deleted accounts are excluded by default; pass include_deleted=true to include them."
+        "List all accounts. **Admin only** — requires a valid JWT with "
+        "``is_admin=true``, an account that is an administrator in at least "
+        "one tenant, or a valid internal API key. "
+        "Soft-deleted accounts are excluded by default; pass "
+        "``include_deleted=true`` to include them."
     ),
 )
 def list_users(
     include_deleted: bool = Query(False, description="Include soft-deleted accounts"),
+    _admin: Annotated[dict[str, Any], Depends(require_admin)] = None,
 ) -> List[AccountSchema]:
     """List all user accounts (admin)."""
     if include_deleted:
