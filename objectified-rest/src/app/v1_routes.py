@@ -510,11 +510,15 @@ def list_tenant_members(tenant_id: str) -> List[TenantAccountSchema]:
     response_model=TenantAccountSchema,
     status_code=201,
     summary="Add tenant member",
-    description="Add an account to a tenant with a given access level.",
+    description=(
+        "Add an account to a tenant with a given access level. "
+        "The account can be identified by ``account_id`` (UUID) or ``email``. "
+        "If both are provided, ``account_id`` takes precedence."
+    ),
     dependencies=[Depends(require_admin)],
 )
 def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAccountSchema:
-    """Add a member to a tenant."""
+    """Add a member to a tenant by account_id or email."""
     _assert_tenant_exists(tenant_id)
     # Ensure the tenant_id in the payload (if provided) matches the path parameter
     payload_tenant_id = getattr(payload, "tenant_id", None)
@@ -524,14 +528,34 @@ def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAcc
             detail="Payload tenant_id does not match path tenant_id",
         )
 
-    _assert_account_exists(payload.account_id)
+    # Resolve account_id — prefer explicit account_id, fall back to email lookup
+    resolved_account_id: str
+    if payload.account_id:
+        _assert_account_exists(payload.account_id)
+        resolved_account_id = payload.account_id
+    else:
+        # Look up account by email (case-insensitive)
+        email_rows = db.execute_query(
+            """
+            SELECT id FROM objectified.account
+            WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (payload.email,),
+        )
+        if not email_rows:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No active account found with email: {payload.email}",
+            )
+        resolved_account_id = str(email_rows[0]["id"])
 
     existing = db.execute_query(
         """
         SELECT id FROM objectified.tenant_account
         WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
         """,
-        (tenant_id, payload.account_id),
+        (tenant_id, resolved_account_id),
     )
     if existing:
         raise HTTPException(status_code=409, detail="Account is already a member of this tenant")
@@ -542,7 +566,7 @@ def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAcc
         VALUES (%s, %s, %s, %s)
         RETURNING id, tenant_id, account_id, access_level, enabled, created_at, updated_at, deleted_at
         """,
-        (tenant_id, payload.account_id, payload.access_level.value, payload.enabled),
+        (tenant_id, resolved_account_id, payload.access_level.value, payload.enabled),
     )
     if not row:
         raise HTTPException(status_code=500, detail="Failed to add member")

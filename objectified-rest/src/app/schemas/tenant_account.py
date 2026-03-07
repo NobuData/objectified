@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class TenantAccessLevel(str, Enum):
@@ -30,12 +30,25 @@ class TenantAccountSchema(BaseModel):
 
 
 class TenantAccountCreate(BaseModel):
-    """Create payload for objectified.tenant_account."""
+    """Create payload for objectified.tenant_account.
 
-    tenant_id: str
-    account_id: str
+    Either ``account_id`` (UUID) or ``email`` must be provided to identify the
+    account to add.  If both are supplied, ``account_id`` takes precedence.
+    ``tenant_id`` is optional in the body — it is validated against the path
+    parameter in the route handler.
+    """
+
+    tenant_id: Optional[str] = None
+    account_id: Optional[str] = None
+    email: Optional[str] = None
     access_level: TenantAccessLevel = TenantAccessLevel.MEMBER
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _require_account_id_or_email(self) -> "TenantAccountCreate":
+        if not self.account_id and not self.email:
+            raise ValueError("Either 'account_id' or 'email' must be provided")
+        return self
 
 
 class TenantAccountUpdate(BaseModel):

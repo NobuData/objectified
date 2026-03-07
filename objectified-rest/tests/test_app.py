@@ -942,3 +942,105 @@ def test_add_tenant_member_server_error(admin_client):
     assert r.status_code == 500
 
 
+# ---------------------------------------------------------------------------
+# Email-based tenant member addition (GH-17)
+# ---------------------------------------------------------------------------
+
+
+def test_add_tenant_member_by_email_success(admin_client):
+    """POST /v1/tenants/{id}/members with email resolves to account and adds member."""
+    email_lookup_row = {"id": _ACCOUNT_ROW["id"]}
+    with patch("app.v1_routes.db") as mock_db:
+        # Calls: tenant exists, email lookup, duplicate check, insert
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ROW],           # _assert_tenant_exists
+            [email_lookup_row],      # email → account_id lookup
+            [],                      # duplicate membership check
+        ]
+        mock_db.execute_mutation.return_value = _TENANT_ACCOUNT_ROW
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members",
+            json={"email": _ACCOUNT_ROW["email"], "access_level": "member"},
+        )
+    assert r.status_code == 201
+    assert r.json()["account_id"] == _ACCOUNT_ROW["id"]
+
+
+def test_add_tenant_member_by_email_not_found(admin_client):
+    """POST /v1/tenants/{id}/members returns 404 when email does not match any account."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ROW],  # _assert_tenant_exists
+            [],             # email lookup → no result
+        ]
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members",
+            json={"email": "unknown@example.com", "access_level": "member"},
+        )
+    assert r.status_code == 404
+    assert "email" in r.json()["detail"].lower()
+
+
+def test_add_tenant_member_by_email_duplicate(admin_client):
+    """POST /v1/tenants/{id}/members by email returns 409 when account is already a member."""
+    email_lookup_row = {"id": _ACCOUNT_ROW["id"]}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ROW],           # _assert_tenant_exists
+            [email_lookup_row],      # email lookup
+            [_TENANT_ACCOUNT_ROW],  # duplicate check → already a member
+        ]
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members",
+            json={"email": _ACCOUNT_ROW["email"], "access_level": "member"},
+        )
+    assert r.status_code == 409
+
+
+def test_add_tenant_member_no_identifier_returns_422(admin_client):
+    """POST /v1/tenants/{id}/members returns 422 when neither account_id nor email is provided."""
+    r = admin_client.post(
+        f"/v1/tenants/{_TENANT_ROW['id']}/members",
+        json={"access_level": "member"},
+    )
+    assert r.status_code == 422
+
+
+def test_add_tenant_member_account_id_takes_precedence_over_email(admin_client):
+    """POST /v1/tenants/{id}/members uses account_id when both account_id and email are given."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ROW],   # _assert_tenant_exists
+            [_ACCOUNT_ROW],  # _assert_account_exists (uses account_id path)
+            [],              # duplicate check
+        ]
+        mock_db.execute_mutation.return_value = _TENANT_ACCOUNT_ROW
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members",
+            json={
+                "account_id": _ACCOUNT_ROW["id"],
+                "email": "other@example.com",
+                "access_level": "member",
+            },
+        )
+    assert r.status_code == 201
+    assert r.json()["account_id"] == _ACCOUNT_ROW["id"]
+
+
+def test_add_tenant_member_by_email_server_error(admin_client):
+    """POST /v1/tenants/{id}/members by email returns 500 when DB mutation returns None."""
+    email_lookup_row = {"id": _ACCOUNT_ROW["id"]}
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ROW],
+            [email_lookup_row],
+            [],
+        ]
+        mock_db.execute_mutation.return_value = None
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members",
+            json={"email": _ACCOUNT_ROW["email"], "access_level": "member"},
+        )
+    assert r.status_code == 500
+
+
