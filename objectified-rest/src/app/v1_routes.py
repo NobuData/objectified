@@ -132,8 +132,8 @@ def create_user(payload: AccountCreate) -> AccountSchema:
             payload.name,
             payload.email,
             hashed,
-            payload.verified,
-            payload.enabled,
+            False,
+            True,
             __import__("json").dumps(payload.metadata),
         ),
     )
