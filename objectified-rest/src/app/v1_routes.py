@@ -265,8 +265,9 @@ def update_user(
     summary="Deactivate user",
     description=(
         "Soft-delete (deactivate) a user account by setting deleted_at. "
-        "The record is retained; no hard delete is performed."
+        "The record is retained; no hard delete is performed. **Admin only.**"
     ),
+    dependencies=[Depends(require_admin)],
 )
 def deactivate_user(user_id: str) -> None:
     """Deactivate (soft-delete) a user account."""
@@ -393,7 +394,8 @@ def create_tenant(payload: TenantCreate) -> TenantSchema:
     "/tenants/{tenant_id}",
     response_model=TenantSchema,
     summary="Update tenant",
-    description="Update an existing tenant. Only provided fields are updated.",
+    description="Update an existing tenant. Only provided fields are updated. **Admin only.**",
+    dependencies=[Depends(require_admin)],
 )
 def update_tenant(tenant_id: str, payload: TenantUpdate) -> TenantSchema:
     """Update a tenant by ID."""
@@ -457,8 +459,9 @@ def update_tenant(tenant_id: str, payload: TenantUpdate) -> TenantSchema:
     summary="Deactivate tenant",
     description=(
         "Soft-delete (deactivate) a tenant by setting deleted_at. "
-        "The record is retained; no hard delete is performed."
+        "The record is retained; no hard delete is performed. **Admin only.**"
     ),
+    dependencies=[Depends(require_admin)],
 )
 def deactivate_tenant(tenant_id: str) -> None:
     """Deactivate (soft-delete) a tenant."""
@@ -577,7 +580,8 @@ def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAcc
     "/tenants/{tenant_id}/members/{account_id}",
     status_code=204,
     summary="Remove tenant member",
-    description="Remove (soft-delete) an account from a tenant.",
+    description="Remove (soft-delete) an account from a tenant. **Admin only.**",
+    dependencies=[Depends(require_admin)],
 )
 def remove_tenant_member(tenant_id: str, account_id: str) -> None:
     """Remove a member from a tenant (soft-delete)."""
@@ -627,11 +631,140 @@ def list_tenant_administrators(tenant_id: str) -> List[TenantAccountSchema]:
     return [TenantAccountSchema(**dict(r)) for r in rows]
 
 
+@router.post(
+    "/tenants/{tenant_id}/administrators",
+    response_model=TenantAccountSchema,
+    status_code=201,
+    summary="Add tenant administrator",
+    description=(
+        "Add an account to a tenant with the ``administrator`` access level, or "
+        "promote an existing member to administrator. "
+        "The account can be identified by ``account_id`` (UUID) or ``email``. "
+        "If both are provided, ``account_id`` takes precedence. "
+        "**Admin only.**"
+    ),
+    dependencies=[Depends(require_admin)],
+)
+def add_tenant_administrator(
+    tenant_id: str, payload: TenantAccountCreate
+) -> TenantAccountSchema:
+    """Add or promote an administrator in a tenant (admin only)."""
+    _assert_tenant_exists(tenant_id)
+
+    # Ensure the tenant_id in the payload (if provided) matches the path parameter
+    payload_tenant_id = getattr(payload, "tenant_id", None)
+    if payload_tenant_id is not None and payload_tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Payload tenant_id does not match path tenant_id",
+        )
+
+    # Resolve account_id — prefer explicit account_id, fall back to email lookup
+    resolved_account_id: str
+    if payload.account_id:
+        _assert_account_exists(payload.account_id)
+        resolved_account_id = payload.account_id
+    else:
+        # Look up account by email (case-insensitive)
+        email_rows = db.execute_query(
+            """
+            SELECT id FROM objectified.account
+            WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (payload.email,),
+        )
+        if not email_rows:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No active account found with email: {payload.email}",
+            )
+        resolved_account_id = str(email_rows[0]["id"])
+
+    # Check whether there is already an active tenant_account row for this member
+    existing_rows = db.execute_query(
+        """
+        SELECT id, access_level FROM objectified.tenant_account
+        WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
+        """,
+        (tenant_id, resolved_account_id),
+    )
+    if existing_rows:
+        existing = existing_rows[0]
+        if existing["access_level"] == "administrator":
+            raise HTTPException(
+                status_code=409,
+                detail="Account is already an administrator of this tenant",
+            )
+        # Promote existing member to administrator
+        row = db.execute_mutation(
+            """
+            UPDATE objectified.tenant_account
+            SET access_level = 'administrator'
+            WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
+            RETURNING id, tenant_id, account_id, access_level, enabled, created_at, updated_at, deleted_at
+            """,
+            (tenant_id, resolved_account_id),
+        )
+        if not row:
+            raise HTTPException(status_code=500, detail="Failed to promote member to administrator")
+        return TenantAccountSchema(**dict(row))
+
+    # Insert new tenant_account row as administrator
+    row = db.execute_mutation(
+        """
+        INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
+        VALUES (%s, %s, 'administrator', %s)
+        RETURNING id, tenant_id, account_id, access_level, enabled, created_at, updated_at, deleted_at
+        """,
+        (tenant_id, resolved_account_id, payload.enabled),
+    )
+    if not row:
+        raise HTTPException(status_code=500, detail="Failed to add administrator")
+    return TenantAccountSchema(**dict(row))
+
+
+@router.delete(
+    "/tenants/{tenant_id}/administrators/{account_id}",
+    status_code=204,
+    summary="Remove tenant administrator",
+    description=(
+        "Soft-delete the administrator tenant_account row for the given account. "
+        "**Admin only.**"
+    ),
+    dependencies=[Depends(require_admin)],
+)
+def remove_tenant_administrator(tenant_id: str, account_id: str) -> None:
+    """Remove an administrator from a tenant (admin only)."""
+    rows = db.execute_query(
+        """
+        SELECT id FROM objectified.tenant_account
+        WHERE tenant_id = %s AND account_id = %s AND access_level = 'administrator'
+          AND deleted_at IS NULL
+        """,
+        (tenant_id, account_id),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Administrator not found in this tenant")
+
+    db.execute_mutation(
+        """
+        UPDATE objectified.tenant_account
+        SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
+        WHERE tenant_id = %s AND account_id = %s AND access_level = 'administrator'
+          AND deleted_at IS NULL
+        """,
+        (tenant_id, account_id),
+        returning=False,
+    )
+
+
 @router.put(
     "/tenants/{tenant_id}/members/{account_id}",
     response_model=TenantAccountSchema,
     summary="Update tenant member",
-    description="Update the access level or enabled status of a tenant member.",
+    description="Update the access level or enabled status of a tenant member. **Admin only.**",
+    dependencies=[Depends(require_admin)],
 )
 def update_tenant_member(
     tenant_id: str, account_id: str, payload: TenantAccountUpdate
