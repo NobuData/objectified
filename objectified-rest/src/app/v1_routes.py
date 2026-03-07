@@ -26,7 +26,7 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/v1", tags=["users and tenants"])
+router = APIRouter(prefix="/v1", tags=["Users and Tenants"])
 
 
 # ---------------------------------------------------------------------------
@@ -262,18 +262,31 @@ def list_tenants(
     "/tenants/{tenant_id}",
     response_model=TenantSchema,
     summary="Get tenant by ID",
-    description="Retrieve a single tenant by its UUID.",
+    description="Retrieve a single tenant by its UUID. Soft-deleted tenants are excluded by default.",
 )
-def get_tenant(tenant_id: str) -> TenantSchema:
+def get_tenant(
+    tenant_id: str,
+    include_deleted: bool = Query(False, description="Include soft-deleted tenant"),
+) -> TenantSchema:
     """Get a tenant by ID."""
-    rows = db.execute_query(
-        """
-        SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
-        FROM objectified.tenant
-        WHERE id = %s
-        """,
-        (tenant_id,),
-    )
+    if include_deleted:
+        rows = db.execute_query(
+            """
+            SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            FROM objectified.tenant
+            WHERE id = %s
+            """,
+            (tenant_id,),
+        )
+    else:
+        rows = db.execute_query(
+            """
+            SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            FROM objectified.tenant
+            WHERE id = %s AND deleted_at IS NULL
+            """,
+            (tenant_id,),
+        )
     if not rows:
         raise _not_found("Tenant", tenant_id)
     return TenantSchema(**dict(rows[0]))
@@ -339,6 +352,16 @@ def update_tenant(tenant_id: str, payload: TenantUpdate) -> TenantSchema:
         updates.append("description = %s")
         params.append(payload.description)
     if payload.slug is not None:
+        # Ensure slug uniqueness before updating to avoid DB unique-constraint violations
+        existing_slug_rows = db.execute_query(
+            "SELECT id FROM objectified.tenant WHERE slug = %s AND id <> %s",
+            (payload.slug, tenant_id),
+        )
+        if existing_slug_rows:
+            raise HTTPException(
+                status_code=409,
+                detail="Tenant slug already exists",
+            )
         updates.append("slug = %s")
         params.append(payload.slug)
     if payload.enabled is not None:

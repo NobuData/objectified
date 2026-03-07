@@ -322,6 +322,80 @@ def test_create_tenant_duplicate_slug(client):
     assert r.status_code == 409
 
 
+# ---------------------------------------------------------------------------
+# Tenant slug validation (matches DB CHECK constraint)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("slug", [
+    "Uppercase",        # uppercase letters
+    "has space",        # space
+    "has_underscore",   # underscore
+    "-leading-hyphen",  # leading hyphen
+    "trailing-hyphen-", # trailing hyphen
+    "double--hyphen",   # consecutive hyphens
+    "",                 # empty string
+])
+def test_create_tenant_invalid_slug_returns_422(client, slug):
+    """POST /v1/tenants returns 422 for slugs that violate the slug format."""
+    r = client.post(
+        "/v1/tenants",
+        json={"name": "Test", "description": "", "slug": slug},
+    )
+    assert r.status_code == 422
+    detail = r.json().get("detail", "")
+    assert detail  # some validation message must be present
+
+
+@pytest.mark.parametrize("slug", [
+    "acme",
+    "my-tenant",
+    "acme-corp-2",
+    "a",
+    "abc123",
+    "123",
+])
+def test_create_tenant_valid_slug_passes_validation(client, slug):
+    """POST /v1/tenants accepts well-formed slugs (no 422)."""
+    with patch("app.v1_routes.db") as mock_db:
+        mock_db.execute_query.return_value = []
+        mock_db.execute_mutation.return_value = {**_TENANT_ROW, "slug": slug}
+        r = client.post(
+            "/v1/tenants",
+            json={"name": "Test", "description": "", "slug": slug},
+        )
+    assert r.status_code == 201
+
+
+@pytest.mark.parametrize("slug", [
+    "Uppercase",
+    "has space",
+    "has_underscore",
+    "-leading",
+    "trailing-",
+    "double--hyphen",
+])
+def test_update_tenant_invalid_slug_returns_422(client, slug):
+    """PUT /v1/tenants/{id} returns 422 when an invalid slug is supplied."""
+    r = client.put(
+        f"/v1/tenants/{_TENANT_ROW['id']}",
+        json={"slug": slug},
+    )
+    assert r.status_code == 422
+
+
+def test_update_tenant_valid_slug_passes_validation(client):
+    """PUT /v1/tenants/{id} accepts a well-formed slug."""
+    updated = {**_TENANT_ROW, "slug": "new-slug"}
+    with patch("app.v1_routes.db") as mock_db:
+        # First call: tenant existence check → found
+        # Second call: slug uniqueness check → no conflict
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], []]
+        mock_db.execute_mutation.return_value = updated
+        r = client.put(f"/v1/tenants/{_TENANT_ROW['id']}", json={"slug": "new-slug"})
+    assert r.status_code == 200
+    assert r.json()["slug"] == "new-slug"
+
+
 def test_update_tenant_success(client):
     """PUT /v1/tenants/{id} updates tenant."""
     updated = {**_TENANT_ROW, "name": "Acme Updated"}
