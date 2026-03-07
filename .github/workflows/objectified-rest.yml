@@ -1,0 +1,56 @@
+# Build and test objectified-rest (FastAPI).
+# Runs on push/PR when files under objectified-rest/ change.
+# Uses uv and Python 3.11+.
+
+name: Objectified REST
+
+on:
+  push:
+    paths:
+      - 'objectified-rest/**'
+  pull_request:
+    paths:
+      - 'objectified-rest/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: objectified-rest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: objectified-rest/.venv
+          key: ${{ runner.os }}-uv-rest-${{ hashFiles('objectified-rest/uv.lock', 'objectified-rest/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-rest-
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests
+        run: uv run pytest tests -v
+
+      - name: Generate OpenAPI spec
+        run: uv run python scripts/generate_openapi.py
+
+      - name: Verify OpenAPI 3.2.0
+        run: |
+          grep -q '"openapi": "3.2.0"' openapi/openapi.json || (echo "Expected openapi 3.2.0 in openapi/openapi.json" && exit 1)
