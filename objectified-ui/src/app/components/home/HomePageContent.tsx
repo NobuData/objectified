@@ -12,8 +12,7 @@ import {
 } from 'lucide-react';
 import { SiGithub } from 'react-icons/si';
 import { Flex, Text } from '@radix-ui/themes';
-
-const APP_VERSION = '0.1.0';
+import { APP_VERSION } from '@lib/appVersion';
 
 const disabledCards = [
   {

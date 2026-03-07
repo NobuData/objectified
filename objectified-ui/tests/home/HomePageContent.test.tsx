@@ -2,6 +2,8 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import HomePageContent from '../../src/app/components/home/HomePageContent';
 
+jest.mock('@lib/appVersion', () => ({ APP_VERSION: '0.1.0' }));
+
 describe('HomePageContent', () => {
   it('renders platform title and welcome message with first name', () => {
     render(<HomePageContent firstName="Jane" />);
