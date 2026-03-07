@@ -74,6 +74,40 @@ class Database:
             logger.exception("Query failed: %s", query[:200] if query else "")
             return []
 
+    def execute_mutation(
+        self,
+        query: str,
+        params: Optional[tuple] = None,
+        returning: bool = True,
+    ) -> Optional[dict[str, Any]]:
+        """Execute an INSERT/UPDATE/DELETE with optional RETURNING clause.
+
+        Args:
+            query: SQL statement; include RETURNING ... to get back a row.
+            params: Query parameters.
+            returning: If True, fetchone() is called and the row returned.
+
+        Returns:
+            The first returned row as a dict, or None if not found / no RETURNING.
+        """
+        conn = self.connect()
+        if conn is None:
+            return None
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(query, params or ())
+                conn.commit()
+                if returning:
+                    return cursor.fetchone()
+                return None
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception as rollback_err:
+                logger.exception("Rollback failed after mutation error: %s", rollback_err)
+            logger.exception("Mutation failed: %s", query[:200] if query else "")
+            raise
+
     def validate_api_key(self, api_key: str) -> Optional[dict[str, Any]]:
         """
         Validate an API key and return tenant information.
