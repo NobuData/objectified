@@ -8,6 +8,7 @@
 - Unit tests must be updated and created as necessary, all tests run using yarn test
 - Fix any regressions found during testing
 - Use logging where appropriate
+- When using `git` commands, always use `--no-pager` to prevent output from being paginated
 
 # SQL Instructions
 
