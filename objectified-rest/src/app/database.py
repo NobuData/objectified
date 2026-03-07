@@ -2,6 +2,12 @@
 
 Used by auth and future CRUD services. Objectified schema uses
 objectified.account, objectified.tenant, objectified.tenant_account, etc.
+
+Note: This scaffolding uses a single shared connection. FastAPI is async;
+concurrent requests sharing one psycopg2 connection can share cursors and
+transaction state, leading to data corruption or errors. When implementing
+real CRUD/database operations, use a connection pool (e.g.
+psycopg2.pool.ThreadedConnectionPool or async psycopg/asyncpg).
 """
 
 import logging
@@ -13,10 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 class Database:
-    """Database connection and query interface for objectified schema."""
+    """Database connection and query interface for objectified schema.
+
+    Uses a single shared connection (scaffolding only). For production or
+    real CRUD, switch to a connection pool—see module docstring.
+    """
 
     def __init__(self) -> None:
-        self._connection: Any = None
+        self._connection: Any = None  # single connection; not safe for concurrent requests
 
     def connect(self) -> Any:
         """Establish database connection."""

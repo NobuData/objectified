@@ -45,7 +45,7 @@ class Settings(BaseSettings):
                 "JWT secret is not configured. Set NEXTAUTH_SECRET or JWT_SECRET."
             )
         return secret
-        
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

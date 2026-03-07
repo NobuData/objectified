@@ -56,9 +56,21 @@ def test_v1_users_stub_returns_501(client):
     assert r.status_code == 501
 
 
+def test_v1_user_by_id_stub_returns_501(client):
+    """Stub get user by id returns 501."""
+    r = client.get("/v1/users/00000000-0000-0000-0000-000000000001")
+    assert r.status_code == 501
+
+
 def test_v1_tenants_stub_returns_501(client):
     """Stub list tenants returns 501."""
     r = client.get("/v1/tenants")
+    assert r.status_code == 501
+
+
+def test_v1_tenant_by_id_stub_returns_501(client):
+    """Stub get tenant by id returns 501."""
+    r = client.get("/v1/tenants/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 501
 
 
