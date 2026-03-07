@@ -6,9 +6,9 @@ Uses objectified schema: objectified.tenant, objectified.tenant_account.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 import jwt
 
 from app.config import settings
@@ -182,3 +182,140 @@ def get_authenticated_user_id(auth_data: dict[str, Any]) -> Optional[str]:
     if auth_data.get("auth_method") == "jwt":
         return auth_data.get("user_id")
     return None
+
+
+# ---------------------------------------------------------------------------
+# FastAPI Depends-compatible auth dependencies
+# ---------------------------------------------------------------------------
+
+def _resolve_caller(
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict[str, Any]:
+    """
+    Resolve caller identity from JWT or API key without requiring a tenant slug.
+
+    Returns a dict with at least:
+        auth_method: "jwt" | "api_key"
+        user_id: str | None  (set for JWT; None for API key)
+        is_admin: bool        (True if JWT payload has is_admin=true or API key is internal)
+
+    Raises:
+        HTTPException 401 if no valid credential is presented.
+    """
+    if authorization:
+        payload = decode_jwt(authorization)
+        if not payload:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired JWT token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        user_id: Optional[str] = payload.get("user_id") or payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid JWT token: missing user identifier",
+            )
+        return {
+            "auth_method": "jwt",
+            "user_id": user_id,
+            "user_email": payload.get("email"),
+            "user_name": payload.get("name"),
+            # Honour an explicit is_admin claim in the token, then fall
+            # back to checking whether the account is an administrator in
+            # any active tenant.
+            "is_admin": bool(payload.get("is_admin", False)),
+        }
+
+    if x_api_key:
+        # NOTE: API key validation is not yet implemented — validate_api_key is
+        # a placeholder that always returns None (no api_keys table in the
+        # current schema).  All API key requests will receive 401 until the
+        # table and lookup are added.
+        api_key_data = db.validate_api_key(x_api_key)
+        if not api_key_data:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired API key",
+                headers={"WWW-Authenticate": "API-Key"},
+            )
+        # API keys that pass validate_api_key are considered internal/admin keys.
+        return {**api_key_data, "auth_method": "api_key", "is_admin": True}
+
+    raise HTTPException(
+        status_code=401,
+        detail=(
+            "Authentication required. Provide either a JWT token "
+            "(Authorization: Bearer <token>) or an API key (X-API-Key: <key>)."
+        ),
+        headers={"WWW-Authenticate": "Bearer, API-Key"},
+    )
+
+
+def _is_platform_admin(user_id: str) -> bool:
+    """
+    Return True when the account holds the 'administrator' role in at
+    least one active tenant.  Used as a fallback when the JWT does not
+    carry an explicit is_admin claim.
+    """
+    rows = db.execute_query(
+        """
+        SELECT 1
+        FROM objectified.tenant_account ta
+        JOIN objectified.tenant t ON t.id = ta.tenant_id
+        WHERE ta.account_id = %s
+          AND ta.access_level = 'administrator'
+          AND ta.deleted_at IS NULL
+          AND t.deleted_at IS NULL
+        LIMIT 1
+        """,
+        (user_id,),
+    )
+    return bool(rows)
+
+
+def require_authenticated(
+    caller: Annotated[dict[str, Any], Depends(_resolve_caller)],
+) -> dict[str, Any]:
+    """
+    FastAPI dependency: require a valid JWT or API key.
+
+    Injects the caller identity dict into the handler.  Does **not** check
+    admin status; use ``require_admin`` for that.
+    """
+    return caller
+
+
+def require_admin(
+    caller: Annotated[dict[str, Any], Depends(_resolve_caller)],
+) -> dict[str, Any]:
+    """
+    FastAPI dependency: require a valid credential **and** admin privileges.
+
+    Admin is determined by:
+      1. ``is_admin: true`` in the JWT payload, OR
+      2. The account holds ``access_level = 'administrator'`` in at least
+         one active tenant (platform-wide admin proxy), OR
+      3. A valid internal API key (all validated API keys are treated as
+         internal/admin).
+
+    Raises:
+        HTTPException 401 if unauthenticated.
+        HTTPException 403 if authenticated but not an admin.
+    """
+    if caller.get("is_admin"):
+        return caller
+
+    # For JWT callers without an explicit is_admin claim, check the DB.
+    if caller.get("auth_method") == "jwt":
+        user_id = caller.get("user_id")
+        if user_id and _is_platform_admin(user_id):
+            caller["is_admin"] = True
+            return caller
+
+    raise HTTPException(
+        status_code=403,
+        detail="Admin privileges required.",
+    )
+
