@@ -89,16 +89,30 @@ def list_users(
     summary="Get user by ID",
     description="Retrieve a single account by its UUID.",
 )
-def get_user(user_id: str) -> AccountSchema:
+def get_user(
+    user_id: str,
+    include_deleted: bool = Query(False, description="Include soft-deleted account"),
+) -> AccountSchema:
     """Get a user account by ID."""
-    rows = db.execute_query(
-        """
-        SELECT id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
-        FROM objectified.account
-        WHERE id = %s
-        """,
-        (user_id,),
-    )
+    if include_deleted:
+        rows = db.execute_query(
+            """
+            SELECT id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
+            FROM objectified.account
+            WHERE id = %s
+            """,
+            (user_id,),
+        )
+    else:
+        rows = db.execute_query(
+            """
+            SELECT id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
+            FROM objectified.account
+            WHERE id = %s
+              AND deleted_at IS NULL
+            """,
+            (user_id,),
+        )
     if not rows:
         raise _not_found("User", user_id)
     return AccountSchema(**dict(rows[0]))
@@ -164,6 +178,19 @@ def update_user(user_id: str, payload: AccountUpdate) -> AccountSchema:
         updates.append("name = %s")
         params.append(payload.name)
     if payload.email is not None:
+        # Ensure email is unique (case-insensitive) before updating, aligned with the DB index.
+        existing_email_rows = db.execute_query(
+            """
+            SELECT 1
+            FROM objectified.account
+            WHERE lower(email) = lower(%s)
+              AND id <> %s
+              AND deleted_at IS NULL
+            """,
+            (payload.email, user_id),
+        )
+        if existing_email_rows:
+            raise HTTPException(status_code=409, detail="Email already in use")
         updates.append("email = %s")
         params.append(payload.email)
     if payload.password is not None:
