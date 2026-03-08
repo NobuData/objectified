@@ -10,6 +10,16 @@
 - Use logging where appropriate
 - When using `git` commands, always use `--no-pager` to prevent output from being paginated
 
+# REST Instructions
+
+- Rest services should be separated by domain and tags should be used to group related endpoints together based on schema
+- Use OpenAPI specifications for all REST endpoints, and ensure they are well-documented with clear descriptions and examples
+- Ensure that all REST endpoints have appropriate error handling and return meaningful error messages to the client
+- Use appropriate HTTP status codes for all REST responses, and ensure that they are consistent across the application
+- Implement authentication and authorization for all REST endpoints, and ensure that sensitive data is protected
+- Use pagination for endpoints that return large datasets, and ensure that the pagination parameters are well-documented and easy to use
+- Ensure that all REST endpoints are tested thoroughly, including edge cases and error scenarios, and that the tests are run as part of the test suite
+
 # SQL Instructions
 
 - Any new scripts created in objectified-schema/scripts need to pull accurate local time and date for the filename
