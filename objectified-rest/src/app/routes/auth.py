@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.auth import decode_jwt  # noqa: F401 - available for re-use
 from app.config import settings
-from app.database import db
+from app.routes.helpers import _get_active_account_by_email
 from app.routes.users import _verify_password
 from app.schemas.auth import LoginRequest, LoginResponse
 
@@ -33,21 +33,13 @@ _JWT_EXPIRY_SECONDS = 86_400
 )
 def login(payload: LoginRequest) -> LoginResponse:
     """Authenticate and issue a JWT access token."""
-    rows = db.execute_query(
-        """
-        SELECT id, name, email, password, verified, enabled
-        FROM objectified.account
-        WHERE LOWER(email) = LOWER(%s)
-          AND deleted_at IS NULL
-        LIMIT 1
-        """,
-        (payload.email,),
+    account = _get_active_account_by_email(
+        payload.email,
+        columns="id, name, email, password, enabled",
     )
-    if not rows:
+    if not account:
         logger.warning("login: unknown email %s", payload.email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    account: dict[str, Any] = dict(rows[0])
 
     if not _verify_password(payload.password, account["password"]):
         logger.warning("login: bad password for email %s", payload.email)
@@ -87,5 +79,3 @@ def login(payload: LoginRequest) -> LoginResponse:
         name=account["name"],
         expires_in=_JWT_EXPIRY_SECONDS,
     )
-
-

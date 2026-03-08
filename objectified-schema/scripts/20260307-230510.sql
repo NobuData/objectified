@@ -4,16 +4,18 @@
 
 SET search_path TO objectified, public;
 
--- Fix slug uniqueness: drop global unique constraint, add per-tenant unique constraint
+-- Fix slug uniqueness: drop global unique constraint, add per-tenant unique index
 ALTER TABLE objectified.project DROP CONSTRAINT IF EXISTS project_slug_format;
 ALTER TABLE objectified.project DROP CONSTRAINT IF EXISTS project_slug_key;
+ALTER TABLE objectified.project DROP CONSTRAINT IF EXISTS project_tenant_slug_unique;
 
--- Remove old global unique index on slug if it exists
+-- Remove old global and previous tenant slug indexes if they exist
 DROP INDEX IF EXISTS objectified.project_slug_key;
+DROP INDEX IF EXISTS objectified.project_tenant_slug_unique;
 
 -- Add per-tenant unique index on (tenant_id, slug) for non-deleted projects
 -- Use a partial unique index so that slugs can be reused after soft-delete (deleted_at IS NOT NULL)
-CREATE UNIQUE INDEX IF NOT EXISTS project_tenant_slug_unique
+CREATE UNIQUE INDEX project_tenant_slug_unique
     ON objectified.project (tenant_id, slug)
     WHERE deleted_at IS NULL;
 
@@ -26,7 +28,7 @@ BEGIN
           AND conrelid = 'objectified.project'::regclass
     ) THEN
         ALTER TABLE objectified.project
-            ADD CONSTRAINT project_slug_format CHECK (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$');
+            ADD CONSTRAINT project_slug_format CHECK (slug ~ '^[a-z0-9]+(?:[-_][a-z0-9]+)*$');
     END IF;
 END;
 $$;
@@ -37,11 +39,25 @@ CREATE TABLE IF NOT EXISTS objectified.project_history (
     project_id  UUID NOT NULL REFERENCES objectified.project(id),
     tenant_id   UUID NOT NULL REFERENCES objectified.tenant(id),
     changed_by  UUID REFERENCES objectified.account(id),
-    operation   VARCHAR(16) NOT NULL,           -- 'INSERT', 'UPDATE', 'DELETE'
-    old_data    JSONB DEFAULT NULL,             -- row state before the change
-    new_data    JSONB DEFAULT NULL,             -- row state after the change
+    operation   VARCHAR(16) NOT NULL,
+    old_data    JSONB DEFAULT NULL,
+    new_data    JSONB DEFAULT NULL,
     changed_at  TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT timezone('utc', clock_timestamp())
 );
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'project_history_operation_check'
+          AND conrelid = 'objectified.project_history'::regclass
+    ) THEN
+        ALTER TABLE objectified.project_history
+            ADD CONSTRAINT project_history_operation_check
+            CHECK (operation IN ('INSERT', 'UPDATE', 'DELETE'));
+    END IF;
+END;
+$$;
 
 -- Indices for efficient history lookups
 CREATE INDEX IF NOT EXISTS idx_project_history_project_id

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_admin, require_authenticated
 from app.database import db
-from app.routes.helpers import _not_found
+from app.routes.helpers import _get_active_account_by_id, _not_found
 from app.schemas import AccountCreate, AccountSchema, AccountUpdate, ProfileUpdate
 
 logger = logging.getLogger(__name__)
@@ -79,17 +79,13 @@ def get_me(
 ) -> AccountSchema:
     """Get the current user's profile by JWT."""
     user_id = caller["user_id"]
-    rows = db.execute_query(
-        """
-        SELECT id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
-        FROM objectified.account
-        WHERE id = %s AND deleted_at IS NULL
-        """,
-        (user_id,),
+    account = _get_active_account_by_id(
+        user_id,
+        columns="id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at",
     )
-    if not rows:
+    if not account:
         raise _not_found("User", user_id)
-    return AccountSchema(**dict(rows[0]))
+    return AccountSchema(**account)
 
 
 @router.patch(
@@ -107,11 +103,7 @@ def update_me(
 ) -> AccountSchema:
     """Update the current user's profile (name and metadata only)."""
     user_id = caller["user_id"]
-    rows = db.execute_query(
-        "SELECT id FROM objectified.account WHERE id = %s AND deleted_at IS NULL",
-        (user_id,),
-    )
-    if not rows:
+    if not _get_active_account_by_id(user_id):
         raise _not_found("User", user_id)
 
     updates: list[str] = []
@@ -254,11 +246,7 @@ def update_user(
     _admin: Annotated[dict[str, Any], Depends(require_admin)] = None,
 ) -> AccountSchema:
     """Update a user account by ID."""
-    rows = db.execute_query(
-        "SELECT id FROM objectified.account WHERE id = %s AND deleted_at IS NULL",
-        (user_id,),
-    )
-    if not rows:
+    if not _get_active_account_by_id(user_id):
         raise _not_found("User", user_id)
 
     updates: list[str] = []
@@ -324,11 +312,7 @@ def update_user(
 )
 def deactivate_user(user_id: str) -> None:
     """Deactivate (soft-delete) a user account."""
-    rows = db.execute_query(
-        "SELECT id FROM objectified.account WHERE id = %s AND deleted_at IS NULL",
-        (user_id,),
-    )
-    if not rows:
+    if not _get_active_account_by_id(user_id):
         raise _not_found("User", user_id)
 
     db.execute_mutation(
@@ -338,6 +322,4 @@ def deactivate_user(user_id: str) -> None:
         WHERE id = %s AND deleted_at IS NULL
         """,
         (user_id,),
-        returning=False,
     )
-

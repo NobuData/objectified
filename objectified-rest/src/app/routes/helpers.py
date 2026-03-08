@@ -1,7 +1,7 @@
 """Shared internal helpers used by multiple v1 route modules."""
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import HTTPException
 
@@ -12,6 +12,24 @@ logger = logging.getLogger(__name__)
 
 def _not_found(entity: str, entity_id: str) -> HTTPException:
     return HTTPException(status_code=404, detail=f"{entity} not found: {entity_id}")
+
+
+def _get_active_account_by_id(account_id: str, columns: str = "id") -> Optional[dict[str, Any]]:
+    """Return one active account row by id, or ``None`` when absent."""
+    rows = db.execute_query(
+        f"SELECT {columns} FROM objectified.account WHERE id = %s AND deleted_at IS NULL LIMIT 1",
+        (account_id,),
+    )
+    return dict(rows[0]) if rows else None
+
+
+def _get_active_account_by_email(email: str, columns: str = "id") -> Optional[dict[str, Any]]:
+    """Return one active account row by email, or ``None`` when absent."""
+    rows = db.execute_query(
+        f"SELECT {columns} FROM objectified.account WHERE email ILIKE %s AND deleted_at IS NULL LIMIT 1",
+        (email,),
+    )
+    return dict(rows[0]) if rows else None
 
 
 def _assert_tenant_exists(tenant_id: str) -> None:
@@ -26,11 +44,7 @@ def _assert_tenant_exists(tenant_id: str) -> None:
 
 def _assert_account_exists(account_id: str) -> None:
     """Raise 404 if account does not exist or is deleted."""
-    rows = db.execute_query(
-        "SELECT id FROM objectified.account WHERE id = %s AND deleted_at IS NULL",
-        (account_id,),
-    )
-    if not rows:
+    if not _get_active_account_by_id(account_id):
         raise _not_found("User", account_id)
 
 
@@ -53,18 +67,10 @@ def _resolve_account_id(account_id: Optional[str], email: Optional[str]) -> str:
         _assert_account_exists(account_id)
         return account_id
 
-    rows = db.execute_query(
-        """
-        SELECT id FROM objectified.account
-        WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL
-        LIMIT 1
-        """,
-        (email,),
-    )
-    if not rows:
+    account = _get_active_account_by_email(email or "", columns="id")
+    if not account:
         raise HTTPException(
             status_code=404,
             detail=f"No active account found with email: {email}",
         )
-    return str(rows[0]["id"])
-
+    return str(account["id"])

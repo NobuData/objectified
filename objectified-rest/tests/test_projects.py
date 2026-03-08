@@ -277,6 +277,26 @@ def test_create_project_slug_conflict_returns_409(client):
     assert r.status_code == 409
 
 
+def test_create_project_slug_uniqueness_checks_only_active_rows(client):
+    """POST /v1/tenants/{id}/projects checks slug conflicts only among active rows."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [],
+        ]
+        mock_db.execute_mutation.return_value = _PROJECT_ROW
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects",
+            json={
+                "name": "My Project",
+                "slug": "my-project",
+            },
+        )
+    assert r.status_code == 201
+    slug_query = mock_db.execute_query.call_args_list[1].args[0]
+    assert "deleted_at IS NULL" in slug_query
+
+
 def test_create_project_missing_name_returns_400(client):
     """POST /v1/tenants/{id}/projects returns 400 when name is empty."""
     with mock_db_all() as mock_db:
@@ -382,6 +402,25 @@ def test_update_project_slug_conflict_returns_409(client):
             json={"slug": "existing-slug"},
         )
     assert r.status_code == 409
+
+
+def test_update_project_slug_uniqueness_checks_only_active_rows(client):
+    """PUT /v1/tenants/{id}/projects/{pid} checks slug conflicts only among active rows."""
+    updated_row = {**_PROJECT_ROW, "slug": "reused-slug"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [_PROJECT_ROW],
+            [],
+        ]
+        mock_db.execute_mutation.return_value = updated_row
+        r = client.put(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}",
+            json={"slug": "reused-slug"},
+        )
+    assert r.status_code == 200
+    slug_query = mock_db.execute_query.call_args_list[2].args[0]
+    assert "deleted_at IS NULL" in slug_query
 
 
 def test_update_project_not_found_returns_404(client):
