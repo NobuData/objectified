@@ -169,7 +169,7 @@ def create_project(
 
     # Per-tenant slug uniqueness check
     existing = db.execute_query(
-        "SELECT id FROM objectified.project WHERE tenant_id = %s AND slug ILIKE %s AND deleted_at IS NULL",
+        "SELECT id FROM objectified.project WHERE tenant_id = %s AND slug ILIKE %s",
         (tenant_id, slug),
     )
     if existing:
@@ -250,9 +250,10 @@ def update_project(
     if payload.slug is not None:
         slug = _validate_slug(payload.slug)
         # Check uniqueness within tenant (excluding this project)
+        # This must include soft-deleted projects to match the DB-level non-partial unique constraint on project slugs.
         existing = db.execute_query(
             "SELECT id FROM objectified.project "
-            "WHERE tenant_id = %s AND slug ILIKE %s AND id != %s AND deleted_at IS NULL",
+            "WHERE tenant_id = %s AND slug ILIKE %s AND id != %s",
             (tenant_id, slug, project_id),
         )
         if existing:
@@ -273,11 +274,13 @@ def update_project(
 
     if not updates:
         # Nothing to update — return existing row
-        rows = db.execute_query(
-            f"SELECT {_PROJECT_COLUMNS} FROM objectified.project WHERE id = %s",
-            (project_id,),
+        # No updatable fields were provided; keep behavior consistent with other update endpoints.
+        logger.info(
+            "No fields to update for project_id=%s in tenant_id=%s",
+            project_id,
+            tenant_id,
         )
-        return ProjectSchema(**dict(rows[0]))
+        raise HTTPException(status_code=400, detail="No fields to update")
 
     params.extend([project_id, tenant_id])
 
@@ -330,7 +333,7 @@ def delete_project(
     row = db.execute_mutation(
         f"""
         UPDATE objectified.project
-        SET deleted_at = timezone('utc', clock_timestamp())
+        SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
         WHERE id = %s AND tenant_id = %s AND deleted_at IS NULL
         RETURNING {_PROJECT_COLUMNS}
         """,
