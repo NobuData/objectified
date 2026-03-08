@@ -25,6 +25,7 @@ def mock_db_all():
         patch("app.routes.helpers.db", mock),
         patch("app.routes.auth.db", mock),
         patch("app.routes.api_keys.db", mock),
+        patch("app.routes.projects.db", mock),
         patch("app.database.db", mock),
     ):
         yield mock

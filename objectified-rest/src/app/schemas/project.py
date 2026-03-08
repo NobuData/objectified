@@ -25,10 +25,16 @@ class ProjectSchema(BaseModel):
 
 
 class ProjectCreate(BaseModel):
-    """Create payload for objectified.project."""
+    """Create payload for objectified.project.
 
-    tenant_id: str
-    creator_id: str
+    ``tenant_id`` and ``creator_id`` are optional.  When omitted they are
+    taken from the URL path and the authenticated caller respectively.
+    If supplied they must match those authoritative sources exactly —
+    any mismatch returns HTTP 400.
+    """
+
+    tenant_id: Optional[str] = None
+    creator_id: Optional[str] = None
     name: str
     description: str = ""
     slug: str
@@ -44,3 +50,18 @@ class ProjectUpdate(BaseModel):
     slug: Optional[str] = None
     enabled: Optional[bool] = None
     metadata: Optional[dict[str, Any]] = None
+
+
+class ProjectHistorySchema(BaseModel):
+    """Response schema for objectified.project_history."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    tenant_id: str
+    changed_by: Optional[str] = None
+    operation: str
+    old_data: Optional[dict[str, Any]] = None
+    new_data: Optional[dict[str, Any]] = None
+    changed_at: datetime
