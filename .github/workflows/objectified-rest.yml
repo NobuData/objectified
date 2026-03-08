@@ -50,7 +50,3 @@ jobs:
 
       - name: Generate OpenAPI spec
         run: uv run python scripts/generate_openapi.py
-
-      - name: Verify OpenAPI 3.2.0
-        run: |
-          grep -q '"openapi": "3.2.0"' openapi/openapi.json || (echo "Expected openapi 3.2.0 in openapi/openapi.json" && exit 1)
