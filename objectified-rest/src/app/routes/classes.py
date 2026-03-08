@@ -95,9 +95,10 @@ def list_classes_with_properties_and_tags(
     class_by_id: dict[str, dict[str, Any]] = {}
     result: list[dict[str, Any]] = []
     for row in class_rows:
-        cls_dict = _row_to_class(dict(row))
+        cls_model = ClassSchema(**_row_to_class(dict(row)))
+        cls_dict = cls_model.model_dump(mode="json", by_alias=True)
         cls_dict["properties"] = []
-        cls_dict["tags"] = cls_dict.get("metadata", {}).get("tags", [])
+        cls_dict["tags"] = (cls_dict.get("metadata") or {}).get("tags", [])
         if isinstance(cls_dict.get("tags"), str):
             cls_dict["tags"] = [cls_dict["tags"]] if cls_dict["tags"] else []
         result.append(cls_dict)
