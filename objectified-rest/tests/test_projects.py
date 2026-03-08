@@ -534,3 +534,24 @@ def test_get_project_history_project_not_found_returns_404(client):
         r = client.get(f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/history")
     assert r.status_code == 404
 
+
+# ---------------------------------------------------------------------------
+# List deleted projects
+# ---------------------------------------------------------------------------
+
+
+def test_list_deleted_projects_returns_only_deleted(client):
+    """GET /v1/tenants/{id}/projects/deleted returns only soft-deleted projects."""
+    deleted_row = {**_PROJECT_ROW, "deleted_at": _NOW.isoformat()}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [deleted_row],
+        ]
+        r = client.get(f"/v1/tenants/{_TENANT_ID}/projects/deleted")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["id"] == _PROJECT_ID
+    assert data[0]["deleted_at"] is not None
+

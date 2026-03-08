@@ -26,7 +26,7 @@ def _get_active_account_by_id(account_id: str, columns: str = "id") -> Optional[
 def _get_active_account_by_email(email: str, columns: str = "id") -> Optional[dict[str, Any]]:
     """Return one active account row by email, or ``None`` when absent."""
     rows = db.execute_query(
-        f"SELECT {columns} FROM objectified.account WHERE email ILIKE %s AND deleted_at IS NULL LIMIT 1",
+        f"SELECT {columns} FROM objectified.account WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL LIMIT 1",
         (email,),
     )
     return dict(rows[0]) if rows else None

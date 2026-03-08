@@ -21,6 +21,7 @@ class VersionSchema(BaseModel):
 
     id: str
     project_id: str
+    source_version_id: Optional[str] = None
     creator_id: str
     name: str
     description: str
@@ -38,8 +39,9 @@ class VersionSchema(BaseModel):
 class VersionCreate(BaseModel):
     """Create payload for objectified.version."""
 
-    project_id: str
-    creator_id: str
+    project_id: Optional[str] = None
+    creator_id: Optional[str] = None
+    source_version_id: Optional[str] = None
     name: str
     description: str = ""
     change_log: Optional[str] = None
@@ -49,14 +51,28 @@ class VersionCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class VersionUpdate(BaseModel):
-    """Update payload for objectified.version."""
+class VersionMetadataUpdate(BaseModel):
+    """Metadata update payload for objectified.version."""
 
-    name: Optional[str] = None
     description: Optional[str] = None
     change_log: Optional[str] = None
-    enabled: Optional[bool] = None
-    published: Optional[bool] = None
-    visibility: Optional[VersionVisibility] = None
-    metadata: Optional[dict[str, Any]] = None
-    published_at: Optional[datetime] = None
+
+
+class VersionHistorySchema(BaseModel):
+    """Response schema for objectified.version_history."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    version_id: str
+    project_id: str
+    changed_by: Optional[str] = None
+    revision: int
+    operation: str
+    old_data: Optional[dict[str, Any]] = None
+    new_data: Optional[dict[str, Any]] = None
+    changed_at: datetime
+
+
+# Backward-compatible alias for older imports.
+VersionUpdate = VersionMetadataUpdate

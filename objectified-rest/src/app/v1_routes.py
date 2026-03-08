@@ -8,6 +8,7 @@ Routes are split across focused modules:
                           /v1/tenants/{id}/administrators
   - app.routes.api_keys → /v1/tenants/{id}/api-keys
   - app.routes.projects → /v1/tenants/{id}/projects
+  - app.routes.versions → /v1/tenants/{tenant_id}/projects/{project_id}/versions, /v1/versions/{id}
 
 This module assembles them under the /v1 prefix and re-exports the password
 helpers so that existing imports (e.g. in tests) continue to work.
@@ -21,6 +22,7 @@ from app.routes.projects import router as _projects_router
 from app.routes.users import router as _users_router
 from app.routes.users import _hash_password, _verify_password  # noqa: F401 — re-export
 from app.routes.tenants import router as _tenants_router
+from app.routes.versions import router as _versions_router
 
 router = APIRouter(prefix="/v1")
 router.include_router(_auth_router)
@@ -28,3 +30,4 @@ router.include_router(_users_router)
 router.include_router(_tenants_router)
 router.include_router(_api_keys_router)
 router.include_router(_projects_router)
+router.include_router(_versions_router)
