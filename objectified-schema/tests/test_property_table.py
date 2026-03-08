@@ -49,7 +49,7 @@ def _insert_project(conn, tenant_id, creator_id, slug="prop-project"):
         """
         INSERT INTO objectified.project (tenant_id, creator_id, name, description, slug)
         VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (slug) DO NOTHING
+        ON CONFLICT (tenant_id, slug) DO NOTHING
         """,
         (tenant_id, creator_id, "Test Project", "A project for testing property", slug),
     )
