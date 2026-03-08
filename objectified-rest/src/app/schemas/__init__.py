@@ -20,6 +20,7 @@ from app.schemas.tenant_account import (
     TenantAccountCreate,
     TenantAccountSchema,
     TenantAccountUpdate,
+    TenantAdministratorCreate,
 )
 from app.schemas.version import (
     VersionCreate,
@@ -48,6 +49,7 @@ __all__ = [
     "TenantAccountCreate",
     "TenantAccountSchema",
     "TenantAccountUpdate",
+    "TenantAdministratorCreate",
     "TenantCreate",
     "TenantSchema",
     "TenantUpdate",

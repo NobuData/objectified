@@ -13,6 +13,7 @@ from app.schemas import (
     AccountSchema,
     TenantSchema,
     TenantAccessLevel,
+    TenantAdministratorCreate,
     VersionVisibility,
 )
 from app.v1_routes import _hash_password, _verify_password
@@ -1062,21 +1063,30 @@ def test_add_tenant_administrator_success(admin_client):
         mock_db.execute_mutation.return_value = _TENANT_ADMIN_ROW
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-            json={
-                "account_id": _ACCOUNT_ROW["id"],
-                "access_level": "administrator",
-            },
+            json={"account_id": _ACCOUNT_ROW["id"]},
         )
     assert r.status_code == 201
     assert r.json()["access_level"] == "administrator"
     assert r.json()["account_id"] == _ACCOUNT_ROW["id"]
 
 
+def test_add_tenant_administrator_rejects_access_level_field(admin_client):
+    """POST /v1/tenants/{id}/administrators returns 422 when access_level is supplied.
+
+    The dedicated schema does not include access_level — it is always 'administrator'.
+    """
+    r = admin_client.post(
+        f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
+        json={"account_id": _ACCOUNT_ROW["id"], "access_level": "administrator"},
+    )
+    assert r.status_code == 422
+
+
 def test_add_tenant_administrator_requires_auth(client):
     """POST /v1/tenants/{id}/administrators returns 401 with no credentials."""
     r = client.post(
         f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-        json={"account_id": _ACCOUNT_ROW["id"], "access_level": "administrator"},
+        json={"account_id": _ACCOUNT_ROW["id"]},
     )
     assert r.status_code == 401
 
@@ -1087,7 +1097,7 @@ def test_add_tenant_administrator_tenant_not_found(admin_client):
         mock_db.execute_query.return_value = []
         r = admin_client.post(
             "/v1/tenants/00000000-0000-0000-0000-000000000099/administrators",
-            json={"account_id": _ACCOUNT_ROW["id"], "access_level": "administrator"},
+            json={"account_id": _ACCOUNT_ROW["id"]},
         )
     assert r.status_code == 404
 
@@ -1098,10 +1108,7 @@ def test_add_tenant_administrator_account_not_found(admin_client):
         mock_db.execute_query.side_effect = [[_TENANT_ROW], []]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-            json={
-                "account_id": "00000000-0000-0000-0000-000000000099",
-                "access_level": "administrator",
-            },
+            json={"account_id": "00000000-0000-0000-0000-000000000099"},
         )
     assert r.status_code == 404
 
@@ -1116,7 +1123,7 @@ def test_add_tenant_administrator_duplicate(admin_client):
         ]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-            json={"account_id": _ACCOUNT_ROW["id"], "access_level": "administrator"},
+            json={"account_id": _ACCOUNT_ROW["id"]},
         )
     assert r.status_code == 409
 
@@ -1134,7 +1141,7 @@ def test_add_tenant_administrator_promotes_existing_member(admin_client):
         mock_db.execute_mutation.return_value = promoted_row
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-            json={"account_id": _ACCOUNT_ROW["id"], "access_level": "administrator"},
+            json={"account_id": _ACCOUNT_ROW["id"]},
         )
     assert r.status_code == 201
     assert r.json()["access_level"] == "administrator"
@@ -1152,7 +1159,7 @@ def test_add_tenant_administrator_promote_server_error(admin_client):
         mock_db.execute_mutation.return_value = None
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-            json={"account_id": _ACCOUNT_ROW["id"], "access_level": "administrator"},
+            json={"account_id": _ACCOUNT_ROW["id"]},
         )
     assert r.status_code == 500
 
@@ -1164,7 +1171,7 @@ def test_add_tenant_administrator_server_error(admin_client):
         mock_db.execute_mutation.return_value = None
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-            json={"account_id": _ACCOUNT_ROW["id"], "access_level": "administrator"},
+            json={"account_id": _ACCOUNT_ROW["id"]},
         )
     assert r.status_code == 500
 
@@ -1181,7 +1188,7 @@ def test_add_tenant_administrator_by_email_success(admin_client):
         mock_db.execute_mutation.return_value = _TENANT_ADMIN_ROW
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-            json={"email": _ACCOUNT_ROW["email"], "access_level": "administrator"},
+            json={"email": _ACCOUNT_ROW["email"]},
         )
     assert r.status_code == 201
     assert r.json()["access_level"] == "administrator"
@@ -1196,7 +1203,7 @@ def test_add_tenant_administrator_by_email_not_found(admin_client):
         ]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-            json={"email": "unknown@example.com", "access_level": "administrator"},
+            json={"email": "unknown@example.com"},
         )
     assert r.status_code == 404
     assert "email" in r.json()["detail"].lower()
@@ -1206,7 +1213,7 @@ def test_add_tenant_administrator_no_identifier_returns_422(admin_client):
     """POST /v1/tenants/{id}/administrators returns 422 when neither account_id nor email is provided."""
     r = admin_client.post(
         f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
-        json={"access_level": "administrator"},
+        json={},
     )
     assert r.status_code == 422
 
@@ -1221,7 +1228,6 @@ def test_add_tenant_administrator_mismatched_tenant_id(admin_client):
             json={
                 "tenant_id": different_tenant_id,
                 "account_id": _ACCOUNT_ROW["id"],
-                "access_level": "administrator",
             },
         )
     assert r.status_code == 400
@@ -1294,5 +1300,129 @@ def test_update_tenant_member_requires_auth(client):
         json={"access_level": "administrator"},
     )
     assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GH-18: 403 tests — authenticated-but-not-admin for every admin-only route
+# ---------------------------------------------------------------------------
+
+def _non_admin_headers() -> dict:
+    """Return auth headers that decode to a valid but non-admin JWT caller."""
+    return {"Authorization": "Bearer valid.jwt.token"}
+
+
+def _patch_non_admin():
+    """Context manager that patches JWT decoding to return a non-admin caller."""
+    from unittest.mock import patch as _patch
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    stack.enter_context(
+        _patch(
+            "app.auth.decode_jwt",
+            return_value={
+                "sub": "member-uid",
+                "email": "member@example.com",
+                "is_admin": False,
+            },
+        )
+    )
+    stack.enter_context(_patch("app.auth._is_platform_admin", return_value=False))
+    return stack
+
+
+def test_update_user_non_admin_returns_403(client):
+    """PUT /v1/users/{id} returns 403 when caller is authenticated but not an admin."""
+    with _patch_non_admin():
+        r = client.put(
+            f"/v1/users/{_ACCOUNT_ROW['id']}",
+            json={"name": "Ghost"},
+            headers=_non_admin_headers(),
+        )
+    assert r.status_code == 403
+
+
+def test_deactivate_user_non_admin_returns_403(client):
+    """DELETE /v1/users/{id} returns 403 when caller is authenticated but not an admin."""
+    with _patch_non_admin():
+        r = client.delete(
+            f"/v1/users/{_ACCOUNT_ROW['id']}",
+            headers=_non_admin_headers(),
+        )
+    assert r.status_code == 403
+
+
+def test_add_tenant_member_non_admin_returns_403(client):
+    """POST /v1/tenants/{id}/members returns 403 when caller is authenticated but not an admin."""
+    with _patch_non_admin():
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members",
+            json={"account_id": _ACCOUNT_ROW["id"], "access_level": "member"},
+            headers=_non_admin_headers(),
+        )
+    assert r.status_code == 403
+
+
+def test_update_tenant_non_admin_returns_403(client):
+    """PUT /v1/tenants/{id} returns 403 when caller is authenticated but not an admin."""
+    with _patch_non_admin():
+        r = client.put(
+            f"/v1/tenants/{_TENANT_ROW['id']}",
+            json={"name": "Ghost"},
+            headers=_non_admin_headers(),
+        )
+    assert r.status_code == 403
+
+
+def test_deactivate_tenant_non_admin_returns_403(client):
+    """DELETE /v1/tenants/{id} returns 403 when caller is authenticated but not an admin."""
+    with _patch_non_admin():
+        r = client.delete(
+            f"/v1/tenants/{_TENANT_ROW['id']}",
+            headers=_non_admin_headers(),
+        )
+    assert r.status_code == 403
+
+
+def test_remove_tenant_member_non_admin_returns_403(client):
+    """DELETE /v1/tenants/{id}/members/{account_id} returns 403 when caller is not an admin."""
+    with _patch_non_admin():
+        r = client.delete(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members/{_ACCOUNT_ROW['id']}",
+            headers=_non_admin_headers(),
+        )
+    assert r.status_code == 403
+
+
+def test_update_tenant_member_non_admin_returns_403(client):
+    """PUT /v1/tenants/{id}/members/{account_id} returns 403 when caller is not an admin."""
+    with _patch_non_admin():
+        r = client.put(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members/{_ACCOUNT_ROW['id']}",
+            json={"access_level": "administrator"},
+            headers=_non_admin_headers(),
+        )
+    assert r.status_code == 403
+
+
+def test_add_tenant_administrator_non_admin_returns_403(client):
+    """POST /v1/tenants/{id}/administrators returns 403 when caller is not an admin."""
+    with _patch_non_admin():
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
+            json={"account_id": _ACCOUNT_ROW["id"]},
+            headers=_non_admin_headers(),
+        )
+    assert r.status_code == 403
+
+
+def test_remove_tenant_administrator_non_admin_returns_403(client):
+    """DELETE /v1/tenants/{id}/administrators/{account_id} returns 403 when caller is not an admin."""
+    with _patch_non_admin():
+        r = client.delete(
+            f"/v1/tenants/{_TENANT_ROW['id']}/administrators/{_ACCOUNT_ROW['id']}",
+            headers=_non_admin_headers(),
+        )
+    assert r.status_code == 403
 
 

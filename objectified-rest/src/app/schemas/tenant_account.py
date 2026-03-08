@@ -51,6 +51,32 @@ class TenantAccountCreate(BaseModel):
         return self
 
 
+class TenantAdministratorCreate(BaseModel):
+    """Request body for POST /v1/tenants/{id}/administrators.
+
+    Dedicated schema that intentionally omits ``access_level`` — the endpoint
+    always assigns ``administrator`` and the field is not meaningful here.
+
+    Either ``account_id`` (UUID) or ``email`` must be provided to identify the
+    account.  If both are supplied, ``account_id`` takes precedence.
+    ``tenant_id`` is optional in the body — it is validated against the path
+    parameter in the route handler.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: Optional[str] = None
+    account_id: Optional[str] = None
+    email: Optional[str] = None
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def _require_account_id_or_email(self) -> "TenantAdministratorCreate":
+        if not self.account_id and not self.email:
+            raise ValueError("Either 'account_id' or 'email' must be provided")
+        return self
+
+
 class TenantAccountUpdate(BaseModel):
     """Update payload for objectified.tenant_account."""
 

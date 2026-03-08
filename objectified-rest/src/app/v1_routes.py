@@ -20,6 +20,7 @@ from app.schemas import (
     TenantAccountCreate,
     TenantAccountSchema,
     TenantAccountUpdate,
+    TenantAdministratorCreate,
     TenantCreate,
     TenantSchema,
     TenantUpdate,
@@ -523,35 +524,8 @@ def list_tenant_members(tenant_id: str) -> List[TenantAccountSchema]:
 def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAccountSchema:
     """Add a member to a tenant by account_id or email."""
     _assert_tenant_exists(tenant_id)
-    # Ensure the tenant_id in the payload (if provided) matches the path parameter
-    payload_tenant_id = getattr(payload, "tenant_id", None)
-    if payload_tenant_id is not None and payload_tenant_id != tenant_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Payload tenant_id does not match path tenant_id",
-        )
-
-    # Resolve account_id — prefer explicit account_id, fall back to email lookup
-    resolved_account_id: str
-    if payload.account_id:
-        _assert_account_exists(payload.account_id)
-        resolved_account_id = payload.account_id
-    else:
-        # Look up account by email (case-insensitive)
-        email_rows = db.execute_query(
-            """
-            SELECT id FROM objectified.account
-            WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL
-            LIMIT 1
-            """,
-            (payload.email,),
-        )
-        if not email_rows:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No active account found with email: {payload.email}",
-            )
-        resolved_account_id = str(email_rows[0]["id"])
+    _validate_payload_tenant_id(payload.tenant_id, tenant_id)
+    resolved_account_id = _resolve_account_id(payload.account_id, payload.email)
 
     existing = db.execute_query(
         """
@@ -646,40 +620,12 @@ def list_tenant_administrators(tenant_id: str) -> List[TenantAccountSchema]:
     dependencies=[Depends(require_admin)],
 )
 def add_tenant_administrator(
-    tenant_id: str, payload: TenantAccountCreate
+    tenant_id: str, payload: TenantAdministratorCreate
 ) -> TenantAccountSchema:
     """Add or promote an administrator in a tenant (admin only)."""
     _assert_tenant_exists(tenant_id)
-
-    # Ensure the tenant_id in the payload (if provided) matches the path parameter
-    payload_tenant_id = getattr(payload, "tenant_id", None)
-    if payload_tenant_id is not None and payload_tenant_id != tenant_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Payload tenant_id does not match path tenant_id",
-        )
-
-    # Resolve account_id — prefer explicit account_id, fall back to email lookup
-    resolved_account_id: str
-    if payload.account_id:
-        _assert_account_exists(payload.account_id)
-        resolved_account_id = payload.account_id
-    else:
-        # Look up account by email (case-insensitive)
-        email_rows = db.execute_query(
-            """
-            SELECT id FROM objectified.account
-            WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL
-            LIMIT 1
-            """,
-            (payload.email,),
-        )
-        if not email_rows:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No active account found with email: {payload.email}",
-            )
-        resolved_account_id = str(email_rows[0]["id"])
+    _validate_payload_tenant_id(payload.tenant_id, tenant_id)
+    resolved_account_id = _resolve_account_id(payload.account_id, payload.email)
 
     # Check whether there is already an active tenant_account row for this member
     existing_rows = db.execute_query(
@@ -830,3 +776,47 @@ def _assert_account_exists(account_id: str) -> None:
     )
     if not rows:
         raise _not_found("User", account_id)
+
+
+def _validate_payload_tenant_id(payload_tenant_id: Optional[str], path_tenant_id: str) -> None:
+    """Raise 400 if an optional body ``tenant_id`` conflicts with the URL path value.
+
+    Both ``add_tenant_member`` and ``add_tenant_administrator`` accept an
+    optional ``tenant_id`` in the request body for client convenience; this
+    helper ensures it is not silently ignored when it contradicts the path.
+    """
+    if payload_tenant_id is not None and payload_tenant_id != path_tenant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Payload tenant_id does not match path tenant_id",
+        )
+
+
+def _resolve_account_id(account_id: Optional[str], email: Optional[str]) -> str:
+    """Resolve and return the account UUID from either ``account_id`` or ``email``.
+
+    ``account_id`` takes precedence when both are supplied.  Raises 404 if the
+    account cannot be found.  Used by ``add_tenant_member`` and
+    ``add_tenant_administrator`` to avoid duplicating the lookup logic.
+    """
+    if account_id:
+        _assert_account_exists(account_id)
+        return account_id
+
+    # Fall back to case-insensitive email lookup
+    rows = db.execute_query(
+        """
+        SELECT id FROM objectified.account
+        WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL
+        LIMIT 1
+        """,
+        (email,),
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No active account found with email: {email}",
+        )
+    return str(rows[0]["id"])
+
+
