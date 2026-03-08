@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.auth import require_admin
+from app.auth import require_admin, require_authenticated
 from app.schemas import (
     AccountSchema,
     TenantSchema,
@@ -75,6 +75,14 @@ def client():
 def admin_client():
     """FastAPI test client with require_admin overridden to pass as admin."""
     app.dependency_overrides[require_admin] = lambda: _ADMIN_CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def jwt_client():
+    """FastAPI test client with require_authenticated overridden (JWT caller for /me)."""
+    app.dependency_overrides[require_authenticated] = lambda: _ADMIN_CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -248,6 +256,75 @@ def test_get_user_by_id_not_found(client):
         mock_db.execute_query.return_value = []
         r = client.get("/v1/users/00000000-0000-0000-0000-000000000099")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/me and PATCH /v1/me (current user profile)
+# ---------------------------------------------------------------------------
+
+_ME_ACCOUNT_ROW: dict[str, Any] = {
+    **_ACCOUNT_ROW,
+    "id": _ADMIN_CALLER["user_id"],
+}
+
+
+def test_get_me_requires_auth(client):
+    """GET /v1/me returns 401 with no credentials."""
+    r = client.get("/v1/me")
+    assert r.status_code == 401
+
+
+def test_get_me_success(jwt_client):
+    """GET /v1/me returns the authenticated user's account."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_ME_ACCOUNT_ROW]
+        r = jwt_client.get("/v1/me")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["id"] == _ADMIN_CALLER["user_id"]
+    assert data["email"] == _ME_ACCOUNT_ROW["email"]
+
+
+def test_get_me_not_found(jwt_client):
+    """GET /v1/me returns 404 when account no longer exists."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = jwt_client.get("/v1/me")
+    assert r.status_code == 404
+
+
+def test_patch_me_success(jwt_client):
+    """PATCH /v1/me updates name and metadata and returns updated account."""
+    updated = {**_ME_ACCOUNT_ROW, "name": "Alice Updated", "metadata": {"k": "v"}}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_ME_ACCOUNT_ROW]
+        mock_db.execute_mutation.return_value = updated
+        r = jwt_client.patch(
+            "/v1/me",
+            json={"name": "Alice Updated", "metadata": {"k": "v"}},
+        )
+    assert r.status_code == 200
+    assert r.json()["name"] == "Alice Updated"
+    assert r.json()["metadata"] == {"k": "v"}
+
+
+def test_patch_me_no_fields(jwt_client):
+    """PATCH /v1/me returns 400 when no fields are provided."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_ME_ACCOUNT_ROW]
+        r = jwt_client.patch("/v1/me", json={})
+    assert r.status_code == 400
+
+
+def test_patch_me_requires_auth(client):
+    """PATCH /v1/me returns 401 with no credentials."""
+    r = client.patch("/v1/me", json={"name": "Ghost"})
+    assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/users/{id}, POST /v1/users, etc.
+# ---------------------------------------------------------------------------
 
 
 def test_create_user_success(client):

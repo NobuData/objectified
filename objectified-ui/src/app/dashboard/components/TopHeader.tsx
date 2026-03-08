@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
-import { LayoutDashboard, User, Building2 } from 'lucide-react';
+import { LayoutDashboard, User, Building2, UserCircle, PenTool } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 
 export default function TopHeader() {
@@ -24,7 +24,21 @@ export default function TopHeader() {
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <LayoutDashboard className="h-4 w-4" />
-            Design Canvas
+            Dashboard
+          </Link>
+          <Link
+            href="/data-designer"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <PenTool className="h-4 w-4" />
+            Data Designer
+          </Link>
+          <Link
+            href="/dashboard/profile"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <UserCircle className="h-4 w-4" />
+            Account
           </Link>
         </nav>
       </div>

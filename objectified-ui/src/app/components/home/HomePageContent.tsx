@@ -61,7 +61,7 @@ export default function HomePageContent({ firstName }: HomePageContentProps) {
                 <LayoutDashboard className="home-card-icon" aria-hidden />
                 <Text weight="bold" size="3">Dashboard</Text>
                 <Text size="2" color="gray" align="center" className="home-card-description">
-                  Design canvas and project tools.
+                  Profile, account settings, and more.
                 </Text>
               </Flex>
             </Link>

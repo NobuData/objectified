@@ -1,18 +1,21 @@
-import Link from 'next/link';
+'use client';
+
+import TopHeader from '@/app/dashboard/components/TopHeader';
+import ProjectVersionBar from '@/app/dashboard/components/ProjectVersionBar';
+import DesignCanvasSidebar from '@/app/dashboard/components/DesignCanvasSidebar';
+import DesignCanvas from '@/app/dashboard/components/DesignCanvas';
 
 export default function DataDesignerPage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-[var(--background)] text-[var(--foreground)]">
-      <h1 className="text-xl font-semibold mb-2">Data Designer</h1>
-      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-        Coming soon
-      </p>
-      <Link
-        href="/"
-        className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-      >
-        Back to home
-      </Link>
+    <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+      <TopHeader />
+      <ProjectVersionBar />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <DesignCanvasSidebar />
+        <main className="flex-1 min-w-0 min-h-0 relative">
+          <DesignCanvas />
+        </main>
+      </div>
     </div>
   );
 }

@@ -5,7 +5,7 @@ objectified.project, objectified.version, objectified.property, objectified.clas
 objectified.class_property. Used for OpenAPI documentation and future CRUD services.
 """
 
-from app.schemas.account import AccountCreate, AccountSchema, AccountUpdate
+from app.schemas.account import AccountCreate, AccountSchema, AccountUpdate, ProfileUpdate
 from app.schemas.auth import (
     ApiKeyCreate,
     ApiKeyCreateResponse,
@@ -51,6 +51,7 @@ __all__ = [
     "ClassPropertyCreate",
     "ClassPropertySchema",
     "ClassPropertyUpdate",
+    "ProfileUpdate",
     "ProjectCreate",
     "ProjectSchema",
     "ProjectUpdate",

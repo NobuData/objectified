@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
 import { authOptions } from '@lib/auth/authOptions';
+import DashboardShell from './components/DashboardShell';
 
 export default async function DashboardLayout({
   children,
@@ -12,5 +13,5 @@ export default async function DashboardLayout({
   if (!session) {
     redirect('/login');
   }
-  return <>{children}</>;
+  return <DashboardShell>{children}</DashboardShell>;
 }

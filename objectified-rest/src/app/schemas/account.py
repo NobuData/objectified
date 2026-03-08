@@ -45,3 +45,10 @@ class AccountUpdate(BaseModel):
     verified: Optional[bool] = None
     enabled: Optional[bool] = None
     metadata: Optional[dict[str, Any]] = None
+
+
+class ProfileUpdate(BaseModel):
+    """Update payload for current user profile (name and metadata only)."""
+
+    name: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
