@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Versions"])
 
 _VERSION_COLUMNS = (
-    "id, project_id, creator_id, name, description, change_log, enabled, "
+    "id, project_id, source_version_id, creator_id, name, description, change_log, enabled, "
     "published, visibility, metadata, created_at, updated_at, deleted_at, published_at"
 )
 
@@ -155,8 +155,8 @@ def create_version(
     row = db.execute_mutation(
         f"""
         INSERT INTO objectified.version
-            (project_id, creator_id, name, description, change_log, enabled, published, visibility, metadata)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            (project_id, creator_id, name, description, change_log, enabled, published, visibility, metadata, source_version_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
         RETURNING {_VERSION_COLUMNS}
         """,
         (
@@ -169,14 +169,11 @@ def create_version(
             payload.published,
             payload.visibility.value if payload.visibility else None,
             json.dumps(payload.metadata),
+            payload.source_version_id,
         ),
     )
     if not row:
         raise HTTPException(status_code=500, detail="Failed to create version")
-
-    history_new_data = dict(row)
-    if payload.source_version_id:
-        history_new_data["source_version_id"] = payload.source_version_id
 
     _record_history(
         version_id=str(row["id"]),
@@ -184,7 +181,7 @@ def create_version(
         changed_by=creator_id,
         operation="INSERT",
         old_data=None,
-        new_data=history_new_data,
+        new_data=dict(row),
     )
 
     return VersionSchema(**dict(row))
@@ -366,29 +363,26 @@ def _record_history(
     old_data: Optional[dict[str, Any]],
     new_data: Optional[dict[str, Any]],
 ) -> None:
-    """Insert a revision row into version_history. Failures are logged only."""
+    """Insert a revision row into version_history atomically. Failures are logged only."""
     try:
-        revision_rows = db.execute_query(
-            """
-            SELECT COALESCE(MAX(revision), 0) AS max_revision
-            FROM objectified.version_history
-            WHERE version_id = %s
-            """,
-            (version_id,),
-        )
-        next_revision = int(revision_rows[0]["max_revision"]) + 1 if revision_rows else 1
-
         db.execute_mutation(
             """
             INSERT INTO objectified.version_history
                 (version_id, project_id, changed_by, revision, operation, old_data, new_data)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
+            SELECT
+                %s AS version_id,
+                %s AS project_id,
+                %s AS changed_by,
+                COALESCE((SELECT MAX(revision) FROM objectified.version_history WHERE version_id = %s), 0) + 1 AS revision,
+                %s AS operation,
+                %s::jsonb AS old_data,
+                %s::jsonb AS new_data
             """,
             (
                 version_id,
                 project_id,
                 changed_by,
-                next_revision,
+                version_id,
                 operation,
                 json.dumps(old_data, default=str) if old_data is not None else None,
                 json.dumps(new_data, default=str) if new_data is not None else None,
