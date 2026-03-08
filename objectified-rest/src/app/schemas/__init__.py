@@ -6,6 +6,13 @@ objectified.class_property. Used for OpenAPI documentation and future CRUD servi
 """
 
 from app.schemas.account import AccountCreate, AccountSchema, AccountUpdate
+from app.schemas.auth import (
+    ApiKeyCreate,
+    ApiKeyCreateResponse,
+    ApiKeySchema,
+    LoginRequest,
+    LoginResponse,
+)
 from app.schemas.class_model import ClassCreate, ClassSchema, ClassUpdate
 from app.schemas.class_property import (
     ClassPropertyCreate,
@@ -33,6 +40,11 @@ __all__ = [
     "AccountCreate",
     "AccountSchema",
     "AccountUpdate",
+    "ApiKeyCreate",
+    "ApiKeyCreateResponse",
+    "ApiKeySchema",
+    "LoginRequest",
+    "LoginResponse",
     "ClassCreate",
     "ClassSchema",
     "ClassUpdate",
