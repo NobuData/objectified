@@ -382,24 +382,49 @@ def _capture_version_state(version_id: str) -> dict[str, Any]:
         (version_id,),
     )
 
+    class_by_id: dict[str, dict[str, Any]] = {}
     classes: list[dict[str, Any]] = []
+
     for cls in class_rows:
         cls_dict = dict(cls)
-        prop_rows = db.execute_query(
-            """
-            SELECT cp.id, cp.class_id, cp.property_id, cp.name, cp.description, cp.data,
-                   p.name AS property_name, p.description AS property_description,
-                   p.data AS property_data, p.enabled AS property_enabled
-            FROM objectified.class_property cp
-            JOIN objectified.property p ON p.id = cp.property_id
-            WHERE cp.class_id = %s
-              AND p.deleted_at IS NULL
-            ORDER BY cp.name ASC
-            """,
-            (str(cls_dict["id"]),),
-        )
-        cls_dict["properties"] = [dict(p) for p in prop_rows]
+        cls_dict["properties"] = []
         classes.append(cls_dict)
+        class_by_id[str(cls_dict["id"])] = cls_dict
+
+    if not classes:
+        return {"classes": []}
+
+    # Build one %s placeholder per class ID for the IN clause.
+    class_ids = [str(cls_dict["id"]) for cls_dict in classes]
+    placeholders = ", ".join(["%s"] * len(class_ids))
+
+    prop_rows = db.execute_query(
+        f"""
+        SELECT cp.id,
+               cp.class_id,
+               cp.property_id,
+               cp.name,
+               cp.description,
+               cp.data,
+               p.name AS property_name,
+               p.description AS property_description,
+               p.data AS property_data,
+               p.enabled AS property_enabled
+        FROM objectified.class_property cp
+        JOIN objectified.property p ON p.id = cp.property_id
+        WHERE cp.class_id IN ({placeholders})
+          AND p.deleted_at IS NULL
+        ORDER BY cp.name ASC
+        """,
+        tuple(class_ids),
+    )
+
+    for prop in prop_rows:
+        prop_dict = dict(prop)
+        class_id = prop_dict.get("class_id")
+        cls_dict = class_by_id.get(str(class_id)) if class_id is not None else None
+        if cls_dict is not None:
+            cls_dict["properties"].append(prop_dict)
 
     return {"classes": classes}
 
@@ -416,10 +441,13 @@ def _capture_version_state(version_id: str) -> dict[str, Any]:
 )
 def commit_version_snapshot(
     version_id: str,
-    payload: VersionSnapshotCreate,
+    payload: Optional[VersionSnapshotCreate] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSnapshotSchema:
     """Commit a snapshot of the current version state (classes + properties)."""
+    if payload is None:
+        payload = VersionSnapshotCreate()
+
     version = _assert_version_exists(version_id, include_deleted=False)
     project_id = str(version["project_id"])
     committed_by = caller.get("user_id") if caller else None
@@ -428,19 +456,30 @@ def commit_version_snapshot(
 
     row = db.execute_mutation(
         f"""
+        WITH locked_version AS (
+            SELECT id
+            FROM objectified.version
+            WHERE id = %s
+            FOR UPDATE
+        )
         INSERT INTO objectified.version_snapshot
             (version_id, project_id, committed_by, revision, label, description, snapshot)
         SELECT
             %s AS version_id,
             %s AS project_id,
             %s AS committed_by,
-            COALESCE((SELECT MAX(revision) FROM objectified.version_snapshot WHERE version_id = %s), 0) + 1 AS revision,
+            COALESCE(
+                (SELECT MAX(revision) FROM objectified.version_snapshot WHERE version_id = %s),
+                0
+            ) + 1 AS revision,
             %s AS label,
             %s AS description,
             %s::jsonb AS snapshot
+        FROM locked_version
         RETURNING {_SNAPSHOT_COLUMNS}
         """,
         (
+            version_id,
             version_id,
             project_id,
             committed_by,

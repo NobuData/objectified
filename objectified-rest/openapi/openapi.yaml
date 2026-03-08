@@ -1691,11 +1691,13 @@ paths:
           - type: 'null'
           title: X-Api-Key
       requestBody:
-        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/VersionSnapshotCreate'
+              anyOf:
+              - $ref: '#/components/schemas/VersionSnapshotCreate'
+              - type: 'null'
+              title: Payload
       responses:
         '201':
           description: Successful Response
