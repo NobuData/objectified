@@ -34,6 +34,326 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/classes:
+    get:
+      tags:
+      - Classes
+      summary: List classes by version
+      description: Return all classes for a version. Version-scoped. Pass include_deleted=true
+        to include soft-deleted classes.
+      operationId: list_classes_by_version_v1_versions__version_id__classes_get
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted classes
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted classes
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClassSchema'
+                title: Response List Classes By Version V1 Versions  Version Id  Classes
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Classes
+      summary: Create class
+      description: Create a new class in the given version.
+      operationId: create_class_v1_versions__version_id__classes_post
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/classes/with-properties-tags:
+    get:
+      tags:
+      - Classes
+      summary: List classes with properties and tags for version
+      description: Return all classes for a version with their properties and tags
+        embedded. Pass include_deleted=true to include soft-deleted classes.
+      operationId: list_classes_with_properties_and_tags_v1_versions__version_id__classes_with_properties_tags_get
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted classes
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted classes
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                title: Response List Classes With Properties And Tags V1 Versions  Version
+                  Id  Classes With Properties Tags Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/classes/{class_id}:
+    get:
+      tags:
+      - Classes
+      summary: Get class by ID
+      description: Retrieve a class by ID within a version.
+      operationId: get_class_v1_versions__version_id__classes__class_id__get
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted class
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted class
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Classes
+      summary: Update class
+      description: Update class metadata and/or canvas_metadata (position, dimensions,
+        style, group). Only provided fields are modified.
+      operationId: update_class_v1_versions__version_id__classes__class_id__put
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Classes
+      summary: Delete (soft-delete) class
+      description: Soft-delete a class by setting deleted_at.
+      operationId: delete_class_v1_versions__version_id__classes__class_id__delete
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/me:
     get:
       tags:
@@ -1665,7 +1985,6 @@ paths:
       summary: Publish a version
       description: Mark a version as published. Published versions are visible for
         pull by others according to the specified visibility policy (private or public).
-        Once published, the version is considered frozen and cannot be edited.
       operationId: publish_version_v1_versions__version_id__publish_post
       parameters:
       - name: version_id
@@ -1717,8 +2036,7 @@ paths:
       - Versions
       summary: Unpublish a version
       description: Mark a published version as unpublished. The version can be edited
-        again after unpublishing. Unpublishing is blocked if data records reference
-        this version's schemas.
+        again after unpublishing.
       operationId: unpublish_version_v1_versions__version_id__unpublish_post
       parameters:
       - name: version_id
@@ -1764,7 +2082,7 @@ paths:
       description: Capture and freeze the current state of all classes and properties
         for a version as an immutable snapshot. This is a one-time operation per version
         — if a snapshot already exists, use the /snapshots endpoint to commit additional
-        revisions. Publishing requires user authentication.
+        revisions. Freezing a schema requires user authentication (JWT token).
       operationId: freeze_version_schema_v1_versions__version_id__freeze_schema_post
       parameters:
       - name: version_id
@@ -2278,6 +2596,152 @@ components:
       - created_at
       title: ApiKeySchema
       description: Representation of a stored API key (never includes the raw secret).
+    ClassCanvasMetadata:
+      properties:
+        position:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Position
+        dimensions:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Dimensions
+        style:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Style
+        group:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Group
+      type: object
+      title: ClassCanvasMetadata
+      description: 'Canvas metadata: position, dimensions, style, group (all optional).'
+    ClassCreate:
+      properties:
+        version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Version Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+          default: ''
+        schema:
+          additionalProperties: true
+          type: object
+          title: Schema
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+      type: object
+      required:
+      - name
+      title: ClassCreate
+      description: Create payload for objectified.class.
+    ClassSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        version_id:
+          type: string
+          title: Version Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        schema:
+          additionalProperties: true
+          type: object
+          title: Schema
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+      type: object
+      required:
+      - id
+      - version_id
+      - name
+      - description
+      - created_at
+      title: ClassSchema
+      description: Response schema for objectified.class.
+    ClassUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        schema:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Schema
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+        canvas_metadata:
+          anyOf:
+          - $ref: '#/components/schemas/ClassCanvasMetadata'
+          - type: 'null'
+      type: object
+      title: ClassUpdate
+      description: Update payload for objectified.class (metadata + canvas_metadata).
     HTTPValidationError:
       properties:
         detail:

@@ -148,8 +148,8 @@ def test_create_class_returns_201(client):
     assert r.json()["name"] == "MyClass"
 
 
-def test_create_class_missing_name_returns_400(client):
-    """POST /v1/versions/{id}/classes without name returns 400."""
+def test_create_class_missing_name_returns_422(client):
+    """POST /v1/versions/{id}/classes without name returns 422."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = [_version_lookup_row()]
         r = client.post(
