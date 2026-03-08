@@ -317,3 +317,192 @@ def test_get_version_snapshot_by_revision_not_found_returns_404(client):
     assert r.status_code == 404
 
 
+# ---------------------------------------------------------------------------
+# Publish / Unpublish / Freeze-schema endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_publish_version_returns_200(client):
+    """POST /v1/versions/{id}/publish publishes the version."""
+    published_row = {**_VERSION_ROW, "published": True, "published_at": _NOW, "visibility": "private"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+        ]
+        mock_db.execute_mutation.side_effect = [published_row, None]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/publish",
+            json={"visibility": "private"},
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["published"] is True
+    assert body["visibility"] == "private"
+
+
+def test_publish_version_with_public_visibility(client):
+    """POST /v1/versions/{id}/publish publishes the version as public."""
+    published_row = {**_VERSION_ROW, "published": True, "published_at": _NOW, "visibility": "public"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+        ]
+        mock_db.execute_mutation.side_effect = [published_row, None]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/publish",
+            json={"visibility": "public"},
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["published"] is True
+    assert body["visibility"] == "public"
+
+
+def test_publish_version_already_published_returns_400(client):
+    """POST /v1/versions/{id}/publish returns 400 if already published."""
+    already_published = {**_version_lookup_row(), "published": True, "published_at": _NOW, "visibility": "private"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [already_published]
+        r = client.post(f"/v1/versions/{_VERSION_ID}/publish")
+    assert r.status_code == 400
+    assert "already published" in r.json()["detail"].lower()
+
+
+def test_publish_version_not_found_returns_404(client):
+    """POST /v1/versions/{id}/publish returns 404 when version not found."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.post(f"/v1/versions/{_VERSION_ID}/publish")
+    assert r.status_code == 404
+
+
+def test_publish_version_no_body_defaults_to_private(client):
+    """POST /v1/versions/{id}/publish without body defaults to private visibility."""
+    published_row = {**_VERSION_ROW, "published": True, "published_at": _NOW, "visibility": "private"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+        ]
+        mock_db.execute_mutation.side_effect = [published_row, None]
+        r = client.post(f"/v1/versions/{_VERSION_ID}/publish")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["published"] is True
+
+
+def test_unpublish_version_returns_200(client):
+    """POST /v1/versions/{id}/unpublish unpublishes the version."""
+    published_lookup = {**_version_lookup_row(), "published": True, "published_at": _NOW, "visibility": "private"}
+    unpublished_row = {**_VERSION_ROW, "published": False, "published_at": None, "visibility": "private"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [published_lookup]
+        mock_db.execute_mutation.side_effect = [unpublished_row, None]
+        r = client.post(f"/v1/versions/{_VERSION_ID}/unpublish")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["published"] is False
+    assert body["published_at"] is None
+
+
+def test_unpublish_version_not_published_returns_400(client):
+    """POST /v1/versions/{id}/unpublish returns 400 if version is not published."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_version_lookup_row()]
+        r = client.post(f"/v1/versions/{_VERSION_ID}/unpublish")
+    assert r.status_code == 400
+    assert "not published" in r.json()["detail"].lower()
+
+
+def test_unpublish_version_not_found_returns_404(client):
+    """POST /v1/versions/{id}/unpublish returns 404 when version not found."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.post(f"/v1/versions/{_VERSION_ID}/unpublish")
+    assert r.status_code == 404
+
+
+def test_freeze_schema_returns_201(client):
+    """POST /v1/versions/{id}/freeze-schema creates a frozen snapshot and returns 201."""
+    freeze_snapshot = {
+        **_SNAPSHOT_ROW,
+        "label": "frozen-schema",
+        "description": "Schema frozen via freeze-schema endpoint",
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],  # _assert_version_exists
+            [],                       # _capture_version_state: class query
+        ]
+        mock_db.execute_mutation.return_value = freeze_snapshot
+        r = client.post(f"/v1/versions/{_VERSION_ID}/freeze-schema")
+    assert r.status_code == 201
+    body = r.json()
+    assert body["label"] == "frozen-schema"
+    assert body["revision"] == 1
+
+
+def test_freeze_schema_already_frozen_returns_400(client):
+    """POST /v1/versions/{id}/freeze-schema returns 400 if snapshot already exists (INSERT blocked)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],  # _assert_version_exists
+            [],                       # _capture_version_state: class query
+        ]
+        # INSERT returns None because WHERE NOT EXISTS blocked it (snapshot already exists)
+        mock_db.execute_mutation.return_value = None
+        r = client.post(f"/v1/versions/{_VERSION_ID}/freeze-schema")
+    assert r.status_code == 400
+    assert "already frozen" in r.json()["detail"].lower()
+
+
+def test_freeze_schema_version_not_found_returns_404(client):
+    """POST /v1/versions/{id}/freeze-schema returns 404 when version not found."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.post(f"/v1/versions/{_VERSION_ID}/freeze-schema")
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# 403 tests for endpoints requiring user authentication (JWT only)
+# ---------------------------------------------------------------------------
+
+_API_KEY_CALLER = {"auth_method": "api_key", "account_id": _ACCOUNT_ID}
+
+
+@pytest.fixture
+def api_key_client():
+    """FastAPI test client with require_authenticated returning an API-key-style caller (no user_id)."""
+    app.dependency_overrides[require_authenticated] = lambda: _API_KEY_CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+def test_publish_version_api_key_caller_returns_403(api_key_client):
+    """POST /v1/versions/{id}/publish returns 403 when caller has no user_id (API key auth)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_version_lookup_row()]
+        r = api_key_client.post(f"/v1/versions/{_VERSION_ID}/publish")
+    assert r.status_code == 403
+    assert "user authentication" in r.json()["detail"].lower()
+
+
+def test_unpublish_version_api_key_caller_returns_403(api_key_client):
+    """POST /v1/versions/{id}/unpublish returns 403 when caller has no user_id (API key auth)."""
+    published_lookup = {**_version_lookup_row(), "published": True, "published_at": _NOW, "visibility": "private"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [published_lookup]
+        r = api_key_client.post(f"/v1/versions/{_VERSION_ID}/unpublish")
+    assert r.status_code == 403
+    assert "user authentication" in r.json()["detail"].lower()
+
+
+def test_freeze_schema_api_key_caller_returns_403(api_key_client):
+    """POST /v1/versions/{id}/freeze-schema returns 403 when caller has no user_id (API key auth)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_version_lookup_row()]
+        r = api_key_client.post(f"/v1/versions/{_VERSION_ID}/freeze-schema")
+    assert r.status_code == 403
+    assert "user authentication" in r.json()["detail"].lower()
+
+
