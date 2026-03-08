@@ -6,14 +6,35 @@ import { getAccountByEmail, verifyCredentials } from '@lib/auth/verifyCredential
 /**
  * Internal credential check used by the credentials provider.
  * Kept in auth layer so verification stays server-side and within NextAuth's CSRF flow.
+ * When REST API is available, also fetches an access token for profile/me endpoints.
  */
 export async function authorizeCredentials(
   email: string,
   password: string
-): Promise<{ id: string; name: string; email: string } | null> {
+): Promise<{ id: string; name: string; email: string; accessToken?: string } | null> {
   try {
     const user = await verifyCredentials(email, password);
-    return user ?? null;
+    if (!user) return null;
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? 'http://localhost:8000/v1';
+    try {
+      const res = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { access_token?: string };
+        return {
+          ...user,
+          accessToken: data.access_token,
+        };
+      }
+    } catch {
+      // REST unavailable or login failed; still allow sign-in, profile edit may be limited
+    }
+    return user;
   } catch {
     return null;
   }
@@ -72,12 +93,18 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (token && session.user) {
         (session.user as { id?: string }).id = token.sub ?? undefined;
+        (session as { accessToken?: string }).accessToken = token.accessToken as
+          | string
+          | undefined;
       }
       return session;
     },
     async jwt({ token, user, account, profile }) {
       if (user) {
         token.sub = user.id;
+        if ('accessToken' in user && typeof (user as { accessToken?: string }).accessToken === 'string') {
+          token.accessToken = (user as { accessToken: string }).accessToken;
+        }
       }
       if (account?.provider === 'github' && profile) {
         const email =

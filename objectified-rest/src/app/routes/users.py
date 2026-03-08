@@ -8,10 +8,10 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_admin
+from app.auth import require_admin, require_authenticated
 from app.database import db
 from app.routes.helpers import _not_found
-from app.schemas import AccountCreate, AccountSchema, AccountUpdate
+from app.schemas import AccountCreate, AccountSchema, AccountUpdate, ProfileUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,95 @@ def _verify_password(plain: str, hashed: str) -> bool:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+def _require_jwt_caller(
+    caller: Annotated[dict[str, Any], Depends(require_authenticated)],
+) -> dict[str, Any]:
+    """Require JWT authentication (used for /me; API key has no user_id)."""
+    if caller.get("auth_method") != "jwt" or not caller.get("user_id"):
+        raise HTTPException(
+            status_code=403,
+            detail="Profile endpoints require JWT authentication.",
+        )
+    return caller
+
+
+@router.get(
+    "/me",
+    response_model=AccountSchema,
+    summary="Get current user profile",
+    description=(
+        "Return the authenticated user's account (requires JWT). "
+        "Use ``Authorization: Bearer <token>`` with a token from ``/v1/auth/login``."
+    ),
+)
+def get_me(
+    caller: Annotated[dict[str, Any], Depends(_require_jwt_caller)],
+) -> AccountSchema:
+    """Get the current user's profile by JWT."""
+    user_id = caller["user_id"]
+    rows = db.execute_query(
+        """
+        SELECT id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
+        FROM objectified.account
+        WHERE id = %s AND deleted_at IS NULL
+        """,
+        (user_id,),
+    )
+    if not rows:
+        raise _not_found("User", user_id)
+    return AccountSchema(**dict(rows[0]))
+
+
+@router.patch(
+    "/me",
+    response_model=AccountSchema,
+    summary="Update current user profile",
+    description=(
+        "Update the authenticated user's name and/or metadata (requires JWT). "
+        "Only ``name`` and ``metadata`` can be updated; use admin endpoints for other fields."
+    ),
+)
+def update_me(
+    caller: Annotated[dict[str, Any], Depends(_require_jwt_caller)],
+    payload: ProfileUpdate,
+) -> AccountSchema:
+    """Update the current user's profile (name and metadata only)."""
+    user_id = caller["user_id"]
+    rows = db.execute_query(
+        "SELECT id FROM objectified.account WHERE id = %s AND deleted_at IS NULL",
+        (user_id,),
+    )
+    if not rows:
+        raise _not_found("User", user_id)
+
+    updates: list[str] = []
+    params: list = []
+
+    if payload.name is not None:
+        updates.append("name = %s")
+        params.append(payload.name)
+    if payload.metadata is not None:
+        updates.append("metadata = %s::jsonb")
+        params.append(json.dumps(payload.metadata))
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    params.append(user_id)
+    row = db.execute_mutation(
+        f"""
+        UPDATE objectified.account
+        SET {", ".join(updates)}, updated_at = timezone('utc', clock_timestamp())
+        WHERE id = %s AND deleted_at IS NULL
+        RETURNING id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
+        """,
+        tuple(params),
+    )
+    if not row:
+        raise _not_found("User", user_id)
+    return AccountSchema(**dict(row))
+
 
 @router.get(
     "/users",
