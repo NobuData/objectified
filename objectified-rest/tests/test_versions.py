@@ -431,7 +431,6 @@ def test_freeze_schema_returns_201(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],  # _assert_version_exists
-            [],                       # check for existing snapshots
             [],                       # _capture_version_state: class query
         ]
         mock_db.execute_mutation.return_value = freeze_snapshot
@@ -443,12 +442,14 @@ def test_freeze_schema_returns_201(client):
 
 
 def test_freeze_schema_already_frozen_returns_400(client):
-    """POST /v1/versions/{id}/freeze-schema returns 400 if snapshot already exists."""
+    """POST /v1/versions/{id}/freeze-schema returns 400 if snapshot already exists (INSERT blocked)."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
-            [_version_lookup_row()],     # _assert_version_exists
-            [{"id": _SNAPSHOT_ID}],      # existing snapshot check → already frozen
+            [_version_lookup_row()],  # _assert_version_exists
+            [],                       # _capture_version_state: class query
         ]
+        # INSERT returns None because WHERE NOT EXISTS blocked it (snapshot already exists)
+        mock_db.execute_mutation.return_value = None
         r = client.post(f"/v1/versions/{_VERSION_ID}/freeze-schema")
     assert r.status_code == 400
     assert "already frozen" in r.json()["detail"].lower()
@@ -460,5 +461,48 @@ def test_freeze_schema_version_not_found_returns_404(client):
         mock_db.execute_query.return_value = []
         r = client.post(f"/v1/versions/{_VERSION_ID}/freeze-schema")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# 403 tests for endpoints requiring user authentication (JWT only)
+# ---------------------------------------------------------------------------
+
+_API_KEY_CALLER = {"auth_method": "api_key", "account_id": _ACCOUNT_ID}
+
+
+@pytest.fixture
+def api_key_client():
+    """FastAPI test client with require_authenticated returning an API-key-style caller (no user_id)."""
+    app.dependency_overrides[require_authenticated] = lambda: _API_KEY_CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+def test_publish_version_api_key_caller_returns_403(api_key_client):
+    """POST /v1/versions/{id}/publish returns 403 when caller has no user_id (API key auth)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_version_lookup_row()]
+        r = api_key_client.post(f"/v1/versions/{_VERSION_ID}/publish")
+    assert r.status_code == 403
+    assert "user authentication" in r.json()["detail"].lower()
+
+
+def test_unpublish_version_api_key_caller_returns_403(api_key_client):
+    """POST /v1/versions/{id}/unpublish returns 403 when caller has no user_id (API key auth)."""
+    published_lookup = {**_version_lookup_row(), "published": True, "published_at": _NOW, "visibility": "private"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [published_lookup]
+        r = api_key_client.post(f"/v1/versions/{_VERSION_ID}/unpublish")
+    assert r.status_code == 403
+    assert "user authentication" in r.json()["detail"].lower()
+
+
+def test_freeze_schema_api_key_caller_returns_403(api_key_client):
+    """POST /v1/versions/{id}/freeze-schema returns 403 when caller has no user_id (API key auth)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_version_lookup_row()]
+        r = api_key_client.post(f"/v1/versions/{_VERSION_ID}/freeze-schema")
+    assert r.status_code == 403
+    assert "user authentication" in r.json()["detail"].lower()
 
 
