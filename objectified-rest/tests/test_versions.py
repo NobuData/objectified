@@ -23,6 +23,7 @@ _PROJECT_ROW: dict[str, Any] = {"id": _PROJECT_ID, "tenant_id": _TENANT_ID}
 _VERSION_ROW: dict[str, Any] = {
     "id": _VERSION_ID,
     "project_id": _PROJECT_ID,
+    "source_version_id": None,
     "creator_id": _ACCOUNT_ID,
     "name": "v1",
     "description": "Initial",
@@ -81,7 +82,6 @@ def test_create_version_returns_201(client):
         mock_db.execute_query.side_effect = [
             [{"id": _TENANT_ID}],
             [_PROJECT_ROW],
-            [{"max_revision": 0}],
         ]
         mock_db.execute_mutation.side_effect = [_VERSION_ROW, None]
         r = client.post(
@@ -122,7 +122,6 @@ def test_update_version_metadata_returns_updated_version(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
-            [{"max_revision": 1}],
         ]
         mock_db.execute_mutation.side_effect = [updated, None]
         r = client.put(
@@ -139,7 +138,6 @@ def test_delete_version_returns_204(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
-            [{"max_revision": 1}],
         ]
         mock_db.execute_mutation.side_effect = [deleted, None]
         r = client.delete(f"/v1/versions/{_VERSION_ID}")

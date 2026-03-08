@@ -8,7 +8,7 @@ Routes are split across focused modules:
                           /v1/tenants/{id}/administrators
   - app.routes.api_keys → /v1/tenants/{id}/api-keys
   - app.routes.projects → /v1/tenants/{id}/projects
-  - app.routes.versions → /v1/tenants/{id}/projects/{id}/versions, /v1/versions/{id}
+  - app.routes.versions → /v1/tenants/{tenant_id}/projects/{project_id}/versions, /v1/versions/{id}
 
 This module assembles them under the /v1 prefix and re-exports the password
 helpers so that existing imports (e.g. in tests) continue to work.

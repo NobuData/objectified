@@ -21,6 +21,7 @@ class VersionSchema(BaseModel):
 
     id: str
     project_id: str
+    source_version_id: Optional[str] = None
     creator_id: str
     name: str
     description: str
