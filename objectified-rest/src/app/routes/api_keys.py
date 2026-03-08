@@ -53,6 +53,36 @@ def list_api_keys(
 ) -> List[ApiKeySchema]:
     """List API keys for a tenant."""
     _assert_tenant_exists(tenant_id)
+
+    is_admin = bool(caller.get("is_admin")) if caller else False
+    account_id = caller.get("user_id") if caller else None
+
+    # Non-admins must be a member of the tenant to list its keys
+    if not is_admin:
+        if not account_id:
+            raise HTTPException(status_code=401, detail="Cannot determine account from credentials")
+        membership = db.execute_query(
+            """
+            SELECT 1
+            FROM objectified.tenant_account
+            WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (tenant_id, account_id),
+        )
+        if not membership:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to access this tenant's API keys",
+            )
+
+    # Only admins may view revoked keys
+    if include_revoked and not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins may include revoked API keys",
+        )
+
     if include_revoked:
         rows = db.execute_query(
             """

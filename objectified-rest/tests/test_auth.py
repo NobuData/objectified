@@ -9,7 +9,7 @@ Covers:
 
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -180,11 +180,10 @@ class TestListApiKeys:
     def test_list_api_keys_success(self, auth_client):
         """Returns list of API key metadata for a tenant."""
         with mock_db_all() as mock_db:
-            # First call: assert tenant exists
-            # Second call: list keys
             mock_db.execute_query.side_effect = [
                 [{"id": _TENANT_ID}],  # tenant exists
-                [_API_KEY_ROW],         # key list
+                [{"1": 1}],            # membership check (non-admin)
+                [_API_KEY_ROW],        # key list
             ]
             r = auth_client.get(f"/v1/tenants/{_TENANT_ID}/api-keys")
         assert r.status_code == 200, r.text
@@ -206,30 +205,64 @@ class TestListApiKeys:
         r = client.get(f"/v1/tenants/{_TENANT_ID}/api-keys")
         assert r.status_code == 401
 
+    def test_list_api_keys_not_member_returns_403(self, auth_client):
+        """403 when the calling account is not a member of the tenant."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [{"id": _TENANT_ID}],  # tenant exists
+                [],                    # membership check fails
+            ]
+            r = auth_client.get(f"/v1/tenants/{_TENANT_ID}/api-keys")
+        assert r.status_code == 403
+
     def test_list_api_keys_empty(self, auth_client):
         """Returns empty list when no keys exist."""
         with mock_db_all() as mock_db:
             mock_db.execute_query.side_effect = [
                 [{"id": _TENANT_ID}],
-                [],
+                [{"1": 1}],  # membership check
+                [],          # empty key list
             ]
             r = auth_client.get(f"/v1/tenants/{_TENANT_ID}/api-keys")
         assert r.status_code == 200
         assert r.json() == []
 
-    def test_list_api_keys_include_revoked(self, auth_client):
-        """include_revoked=true returns revoked keys too."""
+    def test_list_api_keys_include_revoked_admin(self, admin_client):
+        """Admin can request include_revoked=true and see revoked keys."""
         revoked_row = {**_API_KEY_ROW, "deleted_at": _NOW}
         with mock_db_all() as mock_db:
+            # admin skips membership check
             mock_db.execute_query.side_effect = [
                 [{"id": _TENANT_ID}],
                 [revoked_row],
             ]
-            r = auth_client.get(f"/v1/tenants/{_TENANT_ID}/api-keys?include_revoked=true")
+            r = admin_client.get(f"/v1/tenants/{_TENANT_ID}/api-keys?include_revoked=true")
         assert r.status_code == 200
         keys = r.json()
         assert len(keys) == 1
         assert keys[0]["deleted_at"] is not None
+
+    def test_list_api_keys_include_revoked_non_admin_returns_403(self, auth_client):
+        """Non-admin cannot use include_revoked=true."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [{"id": _TENANT_ID}],
+                [{"1": 1}],  # membership check passes
+            ]
+            r = auth_client.get(f"/v1/tenants/{_TENANT_ID}/api-keys?include_revoked=true")
+        assert r.status_code == 403
+
+    def test_list_api_keys_admin_skips_membership_check(self, admin_client):
+        """Admin can list keys without being an explicit tenant member."""
+        with mock_db_all() as mock_db:
+            # admin: only tenant-exists + key list (no membership query)
+            mock_db.execute_query.side_effect = [
+                [{"id": _TENANT_ID}],
+                [_API_KEY_ROW],
+            ]
+            r = admin_client.get(f"/v1/tenants/{_TENANT_ID}/api-keys")
+        assert r.status_code == 200
+        assert len(r.json()) == 1
 
 
 # ===========================================================================
@@ -434,7 +467,6 @@ class TestValidateApiKey:
     def test_validate_api_key_disabled_returns_none(self):
         """Disabled key returns None."""
         from app.database import Database
-        import datetime
         db_instance = Database()
         row = {
             "key_id": _KEY_ID,
