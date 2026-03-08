@@ -1665,7 +1665,6 @@ paths:
       summary: Publish a version
       description: Mark a version as published. Published versions are visible for
         pull by others according to the specified visibility policy (private or public).
-        Once published, the version is considered frozen and cannot be edited.
       operationId: publish_version_v1_versions__version_id__publish_post
       parameters:
       - name: version_id
@@ -1717,8 +1716,7 @@ paths:
       - Versions
       summary: Unpublish a version
       description: Mark a published version as unpublished. The version can be edited
-        again after unpublishing. Unpublishing is blocked if data records reference
-        this version's schemas.
+        again after unpublishing.
       operationId: unpublish_version_v1_versions__version_id__unpublish_post
       parameters:
       - name: version_id
@@ -1764,7 +1762,7 @@ paths:
       description: Capture and freeze the current state of all classes and properties
         for a version as an immutable snapshot. This is a one-time operation per version
         — if a snapshot already exists, use the /snapshots endpoint to commit additional
-        revisions. Publishing requires user authentication.
+        revisions. Freezing a schema requires user authentication (JWT token).
       operationId: freeze_version_schema_v1_versions__version_id__freeze_schema_post
       parameters:
       - name: version_id
