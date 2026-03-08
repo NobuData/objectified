@@ -110,16 +110,78 @@ class Database:
 
     def validate_api_key(self, api_key: str) -> Optional[dict[str, Any]]:
         """
-        Validate an API key and return tenant information.
+        Validate an API key and return tenant and account information.
 
-        When objectified.api_keys (or equivalent) exists, implement lookup
-        and return dict with tenant_id, tenant_slug, tenant_name. For now
-        returns None (no API key table in initial schema).
+        Looks up the SHA-256 hash of the raw key in objectified.api_key.
+        Returns None if the key is unknown, expired, disabled, or revoked.
+
+        On success, records the last_used timestamp and returns a dict with:
+            tenant_id, tenant_slug, tenant_name, account_id, key_id
         """
+        import hashlib
+        import datetime
+
         if not api_key or len(api_key) < 12:
             return None
-        # Placeholder: no api_keys table in objectified schema yet
-        return None
+
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+        rows = self.execute_query(
+            """
+            SELECT ak.id AS key_id,
+                   ak.tenant_id,
+                   ak.account_id,
+                   ak.enabled,
+                   ak.expires_at,
+                   t.slug AS tenant_slug,
+                   t.name AS tenant_name
+            FROM objectified.api_key ak
+            JOIN objectified.tenant t ON t.id = ak.tenant_id
+            WHERE ak.key_hash = %s
+              AND ak.deleted_at IS NULL
+              AND t.deleted_at IS NULL
+            LIMIT 1
+            """,
+            (key_hash,),
+        )
+        if not rows:
+            return None
+
+        row = rows[0]
+
+        if not row.get("enabled"):
+            return None
+
+        expires_at = row.get("expires_at")
+        if expires_at is not None:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            # expires_at may be timezone-naive (stored WITHOUT TIME ZONE as UTC)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+            if now > expires_at:
+                return None
+
+        # Best-effort update of last_used; do not fail validation on error
+        try:
+            self.execute_mutation(
+                """
+                UPDATE objectified.api_key
+                SET last_used = timezone('utc', clock_timestamp())
+                WHERE id = %s
+                """,
+                (row["key_id"],),
+                returning=False,
+            )
+        except Exception:
+            logger.warning("validate_api_key: failed to update last_used for key %s", row["key_id"])
+
+        return {
+            "key_id": str(row["key_id"]),
+            "tenant_id": str(row["tenant_id"]),
+            "tenant_slug": row["tenant_slug"],
+            "tenant_name": row["tenant_name"],
+            "account_id": str(row["account_id"]),
+        }
 
 
 db = Database()
