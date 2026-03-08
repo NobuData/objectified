@@ -19,7 +19,7 @@ from app.schemas.class_property import (
     ClassPropertySchema,
     ClassPropertyUpdate,
 )
-from app.schemas.project import ProjectCreate, ProjectSchema, ProjectUpdate
+from app.schemas.project import ProjectCreate, ProjectHistorySchema, ProjectSchema, ProjectUpdate
 from app.schemas.property import PropertyCreate, PropertySchema, PropertyUpdate
 from app.schemas.tenant import TenantCreate, TenantSchema, TenantUpdate
 from app.schemas.tenant_account import (
@@ -53,6 +53,7 @@ __all__ = [
     "ClassPropertyUpdate",
     "ProfileUpdate",
     "ProjectCreate",
+    "ProjectHistorySchema",
     "ProjectSchema",
     "ProjectUpdate",
     "PropertyCreate",

@@ -44,3 +44,18 @@ class ProjectUpdate(BaseModel):
     slug: Optional[str] = None
     enabled: Optional[bool] = None
     metadata: Optional[dict[str, Any]] = None
+
+
+class ProjectHistorySchema(BaseModel):
+    """Response schema for objectified.project_history."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    tenant_id: str
+    changed_by: Optional[str] = None
+    operation: str
+    old_data: Optional[dict[str, Any]] = None
+    new_data: Optional[dict[str, Any]] = None
+    changed_at: datetime
