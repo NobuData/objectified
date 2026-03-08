@@ -41,7 +41,7 @@ def _insert_account(conn, email="vs@example.com"):
         ("VS User", email, "hashed_password"),
     )
     return conn.fetchone(
-        "SELECT id FROM objectified.account WHERE email = %s", (email,)
+        "SELECT id FROM objectified.account WHERE LOWER(email) = LOWER(%s)", (email,)
     )["id"]
 
 
