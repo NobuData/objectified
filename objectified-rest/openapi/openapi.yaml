@@ -1658,6 +1658,150 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/publish:
+    post:
+      tags:
+      - Versions
+      summary: Publish a version
+      description: Mark a version as published. Published versions are visible for
+        pull by others according to the specified visibility policy (private or public).
+        Once published, the version is considered frozen and cannot be edited.
+      operationId: publish_version_v1_versions__version_id__publish_post
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: '#/components/schemas/VersionPublishRequest'
+              - type: 'null'
+              title: Payload
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/unpublish:
+    post:
+      tags:
+      - Versions
+      summary: Unpublish a version
+      description: Mark a published version as unpublished. The version can be edited
+        again after unpublishing. Unpublishing is blocked if data records reference
+        this version's schemas.
+      operationId: unpublish_version_v1_versions__version_id__unpublish_post
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/freeze-schema:
+    post:
+      tags:
+      - Versions
+      summary: Freeze (capture) a version schema snapshot
+      description: Capture and freeze the current state of all classes and properties
+        for a version as an immutable snapshot. This is a one-time operation per version
+        — if a snapshot already exists, use the /snapshots endpoint to commit additional
+        revisions. Publishing requires user authentication.
+      operationId: freeze_version_schema_v1_versions__version_id__freeze_schema_post
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionSnapshotSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/versions/{version_id}/snapshots:
     post:
       tags:
@@ -2778,6 +2922,16 @@ components:
       type: object
       title: VersionMetadataUpdate
       description: Metadata update payload for objectified.version.
+    VersionPublishRequest:
+      properties:
+        visibility:
+          anyOf:
+          - $ref: '#/components/schemas/VersionVisibility'
+          - type: 'null'
+          default: private
+      type: object
+      title: VersionPublishRequest
+      description: Payload for publishing a version.
     VersionSchema:
       properties:
         id:

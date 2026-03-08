@@ -13,6 +13,7 @@ from app.schemas.version import (
     VersionCreate,
     VersionHistorySchema,
     VersionMetadataUpdate,
+    VersionPublishRequest,
     VersionSchema,
     VersionSnapshotCreate,
     VersionSnapshotSchema,
@@ -354,6 +355,205 @@ def get_version_by_revision(
         )
 
     return VersionHistorySchema(**dict(rows[0]))
+
+
+# ---------------------------------------------------------------------------
+# Publish / Unpublish / Freeze-schema
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/versions/{version_id}/publish",
+    response_model=VersionSchema,
+    summary="Publish a version",
+    description=(
+        "Mark a version as published. Published versions are visible for pull by others "
+        "according to the specified visibility policy (private or public). "
+        "Once published, the version is considered frozen and cannot be edited."
+    ),
+)
+def publish_version(
+    version_id: str,
+    payload: Optional[VersionPublishRequest] = None,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> VersionSchema:
+    """Publish a version."""
+    if payload is None:
+        payload = VersionPublishRequest()
+
+    old_row = _assert_version_exists(version_id, include_deleted=False)
+
+    if old_row.get("published"):
+        raise HTTPException(status_code=400, detail="Version is already published")
+
+    user_id = caller.get("user_id") if caller else None
+    if not user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Publishing requires user authentication (JWT token)",
+        )
+
+    visibility = payload.visibility.value if payload.visibility else "private"
+
+    row = db.execute_mutation(
+        f"""
+        UPDATE objectified.version
+        SET published = true,
+            published_at = timezone('utc', clock_timestamp()),
+            visibility = %s::objectified.version_visibility
+        WHERE id = %s
+          AND deleted_at IS NULL
+        RETURNING {_VERSION_COLUMNS}
+        """,
+        (visibility, version_id),
+    )
+    if not row:
+        raise _not_found("Version", version_id)
+
+    _record_history(
+        version_id=version_id,
+        project_id=str(row["project_id"]),
+        changed_by=user_id,
+        operation="UPDATE",
+        old_data=old_row,
+        new_data=dict(row),
+    )
+
+    return VersionSchema(**dict(row))
+
+
+@router.post(
+    "/versions/{version_id}/unpublish",
+    response_model=VersionSchema,
+    summary="Unpublish a version",
+    description=(
+        "Mark a published version as unpublished. The version can be edited again after unpublishing. "
+        "Unpublishing is blocked if data records reference this version's schemas."
+    ),
+)
+def unpublish_version(
+    version_id: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> VersionSchema:
+    """Unpublish a version."""
+    old_row = _assert_version_exists(version_id, include_deleted=False)
+
+    if not old_row.get("published"):
+        raise HTTPException(status_code=400, detail="Version is not published")
+
+    user_id = caller.get("user_id") if caller else None
+    if not user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Unpublishing requires user authentication (JWT token)",
+        )
+
+    row = db.execute_mutation(
+        f"""
+        UPDATE objectified.version
+        SET published = false,
+            published_at = NULL
+        WHERE id = %s
+          AND deleted_at IS NULL
+        RETURNING {_VERSION_COLUMNS}
+        """,
+        (version_id,),
+    )
+    if not row:
+        raise _not_found("Version", version_id)
+
+    _record_history(
+        version_id=version_id,
+        project_id=str(row["project_id"]),
+        changed_by=user_id,
+        operation="UPDATE",
+        old_data=old_row,
+        new_data=dict(row),
+    )
+
+    return VersionSchema(**dict(row))
+
+
+@router.post(
+    "/versions/{version_id}/freeze-schema",
+    response_model=VersionSnapshotSchema,
+    status_code=201,
+    summary="Freeze (capture) a version schema snapshot",
+    description=(
+        "Capture and freeze the current state of all classes and properties for a version "
+        "as an immutable snapshot. This is a one-time operation per version — if a snapshot "
+        "already exists, use the /snapshots endpoint to commit additional revisions. "
+        "Publishing requires user authentication."
+    ),
+)
+def freeze_version_schema(
+    version_id: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> VersionSnapshotSchema:
+    """Freeze-schema: commit an immutable snapshot capturing the current version state."""
+    version = _assert_version_exists(version_id, include_deleted=False)
+    project_id = str(version["project_id"])
+
+    user_id = caller.get("user_id") if caller else None
+    if not user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Freeze schema requires user authentication (JWT token)",
+        )
+
+    # Check whether any snapshot already exists for this version
+    existing_snapshots = db.execute_query(
+        """
+        SELECT id FROM objectified.version_snapshot
+        WHERE version_id = %s
+        LIMIT 1
+        """,
+        (version_id,),
+    )
+    if existing_snapshots:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Schema already frozen for this version. "
+                "A snapshot already exists — use POST /versions/{id}/snapshots to commit additional revisions."
+            ),
+        )
+
+    snapshot_data = _capture_version_state(version_id)
+
+    row = db.execute_mutation(
+        f"""
+        WITH locked_version AS (
+            SELECT id
+            FROM objectified.version
+            WHERE id = %s
+            FOR UPDATE
+        )
+        INSERT INTO objectified.version_snapshot
+            (version_id, project_id, committed_by, revision, label, description, snapshot)
+        SELECT
+            %s AS version_id,
+            %s AS project_id,
+            %s AS committed_by,
+            1 AS revision,
+            'frozen-schema' AS label,
+            'Schema frozen via freeze-schema endpoint' AS description,
+            %s::jsonb AS snapshot
+        FROM locked_version
+        RETURNING {_SNAPSHOT_COLUMNS}
+        """,
+        (
+            version_id,
+            version_id,
+            project_id,
+            user_id,
+            json.dumps(snapshot_data, default=str),
+        ),
+    )
+    if not row:
+        raise HTTPException(status_code=500, detail="Failed to freeze version schema")
+
+    return VersionSnapshotSchema(**dict(row))
 
 
 # ---------------------------------------------------------------------------

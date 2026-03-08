@@ -28,11 +28,6 @@ def main() -> None:
     out_dir = project_root / "openapi"
     out_dir.mkdir(exist_ok=True)
 
-    json_path = out_dir / "openapi.json"
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(spec, f, indent=2)
-    print(f"Wrote {json_path}")
-
     try:
         import yaml
         yaml_path = out_dir / "openapi.yaml"

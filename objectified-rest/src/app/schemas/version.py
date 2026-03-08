@@ -74,6 +74,12 @@ class VersionHistorySchema(BaseModel):
     changed_at: datetime
 
 
+class VersionPublishRequest(BaseModel):
+    """Payload for publishing a version."""
+
+    visibility: Optional[VersionVisibility] = VersionVisibility.PRIVATE
+
+
 class VersionSnapshotCreate(BaseModel):
     """Create payload for committing a version snapshot."""
 
