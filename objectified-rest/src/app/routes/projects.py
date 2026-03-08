@@ -273,14 +273,12 @@ def update_project(
         params.append(json.dumps(payload.metadata))
 
     if not updates:
-        # Nothing to update — return existing row
-        # No updatable fields were provided; keep behavior consistent with other update endpoints.
-        logger.info(
-            "No fields to update for project_id=%s in tenant_id=%s",
-            project_id,
-            tenant_id,
+        # Nothing to update — re-fetch and return the existing row unchanged
+        rows = db.execute_query(
+            f"SELECT {_PROJECT_COLUMNS} FROM objectified.project WHERE id = %s",
+            (project_id,),
         )
-        raise HTTPException(status_code=400, detail="No fields to update")
+        return ProjectSchema(**dict(rows[0]))
 
     params.extend([project_id, tenant_id])
 
