@@ -34,7 +34,7 @@ BEGIN
           AND conrelid = 'objectified.project'::regclass
     ) THEN
         ALTER TABLE objectified.project
-            ADD CONSTRAINT project_slug_format CHECK (slug ~ '^[a-z0-9]+(?:[-_][a-z0-9]+)*$');
+            ADD CONSTRAINT project_slug_format CHECK (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$');
     END IF;
 END;
 $$;
