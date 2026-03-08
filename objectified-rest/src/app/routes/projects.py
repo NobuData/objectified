@@ -143,6 +143,28 @@ def create_project(
     if not payload.name or not payload.name.strip():
         raise HTTPException(status_code=400, detail="Project name is required")
 
+    # Validate payload.tenant_id — must match the path parameter if provided
+    if payload.tenant_id is not None and payload.tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Payload tenant_id does not match path tenant_id",
+        )
+
+    # Resolve creator_id from the authenticated caller
+    caller_user_id = caller.get("user_id") if caller else None
+
+    # Validate payload.creator_id — clients must not override the authenticated identity
+    if payload.creator_id is not None:
+        if caller_user_id and payload.creator_id != caller_user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Payload creator_id does not match the authenticated user",
+            )
+
+    creator_id = caller_user_id or payload.creator_id
+    if not creator_id:
+        raise HTTPException(status_code=400, detail="creator_id is required when not authenticated")
+
     slug = _validate_slug(payload.slug)
 
     # Per-tenant slug uniqueness check
@@ -153,10 +175,6 @@ def create_project(
     if existing:
         raise HTTPException(status_code=409, detail=f"Slug already in use within this tenant: {slug}")
 
-    # Resolve creator_id: prefer caller identity when available
-    creator_id = payload.creator_id
-    if caller and caller.get("user_id"):
-        creator_id = caller["user_id"]
 
     try:
         row = db.execute_mutation(

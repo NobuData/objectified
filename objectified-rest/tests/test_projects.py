@@ -178,8 +178,6 @@ def test_create_project_returns_201(client):
         r = client.post(
             f"/v1/tenants/{_TENANT_ID}/projects",
             json={
-                "tenant_id": _TENANT_ID,
-                "creator_id": _ACCOUNT_ID,
                 "name": "My Project",
                 "description": "A test project",
                 "slug": "my-project",
@@ -187,6 +185,79 @@ def test_create_project_returns_201(client):
         )
     assert r.status_code == 201
     assert r.json()["slug"] == "my-project"
+
+
+def test_create_project_with_matching_tenant_id_returns_201(client):
+    """POST /v1/tenants/{id}/projects succeeds when payload tenant_id matches path."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [],
+        ]
+        mock_db.execute_mutation.return_value = _PROJECT_ROW
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects",
+            json={
+                "tenant_id": _TENANT_ID,  # matches path — OK
+                "name": "My Project",
+                "slug": "my-project",
+            },
+        )
+    assert r.status_code == 201
+
+
+def test_create_project_with_matching_creator_id_returns_201(client):
+    """POST /v1/tenants/{id}/projects succeeds when payload creator_id matches caller."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [],
+        ]
+        mock_db.execute_mutation.return_value = _PROJECT_ROW
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects",
+            json={
+                "creator_id": _ACCOUNT_ID,  # matches authenticated caller — OK
+                "name": "My Project",
+                "slug": "my-project",
+            },
+        )
+    assert r.status_code == 201
+
+
+def test_create_project_tenant_id_mismatch_returns_400(client):
+    """POST /v1/tenants/{id}/projects returns 400 when payload tenant_id differs from path."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [{"id": _TENANT_ID}]
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects",
+            json={
+                "tenant_id": "00000000-0000-0000-0000-000000000099",  # wrong tenant
+                "name": "My Project",
+                "slug": "my-project",
+            },
+        )
+    assert r.status_code == 400
+    assert "tenant_id" in r.json()["detail"]
+
+
+def test_create_project_creator_id_mismatch_returns_400(client):
+    """POST /v1/tenants/{id}/projects returns 400 when payload creator_id differs from caller."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [],
+        ]
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects",
+            json={
+                "creator_id": "00000000-0000-0000-0000-000000000099",  # not the caller
+                "name": "My Project",
+                "slug": "my-project",
+            },
+        )
+    assert r.status_code == 400
+    assert "creator_id" in r.json()["detail"]
 
 
 def test_create_project_slug_conflict_returns_409(client):
@@ -199,8 +270,6 @@ def test_create_project_slug_conflict_returns_409(client):
         r = client.post(
             f"/v1/tenants/{_TENANT_ID}/projects",
             json={
-                "tenant_id": _TENANT_ID,
-                "creator_id": _ACCOUNT_ID,
                 "name": "My Project",
                 "slug": "my-project",
             },
@@ -215,8 +284,6 @@ def test_create_project_missing_name_returns_400(client):
         r = client.post(
             f"/v1/tenants/{_TENANT_ID}/projects",
             json={
-                "tenant_id": _TENANT_ID,
-                "creator_id": _ACCOUNT_ID,
                 "name": "   ",
                 "slug": "my-project",
             },
@@ -231,8 +298,6 @@ def test_create_project_invalid_slug_returns_400(client):
         r = client.post(
             f"/v1/tenants/{_TENANT_ID}/projects",
             json={
-                "tenant_id": _TENANT_ID,
-                "creator_id": _ACCOUNT_ID,
                 "name": "My Project",
                 "slug": "My Project!!",
             },
@@ -247,8 +312,6 @@ def test_create_project_slug_too_short_returns_400(client):
         r = client.post(
             f"/v1/tenants/{_TENANT_ID}/projects",
             json={
-                "tenant_id": _TENANT_ID,
-                "creator_id": _ACCOUNT_ID,
                 "name": "My Project",
                 "slug": "a",
             },
@@ -263,8 +326,6 @@ def test_create_project_tenant_not_found_returns_404(client):
         r = client.post(
             f"/v1/tenants/{_TENANT_ID}/projects",
             json={
-                "tenant_id": _TENANT_ID,
-                "creator_id": _ACCOUNT_ID,
                 "name": "My Project",
                 "slug": "my-project",
             },

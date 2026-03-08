@@ -34,6 +34,88 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/me:
+    get:
+      tags:
+      - Users
+      summary: Get current user profile
+      description: 'Return the authenticated user''s account (requires JWT). Use ``Authorization:
+        Bearer <token>`` with a token from ``/v1/auth/login``.'
+      operationId: get_me_v1_me_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Users
+      summary: Update current user profile
+      description: Update the authenticated user's name and/or metadata (requires
+        JWT). Only ``name`` and ``metadata`` can be updated; use admin endpoints for
+        other fields.
+      operationId: update_me_v1_me_patch
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/users:
     get:
       tags:
@@ -880,6 +962,321 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects:
+    get:
+      tags:
+      - Projects
+      summary: List projects for a tenant
+      description: Return all projects scoped to the given tenant. Soft-deleted projects
+        are excluded by default; pass ``include_deleted=true`` to include them.
+      operationId: list_projects_v1_tenants__tenant_id__projects_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted projects
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted projects
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectSchema'
+                title: Response List Projects V1 Tenants  Tenant Id  Projects Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Projects
+      summary: Create project
+      description: Create a new project scoped to the given tenant. Slug must be unique
+        within the tenant.
+      operationId: create_project_v1_tenants__tenant_id__projects_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}:
+    get:
+      tags:
+      - Projects
+      summary: Get project by ID
+      description: Retrieve a single project by its UUID within a tenant.
+      operationId: get_project_v1_tenants__tenant_id__projects__project_id__get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted project
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted project
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Projects
+      summary: Update project
+      description: Update an existing project. Only provided fields are modified.
+      operationId: update_project_v1_tenants__tenant_id__projects__project_id__put
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Projects
+      summary: Delete (soft-delete) project
+      description: Soft-delete a project by setting its ``deleted_at`` timestamp.
+      operationId: delete_project_v1_tenants__tenant_id__projects__project_id__delete
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/history:
+    get:
+      tags:
+      - Projects
+      summary: Get project change history
+      description: Return the full audit history of changes made to a project, newest
+        first.
+      operationId: get_project_history_v1_tenants__tenant_id__projects__project_id__history_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectHistorySchema'
+                title: Response Get Project History V1 Tenants  Tenant Id  Projects  Project
+                  Id  History Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /:
     get:
       summary: Root
@@ -1271,6 +1668,197 @@ components:
       - expires_in
       title: LoginResponse
       description: Response body for POST /v1/auth/login.
+    ProfileUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+      type: object
+      title: ProfileUpdate
+      description: Update payload for current user profile (name and metadata only).
+    ProjectCreate:
+      properties:
+        tenant_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+        creator_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Creator Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+          default: ''
+        slug:
+          type: string
+          title: Slug
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - name
+      - slug
+      title: ProjectCreate
+      description: 'Create payload for objectified.project.
+
+
+        ``tenant_id`` and ``creator_id`` are optional.  When omitted they are
+
+        taken from the URL path and the authenticated caller respectively.
+
+        If supplied they must match those authoritative sources exactly —
+
+        any mismatch returns HTTP 400.'
+    ProjectHistorySchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        project_id:
+          type: string
+          title: Project Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        changed_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Changed By
+        operation:
+          type: string
+          title: Operation
+        old_data:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Old Data
+        new_data:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: New Data
+        changed_at:
+          type: string
+          format: date-time
+          title: Changed At
+      type: object
+      required:
+      - id
+      - project_id
+      - tenant_id
+      - operation
+      - changed_at
+      title: ProjectHistorySchema
+      description: Response schema for objectified.project_history.
+    ProjectSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        creator_id:
+          type: string
+          title: Creator Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        slug:
+          type: string
+          title: Slug
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+      type: object
+      required:
+      - id
+      - tenant_id
+      - creator_id
+      - name
+      - description
+      - slug
+      - created_at
+      title: ProjectSchema
+      description: Response schema for objectified.project.
+    ProjectUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        slug:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Slug
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+      type: object
+      title: ProjectUpdate
+      description: Update payload for objectified.project.
     TenantAccessLevel:
       type: string
       enum:

@@ -11,19 +11,11 @@ ALTER TABLE objectified.project DROP CONSTRAINT IF EXISTS project_slug_key;
 -- Remove old global unique index on slug if it exists
 DROP INDEX IF EXISTS objectified.project_slug_key;
 
--- Add per-tenant unique constraint on (tenant_id, slug)
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'project_tenant_slug_unique'
-          AND conrelid = 'objectified.project'::regclass
-    ) THEN
-        ALTER TABLE objectified.project
-            ADD CONSTRAINT project_tenant_slug_unique UNIQUE (tenant_id, slug);
-    END IF;
-END;
-$$;
+-- Add per-tenant unique index on (tenant_id, slug) for non-deleted projects
+-- Use a partial unique index so that slugs can be reused after soft-delete (deleted_at IS NOT NULL)
+CREATE UNIQUE INDEX IF NOT EXISTS project_tenant_slug_unique
+    ON objectified.project (tenant_id, slug)
+    WHERE deleted_at IS NULL;
 
 -- Re-add slug format check constraint
 DO $$
@@ -52,10 +44,10 @@ CREATE TABLE IF NOT EXISTS objectified.project_history (
 );
 
 -- Indices for efficient history lookups
-CREATE INDEX idx_project_history_project_id
+CREATE INDEX IF NOT EXISTS idx_project_history_project_id
     ON objectified.project_history (project_id);
-CREATE INDEX idx_project_history_tenant_id
+CREATE INDEX IF NOT EXISTS idx_project_history_tenant_id
     ON objectified.project_history (tenant_id);
-CREATE INDEX idx_project_history_changed_at
+CREATE INDEX IF NOT EXISTS idx_project_history_changed_at
     ON objectified.project_history (changed_at DESC);
 

@@ -25,10 +25,16 @@ class ProjectSchema(BaseModel):
 
 
 class ProjectCreate(BaseModel):
-    """Create payload for objectified.project."""
+    """Create payload for objectified.project.
 
-    tenant_id: str
-    creator_id: str
+    ``tenant_id`` and ``creator_id`` are optional.  When omitted they are
+    taken from the URL path and the authenticated caller respectively.
+    If supplied they must match those authoritative sources exactly —
+    any mismatch returns HTTP 400.
+    """
+
+    tenant_id: Optional[str] = None
+    creator_id: Optional[str] = None
     name: str
     description: str = ""
     slug: str
