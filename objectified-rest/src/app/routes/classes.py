@@ -10,7 +10,7 @@ from app.auth import require_authenticated
 from app.database import db
 from app.routes.helpers import _not_found
 from app.routes.versions import _assert_version_exists
-from app.schemas.class_model import ClassCreate, ClassSchema, ClassUpdate
+from app.schemas.class_model import ClassCreate, ClassSchema, ClassUpdate, ClassWithPropertiesAndTags
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +63,11 @@ def list_classes_by_version(
 
 @router.get(
     "/versions/{version_id}/classes/with-properties-tags",
-    response_model=List[dict[str, Any]],
+    response_model=List[ClassWithPropertiesAndTags],
     summary="List classes with properties and tags for version",
     description=(
-        "Return all classes for a version with their properties and tags embedded. "
+        "Bulk endpoint for canvas load: return all classes for a version with their "
+        "properties and tags (from metadata) in one response. "
         "Pass include_deleted=true to include soft-deleted classes."
     ),
 )
@@ -74,7 +75,7 @@ def list_classes_with_properties_and_tags(
     version_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted classes"),
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
-) -> List[dict[str, Any]]:
+) -> List[ClassWithPropertiesAndTags]:
     """List classes for a version with properties (and tags from metadata)."""
     _assert_version_exists(version_id, include_deleted=include_deleted)
 

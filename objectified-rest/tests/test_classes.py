@@ -111,6 +111,36 @@ def test_list_classes_with_properties_and_tags_returns_list(client):
     assert data[0]["properties"] == []
 
 
+def test_list_classes_with_properties_and_tags_includes_properties_and_tags(client):
+    """GET /v1/versions/{id}/classes/with-properties-tags embeds properties and tags."""
+    class_with_tags = {
+        **_CLASS_ROW,
+        "metadata": {"tags": ["tag1", "tag2"]},
+    }
+    prop_row = {
+        "id": "00000000-0000-0000-0000-000000000061",
+        "class_id": _CLASS_ID,
+        "property_id": "00000000-0000-0000-0000-000000000062",
+        "name": "myProp",
+        "description": "A property",
+        "data": {"type": "string"},
+        "property_name": "LibraryProp",
+        "property_data": {},
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [class_with_tags],
+            [prop_row],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/classes/with-properties-tags")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["properties"] == [prop_row]
+    assert data[0]["tags"] == ["tag1", "tag2"]
+
+
 def test_get_class_returns_class(client):
     """GET /v1/versions/{vid}/classes/{cid} returns class."""
     with mock_db_all() as mock_db:
