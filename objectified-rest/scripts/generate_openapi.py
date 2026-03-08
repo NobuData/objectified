@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Generate OpenAPI Specification 3.2.0 (JSON and YAML) from the objectified-rest FastAPI app.
+Generate OpenAPI Specification 3.2.0 from the objectified-rest FastAPI app.
 
 Run from the objectified-rest directory:
     uv run python scripts/generate_openapi.py
 
-Output is written to openapi/openapi.json and openapi/openapi.yaml.
+Always writes openapi/openapi.json. Also writes openapi/openapi.yaml when
+PyYAML is installed (uv sync --group dev).
 """
 
 import json
@@ -27,6 +28,11 @@ def main() -> None:
 
     out_dir = project_root / "openapi"
     out_dir.mkdir(exist_ok=True)
+
+    json_path = out_dir / "openapi.json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(spec, f, indent=2, default=str)
+    print(f"Wrote {json_path}")
 
     try:
         import yaml

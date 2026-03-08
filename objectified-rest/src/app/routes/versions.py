@@ -368,8 +368,7 @@ def get_version_by_revision(
     summary="Publish a version",
     description=(
         "Mark a version as published. Published versions are visible for pull by others "
-        "according to the specified visibility policy (private or public). "
-        "Once published, the version is considered frozen and cannot be edited."
+        "according to the specified visibility policy (private or public)."
     ),
 )
 def publish_version(
@@ -427,8 +426,7 @@ def publish_version(
     response_model=VersionSchema,
     summary="Unpublish a version",
     description=(
-        "Mark a published version as unpublished. The version can be edited again after unpublishing. "
-        "Unpublishing is blocked if data records reference this version's schemas."
+        "Mark a published version as unpublished. The version can be edited again after unpublishing."
     ),
 )
 def unpublish_version(
@@ -483,7 +481,7 @@ def unpublish_version(
         "Capture and freeze the current state of all classes and properties for a version "
         "as an immutable snapshot. This is a one-time operation per version — if a snapshot "
         "already exists, use the /snapshots endpoint to commit additional revisions. "
-        "Publishing requires user authentication."
+        "Freezing a schema requires user authentication (JWT token)."
     ),
 )
 def freeze_version_schema(
@@ -499,24 +497,6 @@ def freeze_version_schema(
         raise HTTPException(
             status_code=403,
             detail="Freeze schema requires user authentication (JWT token)",
-        )
-
-    # Check whether any snapshot already exists for this version
-    existing_snapshots = db.execute_query(
-        """
-        SELECT id FROM objectified.version_snapshot
-        WHERE version_id = %s
-        LIMIT 1
-        """,
-        (version_id,),
-    )
-    if existing_snapshots:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Schema already frozen for this version. "
-                "A snapshot already exists — use POST /versions/{id}/snapshots to commit additional revisions."
-            ),
         )
 
     snapshot_data = _capture_version_state(version_id)
@@ -540,6 +520,9 @@ def freeze_version_schema(
             'Schema frozen via freeze-schema endpoint' AS description,
             %s::jsonb AS snapshot
         FROM locked_version
+        WHERE NOT EXISTS (
+            SELECT 1 FROM objectified.version_snapshot WHERE version_id = %s
+        )
         RETURNING {_SNAPSHOT_COLUMNS}
         """,
         (
@@ -548,10 +531,17 @@ def freeze_version_schema(
             project_id,
             user_id,
             json.dumps(snapshot_data, default=str),
+            version_id,
         ),
     )
     if not row:
-        raise HTTPException(status_code=500, detail="Failed to freeze version schema")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Schema already frozen for this version. "
+                "A snapshot already exists — use POST /versions/{id}/snapshots to commit additional revisions."
+            ),
+        )
 
     return VersionSnapshotSchema(**dict(row))
 
