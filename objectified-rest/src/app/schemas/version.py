@@ -74,5 +74,28 @@ class VersionHistorySchema(BaseModel):
     changed_at: datetime
 
 
+class VersionSnapshotCreate(BaseModel):
+    """Create payload for committing a version snapshot."""
+
+    label: Optional[str] = None
+    description: Optional[str] = None
+
+
+class VersionSnapshotSchema(BaseModel):
+    """Response schema for objectified.version_snapshot."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    version_id: str
+    project_id: str
+    committed_by: Optional[str] = None
+    revision: int
+    label: Optional[str] = None
+    description: Optional[str] = None
+    snapshot: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
 # Backward-compatible alias for older imports.
 VersionUpdate = VersionMetadataUpdate
