@@ -14,7 +14,7 @@ DROP INDEX IF EXISTS objectified.project_slug_key;
 DROP INDEX IF EXISTS objectified.project_tenant_slug_unique;
 
 -- Add per-tenant unique index on (tenant_id, slug) for non-deleted projects
--- Use a partial unique index so that slugs can be reused after soft-delete (deleted_at IS NOT NULL)
+-- Use a partial unique index so that only active (deleted_at IS NULL) projects reserve the slug; soft-deleted rows do not, allowing reuse
 CREATE UNIQUE INDEX project_tenant_slug_unique
     ON objectified.project (tenant_id, slug)
     WHERE deleted_at IS NULL;

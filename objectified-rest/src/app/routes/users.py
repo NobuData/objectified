@@ -322,4 +322,5 @@ def deactivate_user(user_id: str) -> None:
         WHERE id = %s AND deleted_at IS NULL
         """,
         (user_id,),
+        returning=False,
     )

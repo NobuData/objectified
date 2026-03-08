@@ -31,6 +31,8 @@ from app.schemas.tenant_account import (
 )
 from app.schemas.version import (
     VersionCreate,
+    VersionHistorySchema,
+    VersionMetadataUpdate,
     VersionSchema,
     VersionUpdate,
     VersionVisibility,
@@ -68,6 +70,8 @@ __all__ = [
     "TenantSchema",
     "TenantUpdate",
     "VersionCreate",
+    "VersionHistorySchema",
+    "VersionMetadataUpdate",
     "VersionSchema",
     "VersionUpdate",
     "VersionVisibility",

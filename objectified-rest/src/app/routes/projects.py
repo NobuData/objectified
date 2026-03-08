@@ -91,6 +91,28 @@ def list_projects(
 
 
 @router.get(
+    "/tenants/{tenant_id}/projects/deleted",
+    response_model=List[ProjectSchema],
+    summary="List deleted projects for a tenant",
+    description="Return only soft-deleted projects for undelete or historical rename workflows.",
+)
+def list_deleted_projects(
+    tenant_id: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> List[ProjectSchema]:
+    """List only soft-deleted projects for a tenant."""
+    _assert_tenant_exists(tenant_id)
+
+    rows = db.execute_query(
+        f"SELECT {_PROJECT_COLUMNS} FROM objectified.project "
+        "WHERE tenant_id = %s AND deleted_at IS NOT NULL "
+        "ORDER BY deleted_at DESC, created_at ASC",
+        (tenant_id,),
+    )
+    return [ProjectSchema(**dict(r)) for r in rows]
+
+
+@router.get(
     "/tenants/{tenant_id}/projects/{project_id}",
     response_model=ProjectSchema,
     summary="Get project by ID",
@@ -170,7 +192,7 @@ def create_project(
     # Per-tenant slug uniqueness is enforced only for active projects.
     existing = db.execute_query(
         "SELECT id FROM objectified.project "
-        "WHERE tenant_id = %s AND slug ILIKE %s AND deleted_at IS NULL",
+        "WHERE tenant_id = %s AND slug = %s AND deleted_at IS NULL",
         (tenant_id, slug),
     )
     if existing:
@@ -253,7 +275,7 @@ def update_project(
         # Match the DB's partial unique index: only active projects reserve a slug.
         existing = db.execute_query(
             "SELECT id FROM objectified.project "
-            "WHERE tenant_id = %s AND slug ILIKE %s AND id != %s AND deleted_at IS NULL",
+            "WHERE tenant_id = %s AND slug = %s AND id != %s AND deleted_at IS NULL",
             (tenant_id, slug, project_id),
         )
         if existing:
