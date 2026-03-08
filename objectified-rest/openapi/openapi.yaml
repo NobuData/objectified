@@ -6,29 +6,117 @@ info:
     use is via a private API key.
   version: 1.0.0
 paths:
-  /v1/users:
-    get:
+  /v1/auth/login:
+    post:
       tags:
-      - users and tenants
-      summary: List users
-      description: List accounts (users). Not implemented yet.
-      operationId: list_users_v1_users_get
+      - Authentication
+      summary: Login — issue JWT
+      description: 'Authenticate with email and password. Returns a signed JWT access
+        token valid for 24 hours. Use the token as ``Authorization: Bearer <token>``
+        on subsequent requests.'
+      operationId: login_v1_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/users:
+    get:
+      tags:
+      - Users
+      summary: List users (admin)
+      description: List all accounts. **Admin only** — requires a valid JWT with ``is_admin=true``,
+        an account that is an administrator in at least one tenant, or a valid internal
+        API key. Soft-deleted accounts are excluded by default; pass ``include_deleted=true``
+        to include them.
+      operationId: list_users_v1_users_get
+      parameters:
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted accounts
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted accounts
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
                 items:
                   $ref: '#/components/schemas/AccountSchema'
-                type: array
                 title: Response List Users V1 Users Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Users
+      summary: Create user (Sign Up)
+      description: Register a new user account. Email must be unique.
+      operationId: create_user_v1_users_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/users/{user_id}:
     get:
       tags:
-      - users and tenants
-      summary: Get user
-      description: Get a single account by id. Not implemented yet.
+      - Users
+      summary: Get user by ID
+      description: Retrieve a single account by its UUID.
       operationId: get_user_v1_users__user_id__get
       parameters:
       - name: user_id
@@ -37,6 +125,15 @@ paths:
         schema:
           type: string
           title: User Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted account
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted account
       responses:
         '200':
           description: Successful Response
@@ -50,29 +147,159 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /v1/tenants:
-    get:
+    put:
       tags:
-      - users and tenants
-      summary: List tenants
-      description: List tenants. Not implemented yet.
-      operationId: list_tenants_v1_tenants_get
+      - Users
+      summary: Update user
+      description: Update an existing user account. Only provided fields are updated.
+      operationId: update_user_v1_users__user_id__put
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: User Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountUpdate'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
+                $ref: '#/components/schemas/AccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Users
+      summary: Deactivate user
+      description: Soft-delete (deactivate) a user account by setting deleted_at.
+        The record is retained; no hard delete is performed. **Admin only.**
+      operationId: deactivate_user_v1_users__user_id__delete
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: User Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants:
+    get:
+      tags:
+      - Tenants
+      summary: List tenants
+      description: List all tenants. Soft-deleted tenants are excluded by default.
+      operationId: list_tenants_v1_tenants_get
+      parameters:
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted tenants
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted tenants
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
                 items:
                   $ref: '#/components/schemas/TenantSchema'
-                type: array
                 title: Response List Tenants V1 Tenants Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Tenants
+      summary: Create tenant
+      description: Create a new tenant. Slug must be unique and URL-safe (lowercase
+        alphanumeric with hyphens).
+      operationId: create_tenant_v1_tenants_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/tenants/{tenant_id}:
     get:
       tags:
-      - users and tenants
-      summary: Get tenant
-      description: Get a single tenant by id. Not implemented yet.
+      - Tenants
+      summary: Get tenant by ID
+      description: Retrieve a single tenant by its UUID. Soft-deleted tenants are
+        excluded by default.
       operationId: get_tenant_v1_tenants__tenant_id__get
       parameters:
       - name: tenant_id
@@ -81,6 +308,15 @@ paths:
         schema:
           type: string
           title: Tenant Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted tenant
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted tenant
       responses:
         '200':
           description: Successful Response
@@ -94,13 +330,100 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Tenants
+      summary: Update tenant
+      description: Update an existing tenant. Only provided fields are updated. **Admin
+        only.**
+      operationId: update_tenant_v1_tenants__tenant_id__put
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Tenants
+      summary: Deactivate tenant
+      description: Soft-delete (deactivate) a tenant by setting deleted_at. The record
+        is retained; no hard delete is performed. **Admin only.**
+      operationId: deactivate_tenant_v1_tenants__tenant_id__delete
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/tenants/{tenant_id}/members:
     get:
       tags:
-      - users and tenants
+      - Tenants
       summary: List tenant members
-      description: List tenant_account rows for this tenant (members). Not implemented
-        yet.
+      description: List all active members (tenant_account rows) for a tenant.
       operationId: list_tenant_members_v1_tenants__tenant_id__members_get
       parameters:
       - name: tenant_id
@@ -126,13 +449,162 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Tenants
+      summary: Add tenant member
+      description: Add an account to a tenant with a given access level. The account
+        can be identified by ``account_id`` (UUID) or ``email``. If both are provided,
+        ``account_id`` takes precedence.
+      operationId: add_tenant_member_v1_tenants__tenant_id__members_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantAccountCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantAccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/members/{account_id}:
+    delete:
+      tags:
+      - Tenants
+      summary: Remove tenant member
+      description: Remove (soft-delete) an account from a tenant. **Admin only.**
+      operationId: remove_tenant_member_v1_tenants__tenant_id__members__account_id__delete
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Tenants
+      summary: Update tenant member
+      description: Update the access level or enabled status of a tenant member. **Admin
+        only.**
+      operationId: update_tenant_member_v1_tenants__tenant_id__members__account_id__put
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantAccountUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantAccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/tenants/{tenant_id}/administrators:
     get:
       tags:
-      - users and tenants
+      - Tenants
       summary: List tenant administrators
-      description: List tenant_account rows with access_level=administrator. Not implemented
-        yet.
+      description: List all active members with access_level=administrator for a tenant.
       operationId: list_tenant_administrators_v1_tenants__tenant_id__administrators_get
       parameters:
       - name: tenant_id
@@ -152,6 +624,256 @@ paths:
                   $ref: '#/components/schemas/TenantAccountSchema'
                 title: Response List Tenant Administrators V1 Tenants  Tenant Id  Administrators
                   Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Tenants
+      summary: Add tenant administrator
+      description: Add an account to a tenant with the ``administrator`` access level,
+        or promote an existing member to administrator. The account can be identified
+        by ``account_id`` (UUID) or ``email``. If both are provided, ``account_id``
+        takes precedence. **Admin only.**
+      operationId: add_tenant_administrator_v1_tenants__tenant_id__administrators_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantAdministratorCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantAccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/administrators/{account_id}:
+    delete:
+      tags:
+      - Tenants
+      summary: Remove tenant administrator
+      description: Soft-delete the administrator tenant_account row for the given
+        account. **Admin only.**
+      operationId: remove_tenant_administrator_v1_tenants__tenant_id__administrators__account_id__delete
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/api-keys:
+    get:
+      tags:
+      - API Keys
+      summary: List API keys for a tenant
+      description: List all active (non-revoked) API keys for the given tenant. The
+        raw secret is never returned — only metadata and the key prefix.
+      operationId: list_api_keys_v1_tenants__tenant_id__api_keys_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: include_revoked
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include revoked (soft-deleted) keys
+          default: false
+          title: Include Revoked
+        description: Include revoked (soft-deleted) keys
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApiKeySchema'
+                title: Response List Api Keys V1 Tenants  Tenant Id  Api Keys Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - API Keys
+      summary: Create API key for a tenant
+      description: Create a new API key scoped to the given tenant. The full secret
+        is returned **once** in the ``raw_key`` field — store it immediately. Only
+        the prefix and hash are stored server-side; the raw secret cannot be retrieved
+        again.
+      operationId: create_api_key_v1_tenants__tenant_id__api_keys_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyCreateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/api-keys/{key_id}:
+    delete:
+      tags:
+      - API Keys
+      summary: Revoke (soft-delete) an API key
+      description: Revoke an API key by soft-deleting it. The key will be rejected
+        on all subsequent requests. The record is retained for audit purposes.
+      operationId: revoke_api_key_v1_tenants__tenant_id__api_keys__key_id__delete
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: key_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Key Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -189,6 +911,35 @@ paths:
                 title: Response Health Health Get
 components:
   schemas:
+    AccountCreate:
+      properties:
+        name:
+          type: string
+          title: Name
+        email:
+          type: string
+          title: Email
+        password:
+          type: string
+          title: Password
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - name
+      - email
+      - password
+      title: AccountCreate
+      description: 'Create payload for objectified.account (password required).
+
+
+        ``verified`` and ``enabled`` are intentionally omitted: new sign-ups are
+
+        always created with ``verified=False`` and ``enabled=True`` on the server
+
+        side to prevent callers from self-verifying or disabling their account.'
     AccountSchema:
       properties:
         id:
@@ -236,6 +987,226 @@ components:
       - created_at
       title: AccountSchema
       description: Response schema for objectified.account.
+    AccountUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        password:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Password
+        verified:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Verified
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+      type: object
+      title: AccountUpdate
+      description: Update payload for objectified.account (all optional).
+    ApiKeyCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          minLength: 1
+          title: Name
+          description: Human-readable label for this key
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+          description: Optional expiry datetime (UTC). Omit for non-expiring keys.
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Arbitrary metadata
+      type: object
+      required:
+      - name
+      title: ApiKeyCreate
+      description: Request body for POST /v1/tenants/{tenant_id}/api-keys.
+      example:
+        metadata: {}
+        name: CI/CD pipeline key
+    ApiKeyCreateResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: API key UUID
+        tenant_id:
+          type: string
+          title: Tenant Id
+          description: Owning tenant UUID
+        account_id:
+          type: string
+          title: Account Id
+          description: Creating account UUID
+        name:
+          type: string
+          title: Name
+          description: Human-readable label
+        key_prefix:
+          type: string
+          title: Key Prefix
+          description: First 8 characters of the raw key (for display)
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+          description: Expiry datetime, or null for non-expiring
+        last_used:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Used
+          description: Timestamp of last successful use
+        enabled:
+          type: boolean
+          title: Enabled
+          description: Whether the key is active
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Arbitrary metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Creation timestamp (UTC)
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+          description: Last update timestamp (UTC)
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+          description: Soft-delete timestamp (UTC)
+        raw_key:
+          type: string
+          title: Raw Key
+          description: Full API key value — shown ONCE at creation. Store it securely;
+            it cannot be retrieved again.
+      type: object
+      required:
+      - id
+      - tenant_id
+      - account_id
+      - name
+      - key_prefix
+      - enabled
+      - created_at
+      - raw_key
+      title: ApiKeyCreateResponse
+      description: Response for API key creation — includes the raw secret once.
+    ApiKeySchema:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: API key UUID
+        tenant_id:
+          type: string
+          title: Tenant Id
+          description: Owning tenant UUID
+        account_id:
+          type: string
+          title: Account Id
+          description: Creating account UUID
+        name:
+          type: string
+          title: Name
+          description: Human-readable label
+        key_prefix:
+          type: string
+          title: Key Prefix
+          description: First 8 characters of the raw key (for display)
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+          description: Expiry datetime, or null for non-expiring
+        last_used:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Used
+          description: Timestamp of last successful use
+        enabled:
+          type: boolean
+          title: Enabled
+          description: Whether the key is active
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Arbitrary metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Creation timestamp (UTC)
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+          description: Last update timestamp (UTC)
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+          description: Soft-delete timestamp (UTC)
+      type: object
+      required:
+      - id
+      - tenant_id
+      - account_id
+      - name
+      - key_prefix
+      - enabled
+      - created_at
+      title: ApiKeySchema
+      description: Representation of a stored API key (never includes the raw secret).
     HTTPValidationError:
       properties:
         detail:
@@ -245,6 +1216,61 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    LoginRequest:
+      properties:
+        email:
+          type: string
+          title: Email
+          description: Account email address
+        password:
+          type: string
+          title: Password
+          description: Account password (plain text, hashed server-side)
+      type: object
+      required:
+      - email
+      - password
+      title: LoginRequest
+      description: Request body for POST /v1/auth/login.
+      example:
+        email: alice@example.com
+        password: secret
+    LoginResponse:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+          description: Signed JWT access token
+        token_type:
+          type: string
+          title: Token Type
+          description: Token type — always 'bearer'
+          default: bearer
+        user_id:
+          type: string
+          title: User Id
+          description: Account UUID of the authenticated user
+        email:
+          type: string
+          title: Email
+          description: Email address of the authenticated user
+        name:
+          type: string
+          title: Name
+          description: Display name of the authenticated user
+        expires_in:
+          type: integer
+          title: Expires In
+          description: Token lifetime in seconds
+      type: object
+      required:
+      - access_token
+      - user_id
+      - email
+      - name
+      - expires_in
+      title: LoginResponse
+      description: Response body for POST /v1/auth/login.
     TenantAccessLevel:
       type: string
       enum:
@@ -252,6 +1278,42 @@ components:
       - administrator
       title: TenantAccessLevel
       description: Enum for objectified.tenant_access_level.
+    TenantAccountCreate:
+      properties:
+        tenant_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+        account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Account Id
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        access_level:
+          $ref: '#/components/schemas/TenantAccessLevel'
+          default: member
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+      type: object
+      title: TenantAccountCreate
+      description: 'Create payload for objectified.tenant_account.
+
+
+        Either ``account_id`` (UUID) or ``email`` must be provided to identify the
+
+        account to add.  If both are supplied, ``account_id`` takes precedence.
+
+        ``tenant_id`` is optional in the body — it is validated against the path
+
+        parameter in the route handler.'
     TenantAccountSchema:
       properties:
         id:
@@ -294,6 +1356,89 @@ components:
       - created_at
       title: TenantAccountSchema
       description: Response schema for objectified.tenant_account.
+    TenantAccountUpdate:
+      properties:
+        access_level:
+          anyOf:
+          - $ref: '#/components/schemas/TenantAccessLevel'
+          - type: 'null'
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+      type: object
+      title: TenantAccountUpdate
+      description: Update payload for objectified.tenant_account.
+    TenantAdministratorCreate:
+      properties:
+        tenant_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+        account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Account Id
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+      additionalProperties: false
+      type: object
+      title: TenantAdministratorCreate
+      description: 'Request body for POST /v1/tenants/{id}/administrators.
+
+
+        Dedicated schema that intentionally omits ``access_level`` — the endpoint
+
+        always assigns ``administrator`` and the field is not meaningful here.
+
+
+        Either ``account_id`` (UUID) or ``email`` must be provided to identify the
+
+        account.  If both are supplied, ``account_id`` takes precedence.
+
+        ``tenant_id`` is optional in the body — it is validated against the path
+
+        parameter in the route handler.'
+    TenantCreate:
+      properties:
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+          default: ''
+        slug:
+          type: string
+          pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+          title: Slug
+          description: 'URL-safe tenant identifier: lowercase alphanumeric segments
+            separated by single hyphens (e.g. ''my-tenant'', ''acme'', ''acme-corp-2'').
+            Must not start or end with a hyphen.'
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - name
+      - slug
+      title: TenantCreate
+      description: Create payload for objectified.tenant.
     TenantSchema:
       properties:
         id:
@@ -341,6 +1486,41 @@ components:
       - created_at
       title: TenantSchema
       description: Response schema for objectified.tenant.
+    TenantUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        slug:
+          anyOf:
+          - type: string
+            pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*$
+          - type: 'null'
+          title: Slug
+          description: 'URL-safe tenant identifier: lowercase alphanumeric segments
+            separated by single hyphens (e.g. ''my-tenant'', ''acme'', ''acme-corp-2'').
+            Must not start or end with a hyphen.'
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+      type: object
+      title: TenantUpdate
+      description: Update payload for objectified.tenant.
     ValidationError:
       properties:
         loc:
