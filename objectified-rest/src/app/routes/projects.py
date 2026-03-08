@@ -167,9 +167,10 @@ def create_project(
 
     slug = _validate_slug(payload.slug)
 
-    # Per-tenant slug uniqueness check
+    # Per-tenant slug uniqueness is enforced only for active projects.
     existing = db.execute_query(
-        "SELECT id FROM objectified.project WHERE tenant_id = %s AND slug ILIKE %s",
+        "SELECT id FROM objectified.project "
+        "WHERE tenant_id = %s AND slug ILIKE %s AND deleted_at IS NULL",
         (tenant_id, slug),
     )
     if existing:
@@ -249,11 +250,10 @@ def update_project(
 
     if payload.slug is not None:
         slug = _validate_slug(payload.slug)
-        # Check uniqueness within tenant (excluding this project)
-        # This must include soft-deleted projects to match the DB-level non-partial unique constraint on project slugs.
+        # Match the DB's partial unique index: only active projects reserve a slug.
         existing = db.execute_query(
             "SELECT id FROM objectified.project "
-            "WHERE tenant_id = %s AND slug ILIKE %s AND id != %s",
+            "WHERE tenant_id = %s AND slug ILIKE %s AND id != %s AND deleted_at IS NULL",
             (tenant_id, slug, project_id),
         )
         if existing:
@@ -421,4 +421,3 @@ def _record_history(
             project_id,
             operation,
         )
-

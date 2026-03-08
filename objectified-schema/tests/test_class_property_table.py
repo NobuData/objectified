@@ -52,7 +52,7 @@ def _insert_project(conn, slug="cp-project"):
         """
         INSERT INTO objectified.project (tenant_id, creator_id, name, description, slug)
         VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (tenant_id, slug) DO NOTHING
+        ON CONFLICT (tenant_id, slug) WHERE deleted_at IS NULL DO NOTHING
         """,
         (tenant_id, creator_id, "Test Project", "Project for class_property tests", slug),
     )

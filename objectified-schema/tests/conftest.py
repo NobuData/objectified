@@ -6,8 +6,8 @@ each test, so no data ever persists to the database.
 
 Tests use a dedicated test-only database (objectified_test by default). It does
 not and cannot interfere with a running application database (e.g. objectified).
-If that test database does not exist, the test session creates it and runs
-sem-apply against it so the schema is applied before any test runs.
+If that test database does not exist, the test session creates it and applies
+all checked-in SQL scripts directly before any test runs.
 
 Connection settings are read from environment variables (or a .env file):
   POSTGRES_HOST       (default: localhost)
@@ -18,10 +18,8 @@ Connection settings are read from environment variables (or a .env file):
 """
 
 import os
-import subprocess
 from pathlib import Path
 from typing import Optional
-from urllib.parse import quote_plus
 
 import pytest
 import psycopg2
@@ -50,7 +48,7 @@ def _dsn(dbname: Optional[str] = None) -> str:
 
 
 def _apply_scripts_directly(dbname: str) -> None:
-    """Apply all SQL scripts from scripts/ directly via psycopg2 (fallback when sem-apply is absent)."""
+    """Apply all SQL scripts from ``scripts/`` directly via psycopg2."""
     schema_root = Path(__file__).resolve().parent.parent
     scripts_dir = schema_root / "scripts"
     sql_files = sorted(scripts_dir.glob("*.sql"))
@@ -87,35 +85,10 @@ def _ensure_database_and_schema() -> None:
         finally:
             bootstrap.close()
 
-    # Apply or update the schema for the test database on every test session.
-    schema_root = Path(__file__).resolve().parent.parent
-    host = os.getenv("POSTGRES_HOST", "localhost")
-    port = os.getenv("POSTGRES_PORT", "5432")
-    user = os.getenv("POSTGRES_USERNAME", "postgres")
-    password = os.getenv("POSTGRES_PASSWORD", "")
-
-    # Try sem-apply first; fall back to direct SQL execution
-    sem_apply_check = subprocess.run(["which", "sem-apply"], capture_output=True, text=True)
-
-    if sem_apply_check.returncode == 0:
-        if password:
-            url = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{dbname}"
-        else:
-            url = f"postgresql://{quote_plus(user)}@{host}:{port}/{dbname}"
-
-        result = subprocess.run(
-            ["sem-apply", "--url", url],
-            cwd=str(schema_root),
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"sem-apply failed for test database {dbname!r}: {result.stderr or result.stdout}"
-            )
-    else:
-        _apply_scripts_directly(dbname)
+    # Always apply the checked-in SQL scripts directly for tests.
+    # This keeps the test database aligned with the current workspace contents,
+    # even when an existing migration file is amended during development.
+    _apply_scripts_directly(dbname)
 
 class _DB:
     """Thin wrapper around a psycopg2 connection exposing execute/fetchone/fetchall helpers."""
@@ -177,4 +150,3 @@ def conn():
         connection.rollback()
     finally:
         connection.close()
-

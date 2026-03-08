@@ -241,21 +241,25 @@ class TestProjectTableConstraints:
         assert row is not None
         assert row["column_name"] == "id"
 
-    def test_unique_constraint_on_slug(self, conn):
+    def test_partial_unique_index_on_active_tenant_id_and_slug(self, conn):
         row = conn.fetchone(
             """
-            SELECT kcu.column_name
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-              ON tc.constraint_name = kcu.constraint_name
-             AND tc.table_schema    = kcu.table_schema
-            WHERE tc.constraint_type = 'UNIQUE'
-              AND tc.table_schema    = 'objectified'
-              AND tc.table_name      = 'project'
-              AND kcu.column_name    = 'slug'
+            SELECT i.indisunique,
+                   pg_get_indexdef(i.indexrelid) AS indexdef,
+                   pg_get_expr(i.indpred, i.indrelid) AS predicate
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_index i ON i.indrelid = c.oid
+            JOIN pg_class idx ON idx.oid = i.indexrelid
+            WHERE n.nspname = 'objectified'
+              AND c.relname = 'project'
+              AND idx.relname = 'project_tenant_slug_unique'
             """
         )
-        assert row is not None, "UNIQUE constraint on 'slug' is missing"
+        assert row is not None, "Partial unique index on active (tenant_id, slug) is missing"
+        assert row["indisunique"] is True
+        assert "(tenant_id, slug)" in row["indexdef"]
+        assert row["predicate"] == "(deleted_at IS NULL)"
 
     def test_check_constraint_slug_format_exists(self, conn):
         row = conn.fetchone(
@@ -287,6 +291,24 @@ class TestProjectTableConstraints:
         )
         assert row is not None
         assert row["slug"] == "my-project"
+
+    def test_slug_valid_underscore_format_accepted(self, conn):
+        """An underscore-separated slug should be accepted to match the REST validation regex."""
+        tenant_id = _insert_tenant(conn, "slug-underscore-tenant")
+        creator_id = _insert_account(conn, "slug-underscore@example.com")
+        conn.execute(
+            """
+            INSERT INTO objectified.project (tenant_id, creator_id, name, description, slug)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (tenant_id, creator_id, "Slug Project", "Description", "my_project"),
+        )
+        row = conn.fetchone(
+            "SELECT slug FROM objectified.project WHERE slug = %s",
+            ("my_project",),
+        )
+        assert row is not None
+        assert row["slug"] == "my_project"
 
     def test_slug_invalid_uppercase_rejected(self, conn):
         """Uppercase characters in slug must be rejected by the check constraint."""
@@ -336,8 +358,8 @@ class TestProjectTableConstraints:
         conn.execute("ROLLBACK TO SAVEPOINT before_trailing_hyphen")
         conn.execute("RELEASE SAVEPOINT before_trailing_hyphen")
 
-    def test_slug_unique_constraint_raises(self, conn):
-        """Duplicate slug must be rejected by the unique constraint."""
+    def test_slug_duplicate_active_in_same_tenant_raises(self, conn):
+        """Duplicate active slug in the same tenant must be rejected by the partial unique index."""
         tenant_id = _insert_tenant(conn, "dup-tenant")
         creator_id = _insert_account(conn, "dup@example.com")
         conn.execute(
@@ -358,6 +380,64 @@ class TestProjectTableConstraints:
             )
         conn.execute("ROLLBACK TO SAVEPOINT before_duplicate_slug")
         conn.execute("RELEASE SAVEPOINT before_duplicate_slug")
+
+    def test_slug_same_value_allowed_in_different_tenants(self, conn):
+        """The same active slug may exist in different tenants."""
+        tenant_one = _insert_tenant(conn, "shared-tenant-one")
+        tenant_two = _insert_tenant(conn, "shared-tenant-two")
+        creator_id = _insert_account(conn, "shared@example.com")
+        conn.execute(
+            """
+            INSERT INTO objectified.project (tenant_id, creator_id, name, description, slug)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (tenant_one, creator_id, "Project One", "First", "shared-slug"),
+        )
+        conn.execute(
+            """
+            INSERT INTO objectified.project (tenant_id, creator_id, name, description, slug)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (tenant_two, creator_id, "Project Two", "Second", "shared-slug"),
+        )
+        rows = conn.fetchall(
+            "SELECT id FROM objectified.project WHERE slug = %s ORDER BY created_at ASC",
+            ("shared-slug",),
+        )
+        assert len(rows) == 2
+
+    def test_slug_reusable_after_soft_delete_in_same_tenant(self, conn):
+        """A slug can be reused in the same tenant after the earlier project is soft-deleted."""
+        tenant_id = _insert_tenant(conn, "reuse-tenant")
+        creator_id = _insert_account(conn, "reuse@example.com")
+        first = conn.fetchone(
+            """
+            INSERT INTO objectified.project (tenant_id, creator_id, name, description, slug)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (tenant_id, creator_id, "First Project", "First", "reusable-slug"),
+        )
+        conn.execute(
+            """
+            UPDATE objectified.project
+            SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
+            WHERE id = %s
+            """,
+            (first["id"],),
+        )
+        conn.execute(
+            """
+            INSERT INTO objectified.project (tenant_id, creator_id, name, description, slug)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (tenant_id, creator_id, "Second Project", "Second", "reusable-slug"),
+        )
+        active_rows = conn.fetchall(
+            "SELECT id FROM objectified.project WHERE tenant_id = %s AND slug = %s AND deleted_at IS NULL",
+            (tenant_id, "reusable-slug"),
+        )
+        assert len(active_rows) == 1
 
     def test_tenant_id_foreign_key_references_tenant(self, conn):
         row = conn.fetchone(
