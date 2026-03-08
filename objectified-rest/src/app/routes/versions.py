@@ -14,6 +14,8 @@ from app.schemas.version import (
     VersionHistorySchema,
     VersionMetadataUpdate,
     VersionSchema,
+    VersionSnapshotCreate,
+    VersionSnapshotSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -352,6 +354,164 @@ def get_version_by_revision(
         )
 
     return VersionHistorySchema(**dict(rows[0]))
+
+
+# ---------------------------------------------------------------------------
+# Version Snapshots – committed state capture (classes + properties)
+# ---------------------------------------------------------------------------
+
+_SNAPSHOT_COLUMNS = (
+    "id, version_id, project_id, committed_by, revision, label, description, snapshot, created_at"
+)
+
+
+def _capture_version_state(version_id: str) -> dict[str, Any]:
+    """Capture the current state of all active classes and their properties for a version.
+
+    Returns a dict with ``classes`` containing a list of class snapshots, each
+    including its associated ``properties`` list.
+    """
+    class_rows = db.execute_query(
+        """
+        SELECT id, version_id, name, description, schema, metadata, enabled, created_at, updated_at
+        FROM objectified.class
+        WHERE version_id = %s
+          AND deleted_at IS NULL
+        ORDER BY name ASC
+        """,
+        (version_id,),
+    )
+
+    classes: list[dict[str, Any]] = []
+    for cls in class_rows:
+        cls_dict = dict(cls)
+        prop_rows = db.execute_query(
+            """
+            SELECT cp.id, cp.class_id, cp.property_id, cp.name, cp.description, cp.data,
+                   p.name AS property_name, p.description AS property_description,
+                   p.data AS property_data, p.enabled AS property_enabled
+            FROM objectified.class_property cp
+            JOIN objectified.property p ON p.id = cp.property_id
+            WHERE cp.class_id = %s
+              AND p.deleted_at IS NULL
+            ORDER BY cp.name ASC
+            """,
+            (str(cls_dict["id"]),),
+        )
+        cls_dict["properties"] = [dict(p) for p in prop_rows]
+        classes.append(cls_dict)
+
+    return {"classes": classes}
+
+
+@router.post(
+    "/versions/{version_id}/snapshots",
+    response_model=VersionSnapshotSchema,
+    status_code=201,
+    summary="Commit a version snapshot",
+    description=(
+        "Capture the current state of all classes and properties for this version "
+        "as an immutable snapshot. Each snapshot receives an auto-incremented revision number."
+    ),
+)
+def commit_version_snapshot(
+    version_id: str,
+    payload: VersionSnapshotCreate,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> VersionSnapshotSchema:
+    """Commit a snapshot of the current version state (classes + properties)."""
+    version = _assert_version_exists(version_id, include_deleted=False)
+    project_id = str(version["project_id"])
+    committed_by = caller.get("user_id") if caller else None
+
+    snapshot_data = _capture_version_state(version_id)
+
+    row = db.execute_mutation(
+        f"""
+        INSERT INTO objectified.version_snapshot
+            (version_id, project_id, committed_by, revision, label, description, snapshot)
+        SELECT
+            %s AS version_id,
+            %s AS project_id,
+            %s AS committed_by,
+            COALESCE((SELECT MAX(revision) FROM objectified.version_snapshot WHERE version_id = %s), 0) + 1 AS revision,
+            %s AS label,
+            %s AS description,
+            %s::jsonb AS snapshot
+        RETURNING {_SNAPSHOT_COLUMNS}
+        """,
+        (
+            version_id,
+            project_id,
+            committed_by,
+            version_id,
+            payload.label,
+            payload.description,
+            json.dumps(snapshot_data, default=str),
+        ),
+    )
+    if not row:
+        raise HTTPException(status_code=500, detail="Failed to commit version snapshot")
+
+    return VersionSnapshotSchema(**dict(row))
+
+
+@router.get(
+    "/versions/{version_id}/snapshots",
+    response_model=List[VersionSnapshotSchema],
+    summary="List version snapshots",
+    description="Return all committed snapshots for a version, newest revision first.",
+)
+def list_version_snapshots(
+    version_id: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> List[VersionSnapshotSchema]:
+    """List all snapshots for a version."""
+    _assert_version_exists(version_id, include_deleted=True)
+
+    rows = db.execute_query(
+        f"""
+        SELECT {_SNAPSHOT_COLUMNS}
+        FROM objectified.version_snapshot
+        WHERE version_id = %s
+        ORDER BY revision DESC
+        """,
+        (version_id,),
+    )
+    return [VersionSnapshotSchema(**dict(r)) for r in rows]
+
+
+@router.get(
+    "/versions/{version_id}/snapshots/{revision}",
+    response_model=VersionSnapshotSchema,
+    summary="Get version snapshot by revision",
+    description="Return a specific committed snapshot for a version by its revision number.",
+)
+def get_version_snapshot_by_revision(
+    version_id: str,
+    revision: int,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> VersionSnapshotSchema:
+    """Get a single snapshot revision for a version."""
+    _assert_version_exists(version_id, include_deleted=True)
+
+    rows = db.execute_query(
+        f"""
+        SELECT {_SNAPSHOT_COLUMNS}
+        FROM objectified.version_snapshot
+        WHERE version_id = %s
+          AND revision = %s
+        LIMIT 1
+        """,
+        (version_id, revision),
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Version snapshot not found: {version_id} @ revision {revision}",
+        )
+
+    return VersionSnapshotSchema(**dict(rows[0]))
 
 
 def _record_history(

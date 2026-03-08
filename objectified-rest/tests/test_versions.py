@@ -166,3 +166,154 @@ def test_get_version_by_revision_not_found_returns_404(client):
         r = client.get(f"/v1/versions/{_VERSION_ID}/revisions/99")
     assert r.status_code == 404
 
+
+# ---------------------------------------------------------------------------
+# Version Snapshot endpoints
+# ---------------------------------------------------------------------------
+
+_SNAPSHOT_ID = "00000000-0000-0000-0000-000000000060"
+
+_SNAPSHOT_ROW: dict[str, Any] = {
+    "id": _SNAPSHOT_ID,
+    "version_id": _VERSION_ID,
+    "project_id": _PROJECT_ID,
+    "committed_by": _ACCOUNT_ID,
+    "revision": 1,
+    "label": "initial-commit",
+    "description": "First snapshot",
+    "snapshot": {"classes": []},
+    "created_at": _NOW,
+}
+
+
+def test_commit_version_snapshot_returns_201(client):
+    """POST /v1/versions/{id}/snapshots commits a snapshot and returns 201."""
+    with mock_db_all() as mock_db:
+        # 1. _assert_version_exists (execute_query)
+        # 2. _capture_version_state – class query (execute_query)
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [],  # no classes yet
+        ]
+        mock_db.execute_mutation.return_value = _SNAPSHOT_ROW
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/snapshots",
+            json={"label": "initial-commit", "description": "First snapshot"},
+        )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["revision"] == 1
+    assert body["label"] == "initial-commit"
+    assert body["snapshot"] == {"classes": []}
+
+
+def test_commit_version_snapshot_captures_classes_and_properties(client):
+    """POST /v1/versions/{id}/snapshots captures classes and their properties."""
+    class_id = "00000000-0000-0000-0000-000000000070"
+    class_row = {
+        "id": class_id,
+        "version_id": _VERSION_ID,
+        "name": "Person",
+        "description": "A person class",
+        "schema": {},
+        "metadata": {},
+        "enabled": True,
+        "created_at": _NOW,
+        "updated_at": None,
+    }
+    prop_row = {
+        "id": "00000000-0000-0000-0000-000000000080",
+        "class_id": class_id,
+        "property_id": "00000000-0000-0000-0000-000000000090",
+        "name": "first_name",
+        "description": "First name",
+        "data": {"type": "string"},
+        "property_name": "first_name",
+        "property_description": "First name",
+        "property_data": {"type": "string"},
+        "property_enabled": True,
+    }
+    snapshot_with_data = {
+        **_SNAPSHOT_ROW,
+        "snapshot": {"classes": [{**class_row, "properties": [prop_row]}]},
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],  # _assert_version_exists
+            [class_row],              # class query in _capture_version_state
+            [prop_row],               # property query for the class
+        ]
+        mock_db.execute_mutation.return_value = snapshot_with_data
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/snapshots",
+            json={"label": "with-data"},
+        )
+    assert r.status_code == 201
+    snapshot = r.json()["snapshot"]
+    assert len(snapshot["classes"]) == 1
+    assert snapshot["classes"][0]["name"] == "Person"
+    assert len(snapshot["classes"][0]["properties"]) == 1
+    assert snapshot["classes"][0]["properties"][0]["name"] == "first_name"
+
+
+def test_commit_version_snapshot_deleted_version_returns_404(client):
+    """POST /v1/versions/{id}/snapshots returns 404 for deleted version."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/snapshots",
+            json={},
+        )
+    assert r.status_code == 404
+
+
+def test_list_version_snapshots_returns_list(client):
+    """GET /v1/versions/{id}/snapshots returns list of snapshots."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [_SNAPSHOT_ROW],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots")
+    assert r.status_code == 200
+    assert len(r.json()) == 1
+    assert r.json()[0]["revision"] == 1
+
+
+def test_list_version_snapshots_empty(client):
+    """GET /v1/versions/{id}/snapshots returns empty list when no snapshots."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_get_version_snapshot_by_revision_returns_snapshot(client):
+    """GET /v1/versions/{id}/snapshots/{revision} returns snapshot."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [_SNAPSHOT_ROW],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/1")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["revision"] == 1
+    assert body["version_id"] == _VERSION_ID
+
+
+def test_get_version_snapshot_by_revision_not_found_returns_404(client):
+    """GET /v1/versions/{id}/snapshots/{revision} returns 404 when missing."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/99")
+    assert r.status_code == 404
+
+
