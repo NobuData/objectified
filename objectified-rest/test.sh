@@ -2,5 +2,5 @@
 #
 # Runs tests
 
-uv run pytest -v --cov
+uv run pytest -v --cov=app
 
