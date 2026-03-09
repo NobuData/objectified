@@ -2,3 +2,5 @@
 objectified-commercial
 .yarn/
 
+node_modules
+**/.turbo

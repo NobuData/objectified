@@ -13,6 +13,20 @@ This top-level project is the base.  Objectified is a monorepo, meaning, each su
 
 Objectified is written using React, NextJS, FastAPI, and PostgreSQL.
 
+## Local Development (Turbo)
+
+Run all development servers from the repository root:
+
+```bash
+yarn install
+yarn dev
+```
+
+This starts:
+
+- `objectified-ui` on `http://localhost:3000`
+- `objectified-rest` on `http://localhost:8000`
+
 ## Goals
 
 Objectified is a constant work in progress.
