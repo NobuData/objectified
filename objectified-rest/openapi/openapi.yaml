@@ -34,6 +34,244 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/classes/{class_id}/properties:
+    get:
+      tags:
+      - Class Properties
+      summary: List properties for a class
+      description: Return all properties assigned to a class. Pass ``parent_id`` query
+        param to filter by parent (for nested properties). Omit ``parent_id`` to return
+        all (both top-level and nested). Properties whose underlying library property
+        has been deleted are excluded.
+      operationId: list_class_properties_v1_versions__version_id__classes__class_id__properties_get
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Id
+      - name: parent_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filter by parent property ID
+          title: Parent Id
+        description: Filter by parent property ID
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClassPropertySchema'
+                title: Response List Class Properties V1 Versions  Version Id  Classes  Class
+                  Id  Properties Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Class Properties
+      summary: Add property to class
+      description: Add a library property to a class, optionally overriding its name,
+        description, and/or data. Supply ``parent_id`` to nest the property under
+        another class property.
+      operationId: add_property_to_class_v1_versions__version_id__classes__class_id__properties_post
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassPropertyCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassPropertySchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/classes/{class_id}/properties/{class_property_id}:
+    put:
+      tags:
+      - Class Properties
+      summary: Update class property join row
+      description: 'Update the overrides stored on the class_property join row: name,
+        description, data (JSON Schema), and/or parent_id for re-nesting. Only provided
+        fields are modified.'
+      operationId: update_class_property_v1_versions__version_id__classes__class_id__properties__class_property_id__put
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Id
+      - name: class_property_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Property Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassPropertyUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassPropertySchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Class Properties
+      summary: Remove property from class
+      description: Remove a property from a class by deleting the class_property join
+        row. Child properties whose parent_id references the deleted row will have
+        their parent_id set to NULL (promoted to top-level) via the ON DELETE SET
+        NULL foreign key constraint.
+      operationId: remove_property_from_class_v1_versions__version_id__classes__class_id__properties__class_property_id__delete
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Id
+      - name: class_property_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Property Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/versions/{version_id}/classes:
     get:
       tags:
@@ -3066,6 +3304,105 @@ components:
       - name
       title: ClassCreate
       description: Create payload for objectified.class.
+    ClassPropertyCreate:
+      properties:
+        property_id:
+          type: string
+          title: Property Id
+        parent_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+          default: ''
+        data:
+          additionalProperties: true
+          type: object
+          title: Data
+      type: object
+      required:
+      - property_id
+      - name
+      title: ClassPropertyCreate
+      description: Create payload for objectified.class_property.
+    ClassPropertySchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        class_id:
+          type: string
+          title: Class Id
+        property_id:
+          type: string
+          title: Property Id
+        parent_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        data:
+          additionalProperties: true
+          type: object
+          title: Data
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+      type: object
+      required:
+      - id
+      - class_id
+      - property_id
+      - name
+      - description
+      - created_at
+      title: ClassPropertySchema
+      description: Response schema for objectified.class_property.
+    ClassPropertyUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        data:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Data
+        parent_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Id
+      type: object
+      title: ClassPropertyUpdate
+      description: Update payload for objectified.class_property.
     ClassSchema:
       properties:
         id:

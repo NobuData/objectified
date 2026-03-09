@@ -16,8 +16,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Class Properties"])
 
 _CLASS_PROPERTY_COLUMNS = (
-"id, class_id, property_id, parent_id, name, description, data, created_at, updated_at"
+    "id, class_id, property_id, parent_id, name, description, data, created_at, updated_at"
 )
+
+# Same columns prefixed with table alias for use in JOIN queries.
+_CP_SELECT = (
+    "cp.id, cp.class_id, cp.property_id, cp.parent_id, cp.name, "
+    "cp.description, cp.data, cp.created_at, cp.updated_at"
+)
+
+
 def _assert_class_exists(class_id: str, version_id: str) -> dict[str, Any]:
     """Raise 404 if the class does not exist or belongs to a different version."""
     rows = db.execute_query(
@@ -28,6 +36,8 @@ def _assert_class_exists(class_id: str, version_id: str) -> dict[str, Any]:
     if not rows:
         raise _not_found("Class", class_id)
     return dict(rows[0])
+
+
 def _assert_class_property_exists(class_property_id: str, class_id: str) -> dict[str, Any]:
     """Raise 404 if the class property does not exist or belongs to a different class."""
     rows = db.execute_query(
@@ -38,6 +48,8 @@ def _assert_class_property_exists(class_property_id: str, class_id: str) -> dict
     if not rows:
         raise _not_found("ClassProperty", class_property_id)
     return dict(rows[0])
+
+
 def _assert_property_exists(property_id: str) -> dict[str, Any]:
     """Raise 404 if the library property does not exist or is deleted."""
     rows = db.execute_query(
@@ -48,6 +60,8 @@ def _assert_property_exists(property_id: str) -> dict[str, Any]:
     if not rows:
         raise _not_found("Property", property_id)
     return dict(rows[0])
+
+
 @router.get(
     "/versions/{version_id}/classes/{class_id}/properties",
     response_model=List[ClassPropertySchema],
@@ -55,7 +69,8 @@ def _assert_property_exists(property_id: str) -> dict[str, Any]:
     description=(
         "Return all properties assigned to a class. "
         "Pass ``parent_id`` query param to filter by parent (for nested properties). "
-        "Omit ``parent_id`` to return all (both top-level and nested)."
+        "Omit ``parent_id`` to return all (both top-level and nested). "
+        "Properties whose underlying library property has been deleted are excluded."
     ),
 )
 def list_class_properties(
@@ -69,19 +84,23 @@ def list_class_properties(
     _assert_class_exists(class_id, version_id)
     if parent_id is not None:
         rows = db.execute_query(
-            f"SELECT {_CLASS_PROPERTY_COLUMNS} FROM objectified.class_property "
-            "WHERE class_id = %s AND parent_id = %s "
-            "ORDER BY name ASC",
+            f"SELECT {_CP_SELECT} FROM objectified.class_property cp "
+            "JOIN objectified.property p ON p.id = cp.property_id "
+            "WHERE cp.class_id = %s AND cp.parent_id = %s AND p.deleted_at IS NULL "
+            "ORDER BY cp.name ASC",
             (class_id, parent_id),
         )
     else:
         rows = db.execute_query(
-            f"SELECT {_CLASS_PROPERTY_COLUMNS} FROM objectified.class_property "
-            "WHERE class_id = %s "
-            "ORDER BY name ASC",
+            f"SELECT {_CP_SELECT} FROM objectified.class_property cp "
+            "JOIN objectified.property p ON p.id = cp.property_id "
+            "WHERE cp.class_id = %s AND p.deleted_at IS NULL "
+            "ORDER BY cp.name ASC",
             (class_id,),
         )
     return [ClassPropertySchema(**dict(r)) for r in rows]
+
+
 @router.post(
     "/versions/{version_id}/classes/{class_id}/properties",
     response_model=ClassPropertySchema,
@@ -150,6 +169,8 @@ def add_property_to_class(
     if not row:
         raise HTTPException(status_code=500, detail="Failed to add property to class")
     return ClassPropertySchema(**dict(row))
+
+
 @router.put(
     "/versions/{version_id}/classes/{class_id}/properties/{class_property_id}",
     response_model=ClassPropertySchema,
@@ -206,6 +227,23 @@ def update_class_property(
         if payload.parent_id == class_property_id:
             raise HTTPException(status_code=400, detail="A property cannot be its own parent")
         _assert_class_property_exists(payload.parent_id, class_id)
+        # When only re-nesting (name unchanged), verify no sibling name conflict under the new parent.
+        if payload.name is None:
+            effective_name = (old_row.get("name") or "").strip()
+            if effective_name:
+                name_conflict = db.execute_query(
+                    "SELECT id FROM objectified.class_property "
+                    "WHERE class_id = %s AND LOWER(name) = LOWER(%s) AND parent_id = %s AND id != %s",
+                    (class_id, effective_name, payload.parent_id, class_property_id),
+                )
+                if name_conflict:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"A property with name '{effective_name}' "
+                            "already exists at this level in the class"
+                        ),
+                    )
         updates.append("parent_id = %s")
         params.append(payload.parent_id)
     if not updates:
@@ -234,6 +272,8 @@ def update_class_property(
     if not row:
         raise _not_found("ClassProperty", class_property_id)
     return ClassPropertySchema(**dict(row))
+
+
 @router.delete(
     "/versions/{version_id}/classes/{class_id}/properties/{class_property_id}",
     status_code=204,
@@ -241,7 +281,8 @@ def update_class_property(
     description=(
         "Remove a property from a class by deleting the class_property join row. "
         "Child properties whose parent_id references the deleted row "
-        "will have their parent_id set to NULL (promoted to top-level)."
+        "will have their parent_id set to NULL (promoted to top-level) "
+        "via the ON DELETE SET NULL foreign key constraint."
     ),
 )
 def remove_property_from_class(
@@ -271,3 +312,4 @@ def remove_property_from_class(
     )
     if not row:
         raise _not_found("ClassProperty", class_property_id)
+
