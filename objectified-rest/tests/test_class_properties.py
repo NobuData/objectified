@@ -66,9 +66,13 @@ def client():
     app.dependency_overrides[require_authenticated] = lambda: _CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # List class properties
 # ---------------------------------------------------------------------------
+
+
 def test_list_class_properties_returns_list(client):
     """GET /v1/versions/{vid}/classes/{cid}/properties returns list."""
     with mock_db_all() as mock_db:
@@ -82,6 +86,8 @@ def test_list_class_properties_returns_list(client):
     data = r.json()
     assert len(data) == 1
     assert data[0]["name"] == "myProp"
+
+
 def test_list_class_properties_empty(client):
     """GET /v1/versions/{vid}/classes/{cid}/properties returns empty list."""
     with mock_db_all() as mock_db:
@@ -93,6 +99,8 @@ def test_list_class_properties_empty(client):
         r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/properties")
     assert r.status_code == 200
     assert r.json() == []
+
+
 def test_list_class_properties_filtered_by_parent_id(client):
     """GET /v1/versions/{vid}/classes/{cid}/properties?parent_id=X filters by parent."""
     child_row = {**_CLASS_PROP_ROW, "parent_id": _PARENT_ID}
@@ -107,12 +115,16 @@ def test_list_class_properties_filtered_by_parent_id(client):
         )
     assert r.status_code == 200
     assert r.json()[0]["parent_id"] == _PARENT_ID
+
+
 def test_list_class_properties_version_not_found_returns_404(client):
     """GET /v1/versions/{vid}/classes/{cid}/properties returns 404 when version missing."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = []
         r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/properties")
     assert r.status_code == 404
+
+
 def test_list_class_properties_class_not_found_returns_404(client):
     """GET /v1/versions/{vid}/classes/{cid}/properties returns 404 when class missing."""
     with mock_db_all() as mock_db:
@@ -122,9 +134,13 @@ def test_list_class_properties_class_not_found_returns_404(client):
         ]
         r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/properties")
     assert r.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # Add property to class
 # ---------------------------------------------------------------------------
+
+
 def test_add_property_to_class_returns_201(client):
     """POST /v1/versions/{vid}/classes/{cid}/properties creates class property."""
     with mock_db_all() as mock_db:
@@ -141,6 +157,8 @@ def test_add_property_to_class_returns_201(client):
         )
     assert r.status_code == 201
     assert r.json()["name"] == "myProp"
+
+
 def test_add_property_to_class_with_parent_id_returns_201(client):
     """POST with parent_id nests the property."""
     child_row = {**_CLASS_PROP_ROW, "parent_id": _PARENT_ID}
@@ -160,6 +178,8 @@ def test_add_property_to_class_with_parent_id_returns_201(client):
         )
     assert r.status_code == 201
     assert r.json()["parent_id"] == _PARENT_ID
+
+
 def test_add_property_missing_name_returns_400(client):
     """POST without name returns 400."""
     with mock_db_all() as mock_db:
@@ -173,6 +193,8 @@ def test_add_property_missing_name_returns_400(client):
             json={"property_id": _PROPERTY_ID, "name": ""},
         )
     assert r.status_code == 400
+
+
 def test_add_property_duplicate_name_returns_409(client):
     """POST with duplicate name returns 409."""
     with mock_db_all() as mock_db:
@@ -187,6 +209,8 @@ def test_add_property_duplicate_name_returns_409(client):
             json={"property_id": _PROPERTY_ID, "name": "myProp"},
         )
     assert r.status_code == 409
+
+
 def test_add_property_version_not_found_returns_404(client):
     """POST returns 404 when version missing."""
     with mock_db_all() as mock_db:
@@ -196,6 +220,8 @@ def test_add_property_version_not_found_returns_404(client):
             json={"property_id": _PROPERTY_ID, "name": "myProp"},
         )
     assert r.status_code == 404
+
+
 def test_add_property_library_property_not_found_returns_404(client):
     """POST returns 404 when library property missing."""
     with mock_db_all() as mock_db:
@@ -209,9 +235,13 @@ def test_add_property_library_property_not_found_returns_404(client):
             json={"property_id": _PROPERTY_ID, "name": "myProp"},
         )
     assert r.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # Update class property
 # ---------------------------------------------------------------------------
+
+
 def test_update_class_property_returns_updated(client):
     """PUT /v1/versions/{vid}/classes/{cid}/properties/{pid} updates join row."""
     updated = {**_CLASS_PROP_ROW, "name": "renamedProp", "description": "Updated"}
@@ -229,6 +259,8 @@ def test_update_class_property_returns_updated(client):
         )
     assert r.status_code == 200
     assert r.json()["name"] == "renamedProp"
+
+
 def test_update_class_property_no_fields_returns_existing(client):
     """PUT with no fields returns existing row unchanged."""
     with mock_db_all() as mock_db:
@@ -244,6 +276,8 @@ def test_update_class_property_no_fields_returns_existing(client):
         )
     assert r.status_code == 200
     assert r.json()["name"] == "myProp"
+
+
 def test_update_class_property_empty_name_returns_400(client):
     """PUT with empty name returns 400."""
     with mock_db_all() as mock_db:
@@ -257,6 +291,8 @@ def test_update_class_property_empty_name_returns_400(client):
             json={"name": "   "},
         )
     assert r.status_code == 400
+
+
 def test_update_class_property_duplicate_name_returns_409(client):
     """PUT with duplicate name returns 409."""
     with mock_db_all() as mock_db:
@@ -271,6 +307,8 @@ def test_update_class_property_duplicate_name_returns_409(client):
             json={"name": "conflictProp"},
         )
     assert r.status_code == 409
+
+
 def test_update_class_property_self_parent_returns_400(client):
     """PUT setting parent_id to same id returns 400."""
     with mock_db_all() as mock_db:
@@ -284,6 +322,8 @@ def test_update_class_property_self_parent_returns_400(client):
             json={"parent_id": _CLASS_PROP_ID},
         )
     assert r.status_code == 400
+
+
 def test_update_class_property_not_found_returns_404(client):
     """PUT returns 404 when class property missing."""
     with mock_db_all() as mock_db:
@@ -297,9 +337,52 @@ def test_update_class_property_not_found_returns_404(client):
             json={"name": "renamedProp"},
         )
     assert r.status_code == 404
+
+
+def test_update_class_property_with_parent_id_returns_200(client):
+    """PUT with valid parent_id re-nests the property."""
+    parent_row = {**_CLASS_PROP_ROW, "id": _PARENT_ID, "name": "parentProp"}
+    updated = {**_CLASS_PROP_ROW, "parent_id": _PARENT_ID}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [_CLASS_ROW],
+            [_CLASS_PROP_ROW],   # class property exists
+            [parent_row],        # parent class property exists
+            [],                  # no sibling name conflict under new parent
+        ]
+        mock_db.execute_mutation.return_value = updated
+        r = client.put(
+            f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/properties/{_CLASS_PROP_ID}",
+            json={"parent_id": _PARENT_ID},
+        )
+    assert r.status_code == 200
+    assert r.json()["parent_id"] == _PARENT_ID
+
+
+def test_update_class_property_reparent_sibling_conflict_returns_409(client):
+    """PUT returns 409 when re-nesting causes a sibling name conflict under the new parent."""
+    parent_row = {**_CLASS_PROP_ROW, "id": _PARENT_ID, "name": "parentProp"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [_CLASS_ROW],
+            [_CLASS_PROP_ROW],        # class property exists
+            [parent_row],             # parent class property exists
+            [{"id": "sibling-id"}],   # sibling name conflict under new parent
+        ]
+        r = client.put(
+            f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/properties/{_CLASS_PROP_ID}",
+            json={"parent_id": _PARENT_ID},
+        )
+    assert r.status_code == 409
+
+
 # ---------------------------------------------------------------------------
 # Remove property from class
 # ---------------------------------------------------------------------------
+
+
 def test_remove_property_from_class_returns_204(client):
     """DELETE /v1/versions/{vid}/classes/{cid}/properties/{pid} removes the row."""
     with mock_db_all() as mock_db:
@@ -316,6 +399,8 @@ def test_remove_property_from_class_returns_204(client):
             f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/properties/{_CLASS_PROP_ID}"
         )
     assert r.status_code == 204
+
+
 def test_remove_property_from_class_not_found_returns_404(client):
     """DELETE returns 404 when class property missing."""
     with mock_db_all() as mock_db:
@@ -328,6 +413,8 @@ def test_remove_property_from_class_not_found_returns_404(client):
             f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/properties/{_CLASS_PROP_ID}"
         )
     assert r.status_code == 404
+
+
 def test_remove_property_version_not_found_returns_404(client):
     """DELETE returns 404 when version missing."""
     with mock_db_all() as mock_db:
@@ -336,6 +423,8 @@ def test_remove_property_version_not_found_returns_404(client):
             f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/properties/{_CLASS_PROP_ID}"
         )
     assert r.status_code == 404
+
+
 def test_class_properties_require_auth(client):
     """All class property endpoints return 401 without auth."""
     app.dependency_overrides.clear()
@@ -357,9 +446,13 @@ def test_class_properties_require_auth(client):
     assert r_post.status_code == 401
     assert r_put.status_code == 401
     assert r_delete.status_code == 401
+
+
 # ---------------------------------------------------------------------------
 # Additional coverage: DB exception and edge-case paths
 # ---------------------------------------------------------------------------
+
+
 def test_add_property_db_unique_constraint_returns_409(client):
     """POST returns 409 when DB raises unique constraint error on mutation."""
     with mock_db_all() as mock_db:
@@ -375,6 +468,8 @@ def test_add_property_db_unique_constraint_returns_409(client):
             json={"property_id": _PROPERTY_ID, "name": "myProp"},
         )
     assert r.status_code == 409
+
+
 def test_add_property_mutation_returns_none_returns_500(client):
     """POST returns 500 when mutation returns None."""
     with mock_db_all() as mock_db:
@@ -390,6 +485,8 @@ def test_add_property_mutation_returns_none_returns_500(client):
             json={"property_id": _PROPERTY_ID, "name": "myProp"},
         )
     assert r.status_code == 500
+
+
 def test_update_class_property_db_unique_constraint_returns_409(client):
     """PUT returns 409 when DB raises unique constraint error on mutation."""
     with mock_db_all() as mock_db:
@@ -405,24 +502,8 @@ def test_update_class_property_db_unique_constraint_returns_409(client):
             json={"name": "newName"},
         )
     assert r.status_code == 409
-def test_update_class_property_with_parent_id_returns_200(client):
-    """PUT with valid parent_id re-nests the property."""
-    parent_row = {**_CLASS_PROP_ROW, "id": _PARENT_ID, "name": "parentProp"}
-    updated = {**_CLASS_PROP_ROW, "parent_id": _PARENT_ID}
-    with mock_db_all() as mock_db:
-        mock_db.execute_query.side_effect = [
-            [_VERSION_ROW],
-            [_CLASS_ROW],
-            [_CLASS_PROP_ROW],   # class property exists
-            [parent_row],        # parent class property exists
-        ]
-        mock_db.execute_mutation.return_value = updated
-        r = client.put(
-            f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/properties/{_CLASS_PROP_ID}",
-            json={"parent_id": _PARENT_ID},
-        )
-    assert r.status_code == 200
-    assert r.json()["parent_id"] == _PARENT_ID
+
+
 def test_remove_property_delete_returns_none_returns_404(client):
     """DELETE returns 404 when DELETE mutation returns None."""
     with mock_db_all() as mock_db:
