@@ -435,6 +435,65 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/classes/{class_id}/with-properties-tags:
+    get:
+      tags:
+      - Classes
+      summary: Get class with properties and tags
+      description: Return a single class with its properties and tags (from metadata).
+        Useful for loading a single class detail view.
+      operationId: get_class_with_properties_and_tags_v1_versions__version_id__classes__class_id__with_properties_tags_get
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Class Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted class
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted class
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassWithPropertiesAndTags'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/versions/{version_id}/classes/{class_id}:
     get:
       tags:

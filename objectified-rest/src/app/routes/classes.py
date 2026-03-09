@@ -128,6 +128,62 @@ def list_classes_with_properties_and_tags(
 
 
 @router.get(
+    "/versions/{version_id}/classes/{class_id}/with-properties-tags",
+    response_model=ClassWithPropertiesAndTags,
+    summary="Get class with properties and tags",
+    description=(
+        "Return a single class with its properties and tags (from metadata). "
+        "Useful for loading a single class detail view."
+    ),
+)
+def get_class_with_properties_and_tags(
+    version_id: str,
+    class_id: str,
+    include_deleted: bool = Query(False, description="Include soft-deleted class"),
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> ClassWithPropertiesAndTags:
+    """Get a single class with its properties and tags."""
+    _assert_version_exists(version_id, include_deleted=include_deleted)
+
+    deleted_clause = "" if include_deleted else "AND c.deleted_at IS NULL"
+    class_rows = db.execute_query(
+        f"""
+        SELECT {_CLASS_COLUMNS}
+        FROM objectified.class c
+        WHERE c.id = %s AND c.version_id = %s
+          {deleted_clause}
+        LIMIT 1
+        """,
+        (class_id, version_id),
+    )
+    if not class_rows:
+        raise _not_found("Class", class_id)
+
+    cls_model = ClassSchema(**_row_to_class(dict(class_rows[0])))
+    cls_dict = cls_model.model_dump(mode="json", by_alias=True)
+    cls_dict["properties"] = []
+    cls_dict["tags"] = (cls_dict.get("metadata") or {}).get("tags", [])
+    if isinstance(cls_dict.get("tags"), str):
+        cls_dict["tags"] = [cls_dict["tags"]] if cls_dict["tags"] else []
+
+    prop_rows = db.execute_query(
+        """
+        SELECT cp.id, cp.class_id, cp.property_id, cp.name, cp.description, cp.data,
+               p.name AS property_name, p.data AS property_data
+        FROM objectified.class_property cp
+        JOIN objectified.property p ON p.id = cp.property_id AND p.deleted_at IS NULL
+        WHERE cp.class_id = %s
+        ORDER BY cp.name ASC
+        """,
+        (class_id,),
+    )
+    for prop in prop_rows:
+        cls_dict["properties"].append(dict(prop))
+
+    return cls_dict
+
+
+@router.get(
     "/versions/{version_id}/classes/{class_id}",
     response_model=ClassSchema,
     summary="Get class by ID",

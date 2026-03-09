@@ -10,7 +10,8 @@ Routes are split across focused modules:
   - app.routes.projects          → /v1/tenants/{id}/projects
   - app.routes.properties        → /v1/tenants/{tenant_id}/projects/{project_id}/properties
   - app.routes.versions          → /v1/tenants/{tenant_id}/projects/{project_id}/versions, /v1/versions/{id}
-  - app.routes.classes           → /v1/versions/{version_id}/classes
+  - app.routes.classes           → /v1/versions/{version_id}/classes,
+                                   /v1/versions/{version_id}/classes/{class_id}/with-properties-tags
   - app.routes.class_properties  → /v1/versions/{version_id}/classes/{class_id}/properties
 
 This module assembles them under the /v1 prefix and re-exports the password

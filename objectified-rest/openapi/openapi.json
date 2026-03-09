@@ -11,7 +11,7 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Login \u2014 issue JWT",
+        "summary": "Login — issue JWT",
         "description": "Authenticate with email and password. Returns a signed JWT access token valid for 24 hours. Use the token as ``Authorization: Bearer <token>`` on subsequent requests.",
         "operationId": "login_v1_auth_login_post",
         "requestBody": {
@@ -698,6 +698,102 @@
         }
       }
     },
+    "/v1/versions/{version_id}/classes/{class_id}/with-properties-tags": {
+      "get": {
+        "tags": [
+          "Classes"
+        ],
+        "summary": "Get class with properties and tags",
+        "description": "Return a single class with its properties and tags (from metadata). Useful for loading a single class detail view.",
+        "operationId": "get_class_with_properties_and_tags_v1_versions__version_id__classes__class_id__with_properties_tags_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "class_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Class Id"
+            }
+          },
+          {
+            "name": "include_deleted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include soft-deleted class",
+              "default": false,
+              "title": "Include Deleted"
+            },
+            "description": "Include soft-deleted class"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassWithPropertiesAndTags"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/versions/{version_id}/classes/{class_id}": {
       "get": {
         "tags": [
@@ -1107,7 +1203,7 @@
           "Users"
         ],
         "summary": "List users (admin)",
-        "description": "List all accounts. **Admin only** \u2014 requires a valid JWT with ``is_admin=true``, an account that is an administrator in at least one tenant, or a valid internal API key. Soft-deleted accounts are excluded by default; pass ``include_deleted=true`` to include them.",
+        "description": "List all accounts. **Admin only** — requires a valid JWT with ``is_admin=true``, an account that is an administrator in at least one tenant, or a valid internal API key. Soft-deleted accounts are excluded by default; pass ``include_deleted=true`` to include them.",
         "operationId": "list_users_v1_users_get",
         "parameters": [
           {
@@ -2233,7 +2329,7 @@
           "API Keys"
         ],
         "summary": "List API keys for a tenant",
-        "description": "List all active (non-revoked) API keys for the given tenant. The raw secret is never returned \u2014 only metadata and the key prefix.",
+        "description": "List all active (non-revoked) API keys for the given tenant. The raw secret is never returned — only metadata and the key prefix.",
         "operationId": "list_api_keys_v1_tenants__tenant_id__api_keys_get",
         "parameters": [
           {
@@ -2322,7 +2418,7 @@
           "API Keys"
         ],
         "summary": "Create API key for a tenant",
-        "description": "Create a new API key scoped to the given tenant. The full secret is returned **once** in the ``raw_key`` field \u2014 store it immediately. Only the prefix and hash are stored server-side; the raw secret cannot be retrieved again.",
+        "description": "Create a new API key scoped to the given tenant. The full secret is returned **once** in the ``raw_key`` field — store it immediately. Only the prefix and hash are stored server-side; the raw secret cannot be retrieved again.",
         "operationId": "create_api_key_v1_tenants__tenant_id__api_keys_post",
         "parameters": [
           {
@@ -4497,7 +4593,7 @@
           "Versions"
         ],
         "summary": "Freeze (capture) a version schema snapshot",
-        "description": "Capture and freeze the current state of all classes and properties for a version as an immutable snapshot. This is a one-time operation per version \u2014 if a snapshot already exists, use the /snapshots endpoint to commit additional revisions. Freezing a schema requires user authentication (JWT token).",
+        "description": "Capture and freeze the current state of all classes and properties for a version as an immutable snapshot. This is a one-time operation per version — if a snapshot already exists, use the /snapshots endpoint to commit additional revisions. Freezing a schema requires user authentication (JWT token).",
         "operationId": "freeze_version_schema_v1_versions__version_id__freeze_schema_post",
         "parameters": [
           {
@@ -5177,7 +5273,7 @@
           "raw_key": {
             "type": "string",
             "title": "Raw Key",
-            "description": "Full API key value \u2014 shown ONCE at creation. Store it securely; it cannot be retrieved again."
+            "description": "Full API key value — shown ONCE at creation. Store it securely; it cannot be retrieved again."
           }
         },
         "type": "object",
@@ -5192,7 +5288,7 @@
           "raw_key"
         ],
         "title": "ApiKeyCreateResponse",
-        "description": "Response for API key creation \u2014 includes the raw secret once."
+        "description": "Response for API key creation — includes the raw secret once."
       },
       "ApiKeySchema": {
         "properties": {
@@ -5846,7 +5942,7 @@
           "token_type": {
             "type": "string",
             "title": "Token Type",
-            "description": "Token type \u2014 always 'bearer'",
+            "description": "Token type — always 'bearer'",
             "default": "bearer"
           },
           "user_id": {
@@ -5965,7 +6061,7 @@
           "slug"
         ],
         "title": "ProjectCreate",
-        "description": "Create payload for objectified.project.\n\n``tenant_id`` and ``creator_id`` are optional.  When omitted they are\ntaken from the URL path and the authenticated caller respectively.\nIf supplied they must match those authoritative sources exactly \u2014\nany mismatch returns HTTP 400."
+        "description": "Create payload for objectified.project.\n\n``tenant_id`` and ``creator_id`` are optional.  When omitted they are\ntaken from the URL path and the authenticated caller respectively.\nIf supplied they must match those authoritative sources exactly —\nany mismatch returns HTTP 400."
       },
       "ProjectHistorySchema": {
         "properties": {
@@ -6396,7 +6492,7 @@
         },
         "type": "object",
         "title": "TenantAccountCreate",
-        "description": "Create payload for objectified.tenant_account.\n\nEither ``account_id`` (UUID) or ``email`` must be provided to identify the\naccount to add.  If both are supplied, ``account_id`` takes precedence.\n``tenant_id`` is optional in the body \u2014 it is validated against the path\nparameter in the route handler."
+        "description": "Create payload for objectified.tenant_account.\n\nEither ``account_id`` (UUID) or ``email`` must be provided to identify the\naccount to add.  If both are supplied, ``account_id`` takes precedence.\n``tenant_id`` is optional in the body — it is validated against the path\nparameter in the route handler."
       },
       "TenantAccountSchema": {
         "properties": {
@@ -6533,7 +6629,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "TenantAdministratorCreate",
-        "description": "Request body for POST /v1/tenants/{id}/administrators.\n\nDedicated schema that intentionally omits ``access_level`` \u2014 the endpoint\nalways assigns ``administrator`` and the field is not meaningful here.\n\nEither ``account_id`` (UUID) or ``email`` must be provided to identify the\naccount.  If both are supplied, ``account_id`` takes precedence.\n``tenant_id`` is optional in the body \u2014 it is validated against the path\nparameter in the route handler."
+        "description": "Request body for POST /v1/tenants/{id}/administrators.\n\nDedicated schema that intentionally omits ``access_level`` — the endpoint\nalways assigns ``administrator`` and the field is not meaningful here.\n\nEither ``account_id`` (UUID) or ``email`` must be provided to identify the\naccount.  If both are supplied, ``account_id`` takes precedence.\n``tenant_id`` is optional in the body — it is validated against the path\nparameter in the route handler."
       },
       "TenantCreate": {
         "properties": {
