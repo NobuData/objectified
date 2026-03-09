@@ -1,4 +1,4 @@
-"""Validation helpers for JSON Schema/OpenAPI schema object payloads."""
+"""Validation helpers for JSON Schema Draft 2020-12 schema object payloads."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from jsonschema import Draft202012Validator
+
+# Module-level metaschema validator to avoid recreating it on each validation call.
+META_SCHEMA_VALIDATOR = Draft202012Validator(Draft202012Validator.META_SCHEMA)
 
 
 @dataclass(frozen=True)
@@ -20,8 +23,13 @@ class SchemaValidationErrorDetail:
 
 def _iter_schema_errors(schema_object: dict[str, Any]) -> list[SchemaValidationErrorDetail]:
     """Validate a schema object against JSON Schema Draft 2020-12 metaschema."""
-    validator = Draft202012Validator(Draft202012Validator.META_SCHEMA)
-    errors = sorted(validator.iter_errors(schema_object), key=lambda error: (str(error.path), str(error.schema_path)))
+    errors = sorted(
+        META_SCHEMA_VALIDATOR.iter_errors(schema_object),
+        key=lambda error: (
+            error.json_path,
+            "/" + "/".join(str(part) for part in error.schema_path),
+        ),
+    )
 
     return [
         SchemaValidationErrorDetail(
@@ -34,29 +42,16 @@ def _iter_schema_errors(schema_object: dict[str, Any]) -> list[SchemaValidationE
     ]
 
 
-def validate_openapi_schema_object(schema_object: dict[str, Any]) -> list[dict[str, str]]:
+def validate_json_schema_object(schema_object: dict[str, Any]) -> list[dict[str, str]]:
     """
-    Validate a payload intended to be an OpenAPI 3.2.0 Schema Object.
+    Validate a payload against the JSON Schema Draft 2020-12 metaschema.
 
-    OpenAPI 3.2.0 schema objects are JSON Schema 2020-12 compatible, so metaschema
-    validation is used as the source of truth. The returned structure is stable for
-    API error responses.
+    Returns a list of structured error dicts (standard, message, path, schema_path)
+    suitable for use in API error responses. OpenAPI 3.2.0 Schema Objects are a
+    superset of JSON Schema 2020-12, so metaschema validation catches structural
+    errors in both contexts.
     """
     errors = _iter_schema_errors(schema_object)
-
-    # Mirror the same violations under the OpenAPI standard label so clients can
-    # show explicit context for both standards requested by the ticket.
-    mirrored = [
-        SchemaValidationErrorDetail(
-            standard="openapi-3.2.0-schema-object",
-            message=error.message,
-            path=error.path,
-            schema_path=error.schema_path,
-        )
-        for error in errors
-    ]
-
-    all_errors = [*errors, *mirrored]
     return [
         {
             "standard": error.standard,
@@ -64,6 +59,6 @@ def validate_openapi_schema_object(schema_object: dict[str, Any]) -> list[dict[s
             "path": error.path,
             "schema_path": error.schema_path,
         }
-        for error in all_errors
+        for error in errors
     ]
 
