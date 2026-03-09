@@ -144,8 +144,9 @@ paths:
       tags:
       - Classes
       summary: List classes with properties and tags for version
-      description: Return all classes for a version with their properties and tags
-        embedded. Pass include_deleted=true to include soft-deleted classes.
+      description: 'Bulk endpoint for canvas load: return all classes for a version
+        with their properties and tags (from metadata) in one response. Pass include_deleted=true
+        to include soft-deleted classes.'
       operationId: list_classes_with_properties_and_tags_v1_versions__version_id__classes_with_properties_tags_get
       parameters:
       - name: version_id
@@ -187,8 +188,7 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
-                  additionalProperties: true
+                  $ref: '#/components/schemas/ClassWithPropertiesAndTags'
                 title: Response List Classes With Properties And Tags V1 Versions  Version
                   Id  Classes With Properties Tags Get
         '422':
@@ -1645,6 +1645,417 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/properties:
+    get:
+      tags:
+      - Properties
+      summary: List properties for a project
+      description: Return all properties scoped to the given project. Soft-deleted
+        properties are excluded by default; pass ``include_deleted=true`` to include
+        them.
+      operationId: list_properties_v1_tenants__tenant_id__projects__project_id__properties_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted properties
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted properties
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertySchema'
+                title: Response List Properties V1 Tenants  Tenant Id  Projects  Project
+                  Id  Properties Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Properties
+      summary: Create property
+      description: Create a new property scoped to the given project. Property names
+        are case-insensitive and must be unique within the project.
+      operationId: create_property_v1_tenants__tenant_id__projects__project_id__properties_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertySchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/properties/deleted:
+    get:
+      tags:
+      - Properties
+      summary: List deleted properties for a project
+      description: Return only soft-deleted properties for recovery or historical
+        workflows.
+      operationId: list_deleted_properties_v1_tenants__tenant_id__projects__project_id__properties_deleted_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertySchema'
+                title: Response List Deleted Properties V1 Tenants  Tenant Id  Projects  Project
+                  Id  Properties Deleted Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/properties/{property_id}:
+    get:
+      tags:
+      - Properties
+      summary: Get property by ID
+      description: Retrieve a single property by its UUID within a project.
+      operationId: get_property_v1_tenants__tenant_id__projects__project_id__properties__property_id__get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: property_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Property Id
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted property
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted property
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertySchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Properties
+      summary: Update property
+      description: Update an existing property. Only provided fields are modified.
+      operationId: update_property_v1_tenants__tenant_id__projects__project_id__properties__property_id__put
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: property_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Property Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertySchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Properties
+      summary: Delete (soft-delete) property
+      description: Soft-delete a property by setting its ``deleted_at`` timestamp.
+      operationId: delete_property_v1_tenants__tenant_id__projects__project_id__properties__property_id__delete
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: property_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Property Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/properties/by-name/{property_name}:
+    get:
+      tags:
+      - Properties
+      summary: Get property by name
+      description: Retrieve a single property by its name within a project.
+      operationId: get_property_by_name_v1_tenants__tenant_id__projects__project_id__properties_by_name__property_name__get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: property_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Property Name
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted property
+          default: false
+          title: Include Deleted
+        description: Include soft-deleted property
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertySchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/tenants/{tenant_id}/projects/{project_id}/versions:
     get:
       tags:
@@ -2742,6 +3153,77 @@ components:
       type: object
       title: ClassUpdate
       description: Update payload for objectified.class (metadata + canvas_metadata).
+    ClassWithPropertiesAndTags:
+      properties:
+        id:
+          type: string
+          title: Id
+        version_id:
+          type: string
+          title: Version Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        schema:
+          additionalProperties: true
+          type: object
+          title: Schema
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+        properties:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Properties
+        tags:
+          items: {}
+          type: array
+          title: Tags
+      type: object
+      required:
+      - id
+      - version_id
+      - name
+      - description
+      - created_at
+      title: ClassWithPropertiesAndTags
+      description: 'Class with embedded properties and tags for canvas load.
+
+
+        Returned by GET /v1/versions/{version_id}/classes/with-properties-tags.
+
+        Each item includes the class fields plus:
+
+        - properties: list of class_property rows (with optional property_name, property_data
+        from join)
+
+        - tags: list from class metadata.tags, or []'
     HTTPValidationError:
       properties:
         detail:
@@ -2997,6 +3479,105 @@ components:
       type: object
       title: ProjectUpdate
       description: Update payload for objectified.project.
+    PropertyCreate:
+      properties:
+        project_id:
+          type: string
+          title: Project Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+          default: ''
+        data:
+          additionalProperties: true
+          type: object
+          title: Data
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+      type: object
+      required:
+      - project_id
+      - name
+      title: PropertyCreate
+      description: Create payload for objectified.property.
+    PropertySchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        project_id:
+          type: string
+          title: Project Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        data:
+          additionalProperties: true
+          type: object
+          title: Data
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+      type: object
+      required:
+      - id
+      - project_id
+      - name
+      - description
+      - created_at
+      title: PropertySchema
+      description: Response schema for objectified.property.
+    PropertyUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        data:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Data
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+      type: object
+      title: PropertyUpdate
+      description: Update payload for objectified.property.
     TenantAccessLevel:
       type: string
       enum:
