@@ -2,5 +2,5 @@
 #
 # Runs tests
 
-uv run pytest -v
+uv run pytest -v --cov
 
