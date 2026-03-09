@@ -62,7 +62,10 @@ class ClassWithPropertiesAndTags(ClassSchema):
     """
     Class with embedded properties and tags for canvas load.
 
-    Returned by GET /v1/versions/{version_id}/classes/with-properties-tags.
+    Returned by:
+    - GET /v1/versions/{version_id}/classes/with-properties-tags (bulk)
+    - GET /v1/versions/{version_id}/classes/{class_id}/with-properties-tags (single)
+
     Each item includes the class fields plus:
     - properties: list of class_property rows (with optional property_name, property_data from join)
     - tags: list from class metadata.tags, or []

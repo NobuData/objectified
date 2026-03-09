@@ -46,7 +46,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run tests
-        run: uv run pytest tests -v
+        run: sh test.sh
 
       - name: Generate OpenAPI spec
         run: uv run python scripts/generate_openapi.py

@@ -288,6 +288,90 @@ def test_delete_class_not_found_returns_404(client):
     assert r.status_code == 404
 
 
+def test_get_class_with_properties_and_tags_returns_class(client):
+    """GET /v1/versions/{vid}/classes/{cid}/with-properties-tags returns class with properties and tags."""
+    class_with_tags = {
+        **_CLASS_ROW,
+        "metadata": {"tags": ["tag1", "tag2"]},
+    }
+    prop_row = {
+        "id": "00000000-0000-0000-0000-000000000061",
+        "class_id": _CLASS_ID,
+        "property_id": "00000000-0000-0000-0000-000000000062",
+        "name": "myProp",
+        "description": "A property",
+        "data": {"type": "string"},
+        "property_name": "LibraryProp",
+        "property_data": {},
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],  # version exists
+            [class_with_tags],         # class exists
+            [prop_row],                # class properties
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/with-properties-tags")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["id"] == _CLASS_ID
+    assert data["name"] == "MyClass"
+    assert data["tags"] == ["tag1", "tag2"]
+    assert len(data["properties"]) == 1
+    assert data["properties"][0]["name"] == "myProp"
+
+
+def test_get_class_with_properties_and_tags_no_properties(client):
+    """GET /v1/versions/{vid}/classes/{cid}/with-properties-tags returns class with empty properties."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],  # version exists
+            [_CLASS_ROW],              # class exists
+            [],                        # no properties
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/with-properties-tags")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["id"] == _CLASS_ID
+    assert data["properties"] == []
+    assert data["tags"] == []
+
+
+def test_get_class_with_properties_and_tags_not_found_returns_404(client):
+    """GET /v1/versions/{vid}/classes/{cid}/with-properties-tags returns 404 when class missing."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],  # version exists
+            [],                        # class not found
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/with-properties-tags")
+    assert r.status_code == 404
+
+
+def test_get_class_with_properties_and_tags_version_not_found_returns_404(client):
+    """GET /v1/versions/{vid}/classes/{cid}/with-properties-tags returns 404 when version missing."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/with-properties-tags")
+    assert r.status_code == 404
+
+
+def test_get_class_with_properties_and_tags_string_tag(client):
+    """GET /v1/versions/{vid}/classes/{cid}/with-properties-tags handles a string tag value."""
+    class_with_string_tag = {
+        **_CLASS_ROW,
+        "metadata": {"tags": "single-tag"},
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [class_with_string_tag],
+            [],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/with-properties-tags")
+    assert r.status_code == 200
+    assert r.json()["tags"] == ["single-tag"]
+
+
 def test_list_classes_requires_auth(client):
     """GET /v1/versions/{id}/classes without auth returns 401."""
     app.dependency_overrides.clear()
