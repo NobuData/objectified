@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_authenticated
 from app.database import db
-from app.routes.helpers import _assert_tenant_exists, _not_found
+from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schemas.property import PropertyCreate, PropertySchema, PropertyUpdate
 
 logger = logging.getLogger(__name__)
@@ -19,18 +19,6 @@ _PROPERTY_COLUMNS = (
     "id, project_id, name, description, data, enabled, "
     "created_at, updated_at, deleted_at"
 )
-
-
-def _assert_project_exists(project_id: str, tenant_id: str) -> dict[str, Any]:
-    """Raise 404 if the project does not exist or belongs to a different tenant."""
-    rows = db.execute_query(
-        "SELECT id, tenant_id FROM objectified.project "
-        "WHERE id = %s AND tenant_id = %s AND deleted_at IS NULL",
-        (project_id, tenant_id),
-    )
-    if not rows:
-        raise _not_found("Project", project_id)
-    return dict(rows[0])
 
 
 def _assert_property_exists(property_id: str, project_id: str) -> dict[str, Any]:
@@ -203,7 +191,7 @@ def create_property(
         raise HTTPException(status_code=400, detail="Property name is required")
 
     # Validate payload.project_id — must match the path parameter if provided
-    if payload.project_id != project_id:
+    if payload.project_id is not None and payload.project_id != project_id:
         raise HTTPException(
             status_code=400,
             detail="Payload project_id does not match path project_id",
@@ -241,7 +229,7 @@ def create_property(
         if "23505" in str(exc) or "unique constraint" in str(exc).lower():
             raise HTTPException(
                 status_code=409,
-                detail=f"A property with that name already exists in this project",
+                detail="A property with that name already exists in this project",
             ) from exc
         raise HTTPException(status_code=500, detail="Failed to create property") from exc
 
@@ -306,8 +294,9 @@ def update_property(
     if not updates:
         # Nothing to update — re-fetch and return the existing row unchanged
         rows = db.execute_query(
-            f"SELECT {_PROPERTY_COLUMNS} FROM objectified.property WHERE id = %s",
-            (property_id,),
+            f"SELECT {_PROPERTY_COLUMNS} FROM objectified.property "
+            "WHERE id = %s AND project_id = %s AND deleted_at IS NULL",
+            (property_id, project_id),
         )
         return PropertySchema(**dict(rows[0]))
 

@@ -101,6 +101,24 @@ def test_get_property_by_id_returns_property(client):
     assert r.json()["id"] == _PROPERTY_ID
 
 
+def test_get_property_by_id_include_deleted_returns_soft_deleted(client):
+    """GET /properties/{property_id}?include_deleted=true returns a soft-deleted property."""
+    deleted_row = {**_PROPERTY_ROW, "deleted_at": _NOW}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ROW],
+            [_PROJECT_ROW],
+            [deleted_row],
+        ]
+        r = client.get(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/properties/{_PROPERTY_ID}"
+            "?include_deleted=true"
+        )
+    assert r.status_code == 200
+    assert r.json()["id"] == _PROPERTY_ID
+    assert r.json()["deleted_at"] is not None
+
+
 def test_get_property_by_id_not_found(client):
     """GET /properties/{property_id} returns 404 when missing."""
     with mock_db_all() as mock_db:
@@ -126,6 +144,24 @@ def test_get_property_by_name_case_insensitive(client):
         )
     assert r.status_code == 200
     assert r.json()["name"] == "Status"
+
+
+def test_get_property_by_name_include_deleted_returns_soft_deleted(client):
+    """GET /properties/by-name/{name}?include_deleted=true returns a soft-deleted property."""
+    deleted_row = {**_PROPERTY_ROW, "deleted_at": _NOW}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ROW],
+            [_PROJECT_ROW],
+            [deleted_row],
+        ]
+        r = client.get(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/properties/by-name/Status"
+            "?include_deleted=true"
+        )
+    assert r.status_code == 200
+    assert r.json()["name"] == "Status"
+    assert r.json()["deleted_at"] is not None
 
 
 def test_get_property_by_name_not_found(client):

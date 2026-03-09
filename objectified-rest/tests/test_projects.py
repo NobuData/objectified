@@ -365,6 +365,7 @@ def test_update_project_returns_updated_project(client):
         mock_db.execute_query.side_effect = [
             [{"id": _TENANT_ID}],   # tenant exists
             [_PROJECT_ROW],          # assert_project_exists
+            [_PROJECT_ROW],          # old_row fetch for history
         ]
         mock_db.execute_mutation.return_value = updated_row
         r = client.put(
@@ -381,6 +382,7 @@ def test_update_project_empty_name_returns_400(client):
         mock_db.execute_query.side_effect = [
             [{"id": _TENANT_ID}],
             [_PROJECT_ROW],
+            [_PROJECT_ROW],          # old_row fetch for history
         ]
         r = client.put(
             f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}",
@@ -395,6 +397,7 @@ def test_update_project_slug_conflict_returns_409(client):
         mock_db.execute_query.side_effect = [
             [{"id": _TENANT_ID}],
             [_PROJECT_ROW],
+            [_PROJECT_ROW],          # old_row fetch for history
             [{"id": "other-project-id"}],  # slug conflict check
         ]
         r = client.put(
@@ -411,6 +414,7 @@ def test_update_project_slug_uniqueness_checks_only_active_rows(client):
         mock_db.execute_query.side_effect = [
             [{"id": _TENANT_ID}],
             [_PROJECT_ROW],
+            [_PROJECT_ROW],          # old_row fetch for history
             [],
         ]
         mock_db.execute_mutation.return_value = updated_row
@@ -419,7 +423,7 @@ def test_update_project_slug_uniqueness_checks_only_active_rows(client):
             json={"slug": "reused-slug"},
         )
     assert r.status_code == 200
-    slug_query = mock_db.execute_query.call_args_list[2].args[0]
+    slug_query = mock_db.execute_query.call_args_list[3].args[0]
     assert "deleted_at IS NULL" in slug_query
 
 
@@ -443,6 +447,7 @@ def test_update_project_no_fields_returns_current(client):
         mock_db.execute_query.side_effect = [
             [{"id": _TENANT_ID}],
             [_PROJECT_ROW],
+            [_PROJECT_ROW],  # old_row fetch for history
             [_PROJECT_ROW],  # re-fetch for no-op
         ]
         r = client.put(
@@ -464,6 +469,7 @@ def test_delete_project_returns_204(client):
         mock_db.execute_query.side_effect = [
             [{"id": _TENANT_ID}],
             [_PROJECT_ROW],
+            [_PROJECT_ROW],  # old_row fetch for history
         ]
         deleted_row = {**_PROJECT_ROW, "deleted_at": _NOW.isoformat()}
         mock_db.execute_mutation.return_value = deleted_row
