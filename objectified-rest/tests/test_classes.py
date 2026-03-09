@@ -215,6 +215,22 @@ def test_create_class_duplicate_name_returns_409(client):
     assert r.status_code == 409
 
 
+def test_create_class_invalid_schema_returns_400_with_details(client):
+    """POST /v1/versions/{id}/classes rejects invalid JSON Schema/OpenAPI payloads."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_version_lookup_row()]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/classes",
+            json={"name": "MyClass", "schema": {"type": 123}},
+        )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["message"] == "Invalid class schema payload"
+    standards = {error["standard"] for error in detail["errors"]}
+    assert "json-schema-2020-12" in standards
+    assert "openapi-3.2.0-schema-object" in standards
+
+
 def test_update_class_returns_updated(client):
     """PUT /v1/versions/{vid}/classes/{cid} updates class."""
     updated = {**_CLASS_ROW, "description": "Updated desc", "name": "MyClass"}
@@ -249,6 +265,23 @@ def test_update_class_canvas_metadata_merges_into_metadata(client):
             json={"canvas_metadata": {"position": {"x": 10, "y": 20}}},
         )
     assert r.status_code == 200
+
+
+def test_update_class_invalid_schema_returns_400_with_details(client):
+    """PUT /v1/versions/{vid}/classes/{cid} rejects invalid schema updates."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [_CLASS_ROW],
+        ]
+        r = client.put(
+            f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}",
+            json={"schema": {"type": 123}},
+        )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["message"] == "Invalid class schema payload"
+    assert len(detail["errors"]) >= 2
 
 
 def test_update_class_not_found_returns_404(client):
