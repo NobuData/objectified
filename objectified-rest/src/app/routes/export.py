@@ -10,17 +10,13 @@ from app.auth import require_authenticated
 from app.database import db
 from app.generators.jsonschema_generator import generate_jsonschema_multi, generate_jsonschema_single
 from app.generators.openapi_generator import generate_openapi_spec
+from app.routes.classes import _CLASS_COLUMNS
 from app.routes.helpers import _not_found
 from app.routes.versions import _assert_version_exists
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Export"])
-
-_CLASS_COLUMNS = (
-    "id, version_id, name, description, schema, metadata, enabled, "
-    "created_at, updated_at, deleted_at"
-)
 
 
 def _load_classes_with_properties(version_id: str) -> list[dict[str, Any]]:

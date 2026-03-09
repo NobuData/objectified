@@ -7,6 +7,7 @@ of the logic found in objectified-commercial's openapi.ts / jsonschema.ts.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -24,7 +25,6 @@ def _build_property_schema(prop: dict[str, Any], all_properties: list[dict[str, 
     """
     raw_data = prop.get("data") or {}
     if isinstance(raw_data, str):
-        import json
         prop_data: dict[str, Any] = json.loads(raw_data)
     else:
         prop_data = dict(raw_data)
@@ -104,8 +104,6 @@ def build_class_schema(class_data: dict[str, Any]) -> dict[str, Any]:
         (or ``schema_``), and ``properties`` (list of class_property rows).
     :returns: A JSON Schema object ready to embed into OpenAPI components/schemas.
     """
-    import json
-
     raw_schema = class_data.get("schema_") or class_data.get("schema") or {}
     if isinstance(raw_schema, str):
         schema: dict[str, Any] = json.loads(raw_schema)
