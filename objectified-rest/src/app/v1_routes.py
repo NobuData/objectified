@@ -29,6 +29,7 @@ from app.routes.properties import router as _properties_router
 from app.routes.users import router as _users_router
 from app.routes.users import _hash_password, _verify_password  # noqa: F401 — re-export
 from app.routes.tenants import router as _tenants_router
+from app.routes.validate import router as _validate_router
 from app.routes.versions import router as _versions_router
 
 router = APIRouter(prefix="/v1")
@@ -40,4 +41,5 @@ router.include_router(_tenants_router)
 router.include_router(_api_keys_router)
 router.include_router(_projects_router)
 router.include_router(_properties_router)
+router.include_router(_validate_router)
 router.include_router(_versions_router)

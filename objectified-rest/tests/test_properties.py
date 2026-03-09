@@ -263,6 +263,31 @@ def test_create_property_duplicate_returns_409(client):
     assert r.status_code == 409
 
 
+def test_create_property_invalid_data_returns_400_with_details(client):
+    """POST /properties rejects invalid JSON Schema/OpenAPI data payloads."""
+    payload = {
+        "project_id": _PROJECT_ID,
+        "name": "Status",
+        "description": "Workflow status",
+        "data": {"type": 123},
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ROW],
+            [_PROJECT_ROW],
+        ]
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/properties",
+            json=payload,
+        )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["message"] == "Invalid property data payload"
+    standards = {error["standard"] for error in detail["errors"]}
+    assert "json-schema-2020-12" in standards
+    assert "openapi-3.2.0-schema-object" not in standards
+
+
 def test_update_property_returns_updated_row(client):
     """PUT /properties/{property_id} updates provided fields."""
     updated = {**_PROPERTY_ROW, "description": "Updated"}
@@ -310,6 +335,24 @@ def test_update_property_duplicate_name_returns_409(client):
             json={"name": "status"},
         )
     assert r.status_code == 409
+
+
+def test_update_property_invalid_data_returns_400_with_details(client):
+    """PUT /properties/{property_id} rejects invalid data schema updates."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ROW],
+            [_PROJECT_ROW],
+            [_PROPERTY_ROW],
+        ]
+        r = client.put(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/properties/{_PROPERTY_ID}",
+            json={"data": {"type": 123}},
+        )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["message"] == "Invalid property data payload"
+    assert len(detail["errors"]) >= 1
 
 
 def test_update_property_no_fields_returns_existing(client):

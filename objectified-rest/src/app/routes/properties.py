@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import require_authenticated
 from app.database import db
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
+from app.schema_validation import validate_json_schema_object
 from app.schemas.property import PropertyCreate, PropertySchema, PropertyUpdate
 
 logger = logging.getLogger(__name__)
@@ -190,6 +191,16 @@ def create_property(
     if not payload.name or not payload.name.strip():
         raise HTTPException(status_code=400, detail="Property name is required")
 
+    schema_errors = validate_json_schema_object(payload.data)
+    if schema_errors:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Invalid property data payload",
+                "errors": schema_errors,
+            },
+        )
+
     # Validate payload.project_id — must match the path parameter if provided
     if payload.project_id is not None and payload.project_id != project_id:
         raise HTTPException(
@@ -284,6 +295,15 @@ def update_property(
         params.append(payload.description)
 
     if payload.data is not None:
+        schema_errors = validate_json_schema_object(payload.data)
+        if schema_errors:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Invalid property data payload",
+                    "errors": schema_errors,
+                },
+            )
         updates.append("data = %s::jsonb")
         params.append(json.dumps(payload.data))
 
