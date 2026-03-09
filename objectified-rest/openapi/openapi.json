@@ -5637,7 +5637,14 @@
       "PropertyCreate": {
         "properties": {
           "project_id": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Project Id"
           },
           "name": {
@@ -5662,7 +5669,6 @@
         },
         "type": "object",
         "required": [
-          "project_id",
           "name"
         ],
         "title": "PropertyCreate",

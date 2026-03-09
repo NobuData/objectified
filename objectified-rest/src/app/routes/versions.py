@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import require_authenticated
 from app.database import db
-from app.routes.helpers import _assert_tenant_exists, _not_found
+from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schemas.version import (
     VersionCreate,
     VersionHistorySchema,
@@ -27,23 +27,6 @@ _VERSION_COLUMNS = (
     "id, project_id, source_version_id, creator_id, name, description, change_log, enabled, "
     "published, visibility, metadata, created_at, updated_at, deleted_at, published_at"
 )
-
-
-def _assert_project_exists(project_id: str, tenant_id: str) -> dict[str, Any]:
-    """Raise 404 when the project is missing, deleted, or outside the tenant scope."""
-    rows = db.execute_query(
-        """
-        SELECT p.id, p.tenant_id
-        FROM objectified.project p
-        WHERE p.id = %s
-          AND p.tenant_id = %s
-          AND p.deleted_at IS NULL
-        """,
-        (project_id, tenant_id),
-    )
-    if not rows:
-        raise _not_found("Project", project_id)
-    return dict(rows[0])
 
 
 def _get_version_by_id(

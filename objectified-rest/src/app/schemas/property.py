@@ -25,7 +25,7 @@ class PropertySchema(BaseModel):
 class PropertyCreate(BaseModel):
     """Create payload for objectified.property."""
 
-    project_id: str
+    project_id: Optional[str] = None
     name: str
     description: str = ""
     data: dict[str, Any] = Field(default_factory=dict)

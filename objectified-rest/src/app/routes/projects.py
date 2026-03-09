@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_authenticated
 from app.database import db
-from app.routes.helpers import _assert_tenant_exists, _not_found
+from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schemas.project import ProjectCreate, ProjectHistorySchema, ProjectSchema, ProjectUpdate
 
 logger = logging.getLogger(__name__)
@@ -22,18 +22,6 @@ _PROJECT_COLUMNS = (
     "id, tenant_id, creator_id, name, description, slug, enabled, metadata, "
     "created_at, updated_at, deleted_at"
 )
-
-
-def _assert_project_exists(project_id: str, tenant_id: str) -> dict[str, Any]:
-    """Raise 404 if the project does not exist or belongs to a different tenant."""
-    rows = db.execute_query(
-        f"SELECT {_PROJECT_COLUMNS} FROM objectified.project "
-        "WHERE id = %s AND tenant_id = %s AND deleted_at IS NULL",
-        (project_id, tenant_id),
-    )
-    if not rows:
-        raise _not_found("Project", project_id)
-    return dict(rows[0])
 
 
 def _validate_slug(slug: str) -> str:
@@ -255,7 +243,12 @@ def update_project(
 ) -> ProjectSchema:
     """Update a project by ID."""
     _assert_tenant_exists(tenant_id)
-    old_row = _assert_project_exists(project_id, tenant_id)
+    _assert_project_exists(project_id, tenant_id)
+    old_rows = db.execute_query(
+        f"SELECT {_PROJECT_COLUMNS} FROM objectified.project WHERE id = %s AND deleted_at IS NULL",
+        (project_id,),
+    )
+    old_row = dict(old_rows[0])
 
     updates: list[str] = []
     params: list = []
@@ -348,7 +341,12 @@ def delete_project(
 ) -> None:
     """Soft-delete a project."""
     _assert_tenant_exists(tenant_id)
-    old_row = _assert_project_exists(project_id, tenant_id)
+    _assert_project_exists(project_id, tenant_id)
+    old_rows = db.execute_query(
+        f"SELECT {_PROJECT_COLUMNS} FROM objectified.project WHERE id = %s AND deleted_at IS NULL",
+        (project_id,),
+    )
+    old_row = dict(old_rows[0])
 
     row = db.execute_mutation(
         f"""

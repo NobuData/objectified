@@ -42,6 +42,18 @@ def _assert_tenant_exists(tenant_id: str) -> None:
         raise _not_found("Tenant", tenant_id)
 
 
+def _assert_project_exists(project_id: str, tenant_id: str) -> dict[str, Any]:
+    """Raise 404 if the project does not exist or belongs to a different tenant."""
+    rows = db.execute_query(
+        "SELECT id, tenant_id FROM objectified.project "
+        "WHERE id = %s AND tenant_id = %s AND deleted_at IS NULL",
+        (project_id, tenant_id),
+    )
+    if not rows:
+        raise _not_found("Project", project_id)
+    return dict(rows[0])
+
+
 def _assert_account_exists(account_id: str) -> None:
     """Raise 404 if account does not exist or is deleted."""
     if not _get_active_account_by_id(account_id):

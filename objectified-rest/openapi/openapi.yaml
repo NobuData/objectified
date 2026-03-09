@@ -3482,7 +3482,9 @@ components:
     PropertyCreate:
       properties:
         project_id:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Project Id
         name:
           type: string
@@ -3501,7 +3503,6 @@ components:
           default: true
       type: object
       required:
-      - project_id
       - name
       title: PropertyCreate
       description: Create payload for objectified.property.
