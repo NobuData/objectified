@@ -273,8 +273,15 @@ class TestClassPropertyTableConstraints:
         assert row is not None, "Foreign key on property_id is missing"
 
     def test_unique_constraint_on_class_id_and_name(self, conn):
-        """The combination of (class_id, name) must be unique."""
-        row = conn.fetchone(
+        """Uniqueness of (class_id, name) per nesting level must be enforced.
+
+        GH-30 replaced the simple UNIQUE constraint uq_class_property_class_name
+        with two partial unique indexes to support nested properties (parent_id):
+          - ux_class_property_class_top_name_ci   (top-level: parent_id IS NULL)
+          - ux_class_property_class_parent_name_ci (nested: parent_id IS NOT NULL)
+        Either the old named constraint OR both new partial indexes must be present.
+        """
+        old_constraint = conn.fetchone(
             """
             SELECT tc.constraint_name
             FROM information_schema.table_constraints tc
@@ -284,7 +291,22 @@ class TestClassPropertyTableConstraints:
               AND tc.constraint_name = 'uq_class_property_class_name'
             """
         )
-        assert row is not None, "Unique constraint uq_class_property_class_name is missing"
+        new_top_index = conn.fetchone(
+            """
+            SELECT indexname
+            FROM pg_indexes
+            WHERE schemaname = 'objectified'
+              AND tablename  = 'class_property'
+              AND indexname  = 'ux_class_property_class_top_name_ci'
+            """
+        )
+        assert (
+            old_constraint is not None or new_top_index is not None
+        ), (
+            "Neither the old unique constraint uq_class_property_class_name "
+            "nor the replacement partial index ux_class_property_class_top_name_ci "
+            "is present on objectified.class_property"
+        )
 
     def test_duplicate_class_id_and_name_raises_unique_violation(self, conn):
         """Two rows with the same class_id and name must be rejected."""
