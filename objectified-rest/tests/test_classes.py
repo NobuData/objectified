@@ -216,7 +216,7 @@ def test_create_class_duplicate_name_returns_409(client):
 
 
 def test_create_class_invalid_schema_returns_400_with_details(client):
-    """POST /v1/versions/{id}/classes rejects invalid JSON Schema/OpenAPI payloads."""
+    """POST /v1/versions/{id}/classes rejects invalid JSON Schema Draft 2020-12 payloads."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = [_version_lookup_row()]
         r = client.post(
@@ -228,7 +228,7 @@ def test_create_class_invalid_schema_returns_400_with_details(client):
     assert detail["message"] == "Invalid class schema payload"
     standards = {error["standard"] for error in detail["errors"]}
     assert "json-schema-2020-12" in standards
-    assert "openapi-3.2.0-schema-object" in standards
+    assert "openapi-3.2.0-schema-object" not in standards
 
 
 def test_update_class_returns_updated(client):
@@ -281,7 +281,7 @@ def test_update_class_invalid_schema_returns_400_with_details(client):
     assert r.status_code == 400
     detail = r.json()["detail"]
     assert detail["message"] == "Invalid class schema payload"
-    assert len(detail["errors"]) >= 2
+    assert len(detail["errors"]) >= 1
 
 
 def test_update_class_not_found_returns_404(client):

@@ -285,7 +285,7 @@ def test_create_property_invalid_data_returns_400_with_details(client):
     assert detail["message"] == "Invalid property data payload"
     standards = {error["standard"] for error in detail["errors"]}
     assert "json-schema-2020-12" in standards
-    assert "openapi-3.2.0-schema-object" in standards
+    assert "openapi-3.2.0-schema-object" not in standards
 
 
 def test_update_property_returns_updated_row(client):
@@ -352,7 +352,7 @@ def test_update_property_invalid_data_returns_400_with_details(client):
     assert r.status_code == 400
     detail = r.json()["detail"]
     assert detail["message"] == "Invalid property data payload"
-    assert len(detail["errors"]) >= 2
+    assert len(detail["errors"]) >= 1
 
 
 def test_update_property_no_fields_returns_existing(client):

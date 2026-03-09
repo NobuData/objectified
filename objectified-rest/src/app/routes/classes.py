@@ -10,7 +10,7 @@ from app.auth import require_authenticated
 from app.database import db
 from app.routes.helpers import _not_found
 from app.routes.versions import _assert_version_exists
-from app.schema_validation import validate_openapi_schema_object
+from app.schema_validation import validate_json_schema_object
 from app.schemas.class_model import ClassCreate, ClassSchema, ClassUpdate, ClassWithPropertiesAndTags
 
 logger = logging.getLogger(__name__)
@@ -233,7 +233,7 @@ def create_class(
     if not payload.name or not payload.name.strip():
         raise HTTPException(status_code=400, detail="Class name is required")
 
-    schema_errors = validate_openapi_schema_object(payload.schema_)
+    schema_errors = validate_json_schema_object(payload.schema_)
     if schema_errors:
         raise HTTPException(
             status_code=400,
@@ -322,7 +322,7 @@ def update_class(
         updates.append("description = %s")
         params.append(payload.description)
     if payload.schema_ is not None:
-        schema_errors = validate_openapi_schema_object(payload.schema_)
+        schema_errors = validate_json_schema_object(payload.schema_)
         if schema_errors:
             raise HTTPException(
                 status_code=400,
