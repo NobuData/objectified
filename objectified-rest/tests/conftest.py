@@ -28,6 +28,7 @@ def mock_db_all():
         patch("app.routes.properties.db", mock),
         patch("app.routes.versions.db", mock),
         patch("app.routes.classes.db", mock),
+        patch("app.routes.class_properties.db", mock),
         patch("app.database.db", mock),
     ):
         yield mock
