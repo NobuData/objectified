@@ -2,7 +2,6 @@
 
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -391,7 +390,7 @@ def test_export_jsonschema_single_has_no_defs(client):
         )
     body = r.json()
     # Single-class export embeds the schema directly (no $defs wrapper)
-    assert "$defs" not in body or body.get("$defs") is None
+    assert "$defs" not in body
     assert "properties" in body
     assert "name" in body["properties"]
 
@@ -426,8 +425,8 @@ def test_export_jsonschema_single_has_content_disposition_header(client):
     assert f"jsonschema-{_CLASS_ID}.json" in r.headers["content-disposition"]
 
 
-def test_export_jsonschema_single_uses_class_name_as_title(client):
-    """Single-class export uses the class name as the title when no project_name given."""
+def test_export_jsonschema_single_uses_version_name_as_title(client):
+    """Single-class export uses the version name as the title when no project_name given."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_VERSION_ROW],
@@ -438,8 +437,8 @@ def test_export_jsonschema_single_uses_class_name_as_title(client):
             f"/v1/versions/{_VERSION_ID}/export/jsonschema",
             params={"class_id": _CLASS_ID},
         )
-    # When project_name is not specified, version name is used as fallback title
-    assert r.json()["title"] in ("Person", "v1")
+    # When project_name is not specified, version name ("v1") is used as fallback title
+    assert r.json()["title"] == "v1"
 
 
 # ---------------------------------------------------------------------------

@@ -10,11 +10,16 @@ Mirrors the logic from objectified-commercial's jsonschema.ts.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from app.generators.openapi_generator import build_class_schema
 
 logger = logging.getLogger(__name__)
+
+# Base URL used for the JSON Schema $id field.  Defaults to https://example.com/
+# if the OBJECTIFIED_BASE_URL environment variable is not set.
+_JSONSCHEMA_BASE_URL = os.environ.get("OBJECTIFIED_BASE_URL", "https://example.com").rstrip("/")
 
 # ---------------------------------------------------------------------------
 # $ref conversion helpers
@@ -79,7 +84,7 @@ def generate_jsonschema_multi(
     slug = project_name.lower().replace(" ", "-")
     doc: dict[str, Any] = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": f"https://example.com/{slug}.json",
+        "$id": f"{_JSONSCHEMA_BASE_URL}/{slug}.json",
         "title": project_name,
         "description": description or f"Generated JSON Schema from Objectified - Version {version}",
         "type": "object",
@@ -114,7 +119,7 @@ def generate_jsonschema_single(
 
     doc: dict[str, Any] = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": f"https://example.com/{slug}.json",
+        "$id": f"{_JSONSCHEMA_BASE_URL}/{slug}.json",
         "title": title,
         "description": description or cls.get("description") or f"Generated JSON Schema from Objectified - Version {version}",
         **class_schema,
