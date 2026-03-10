@@ -21,18 +21,41 @@ function buildBackendUrl(pathSegments: string[], request: NextRequest): string {
   return query ? `${base}${path}?${query}` : `${base}${path}`;
 }
 
-function buildAuthHeaders(session: { accessToken?: string } | null): Record<string, string> {
-  const headers: Record<string, string> = {
+function buildAuthHeaders(session: { accessToken: string }): Record<string, string> {
+  return {
     'Content-Type': 'application/json',
+    Authorization: `Bearer ${session.accessToken}`,
   };
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
-  const apiKey = process.env.REST_API_KEY;
-  if (apiKey) {
-    headers['X-API-Key'] = apiKey;
-  }
-  return headers;
+}
+
+const HOP_BY_HOP = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
+
+function copyResponseHeaders(res: Response): Record<string, string> {
+  const out: Record<string, string> = {};
+  res.headers.forEach((value, key) => {
+    const lower = key.toLowerCase();
+    if (!HOP_BY_HOP.has(lower)) {
+      out[key] = value;
+    }
+  });
+  return out;
+}
+
+async function proxyResponse(res: Response): Promise<NextResponse> {
+  const body = await res.arrayBuffer();
+  return new NextResponse(body, {
+    status: res.status,
+    headers: copyResponseHeaders(res),
+  });
 }
 
 export async function GET(
@@ -43,17 +66,19 @@ export async function GET(
   if (!session) {
     return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
   }
+  const sessionWithToken = session as { accessToken?: string };
+  if (!sessionWithToken.accessToken) {
+    return NextResponse.json(
+      { detail: 'Session token required for REST proxy' },
+      { status: 403 }
+    );
+  }
   const { path } = await context.params;
   const url = buildBackendUrl(path, request);
-  const headers = buildAuthHeaders(session as { accessToken?: string });
+  const headers = buildAuthHeaders({ accessToken: sessionWithToken.accessToken });
   try {
     const res = await fetch(url, { method: 'GET', headers });
-    const text = await res.text();
-    const contentType = res.headers.get('content-type') ?? 'application/json';
-    return new NextResponse(text, {
-      status: res.status,
-      headers: { 'Content-Type': contentType },
-    });
+    return proxyResponse(res);
   } catch (err) {
     console.error('REST proxy GET error:', err);
     return NextResponse.json(
@@ -71,9 +96,16 @@ export async function POST(
   if (!session) {
     return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
   }
+  const sessionWithToken = session as { accessToken?: string };
+  if (!sessionWithToken.accessToken) {
+    return NextResponse.json(
+      { detail: 'Session token required for REST proxy' },
+      { status: 403 }
+    );
+  }
   const { path } = await context.params;
   const url = buildBackendUrl(path, request);
-  const headers = buildAuthHeaders(session as { accessToken?: string });
+  const headers = buildAuthHeaders({ accessToken: sessionWithToken.accessToken });
   const body = await request.text();
   try {
     const res = await fetch(url, {
@@ -81,12 +113,7 @@ export async function POST(
       headers,
       body: body || undefined,
     });
-    const resText = await res.text();
-    const contentType = res.headers.get('content-type') ?? 'application/json';
-    return new NextResponse(resText, {
-      status: res.status,
-      headers: { 'Content-Type': contentType },
-    });
+    return proxyResponse(res);
   } catch (err) {
     console.error('REST proxy POST error:', err);
     return NextResponse.json(
@@ -104,9 +131,16 @@ export async function PUT(
   if (!session) {
     return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
   }
+  const sessionWithToken = session as { accessToken?: string };
+  if (!sessionWithToken.accessToken) {
+    return NextResponse.json(
+      { detail: 'Session token required for REST proxy' },
+      { status: 403 }
+    );
+  }
   const { path } = await context.params;
   const url = buildBackendUrl(path, request);
-  const headers = buildAuthHeaders(session as { accessToken?: string });
+  const headers = buildAuthHeaders({ accessToken: sessionWithToken.accessToken });
   const body = await request.text();
   try {
     const res = await fetch(url, {
@@ -114,12 +148,7 @@ export async function PUT(
       headers,
       body: body || undefined,
     });
-    const resText = await res.text();
-    const contentType = res.headers.get('content-type') ?? 'application/json';
-    return new NextResponse(resText, {
-      status: res.status,
-      headers: { 'Content-Type': contentType },
-    });
+    return proxyResponse(res);
   } catch (err) {
     console.error('REST proxy PUT error:', err);
     return NextResponse.json(
@@ -137,9 +166,16 @@ export async function PATCH(
   if (!session) {
     return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
   }
+  const sessionWithToken = session as { accessToken?: string };
+  if (!sessionWithToken.accessToken) {
+    return NextResponse.json(
+      { detail: 'Session token required for REST proxy' },
+      { status: 403 }
+    );
+  }
   const { path } = await context.params;
   const url = buildBackendUrl(path, request);
-  const headers = buildAuthHeaders(session as { accessToken?: string });
+  const headers = buildAuthHeaders({ accessToken: sessionWithToken.accessToken });
   const body = await request.text();
   try {
     const res = await fetch(url, {
@@ -147,12 +183,7 @@ export async function PATCH(
       headers,
       body: body || undefined,
     });
-    const resText = await res.text();
-    const contentType = res.headers.get('content-type') ?? 'application/json';
-    return new NextResponse(resText, {
-      status: res.status,
-      headers: { 'Content-Type': contentType },
-    });
+    return proxyResponse(res);
   } catch (err) {
     console.error('REST proxy PATCH error:', err);
     return NextResponse.json(
@@ -170,17 +201,19 @@ export async function DELETE(
   if (!session) {
     return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 });
   }
+  const sessionWithToken = session as { accessToken?: string };
+  if (!sessionWithToken.accessToken) {
+    return NextResponse.json(
+      { detail: 'Session token required for REST proxy' },
+      { status: 403 }
+    );
+  }
   const { path } = await context.params;
   const url = buildBackendUrl(path, request);
-  const headers = buildAuthHeaders(session as { accessToken?: string });
+  const headers = buildAuthHeaders({ accessToken: sessionWithToken.accessToken });
   try {
     const res = await fetch(url, { method: 'DELETE', headers });
-    const resText = await res.text();
-    const contentType = res.headers.get('content-type') ?? 'application/json';
-    return new NextResponse(resText, {
-      status: res.status,
-      headers: { 'Content-Type': contentType },
-    });
+    return proxyResponse(res);
   } catch (err) {
     console.error('REST proxy DELETE error:', err);
     return NextResponse.json(
