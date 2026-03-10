@@ -18,16 +18,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_authenticated
 from app.database import db
-from app.routes.helpers import _not_found
 from app.routes.merge_utils import merge_classes
 from app.routes.versions import (
+    _SNAPSHOT_COLUMNS,
     _assert_version_exists,
     _capture_version_state,
     _record_history,
-    _SNAPSHOT_COLUMNS,
-    _VERSION_COLUMNS,
 )
-
+from app.schema_validation import validate_json_schema_object
 from app.schemas.version import (
     MergeConflict,
     VersionCommitPayload,
@@ -55,10 +53,23 @@ def _upsert_class(
 
     Returns the class UUID.
     """
-    name = cls_payload.get("name", "")
+    name = (cls_payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Class name is required")
+
     description = cls_payload.get("description") or ""
     schema_val = cls_payload.get("schema_") or cls_payload.get("schema") or {}
     metadata = cls_payload.get("metadata") or {}
+
+    schema_errors = validate_json_schema_object(schema_val)
+    if schema_errors:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": f"Invalid schema for class '{name}'",
+                "errors": schema_errors,
+            },
+        )
 
     rows = db.execute_query(
         """
@@ -109,10 +120,26 @@ def _upsert_class_properties(
     2. Find or create the class_property join row (class-scoped, by name).
     """
     for prop_payload in properties:
-        prop_name = prop_payload.get("name", "")
-        property_name = prop_payload.get("property_name") or prop_name
+        prop_name = (prop_payload.get("name") or "").strip()
+        if not prop_name:
+            raise HTTPException(status_code=400, detail="Property name is required")
+
+        property_name = (prop_payload.get("property_name") or prop_name).strip()
+        if not property_name:
+            raise HTTPException(status_code=400, detail="property_name is required")
+
         prop_data = prop_payload.get("property_data") or prop_payload.get("data") or {}
         prop_description = prop_payload.get("description") or ""
+
+        schema_errors = validate_json_schema_object(prop_data)
+        if schema_errors:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": f"Invalid schema for property '{prop_name}'",
+                    "errors": schema_errors,
+                },
+            )
 
         # Find or create the property in objectified.property.
         prop_rows = db.execute_query(
@@ -285,6 +312,7 @@ def commit_version(
     project_id = str(version["project_id"])
     user_id = caller.get("user_id") if caller else None
 
+    logger.info("COMMIT version_id=%s project_id=%s user_id=%s", version_id, project_id, user_id)
     _apply_commit_payload(version_id, project_id, payload)
 
     snapshot_row = _create_snapshot(
@@ -340,6 +368,12 @@ def push_version(
     source_version = _assert_version_exists(version_id, include_deleted=False)
     target_version = _assert_version_exists(target_version_id, include_deleted=False)
 
+    if version_id == target_version_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot push a version to itself",
+        )
+
     source_project = str(source_version["project_id"])
     target_project = str(target_version["project_id"])
 
@@ -350,6 +384,10 @@ def push_version(
         )
 
     user_id = caller.get("user_id") if caller else None
+    logger.info(
+        "PUSH version_id=%s target_version_id=%s project_id=%s user_id=%s",
+        version_id, target_version_id, source_project, user_id,
+    )
 
     _apply_commit_payload(target_version_id, target_project, payload)
 
@@ -466,6 +504,10 @@ def merge_version(
         )
 
     user_id = caller.get("user_id") if caller else None
+    logger.info(
+        "MERGE version_id=%s source_version_id=%s project_id=%s strategy=%s user_id=%s",
+        version_id, payload.source_version_id, local_project, payload.strategy.value, user_id,
+    )
 
     # Capture both states.
     local_state = _capture_version_state(version_id)
