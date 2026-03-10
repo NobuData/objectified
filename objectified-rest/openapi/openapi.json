@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.2"
+    "version": "1.0.3"
   },
   "paths": {
     "/v1/auth/login": {
@@ -4894,6 +4894,182 @@
         }
       }
     },
+    "/v1/versions/{version_id}/merge/preview": {
+      "post": {
+        "tags": [
+          "Version Commits"
+        ],
+        "summary": "Preview merge result",
+        "description": "Compute merged state and conflicts from ours and theirs without persisting. Uses current version state as ours and source_version_id state as theirs unless ours_state/theirs_state are provided. Optional base_revision for three-way merge.",
+        "operationId": "merge_preview_v1_versions__version_id__merge_preview_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionMergeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merged state and list of conflicts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionMergePreviewResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Version or source version or base snapshot not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/merge/resolve": {
+      "post": {
+        "tags": [
+          "Version Commits"
+        ],
+        "summary": "Merge with resolution choices",
+        "description": "Submit resolution choices for conflicts and get merged state. When apply=true, persist the merged state and create a snapshot.",
+        "operationId": "merge_resolve_v1_versions__version_id__merge_resolve_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionMergeResolveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merged state; revision/snapshot_id when apply=true",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionMergeResolveResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Version or source version not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/tenants/{tenant_id}/projects/{project_id}/versions": {
       "get": {
         "tags": [
@@ -6935,6 +7111,37 @@
         "title": "ClassWithPropertiesAndTags",
         "description": "Class with embedded properties and tags for canvas load.\n\nReturned by:\n- GET /v1/versions/{version_id}/classes/with-properties-tags (bulk)\n- GET /v1/versions/{version_id}/classes/{class_id}/with-properties-tags (single)\n\nEach item includes the class fields plus:\n- properties: list of class_property rows (with optional property_name, property_data from join)\n- tags: list from class metadata.tags, or []"
       },
+      "ConflictResolutionChoice": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "Conflict path (matches MergeConflict.path)."
+          },
+          "use": {
+            "type": "string",
+            "title": "Use",
+            "description": "Resolution: 'ours', 'theirs', or 'custom'."
+          },
+          "custom_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Value",
+            "description": "When use is 'custom', the value to apply."
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "use"
+        ],
+        "title": "ConflictResolutionChoice",
+        "description": "A single conflict resolution: path and choice of ours, theirs, or custom value."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -7064,9 +7271,22 @@
       },
       "MergeConflict": {
         "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "Dot-separated path to the conflicting field (e.g. ClassName.property_name.field).",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Human-readable description of the conflict.",
+            "default": ""
+          },
           "class_name": {
             "type": "string",
-            "title": "Class Name"
+            "title": "Class Name",
+            "default": ""
           },
           "property_name": {
             "anyOf": [
@@ -7081,7 +7301,8 @@
           },
           "field": {
             "type": "string",
-            "title": "Field"
+            "title": "Field",
+            "default": ""
           },
           "local_value": {
             "anyOf": [
@@ -7104,14 +7325,11 @@
           "resolution": {
             "type": "string",
             "title": "Resolution",
+            "description": "Suggested or applied resolution (e.g. 'took stricter (max): 1', 'ours', 'theirs').",
             "default": ""
           }
         },
         "type": "object",
-        "required": [
-          "class_name",
-          "field"
-        ],
         "title": "MergeConflict",
         "description": "Describes a single merge conflict between local and remote state."
       },
@@ -8417,7 +8635,95 @@
         "title": "VersionHistorySchema",
         "description": "Response schema for objectified.version_history."
       },
+      "VersionMergePreviewResponse": {
+        "properties": {
+          "merged_state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Merged State",
+            "description": "Computed merged state (classes, canvas_metadata)."
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/MergeConflict"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          }
+        },
+        "type": "object",
+        "title": "VersionMergePreviewResponse",
+        "description": "Response from POST /versions/{id}/merge/preview \u2014 merged state and conflicts without persisting."
+      },
       "VersionMergeRequest": {
+        "properties": {
+          "source_version_id": {
+            "type": "string",
+            "title": "Source Version Id",
+            "description": "Source version UUID (theirs). Ignored when theirs_state is provided."
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/MergeStrategy",
+            "default": "additive"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "base_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Revision",
+            "description": "Optional base snapshot revision of the current version for three-way merge."
+          },
+          "ours_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ours State",
+            "description": "Optional 'ours' state (classes list). If omitted, server uses current version state."
+          },
+          "theirs_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theirs State",
+            "description": "Optional 'theirs' state (classes list). If omitted, server uses source_version_id state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_version_id"
+        ],
+        "title": "VersionMergeRequest",
+        "description": "Request body for POST /versions/{id}/merge and merge preview/resolve."
+      },
+      "VersionMergeResolveRequest": {
         "properties": {
           "source_version_id": {
             "type": "string",
@@ -8437,14 +8743,122 @@
               }
             ],
             "title": "Message"
+          },
+          "base_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Revision"
+          },
+          "ours_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ours State"
+          },
+          "theirs_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theirs State"
+          },
+          "conflict_resolutions": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictResolutionChoice"
+            },
+            "type": "array",
+            "title": "Conflict Resolutions",
+            "description": "Resolution for each conflict (path must match MergeConflict.path from preview)."
+          },
+          "apply": {
+            "type": "boolean",
+            "title": "Apply",
+            "description": "If true, persist the merged state and create a snapshot.",
+            "default": false
           }
         },
         "type": "object",
         "required": [
           "source_version_id"
         ],
-        "title": "VersionMergeRequest",
-        "description": "Request body for POST /versions/{id}/merge."
+        "title": "VersionMergeResolveRequest",
+        "description": "Request body for POST /versions/{id}/merge/resolve \u2014 merge request plus resolution choices."
+      },
+      "VersionMergeResolveResponse": {
+        "properties": {
+          "merged_state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Merged State",
+            "description": "Merged state after applying resolution choices."
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision",
+            "description": "Set when apply=true."
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          },
+          "committed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed At"
+          }
+        },
+        "type": "object",
+        "title": "VersionMergeResolveResponse",
+        "description": "Response from POST /versions/{id}/merge/resolve."
       },
       "VersionMergeResponse": {
         "properties": {
@@ -8473,6 +8887,19 @@
             },
             "type": "array",
             "title": "Merged Classes"
+          },
+          "merged_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged State",
+            "description": "Full merged state (classes, canvas_metadata) when requested or returned by merge."
           },
           "committed_at": {
             "type": "string",

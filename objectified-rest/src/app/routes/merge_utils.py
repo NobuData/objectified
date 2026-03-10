@@ -2,7 +2,7 @@
 
 Provides helpers that merge two version states (local and remote) using either
 an ``additive`` or ``override`` strategy, tracking conflicts when both sides
-modified the same field.
+modified the same field. Supports three-way merge when a base revision is given.
 """
 
 from __future__ import annotations
@@ -13,6 +13,29 @@ from typing import Any, Optional
 def _lower(value: Optional[str]) -> str:
     """Lowercase helper that handles None gracefully."""
     return (value or "").strip().lower()
+
+
+def _conflict_entry(
+    field: str,
+    local_value: Any,
+    remote_value: Any,
+    resolution: str,
+) -> dict[str, Any]:
+    """Build a conflict dict with path and description."""
+    local_str = str(local_value)
+    remote_str = str(remote_value)
+    description = (
+        f"Conflict at {field}: ours={local_str}, theirs={remote_str}. "
+        f"Suggested resolution: {resolution}."
+    )
+    return {
+        "field": field,
+        "path": field,
+        "description": description,
+        "local_value": local_value,
+        "remote_value": remote_value,
+        "resolution": resolution,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -63,23 +86,15 @@ def merge_constraints(
         if key in ("minLength", "minimum"):
             if isinstance(local_val, (int, float)) and isinstance(remote_val, (int, float)):
                 merged[key] = max(local_val, remote_val)
-                conflicts.append({
-                    "field": key,
-                    "local_value": str(local_val),
-                    "remote_value": str(remote_val),
-                    "resolution": f"took stricter (max): {merged[key]}",
-                })
+                res = f"took stricter (max): {merged[key]}"
+                conflicts.append(_conflict_entry(key, local_val, remote_val, res))
             else:
                 merged[key] = remote_val
         elif key in ("maxLength", "maximum"):
             if isinstance(local_val, (int, float)) and isinstance(remote_val, (int, float)):
                 merged[key] = min(local_val, remote_val)
-                conflicts.append({
-                    "field": key,
-                    "local_value": str(local_val),
-                    "remote_value": str(remote_val),
-                    "resolution": f"took stricter (min): {merged[key]}",
-                })
+                res = f"took stricter (min): {merged[key]}"
+                conflicts.append(_conflict_entry(key, local_val, remote_val, res))
             else:
                 merged[key] = remote_val
         elif key == "enum":
@@ -87,12 +102,10 @@ def merge_constraints(
             remote_set = set(remote_val) if isinstance(remote_val, list) else set()
             merged[key] = sorted(local_set | remote_set, key=str)
             if local_set != remote_set:
-                conflicts.append({
-                    "field": key,
-                    "local_value": str(sorted(local_set, key=str)),
-                    "remote_value": str(sorted(remote_set, key=str)),
-                    "resolution": f"union: {merged[key]}",
-                })
+                conflicts.append(_conflict_entry(
+                    key, sorted(local_set, key=str), sorted(remote_set, key=str),
+                    f"union: {merged[key]}",
+                ))
         elif key == "properties" and isinstance(local_val, dict) and isinstance(remote_val, dict):
             # Recursive merge of nested object properties.
             nested_merged, nested_conflicts = _merge_nested_properties(local_val, remote_val)
@@ -103,16 +116,16 @@ def merge_constraints(
             merged[key] = nested_merged
             for c in nested_conflicts:
                 c["field"] = f"items.{c['field']}"
+                c["path"] = c["field"]
+                c["description"] = (
+                    f"Conflict at {c['field']}: ours={c.get('local_value')}, "
+                    f"theirs={c.get('remote_value')}. Suggested resolution: {c.get('resolution', '')}."
+                )
             conflicts.extend(nested_conflicts)
         else:
             # Default: remote wins.
             merged[key] = remote_val
-            conflicts.append({
-                "field": key,
-                "local_value": str(local_val),
-                "remote_value": str(remote_val),
-                "resolution": "remote wins",
-            })
+            conflicts.append(_conflict_entry(key, local_val, remote_val, "remote wins"))
 
     return merged, conflicts
 
@@ -133,15 +146,20 @@ def _merge_nested_properties(
             merged[prop_name] = prop_merged
             for c in prop_conflicts:
                 c["field"] = f"properties.{prop_name}.{c['field']}"
+                c["path"] = c["field"]
+                c["description"] = (
+                    f"Conflict at {c['field']}: ours={c.get('local_value')}, "
+                    f"theirs={c.get('remote_value')}. Suggested resolution: {c.get('resolution', '')}."
+                )
             conflicts.extend(prop_conflicts)
         elif local_props[prop_name] != remote_schema:
             merged[prop_name] = remote_schema
-            conflicts.append({
-                "field": f"properties.{prop_name}",
-                "local_value": str(local_props[prop_name]),
-                "remote_value": str(remote_schema),
-                "resolution": "remote wins",
-            })
+            conflicts.append(_conflict_entry(
+                f"properties.{prop_name}",
+                local_props[prop_name],
+                remote_schema,
+                "remote wins",
+            ))
 
     return merged, conflicts
 
@@ -192,8 +210,15 @@ def merge_property_lists(
                 if local_data != remote_data:
                     merged_data, data_conflicts = merge_constraints(local_data, remote_data)
                     merged_prop["data"] = merged_data
+                    prop_display = local_p.get("name", name_key)
                     for c in data_conflicts:
-                        c["field"] = f"{local_p.get('name', name_key)}.{c['field']}"
+                        c["field"] = f"{prop_display}.{c['field']}"
+                        c["path"] = c["field"]
+                        c["description"] = (
+                            f"Property {prop_display}, field {c.get('field', '').split('.')[-1]}: "
+                            f"ours={c.get('local_value')}, theirs={c.get('remote_value')}. "
+                            f"Suggested resolution: {c.get('resolution', '')}."
+                        )
                     conflicts.extend(data_conflicts)
                 # Remote wins for description when different.
                 if remote_p.get("description") and remote_p["description"] != local_p.get("description"):
@@ -258,12 +283,13 @@ def merge_classes(
                 # Override: remote wins metadata, merge properties.
                 merged_class = {**local_c}
                 if remote_c.get("description") and remote_c["description"] != local_c.get("description"):
-                    conflicts.append({
-                        "field": f"{local_c.get('name', name_key)}.description",
-                        "local_value": str(local_c.get("description", "")),
-                        "remote_value": str(remote_c.get("description", "")),
-                        "resolution": "remote wins",
-                    })
+                    class_display = local_c.get("name", name_key)
+                    conflicts.append(_conflict_entry(
+                        f"{class_display}.description",
+                        local_c.get("description", ""),
+                        remote_c.get("description", ""),
+                        "remote wins",
+                    ))
                     merged_class["description"] = remote_c["description"]
                 if remote_c.get("schema") is not None:
                     merged_class["schema"] = remote_c["schema"]
@@ -289,4 +315,93 @@ def merge_classes(
             merged.append(remote_c)
 
     return merged, conflicts
+
+
+# ---------------------------------------------------------------------------
+# Three-way merge (base / ours / theirs)
+# ---------------------------------------------------------------------------
+
+
+def merge_classes_three_way(
+    base_classes: list[dict[str, Any]],
+    ours_classes: list[dict[str, Any]],
+    theirs_classes: list[dict[str, Any]],
+    strategy: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Three-way merge: base, ours, theirs. When only one side changed from base, take that; else two-way merge.
+
+    Returns (merged_classes, conflicts) with conflict dicts including path and description.
+    """
+    base_by: dict[str, dict[str, Any]] = {}
+    for c in base_classes:
+        base_by[_lower(c.get("name"))] = c
+    ours_by: dict[str, dict[str, Any]] = {}
+    for c in ours_classes:
+        ours_by[_lower(c.get("name"))] = c
+    theirs_by: dict[str, dict[str, Any]] = {}
+    for c in theirs_classes:
+        theirs_by[_lower(c.get("name"))] = c
+
+    all_names = set(base_by.keys()) | set(ours_by.keys()) | set(theirs_by.keys())
+    merged: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
+
+    for name_key in sorted(all_names):
+        base_c = base_by.get(name_key)
+        ours_c = ours_by.get(name_key)
+        theirs_c = theirs_by.get(name_key)
+
+        if ours_c is not None and theirs_c is not None:
+            if base_c is not None:
+                ours_same_as_base = _class_snapshot_equals(base_c, ours_c)
+                theirs_same_as_base = _class_snapshot_equals(base_c, theirs_c)
+                if ours_same_as_base and not theirs_same_as_base:
+                    merged.append(theirs_c)
+                elif not ours_same_as_base and theirs_same_as_base:
+                    merged.append(ours_c)
+                elif ours_same_as_base and theirs_same_as_base:
+                    merged.append(ours_c)
+                else:
+                    m, c = merge_classes([ours_c], [theirs_c], strategy)
+                    merged.extend(m)
+                    conflicts.extend(c)
+            else:
+                m, c = merge_classes([ours_c], [theirs_c], strategy)
+                merged.extend(m)
+                conflicts.extend(c)
+        elif ours_c is not None:
+            merged.append(ours_c)
+        elif theirs_c is not None:
+            merged.append(theirs_c)
+
+    return merged, conflicts
+
+
+def _class_snapshot_equals(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Compare class content for equality (ignore id, created_at, etc.)."""
+    if _lower(a.get("name")) != _lower(b.get("name")):
+        return False
+    if (a.get("description") or "") != (b.get("description") or ""):
+        return False
+    a_props = a.get("properties") or []
+    b_props = b.get("properties") or []
+    if len(a_props) != len(b_props):
+        return False
+    a_by_name = {_lower(p.get("name")): p for p in a_props}
+    b_by_name = {_lower(p.get("name")): p for p in b_props}
+    if set(a_by_name.keys()) != set(b_by_name.keys()):
+        return False
+    for k in a_by_name:
+        if not _prop_snapshot_equals(a_by_name[k], b_by_name[k]):
+            return False
+    return True
+
+
+def _prop_snapshot_equals(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Compare property content for equality."""
+    if (a.get("data") or {}) != (b.get("data") or {}):
+        return False
+    if (a.get("description") or "") != (b.get("description") or ""):
+        return False
+    return True
 
