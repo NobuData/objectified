@@ -14,8 +14,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from app.importers.models import ImportedClass, ImportedProperty
-from app.importers.openapi_importer import _extract_properties, _parse_single_schema
+from app.importers.models import ImportedClass
+from app.importers.openapi_importer import _extract_properties
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +27,25 @@ _DOC_LEVEL_KEYS = {"$schema", "$id", "title", "description", "$defs", "definitio
 _CLASS_SCHEMA_STRIP_KEYS = {"properties", "required", "title", "$schema", "$id", "$defs", "definitions"}
 
 
-def _jsonschema_schema_to_openapi_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Lightly normalise a JSON Schema 2020-12 schema to OpenAPI-compatible form.
+def _parse_single_jsonschema(
+    name: str,
+    schema: dict[str, Any],
+) -> ImportedClass:
+    """Convert a single named JSON Schema 2020-12 object into an :class:`ImportedClass`.
 
-    JSON Schema uses ``$ref: #/$defs/Name``; OpenAPI uses
-    ``$ref: #/components/schemas/Name``.  We keep the $ref as-is because
-    the importer stores property data verbatim.  The main normalisation is
-    converting ``definitions`` to ``properties`` style access, which the
-    shared ``_extract_properties`` already handles.
+    Strips document-level keys (``$schema``, ``$id``, ``$defs``, ``definitions``,
+    ``properties``, ``required``, ``title``) so they do not leak into the stored
+    ``class.schema`` and interfere with schema exports.
     """
-    return dict(schema)
+    description = schema.get("description") or schema.get("title") or ""
+    class_schema = {k: v for k, v in schema.items() if k not in _CLASS_SCHEMA_STRIP_KEYS}
+    properties = _extract_properties(schema)
+    return ImportedClass(
+        name=name,
+        description=description,
+        schema=class_schema,
+        properties=properties,
+    )
 
 
 def parse_jsonschema_doc(doc: dict[str, Any], *, fallback_name: str = "Schema") -> list[ImportedClass]:
@@ -71,8 +80,7 @@ def parse_jsonschema_doc(doc: dict[str, Any], *, fallback_name: str = "Schema") 
         for def_name, def_schema in defs.items():
             if not isinstance(def_schema, dict):
                 continue
-            schema_obj = _jsonschema_schema_to_openapi_schema(def_schema)
-            imported_class = _parse_single_schema(def_name, schema_obj)
+            imported_class = _parse_single_jsonschema(def_name, def_schema)
             classes.append(imported_class)
             logger.debug(
                 "parse_jsonschema_doc: parsed class '%s' with %d properties",
@@ -84,8 +92,7 @@ def parse_jsonschema_doc(doc: dict[str, Any], *, fallback_name: str = "Schema") 
 
     # Single-schema form: strip document-level keys and treat the rest as the schema.
     class_name = doc.get("title") or fallback_name
-    schema_obj = _jsonschema_schema_to_openapi_schema(doc)
-    imported_class = _parse_single_schema(class_name, schema_obj)
+    imported_class = _parse_single_jsonschema(class_name, doc)
     logger.info(
         "parse_jsonschema_doc: parsed single class '%s' with %d properties",
         class_name,

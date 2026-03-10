@@ -5,7 +5,6 @@
 
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -134,30 +133,6 @@ def client():
     app.dependency_overrides[require_authenticated] = lambda: _CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
-
-
-# ---------------------------------------------------------------------------
-# Helpers to build side_effect sequences for the mock db
-# ---------------------------------------------------------------------------
-
-
-def _new_class_side_effects(num_properties: int = 1) -> list:
-    """Side effects for importing a brand-new class with num_properties properties.
-
-    Query sequence per property:
-      1. _assert_version_exists         → [_VERSION_ROW]
-      2. _find_or_create_class: SELECT  → []  (not found)
-      3. _find_or_create_class: INSERT  → _CLASS_ROW  (via execute_mutation)
-      For each property:
-      4. _find_or_create_property: SELECT → [] (not found)
-      5. _find_or_create_property: INSERT → _PROP_ROW (via execute_mutation)
-      6. _create_class_property: SELECT  → [] (not found)
-      7. _create_class_property: INSERT  → _CP_ROW  (via execute_mutation)
-
-    execute_query calls: [VERSION], [class SELECT], [prop SELECT * n], [cp SELECT * n]
-    execute_mutation calls: [class INSERT], [prop INSERT * n], [cp INSERT * n]
-    """
-    return None  # handled inline per test for clarity
 
 
 # ---------------------------------------------------------------------------

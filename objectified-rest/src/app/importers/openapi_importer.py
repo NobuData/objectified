@@ -20,19 +20,20 @@ _CLASS_SCHEMA_STRIP_KEYS = {"properties", "required", "title"}
 def _extract_properties(
     schema: dict[str, Any],
     *,
-    parent_name: Optional[str] = None,
+    parent_path: Optional[str] = None,
     depth: int = 0,
     max_depth: int = 8,
 ) -> list[ImportedProperty]:
     """Recursively extract properties from a schema dict.
 
     :param schema: A JSON Schema / OpenAPI schema object.
-    :param parent_name: Name of the enclosing property (for nesting).
+    :param parent_path: Full dot-separated path of the enclosing property
+        (``None`` for top-level properties).
     :param depth: Current recursion depth (guard against deep nesting).
-    :param max_depth: Maximum recursion depth.
+    :param max_depth: Maximum recursion depth (exclusive upper bound).
     :returns: Flat list of :class:`ImportedProperty` objects.
     """
-    if depth > max_depth:
+    if depth >= max_depth:
         logger.warning("_extract_properties: max depth %d reached, stopping recursion", max_depth)
         return []
 
@@ -52,11 +53,14 @@ def _extract_properties(
 
         description = prop_schema.get("description") or prop_schema.get("title") or ""
 
+        # Compute the full dot-separated path of this property.
+        current_path = f"{parent_path}.{prop_name}" if parent_path else prop_name
+
         imported = ImportedProperty(
             name=prop_name,
             description=description,
             data=data,
-            parent_name=parent_name,
+            parent_path=parent_path,
         )
         result.append(imported)
 
@@ -74,7 +78,7 @@ def _extract_properties(
         if nested_schema:
             children = _extract_properties(
                 nested_schema,
-                parent_name=prop_name,
+                parent_path=current_path,
                 depth=depth + 1,
                 max_depth=max_depth,
             )

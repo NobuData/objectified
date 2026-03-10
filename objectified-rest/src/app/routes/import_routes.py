@@ -24,31 +24,15 @@ from app.database import db
 from app.importers.jsonschema_importer import parse_jsonschema_doc
 from app.importers.models import ImportedClass, ImportedProperty
 from app.importers.openapi_importer import parse_openapi_doc
-from app.routes.helpers import _not_found
+from app.routes.class_properties import _CLASS_PROPERTY_COLUMNS
+from app.routes.classes import _CLASS_COLUMNS
+from app.routes.properties import _PROPERTY_COLUMNS
 from app.routes.versions import _assert_version_exists
 from app.schemas.import_model import ImportResult
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Import"])
-
-# ---------------------------------------------------------------------------
-# Column constants
-# ---------------------------------------------------------------------------
-
-_CLASS_COLUMNS = (
-    "id, version_id, name, description, schema, metadata, enabled, "
-    "created_at, updated_at, deleted_at"
-)
-
-_PROPERTY_COLUMNS = (
-    "id, project_id, name, description, data, enabled, "
-    "created_at, updated_at, deleted_at"
-)
-
-_CLASS_PROPERTY_COLUMNS = (
-    "id, class_id, property_id, parent_id, name, description, data, created_at, updated_at"
-)
 
 
 # ---------------------------------------------------------------------------
@@ -225,26 +209,31 @@ def _execute_import(
         # 1. Find or create the class.
         class_id = _find_or_create_class(version_id, imported_cls, result)
 
-        # 2. Build a name → class_property_id mapping for parent resolution.
+        # 2. Build a path → class_property_id mapping for parent resolution.
+        #    Using the full dot-separated path as the key prevents collisions
+        #    when the same property name appears in multiple nested branches
+        #    (e.g. shipping.street vs. billing.street).
         #    We process top-level properties first, then nested ones so that
         #    parent IDs are available when children are processed.
-        cp_id_by_name: dict[str, str] = {}
+        cp_id_by_path: dict[str, str] = {}
 
-        top_level = [p for p in imported_cls.properties if p.parent_name is None]
-        nested = [p for p in imported_cls.properties if p.parent_name is not None]
+        top_level = [p for p in imported_cls.properties if p.parent_path is None]
+        nested = [p for p in imported_cls.properties if p.parent_path is not None]
 
         for prop in top_level:
             prop_id = _find_or_create_property(project_id, prop, result)
             cp_id = _create_class_property(class_id, prop_id, prop, None, result)
-            cp_id_by_name[prop.name] = cp_id
+            cp_id_by_path[prop.name] = cp_id
 
         # Process nested properties; if the parent was not already found above
         # (e.g. deeply nested), fall back to None (top-level) gracefully.
         for prop in nested:
             prop_id = _find_or_create_property(project_id, prop, result)
-            parent_cp_id = cp_id_by_name.get(prop.parent_name) if prop.parent_name else None
+            parent_cp_id = cp_id_by_path.get(prop.parent_path) if prop.parent_path else None
             cp_id = _create_class_property(class_id, prop_id, prop, parent_cp_id, result)
-            cp_id_by_name[prop.name] = cp_id
+            # Key by full path to avoid collisions with same-named siblings.
+            prop_path = f"{prop.parent_path}.{prop.name}"
+            cp_id_by_path[prop_path] = cp_id
 
     return result
 
