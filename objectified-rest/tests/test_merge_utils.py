@@ -1,9 +1,6 @@
 """Tests for merge utility functions."""
 
-import pytest
-
 from app.routes.merge_utils import merge_classes, merge_constraints, merge_property_lists
-
 
 # ---------------------------------------------------------------------------
 # merge_constraints
