@@ -15,15 +15,16 @@ from typing import Any, Optional
 class ImportedProperty:
     """A single property extracted from a schema document.
 
-    ``parent_name`` is the name of the parent property (for nesting).
-    It references another :class:`ImportedProperty` within the same class
-    by name; ``None`` means top-level.
+    ``parent_path`` is the full dot-separated path of the parent property
+    (e.g. ``"address"`` or ``"address.street"``).  ``None`` means top-level.
+    Using the full path rather than just the name ensures uniqueness when the
+    same property name appears in multiple nested branches.
     """
 
     name: str
     description: str
     data: dict[str, Any]
-    parent_name: Optional[str] = None
+    parent_path: Optional[str] = None
 
 
 @dataclass
