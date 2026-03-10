@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.3
+  version: 1.0.4
 paths:
   /v1/auth/login:
     post:
@@ -5413,10 +5413,12 @@ components:
     VersionMergeRequest:
       properties:
         source_version_id:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Source Version Id
-          description: Source version UUID (theirs). Ignored when theirs_state is
-            provided.
+          description: Source version UUID (theirs). Required when theirs_state is
+            not provided; ignored (and not validated) when theirs_state is supplied.
         strategy:
           $ref: '#/components/schemas/MergeStrategy'
           default: additive
@@ -5449,15 +5451,17 @@ components:
           description: Optional 'theirs' state (classes list). If omitted, server
             uses source_version_id state.
       type: object
-      required:
-      - source_version_id
       title: VersionMergeRequest
       description: Request body for POST /versions/{id}/merge and merge preview/resolve.
     VersionMergeResolveRequest:
       properties:
         source_version_id:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Source Version Id
+          description: Source version UUID (theirs). Required when theirs_state is
+            not provided; ignored (and not validated) when theirs_state is supplied.
         strategy:
           $ref: '#/components/schemas/MergeStrategy'
           default: additive
@@ -5496,8 +5500,6 @@ components:
           description: If true, persist the merged state and create a snapshot.
           default: false
       type: object
-      required:
-      - source_version_id
       title: VersionMergeResolveRequest
       description: Request body for POST /versions/{id}/merge/resolve — merge request
         plus resolution choices.

@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class VersionVisibility(str, Enum):
@@ -220,9 +220,12 @@ class MergeConflict(BaseModel):
 class VersionMergeRequest(BaseModel):
     """Request body for POST /versions/{id}/merge and merge preview/resolve."""
 
-    source_version_id: str = Field(
-        ...,
-        description="Source version UUID (theirs). Ignored when theirs_state is provided.",
+    source_version_id: Optional[str] = Field(
+        None,
+        description=(
+            "Source version UUID (theirs). Required when theirs_state is not provided; "
+            "ignored (and not validated) when theirs_state is supplied."
+        ),
     )
     strategy: MergeStrategy = MergeStrategy.ADDITIVE
     message: Optional[str] = None
@@ -238,6 +241,12 @@ class VersionMergeRequest(BaseModel):
         None,
         description="Optional 'theirs' state (classes list). If omitted, server uses source_version_id state.",
     )
+
+    @model_validator(mode="after")
+    def _require_source_or_theirs(self) -> "VersionMergeRequest":
+        if self.theirs_state is None and not self.source_version_id:
+            raise ValueError("source_version_id is required when theirs_state is not provided")
+        return self
 
 
 class VersionMergeResponse(BaseModel):
@@ -284,7 +293,13 @@ class ConflictResolutionChoice(BaseModel):
 class VersionMergeResolveRequest(BaseModel):
     """Request body for POST /versions/{id}/merge/resolve — merge request plus resolution choices."""
 
-    source_version_id: str
+    source_version_id: Optional[str] = Field(
+        None,
+        description=(
+            "Source version UUID (theirs). Required when theirs_state is not provided; "
+            "ignored (and not validated) when theirs_state is supplied."
+        ),
+    )
     strategy: MergeStrategy = MergeStrategy.ADDITIVE
     message: Optional[str] = None
     base_revision: Optional[int] = None
@@ -298,6 +313,12 @@ class VersionMergeResolveRequest(BaseModel):
         False,
         description="If true, persist the merged state and create a snapshot.",
     )
+
+    @model_validator(mode="after")
+    def _require_source_or_theirs(self) -> "VersionMergeResolveRequest":
+        if self.theirs_state is None and not self.source_version_id:
+            raise ValueError("source_version_id is required when theirs_state is not provided")
+        return self
 
 
 class VersionMergeResolveResponse(BaseModel):
