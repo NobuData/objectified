@@ -172,9 +172,9 @@ class TestVersionHistoryTableConstraints:
             """
         )
         assert row is not None, "CHECK constraint version_history_operation_check is missing"
-        assert "INSERT" in row["definition"]
-        assert "UPDATE" in row["definition"]
-        assert "DELETE" in row["definition"]
+        definition = row["definition"]
+        for op in ("INSERT", "UPDATE", "DELETE", "COMMIT", "PUSH", "MERGE"):
+            assert op in definition, f"Operation '{op}' should be allowed by version_history_operation_check"
 
     def test_unique_version_revision_constraint_exists(self, conn):
         row = conn.fetchone(
@@ -287,6 +287,33 @@ class TestVersionHistoryTableDataIntegrity:
             )
         conn.execute("ROLLBACK TO SAVEPOINT before_invalid_operation")
         conn.execute("RELEASE SAVEPOINT before_invalid_operation")
+
+    def test_commit_operation_allowed(self, conn):
+        """COMMIT, PUSH, MERGE operations are allowed (GH-40) for version commit/pull/merge routes."""
+        project = _insert_project(conn, "vh-commit-op")
+        version_id = _insert_version(conn, project["id"], project["creator_id"])
+        conn.execute(
+            """
+            INSERT INTO objectified.version_history
+                (version_id, project_id, changed_by, revision, operation, new_data)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+            """,
+            (
+                version_id,
+                project["id"],
+                project["creator_id"],
+                1,
+                "COMMIT",
+                json.dumps({"classes": [], "canvas_metadata": None}),
+            ),
+        )
+        row = conn.fetchone(
+            "SELECT operation, new_data FROM objectified.version_history WHERE version_id = %s",
+            (version_id,),
+        )
+        assert row is not None
+        assert row["operation"] == "COMMIT"
+        assert row["new_data"] is not None
 
     def test_invalid_foreign_key_raises(self, conn):
         project = _insert_project(conn, "vh-bad-fk")
