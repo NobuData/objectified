@@ -76,3 +76,144 @@ def test_validate_missing_schema_field_defaults_to_empty(client):
     assert r.status_code == 200
     body = r.json()
     assert body["valid"] is True
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI document validation tests
+# ---------------------------------------------------------------------------
+
+
+def test_validate_openapi_valid_document(client):
+    """POST /v1/validate/openapi-document returns valid=true for a well-formed OpenAPI doc."""
+    doc = {
+        "openapi": "3.2.0",
+        "info": {"title": "My API", "version": "1.0.0"},
+        "components": {
+            "schemas": {
+                "Person": {"type": "object", "properties": {"name": {"type": "string"}}},
+            }
+        },
+        "paths": {"/test": {"get": {"summary": "Test"}}},
+    }
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is True
+    assert body["openapi_version"] == "3.2.0"
+    assert body["title"] == "My API"
+    assert body["errors"] == []
+    assert body["warnings"] == []
+
+
+def test_validate_openapi_missing_openapi_version(client):
+    """POST /v1/validate/openapi-document reports error when 'openapi' field is missing."""
+    doc = {"info": {"title": "No Version", "version": "1.0.0"}}
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is False
+    assert any("openapi" in e.lower() for e in body["errors"])
+
+
+def test_validate_openapi_unsupported_version(client):
+    """POST /v1/validate/openapi-document reports error for non-3.x version."""
+    doc = {"openapi": "2.0", "info": {"title": "Old API", "version": "1.0.0"}}
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is False
+    assert any("3.x" in e or "Unsupported" in e for e in body["errors"])
+
+
+def test_validate_openapi_missing_info(client):
+    """POST /v1/validate/openapi-document reports error when 'info' is missing."""
+    doc = {"openapi": "3.1.0"}
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is False
+    assert any("info" in e.lower() for e in body["errors"])
+
+
+def test_validate_openapi_missing_info_title(client):
+    """POST /v1/validate/openapi-document reports error when 'info.title' is missing."""
+    doc = {"openapi": "3.1.0", "info": {"version": "1.0.0"}}
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is False
+    assert any("title" in e.lower() for e in body["errors"])
+
+
+def test_validate_openapi_missing_info_version(client):
+    """POST /v1/validate/openapi-document reports error when 'info.version' is missing."""
+    doc = {"openapi": "3.1.0", "info": {"title": "My API"}}
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is False
+    assert any("version" in e.lower() for e in body["errors"])
+
+
+def test_validate_openapi_warns_no_components(client):
+    """POST /v1/validate/openapi-document warns when 'components' is missing."""
+    doc = {"openapi": "3.1.0", "info": {"title": "My API", "version": "1.0.0"}}
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is True
+    assert any("components" in w.lower() for w in body["warnings"])
+
+
+def test_validate_openapi_warns_empty_schemas(client):
+    """POST /v1/validate/openapi-document warns when 'components.schemas' is empty."""
+    doc = {
+        "openapi": "3.1.0",
+        "info": {"title": "My API", "version": "1.0.0"},
+        "components": {"schemas": {}},
+    }
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is True
+    assert any("schemas" in w.lower() for w in body["warnings"])
+
+
+def test_validate_openapi_warns_no_paths(client):
+    """POST /v1/validate/openapi-document warns when 'paths' section is absent."""
+    doc = {
+        "openapi": "3.1.0",
+        "info": {"title": "My API", "version": "1.0.0"},
+        "components": {"schemas": {"Foo": {"type": "object"}}},
+    }
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is True
+    assert any("paths" in w.lower() for w in body["warnings"])
+
+
+def test_validate_openapi_warns_empty_paths(client):
+    """POST /v1/validate/openapi-document warns when 'paths' section is empty."""
+    doc = {
+        "openapi": "3.1.0",
+        "info": {"title": "My API", "version": "1.0.0"},
+        "components": {"schemas": {"Foo": {"type": "object"}}},
+        "paths": {},
+    }
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is True
+    assert any("paths" in w.lower() and "empty" in w.lower() for w in body["warnings"])
+
+
+def test_validate_openapi_multiple_errors(client):
+    """POST /v1/validate/openapi-document accumulates multiple errors."""
+    doc = {}  # Missing everything
+    r = client.post("/v1/validate/openapi-document", json=doc)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is False
+    assert len(body["errors"]) >= 2  # at least 'openapi' and 'info'
+

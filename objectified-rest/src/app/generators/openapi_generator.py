@@ -172,8 +172,15 @@ def generate_openapi_spec(
     version: str = "1.0.0",
     description: str | None = None,
     openapi_version: str = "3.2.0",
+    servers: list[dict[str, Any]] | None = None,
+    tags: list[dict[str, str]] | None = None,
+    security: list[dict[str, list[str]]] | None = None,
+    external_docs: dict[str, str] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generate a complete OpenAPI document from a list of class definitions.
+
+    Mirrors ``generateOpenApiSpec`` from the commercial openapi.ts.
 
     :param classes: List of class data dicts, each with ``name``, ``description``,
         ``schema`` / ``schema_``, and ``properties`` (class_property rows).
@@ -181,6 +188,12 @@ def generate_openapi_spec(
     :param version: API version string (info.version).
     :param description: API description (info.description).
     :param openapi_version: OpenAPI version string, defaults to ``3.2.0``.
+    :param servers: Optional list of server objects (url, description).
+    :param tags: Optional list of tag objects (name, description).
+    :param security: Optional list of security requirement objects.
+    :param external_docs: Optional external documentation object (url, description).
+    :param metadata: Optional metadata dict with summary, terms_of_service,
+        contact ({name, url, email}), and license ({name, identifier, url}).
     :returns: A dict representing the full OpenAPI document.
     """
     schemas: dict[str, Any] = {}
@@ -193,6 +206,29 @@ def generate_openapi_spec(
         "description": description or f"Generated OpenAPI {openapi_version} specification from Objectified",
     }
 
+    # Add optional metadata fields to info (mirrors commercial openapi.ts).
+    if metadata:
+        if metadata.get("summary"):
+            info["summary"] = metadata["summary"]
+        if metadata.get("terms_of_service"):
+            info["termsOfService"] = metadata["terms_of_service"]
+        contact = metadata.get("contact")
+        if contact and isinstance(contact, dict):
+            info_contact: dict[str, str] = {}
+            for k in ("name", "url", "email"):
+                if contact.get(k):
+                    info_contact[k] = contact[k]
+            if info_contact:
+                info["contact"] = info_contact
+        license_ = metadata.get("license")
+        if license_ and isinstance(license_, dict):
+            info_license: dict[str, str] = {}
+            for k in ("name", "identifier", "url"):
+                if license_.get(k):
+                    info_license[k] = license_[k]
+            if info_license:
+                info["license"] = info_license
+
     doc: dict[str, Any] = {
         "openapi": openapi_version,
         "info": info,
@@ -201,6 +237,16 @@ def generate_openapi_spec(
         },
         "paths": {},
     }
+
+    # Add optional top-level fields (mirrors commercial openapi.ts).
+    if servers:
+        doc["servers"] = servers
+    if tags:
+        doc["tags"] = tags
+    if security:
+        doc["security"] = security
+    if external_docs:
+        doc["externalDocs"] = external_docs
 
     logger.debug(
         "generate_openapi_spec: generated %d schemas for openapi %s",

@@ -291,7 +291,7 @@ def test_import_openapi_missing_openapi_field_returns_400(client):
 
 def test_import_openapi_empty_schemas_returns_zero_counts(client):
     """POST /import/openapi with no schemas returns all-zero result."""
-    empty_doc = {"openapi": "3.2.0", "info": {"title": "Empty"}, "components": {"schemas": {}}, "paths": {}}
+    empty_doc = {"openapi": "3.2.0", "info": {"title": "Empty", "version": "1.0.0"}, "components": {"schemas": {}}, "paths": {}}
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_VERSION_ROW],  # _assert_version_exists
@@ -544,4 +544,40 @@ def test_import_openapi_nested_properties(client):
     assert body["classes_created"] == 1
     assert body["properties_created"] == 2
     assert body["class_properties_created"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Enhanced OpenAPI import validation tests
+# ---------------------------------------------------------------------------
+
+
+def test_import_openapi_missing_info_returns_400(client):
+    """POST /import/openapi returns 400 when 'info' is absent."""
+    bad_doc = {"openapi": "3.2.0", "components": {"schemas": {}}}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_VERSION_ROW]
+        r = client.post(f"/v1/versions/{_VERSION_ID}/import/openapi", json=bad_doc)
+    assert r.status_code == 400
+    assert "info" in r.json()["detail"].lower()
+
+
+def test_import_openapi_missing_info_title_returns_400(client):
+    """POST /import/openapi returns 400 when 'info.title' is absent."""
+    bad_doc = {"openapi": "3.2.0", "info": {"version": "1.0.0"}}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_VERSION_ROW]
+        r = client.post(f"/v1/versions/{_VERSION_ID}/import/openapi", json=bad_doc)
+    assert r.status_code == 400
+    assert "title" in r.json()["detail"].lower()
+
+
+def test_import_openapi_missing_info_version_returns_400(client):
+    """POST /import/openapi returns 400 when 'info.version' is absent."""
+    bad_doc = {"openapi": "3.2.0", "info": {"title": "Test"}}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_VERSION_ROW]
+        r = client.post(f"/v1/versions/{_VERSION_ID}/import/openapi", json=bad_doc)
+    assert r.status_code == 400
+    assert "version" in r.json()["detail"].lower()
+
 

@@ -651,6 +651,350 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/export/openapi:
+    get:
+      tags:
+      - Export
+      summary: Export version as OpenAPI 3.2.0
+      description: Generate and export an OpenAPI 3.2.0 specification document for
+        the given version. All active classes in the version are exported as components/schemas
+        entries. The response is a JSON document conforming to the OpenAPI 3.2.0 specification.
+      operationId: export_openapi_v1_versions__version_id__export_openapi_get
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: project_name
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Override the API title (info.title).
+          title: Project Name
+        description: Override the API title (info.title).
+      - name: version
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Override the API version string (info.version).
+          title: Version
+        description: Override the API version string (info.version).
+      - name: description
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Override the API description (info.description).
+          title: Description
+        description: Override the API description (info.description).
+      - name: servers
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: JSON-encoded array of server objects, e.g. [{"url":"https://api.example.com","description":"Production"}].
+          title: Servers
+        description: JSON-encoded array of server objects, e.g. [{"url":"https://api.example.com","description":"Production"}].
+      - name: tags
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: JSON-encoded array of tag objects, e.g. [{"name":"Users","description":"User
+            operations"}].
+          title: Tags
+        description: JSON-encoded array of tag objects, e.g. [{"name":"Users","description":"User
+          operations"}].
+      - name: security
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: JSON-encoded array of security requirement objects, e.g. [{"Bearer":[]}].
+          title: Security
+        description: JSON-encoded array of security requirement objects, e.g. [{"Bearer":[]}].
+      - name: external_docs
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: JSON-encoded external documentation object, e.g. {"url":"https://docs.example.com","description":"API
+            documentation"}.
+          title: External Docs
+        description: JSON-encoded external documentation object, e.g. {"url":"https://docs.example.com","description":"API
+          documentation"}.
+      - name: metadata
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'JSON-encoded metadata object with optional keys: summary,
+            terms_of_service, contact ({name, url, email}), license ({name, identifier,
+            url}).'
+          title: Metadata
+        description: 'JSON-encoded metadata object with optional keys: summary, terms_of_service,
+          contact ({name, url, email}), license ({name, identifier, url}).'
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: OpenAPI 3.2.0 specification document
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Version not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/export/jsonschema:
+    get:
+      tags:
+      - Export
+      summary: Export version as JSON Schema 2020-12
+      description: Generate and export a JSON Schema 2020-12 document for the given
+        version. By default all active classes are exported as $defs entries in a
+        single multi-schema document. Pass class_id to export only a single class
+        as a standalone JSON Schema document.
+      operationId: export_jsonschema_v1_versions__version_id__export_jsonschema_get
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Optional class UUID. When provided, export only this class
+            as a standalone JSON Schema document instead of the full multi-schema
+            document.
+          title: Class Id
+        description: Optional class UUID. When provided, export only this class as
+          a standalone JSON Schema document instead of the full multi-schema document.
+      - name: project_name
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Override the schema title.
+          title: Project Name
+        description: Override the schema title.
+      - name: version
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Override the version string used in the generated document.
+          title: Version
+        description: Override the version string used in the generated document.
+      - name: description
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Override the description in the generated document.
+          title: Description
+        description: Override the description in the generated document.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: JSON Schema 2020-12 document
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Version or class not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/import/openapi:
+    post:
+      tags:
+      - Import
+      summary: Import OpenAPI 3.x document
+      description: Import an OpenAPI 3.x document into the given version. All schemas
+        found in ``components/schemas`` are created as classes. Properties are extracted
+        from each schema and linked via class_property rows. Existing classes (matched
+        by name, case-insensitive) are updated; existing properties (matched by name
+        within the project) are reused. Conflict handling beyond this basic upsert
+        is deferred to merge workflows.
+      operationId: import_openapi_v1_versions__version_id__import_openapi_post
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: OpenAPI 3.x document as JSON
+              title: Doc
+      responses:
+        '200':
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        '400':
+          description: Invalid or unrecognisable OpenAPI document
+        '404':
+          description: Version not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/import/jsonschema:
+    post:
+      tags:
+      - Import
+      summary: Import JSON Schema 2020-12 document
+      description: Import a JSON Schema 2020-12 document into the given version. Documents
+        with ``$defs`` create one class per definition; a document without ``$defs``
+        is treated as a single class using the ``title`` field (or 'Schema' if absent)
+        as the class name. Existing classes are updated; existing properties are reused.
+        Conflict handling beyond this basic upsert is deferred to merge workflows.
+      operationId: import_jsonschema_v1_versions__version_id__import_jsonschema_post
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: JSON Schema 2020-12 document as JSON
+              title: Doc
+      responses:
+        '200':
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        '400':
+          description: Invalid or unrecognisable JSON Schema document
+        '404':
+          description: Version not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/me:
     get:
       tags:
@@ -2353,6 +2697,68 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/validate/json-schema:
+    post:
+      tags:
+      - Validation
+      summary: Validate a JSON Schema Draft 2020-12 object
+      description: Validate a submitted JSON object against the JSON Schema Draft
+        2020-12 metaschema. Returns whether the schema is valid and a list of structured
+        error details if it is not. OpenAPI 3.2.0 Schema Objects are a superset of
+        JSON Schema 2020-12, so this endpoint can be used to pre-validate schema payloads
+        before creating or updating classes or properties.
+      operationId: validate_schema_v1_validate_json_schema_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SchemaValidationRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaValidationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/validate/openapi-document:
+    post:
+      tags:
+      - Validation
+      summary: Validate an OpenAPI 3.x document structure
+      description: Validate the structure of an OpenAPI 3.x document without importing
+        it. Checks for required fields (openapi version, info.title, info.version)
+        and reports warnings for missing optional sections (components, schemas, paths).
+        Use this to pre-validate a document before calling the import endpoint.
+      operationId: validate_openapi_document_v1_validate_openapi_document_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Doc
+              description: OpenAPI 3.x document as JSON
+        required: true
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAPIValidationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/tenants/{tenant_id}/projects/{project_id}/versions:
     get:
       tags:
@@ -3612,7 +4018,12 @@ components:
       description: 'Class with embedded properties and tags for canvas load.
 
 
-        Returned by GET /v1/versions/{version_id}/classes/with-properties-tags.
+        Returned by:
+
+        - GET /v1/versions/{version_id}/classes/with-properties-tags (bulk)
+
+        - GET /v1/versions/{version_id}/classes/{class_id}/with-properties-tags (single)
+
 
         Each item includes the class fields plus:
 
@@ -3629,6 +4040,40 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    ImportResult:
+      properties:
+        classes_created:
+          type: integer
+          title: Classes Created
+          default: 0
+        classes_updated:
+          type: integer
+          title: Classes Updated
+          default: 0
+        properties_created:
+          type: integer
+          title: Properties Created
+          default: 0
+        properties_reused:
+          type: integer
+          title: Properties Reused
+          default: 0
+        class_properties_created:
+          type: integer
+          title: Class Properties Created
+          default: 0
+        class_properties_skipped:
+          type: integer
+          title: Class Properties Skipped
+          default: 0
+        detail:
+          items:
+            type: string
+          type: array
+          title: Detail
+      type: object
+      title: ImportResult
+      description: Response schema summarising the result of an import operation.
     LoginRequest:
       properties:
         email:
@@ -3684,6 +4129,34 @@ components:
       - expires_in
       title: LoginResponse
       description: Response body for POST /v1/auth/login.
+    OpenAPIValidationResponse:
+      properties:
+        valid:
+          type: boolean
+          title: Valid
+        openapi_version:
+          type: string
+          title: Openapi Version
+          default: ''
+        title:
+          type: string
+          title: Title
+          default: ''
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        errors:
+          items:
+            type: string
+          type: array
+          title: Errors
+      type: object
+      required:
+      - valid
+      title: OpenAPIValidationResponse
+      description: Response body for OpenAPI document validation endpoint.
     ProfileUpdate:
       properties:
         name:
@@ -3975,6 +4448,33 @@ components:
       type: object
       title: PropertyUpdate
       description: Update payload for objectified.property.
+    SchemaValidationRequest:
+      properties:
+        schema:
+          additionalProperties: true
+          type: object
+          title: Schema
+      type: object
+      title: SchemaValidationRequest
+      description: Request body for schema validation endpoint.
+    SchemaValidationResponse:
+      properties:
+        valid:
+          type: boolean
+          title: Valid
+        errors:
+          items:
+            additionalProperties:
+              type: string
+            type: object
+          type: array
+          title: Errors
+      type: object
+      required:
+      - valid
+      - errors
+      title: SchemaValidationResponse
+      description: Response body for schema validation endpoint.
     TenantAccessLevel:
       type: string
       enum:

@@ -1,9 +1,10 @@
 """REST routes for schema export (OpenAPI 3.2.0 and JSON Schema 2020-12)."""
 
+import json
 import logging
 from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from app.auth import require_authenticated
@@ -17,6 +18,24 @@ from app.routes.versions import _assert_version_exists
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Export"])
+
+
+def _parse_json_param(value: Optional[str], name: str) -> Any:
+    """Parse a JSON-encoded query parameter value.
+
+    Returns ``None`` when *value* is ``None`` (parameter not supplied).
+    Raises :class:`~fastapi.HTTPException` 400 if the string is not valid JSON.
+    """
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid JSON in '{name}' query parameter.",
+        )
 
 
 def _load_classes_with_properties(version_id: str) -> list[dict[str, Any]]:
@@ -119,6 +138,7 @@ def _load_single_class_with_properties(
             "description": "OpenAPI 3.2.0 specification document",
             "content": {"application/json": {}},
         },
+        400: {"description": "Invalid JSON in query parameter"},
         404: {"description": "Version not found"},
     },
 )
@@ -133,11 +153,58 @@ def export_openapi(
     description: Optional[str] = Query(
         None, description="Override the API description (info.description)."
     ),
+    servers_json: Optional[str] = Query(
+        None,
+        alias="servers",
+        description=(
+            "JSON-encoded array of server objects, e.g. "
+            '[{"url":"https://api.example.com","description":"Production"}].'
+        ),
+    ),
+    tags_json: Optional[str] = Query(
+        None,
+        alias="tags",
+        description=(
+            "JSON-encoded array of tag objects, e.g. "
+            '[{"name":"Users","description":"User operations"}].'
+        ),
+    ),
+    security_json: Optional[str] = Query(
+        None,
+        alias="security",
+        description=(
+            "JSON-encoded array of security requirement objects, e.g. "
+            '[{"Bearer":[]}].'
+        ),
+    ),
+    external_docs_json: Optional[str] = Query(
+        None,
+        alias="external_docs",
+        description=(
+            "JSON-encoded external documentation object, e.g. "
+            '{"url":"https://docs.example.com","description":"API documentation"}.'
+        ),
+    ),
+    metadata_json: Optional[str] = Query(
+        None,
+        alias="metadata",
+        description=(
+            "JSON-encoded metadata object with optional keys: summary, terms_of_service, "
+            "contact ({name, url, email}), license ({name, identifier, url})."
+        ),
+    ),
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> JSONResponse:
     """Export a version as an OpenAPI 3.2.0 specification document."""
     version = _assert_version_exists(version_id, include_deleted=False)
     classes = _load_classes_with_properties(version_id)
+
+    # Parse optional JSON query parameters.
+    servers = _parse_json_param(servers_json, "servers")
+    tags = _parse_json_param(tags_json, "tags")
+    security = _parse_json_param(security_json, "security")
+    external_docs = _parse_json_param(external_docs_json, "external_docs")
+    metadata = _parse_json_param(metadata_json, "metadata")
 
     doc = generate_openapi_spec(
         classes,
@@ -145,6 +212,11 @@ def export_openapi(
         version=api_version or "1.0.0",
         description=description,
         openapi_version="3.2.0",
+        servers=servers,
+        tags=tags,
+        security=security,
+        external_docs=external_docs,
+        metadata=metadata,
     )
 
     logger.info(
