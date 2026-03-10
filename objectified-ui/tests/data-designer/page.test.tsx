@@ -1,10 +1,20 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import DataDesignerPage from '../../src/app/data-designer/page';
 
 jest.mock('next-auth/react', () => ({
   useSession: () => ({ data: { user: { name: 'Test User', email: 'test@example.com' } } }),
   signOut: jest.fn(),
+}));
+
+jest.mock('@lib/api/rest-client', () => ({
+  getRestBaseUrl: () => 'http://test/v1',
+  getRestClientOptions: () => ({}),
+  listTenants: jest.fn().mockResolvedValue([]),
+  listProjects: jest.fn().mockResolvedValue([]),
+  listVersions: jest.fn().mockResolvedValue([]),
+  listClassesWithPropertiesAndTags: jest.fn().mockResolvedValue([]),
+  listProperties: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock('@xyflow/react', () => ({
@@ -20,11 +30,14 @@ jest.mock('@xyflow/react', () => ({
 }));
 
 describe('DataDesignerPage', () => {
-  it('renders design canvas layout with header, project/version bar, sidebar and canvas', () => {
+  it('renders design canvas layout with header, project/version bar, sidebar and canvas', async () => {
     render(<DataDesignerPage />);
 
-    expect(screen.getByLabelText(/main navigation/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText(/main navigation/i)).toBeInTheDocument();
+    });
     expect(screen.getByText(/Data Designer/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Select tenant/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Select project/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Select version/i)).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Classes/i })).toBeInTheDocument();
@@ -34,19 +47,23 @@ describe('DataDesignerPage', () => {
     expect(screen.getByTestId('react-flow-minimap')).toBeInTheDocument();
   });
 
-  it('renders tenant and profile in header', () => {
+  it('renders tenant and profile in header', async () => {
     render(<DataDesignerPage />);
 
-    expect(screen.getByText(/Default Tenant/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/Default Tenant/i)).toBeInTheDocument();
+    });
     expect(screen.getByLabelText(/Profile menu/i)).toBeInTheDocument();
   });
 
-  it('renders Classes tab content with search and placeholder list', () => {
+  it('renders Classes tab content with empty state when no version selected', async () => {
     render(<DataDesignerPage />);
 
-    expect(screen.getByLabelText(/Search list/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Search/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/Account/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/Add class/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Select a tenant, project, and version to load classes/i)
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole('tab', { name: /Classes/i })).toBeInTheDocument();
   });
 });

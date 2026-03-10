@@ -1,43 +1,32 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Search, Plus, LayoutGrid, Tag } from 'lucide-react';
-
-const PLACEHOLDER_CLASSES = [
-  'Account',
-  'Address',
-  'Contact',
-  'Order',
-  'Product',
-  'User',
-].sort((a, b) => a.localeCompare(b));
-
-const PLACEHOLDER_PROPERTIES = [
-  'createdAt',
-  'email',
-  'id',
-  'name',
-  'status',
-  'updatedAt',
-].sort((a, b) => a.localeCompare(b));
+import { Search, Plus, LayoutGrid, Tag, Loader2 } from 'lucide-react';
+import {
+  getRestClientOptions,
+  listClassesWithPropertiesAndTags,
+  listProperties,
+} from '@lib/api/rest-client';
+import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 
 function SearchableList({
   items,
   emptyMessage,
   addLabel,
+  loading,
 }: {
   items: string[];
   emptyMessage: string;
   addLabel: string;
+  loading?: boolean;
 }) {
   const [query, setQuery] = useState('');
 
-  const filtered = useMemo(() => {
-    if (!query.trim()) return items;
-    const q = query.toLowerCase();
-    return items.filter((item) => item.toLowerCase().includes(q));
-  }, [items, query]);
+  const filtered = items.filter((item) =>
+    query.trim() ? item.toLowerCase().includes(query.toLowerCase()) : true
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -55,20 +44,28 @@ function SearchableList({
         </div>
       </div>
       <div className="flex-1 overflow-auto min-h-0">
-        <ul className="p-2 space-y-0.5">
-          {filtered.map((item) => (
-            <li
-              key={item}
-              className="px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-default"
-            >
-              {item}
-            </li>
-          ))}
-        </ul>
-        {filtered.length === 0 && (
-          <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
-            {emptyMessage}
-          </p>
+        {loading ? (
+          <div className="flex items-center justify-center p-6">
+            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          </div>
+        ) : (
+          <>
+            <ul className="p-2 space-y-0.5">
+              {filtered.map((item) => (
+                <li
+                  key={item}
+                  className="px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-default"
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
+            {filtered.length === 0 && (
+              <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
+                {emptyMessage}
+              </p>
+            )}
+          </>
         )}
       </div>
       <div className="p-2 border-t border-slate-200 dark:border-slate-700 shrink-0">
@@ -85,6 +82,65 @@ function SearchableList({
 }
 
 export default function DesignCanvasSidebar() {
+  const { data: session } = useSession();
+  const options = getRestClientOptions(
+    (session as { accessToken?: string } | null) ?? null
+  );
+  const workspace = useWorkspaceOptional();
+  const [classNames, setClassNames] = useState<string[]>([]);
+  const [propertyNames, setPropertyNames] = useState<string[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [loadingProperties, setLoadingProperties] = useState(false);
+
+  const versionId = workspace?.version?.id ?? null;
+  const tenantId = workspace?.tenant?.id ?? null;
+  const projectId = workspace?.project?.id ?? null;
+
+  const loadClasses = useCallback(async () => {
+    if (!versionId) {
+      setClassNames([]);
+      setLoadingClasses(false);
+      return;
+    }
+    setLoadingClasses(true);
+    try {
+      const classes = await listClassesWithPropertiesAndTags(versionId, options);
+      setClassNames(classes.map((c) => c.name).sort((a, b) => a.localeCompare(b)));
+    } catch {
+      setClassNames([]);
+    } finally {
+      setLoadingClasses(false);
+    }
+  }, [versionId, options.jwt, options.apiKey]);
+
+  const loadProperties = useCallback(async () => {
+    if (!tenantId || !projectId) {
+      setPropertyNames([]);
+      setLoadingProperties(false);
+      return;
+    }
+    setLoadingProperties(true);
+    try {
+      const list = await listProperties(tenantId, projectId, options);
+      setPropertyNames(list.map((p) => p.name).sort((a, b) => a.localeCompare(b)));
+    } catch {
+      setPropertyNames([]);
+    } finally {
+      setLoadingProperties(false);
+    }
+  }, [tenantId, projectId, options.jwt, options.apiKey]);
+
+  useEffect(() => {
+    loadClasses();
+  }, [loadClasses]);
+
+  useEffect(() => {
+    loadProperties();
+  }, [loadProperties]);
+
+  const noVersion = !versionId;
+  const noProject = !tenantId || !projectId;
+
   return (
     <aside className="w-64 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col shrink-0">
       <Tabs.Root defaultValue="classes" className="flex flex-col flex-1 min-h-0">
@@ -105,18 +161,32 @@ export default function DesignCanvasSidebar() {
           </Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="classes" className="flex-1 min-h-0 mt-0">
-          <SearchableList
-            items={PLACEHOLDER_CLASSES}
-            emptyMessage="No classes match your search."
-            addLabel="Add class"
-          />
+          {noVersion ? (
+            <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
+              Select a tenant, project, and version to load classes.
+            </p>
+          ) : (
+            <SearchableList
+              items={classNames}
+              emptyMessage="No classes match your search."
+              addLabel="Add class"
+              loading={loadingClasses}
+            />
+          )}
         </Tabs.Content>
         <Tabs.Content value="properties" className="flex-1 min-h-0 mt-0">
-          <SearchableList
-            items={PLACEHOLDER_PROPERTIES}
-            emptyMessage="No properties match your search."
-            addLabel="Add property"
-          />
+          {noProject ? (
+            <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
+              Select a tenant and project to load properties.
+            </p>
+          ) : (
+            <SearchableList
+              items={propertyNames}
+              emptyMessage="No properties match your search."
+              addLabel="Add property"
+              loading={loadingProperties}
+            />
+          )}
         </Tabs.Content>
       </Tabs.Root>
     </aside>
