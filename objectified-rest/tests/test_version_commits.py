@@ -98,6 +98,7 @@ class TestCommitVersion:
             mock_db.execute_query.side_effect = [
                 [_version_lookup_row()],  # _assert_version_exists
                 [],  # _capture_version_state: no classes
+                [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
             ]
             mock_db.execute_mutation.side_effect = [_SNAPSHOT_ROW, None]
             r = client.post(
@@ -138,6 +139,7 @@ class TestCommitVersion:
                 [],  # _upsert_class_properties: property not found (will create)
                 [],  # _upsert_class_properties: cp not found (will create)
                 [],  # _capture_version_state: class query
+                [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
             ]
             mock_db.execute_mutation.side_effect = [
                 {"id": _CLASS_ID},  # INSERT class
@@ -159,6 +161,7 @@ class TestCommitVersion:
             mock_db.execute_query.side_effect = [
                 [_version_lookup_row()],  # _assert_version_exists
                 [],  # _capture_version_state: no classes
+                [{"metadata": {"canvas_metadata": {"layout": "grid"}}}],  # _create_snapshot
             ]
             mock_db.execute_mutation.side_effect = [
                 None,  # UPDATE version metadata (returning=False)
@@ -194,6 +197,7 @@ class TestPushVersion:
                 [_version_lookup_row()],  # source _assert_version_exists
                 [_version_lookup_row(_TARGET_VERSION_ROW)],  # target _assert_version_exists
                 [],  # _capture_version_state: no classes
+                [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
             ]
             mock_db.execute_mutation.side_effect = [_SNAPSHOT_ROW, None]
             r = client.post(
@@ -336,7 +340,8 @@ class TestPullVersion:
                         "metadata": {},
                         "properties": [],
                     }
-                ]
+                ],
+                "canvas_metadata": {"layout": "at-rev-2"},
             },
         }
         with mock_db_all() as mock_db:
@@ -351,6 +356,7 @@ class TestPullVersion:
         assert len(body["classes"]) == 1
         assert body["classes"][0]["name"] == "Person"
         assert body["classes"][0]["description"] == "At rev 2"
+        assert body["canvas_metadata"] == {"layout": "at-rev-2"}
 
     def test_pull_by_revision_not_found_returns_404(self, client):
         """Pull with revision returns 404 when that snapshot does not exist."""
@@ -485,6 +491,7 @@ class TestMergeVersion:
                 [{"id": _CLASS_ID}],  # _upsert_class (Person): found
                 [],  # _upsert_class (Address): not found → create
                 [],  # _capture_version_state for snapshot: classes
+                [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
             ]
             mock_db.execute_mutation.side_effect = [
                 None,  # UPDATE class (Person, returning=False)
@@ -618,6 +625,7 @@ class TestMergeVersion:
                 # No property/cp queries because _capture_version_state
                 # resets properties to [] and prop query returns []
                 [],                                             # 8 _capture_version_state for snapshot
+                [{"metadata": {}}],                             # 9 _create_snapshot: version metadata
             ]
             # Trace execute_mutation calls:
             # 1. UPDATE class (returning=False)

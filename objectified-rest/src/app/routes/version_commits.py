@@ -67,10 +67,28 @@ def _compute_pull_diff(
     """
     old_by_name: dict[str, dict[str, Any]] = {}
     for c in old_classes:
-        old_by_name[_class_name_key(c.get("name"))] = c
+        key = _class_name_key(c.get("name"))
+        if key in old_by_name:
+            logger.warning(
+                "Duplicate class name detected in old_classes for pull diff: "
+                "normalized_name=%r, existing_id=%r, new_id=%r",
+                key,
+                old_by_name[key].get("id"),
+                c.get("id"),
+            )
+        old_by_name[key] = c
     new_by_name: dict[str, dict[str, Any]] = {}
     for c in new_classes:
-        new_by_name[_class_name_key(c.get("name"))] = c
+        key = _class_name_key(c.get("name"))
+        if key in new_by_name:
+            logger.warning(
+                "Duplicate class name detected in new_classes for pull diff: "
+                "normalized_name=%r, existing_id=%r, new_id=%r",
+                key,
+                new_by_name[key].get("id"),
+                c.get("id"),
+            )
+        new_by_name[key] = c
 
     added_class_names: list[str] = []
     removed_class_names: list[str] = []
@@ -316,8 +334,16 @@ def _create_snapshot(
     label: Optional[str],
     description: Optional[str],
 ) -> dict[str, Any]:
-    """Capture and persist a version snapshot, returning the snapshot row."""
+    """Capture and persist a version snapshot (classes + canvas_metadata), returning the snapshot row."""
     snapshot_data = _capture_version_state(version_id)
+    version_rows = db.execute_query(
+        "SELECT metadata FROM objectified.version WHERE id = %s LIMIT 1",
+        (version_id,),
+    )
+    if version_rows and isinstance(version_rows[0].get("metadata"), dict):
+        snapshot_data["canvas_metadata"] = version_rows[0]["metadata"].get("canvas_metadata")
+    else:
+        snapshot_data["canvas_metadata"] = None
 
     row = db.execute_mutation(
         f"""
@@ -522,8 +548,6 @@ def pull_version(
 ) -> VersionPullResponse:
     """Pull the full state of a version (latest or at a given revision); optionally include diff since a revision."""
     version = _assert_version_exists(version_id, include_deleted=False)
-    version_metadata = version.get("metadata") or {}
-    canvas_metadata = version_metadata.get("canvas_metadata") if isinstance(version_metadata, dict) else None
 
     if revision is not None:
         snapshot_rows = db.execute_query(
@@ -543,10 +567,13 @@ def pull_version(
         snapshot_row = dict(snapshot_rows[0])
         state = snapshot_row.get("snapshot") or {}
         classes = state.get("classes", [])
+        canvas_metadata = state.get("canvas_metadata")
         effective_revision = revision
     else:
         state = _capture_version_state(version_id)
         classes = state.get("classes", [])
+        version_metadata = version.get("metadata") or {}
+        canvas_metadata = version_metadata.get("canvas_metadata") if isinstance(version_metadata, dict) else None
         snapshot_rows = db.execute_query(
             """
             SELECT MAX(revision) AS max_revision
