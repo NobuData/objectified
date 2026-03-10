@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from app.auth import require_authenticated
@@ -31,7 +31,6 @@ def _parse_json_param(value: Optional[str], name: str) -> Any:
     try:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):
-        from fastapi import HTTPException
 
         raise HTTPException(
             status_code=400,
@@ -139,6 +138,7 @@ def _load_single_class_with_properties(
             "description": "OpenAPI 3.2.0 specification document",
             "content": {"application/json": {}},
         },
+        400: {"description": "Invalid JSON in query parameter"},
         404: {"description": "Version not found"},
     },
 )

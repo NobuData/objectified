@@ -27,6 +27,7 @@ from app.importers.openapi_importer import parse_openapi_doc
 from app.routes.class_properties import _CLASS_PROPERTY_COLUMNS
 from app.routes.classes import _CLASS_COLUMNS
 from app.routes.properties import _PROPERTY_COLUMNS
+from app.routes.validate import _validate_openapi_document
 from app.routes.versions import _assert_version_exists
 from app.schemas.import_model import ImportResult
 
@@ -271,32 +272,13 @@ def import_openapi(
     if not isinstance(doc, dict):
         raise HTTPException(status_code=400, detail="Request body must be a JSON object")
 
-    openapi_version = str(doc.get("openapi") or "")
-    if not openapi_version.startswith("3"):
+    # Reuse the shared validation logic from the /validate/openapi-document endpoint
+    # so that both endpoints stay consistent as new checks are added.
+    validation = _validate_openapi_document(doc)
+    if not validation.valid:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Unsupported or missing 'openapi' version field: '{openapi_version}'. "
-                "Only OpenAPI 3.x documents are supported."
-            ),
-        )
-
-    # Validate required 'info' section (mirrors commercial openapi-import.ts).
-    info = doc.get("info")
-    if not info or not isinstance(info, dict):
-        raise HTTPException(
-            status_code=400,
-            detail="Missing required 'info' object in OpenAPI document.",
-        )
-    if not info.get("title"):
-        raise HTTPException(
-            status_code=400,
-            detail="Missing required 'info.title' field in OpenAPI document.",
-        )
-    if not info.get("version"):
-        raise HTTPException(
-            status_code=400,
-            detail="Missing required 'info.version' field in OpenAPI document.",
+            detail="; ".join(validation.errors),
         )
 
     imported_classes = parse_openapi_doc(doc)
