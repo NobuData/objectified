@@ -17,6 +17,8 @@ Routes are split across focused modules:
                                    /v1/versions/{version_id}/export/jsonschema
   - app.routes.import_routes     → /v1/versions/{version_id}/import/openapi,
                                    /v1/versions/{version_id}/import/jsonschema
+  - app.routes.validate          → /v1/validate/json-schema,
+                                   /v1/validate/openapi-document
 
 This module assembles them under the /v1 prefix and re-exports the password
 helpers so that existing imports (e.g. in tests) continue to work.

@@ -281,6 +281,24 @@ def import_openapi(
             ),
         )
 
+    # Validate required 'info' section (mirrors commercial openapi-import.ts).
+    info = doc.get("info")
+    if not info or not isinstance(info, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required 'info' object in OpenAPI document.",
+        )
+    if not info.get("title"):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required 'info.title' field in OpenAPI document.",
+        )
+    if not info.get("version"):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required 'info.version' field in OpenAPI document.",
+        )
+
     imported_classes = parse_openapi_doc(doc)
     logger.info(
         "import_openapi: version=%s parsed %d classes",

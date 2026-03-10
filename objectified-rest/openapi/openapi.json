@@ -11,7 +11,7 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Login — issue JWT",
+        "summary": "Login \u2014 issue JWT",
         "description": "Authenticate with email and password. Returns a signed JWT access token valid for 24 hours. Use the token as ``Authorization: Bearer <token>`` on subsequent requests.",
         "operationId": "login_v1_auth_login_post",
         "requestBody": {
@@ -1057,6 +1057,562 @@
         }
       }
     },
+    "/v1/versions/{version_id}/export/openapi": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "summary": "Export version as OpenAPI 3.2.0",
+        "description": "Generate and export an OpenAPI 3.2.0 specification document for the given version. All active classes in the version are exported as components/schemas entries. The response is a JSON document conforming to the OpenAPI 3.2.0 specification.",
+        "operationId": "export_openapi_v1_versions__version_id__export_openapi_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "project_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override the API title (info.title).",
+              "title": "Project Name"
+            },
+            "description": "Override the API title (info.title)."
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override the API version string (info.version).",
+              "title": "Version"
+            },
+            "description": "Override the API version string (info.version)."
+          },
+          {
+            "name": "description",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override the API description (info.description).",
+              "title": "Description"
+            },
+            "description": "Override the API description (info.description)."
+          },
+          {
+            "name": "servers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON-encoded array of server objects, e.g. [{\"url\":\"https://api.example.com\",\"description\":\"Production\"}].",
+              "title": "Servers"
+            },
+            "description": "JSON-encoded array of server objects, e.g. [{\"url\":\"https://api.example.com\",\"description\":\"Production\"}]."
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON-encoded array of tag objects, e.g. [{\"name\":\"Users\",\"description\":\"User operations\"}].",
+              "title": "Tags"
+            },
+            "description": "JSON-encoded array of tag objects, e.g. [{\"name\":\"Users\",\"description\":\"User operations\"}]."
+          },
+          {
+            "name": "security",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON-encoded array of security requirement objects, e.g. [{\"Bearer\":[]}].",
+              "title": "Security"
+            },
+            "description": "JSON-encoded array of security requirement objects, e.g. [{\"Bearer\":[]}]."
+          },
+          {
+            "name": "external_docs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON-encoded external documentation object, e.g. {\"url\":\"https://docs.example.com\",\"description\":\"API documentation\"}.",
+              "title": "External Docs"
+            },
+            "description": "JSON-encoded external documentation object, e.g. {\"url\":\"https://docs.example.com\",\"description\":\"API documentation\"}."
+          },
+          {
+            "name": "metadata",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON-encoded metadata object with optional keys: summary, terms_of_service, contact ({name, url, email}), license ({name, identifier, url}).",
+              "title": "Metadata"
+            },
+            "description": "JSON-encoded metadata object with optional keys: summary, terms_of_service, contact ({name, url, email}), license ({name, identifier, url})."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.2.0 specification document",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Version not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/export/jsonschema": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "summary": "Export version as JSON Schema 2020-12",
+        "description": "Generate and export a JSON Schema 2020-12 document for the given version. By default all active classes are exported as $defs entries in a single multi-schema document. Pass class_id to export only a single class as a standalone JSON Schema document.",
+        "operationId": "export_jsonschema_v1_versions__version_id__export_jsonschema_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "class_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional class UUID. When provided, export only this class as a standalone JSON Schema document instead of the full multi-schema document.",
+              "title": "Class Id"
+            },
+            "description": "Optional class UUID. When provided, export only this class as a standalone JSON Schema document instead of the full multi-schema document."
+          },
+          {
+            "name": "project_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override the schema title.",
+              "title": "Project Name"
+            },
+            "description": "Override the schema title."
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override the version string used in the generated document.",
+              "title": "Version"
+            },
+            "description": "Override the version string used in the generated document."
+          },
+          {
+            "name": "description",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override the description in the generated document.",
+              "title": "Description"
+            },
+            "description": "Override the description in the generated document."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON Schema 2020-12 document",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Version or class not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/import/openapi": {
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Import OpenAPI 3.x document",
+        "description": "Import an OpenAPI 3.x document into the given version. All schemas found in ``components/schemas`` are created as classes. Properties are extracted from each schema and linked via class_property rows. Existing classes (matched by name, case-insensitive) are updated; existing properties (matched by name within the project) are reused. Conflict handling beyond this basic upsert is deferred to merge workflows.",
+        "operationId": "import_openapi_v1_versions__version_id__import_openapi_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "OpenAPI 3.x document as JSON",
+                "title": "Doc"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unrecognisable OpenAPI document"
+          },
+          "404": {
+            "description": "Version not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/import/jsonschema": {
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Import JSON Schema 2020-12 document",
+        "description": "Import a JSON Schema 2020-12 document into the given version. Documents with ``$defs`` create one class per definition; a document without ``$defs`` is treated as a single class using the ``title`` field (or 'Schema' if absent) as the class name. Existing classes are updated; existing properties are reused. Conflict handling beyond this basic upsert is deferred to merge workflows.",
+        "operationId": "import_jsonschema_v1_versions__version_id__import_jsonschema_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "JSON Schema 2020-12 document as JSON",
+                "title": "Doc"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unrecognisable JSON Schema document"
+          },
+          "404": {
+            "description": "Version not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/me": {
       "get": {
         "tags": [
@@ -1203,7 +1759,7 @@
           "Users"
         ],
         "summary": "List users (admin)",
-        "description": "List all accounts. **Admin only** — requires a valid JWT with ``is_admin=true``, an account that is an administrator in at least one tenant, or a valid internal API key. Soft-deleted accounts are excluded by default; pass ``include_deleted=true`` to include them.",
+        "description": "List all accounts. **Admin only** \u2014 requires a valid JWT with ``is_admin=true``, an account that is an administrator in at least one tenant, or a valid internal API key. Soft-deleted accounts are excluded by default; pass ``include_deleted=true`` to include them.",
         "operationId": "list_users_v1_users_get",
         "parameters": [
           {
@@ -2329,7 +2885,7 @@
           "API Keys"
         ],
         "summary": "List API keys for a tenant",
-        "description": "List all active (non-revoked) API keys for the given tenant. The raw secret is never returned — only metadata and the key prefix.",
+        "description": "List all active (non-revoked) API keys for the given tenant. The raw secret is never returned \u2014 only metadata and the key prefix.",
         "operationId": "list_api_keys_v1_tenants__tenant_id__api_keys_get",
         "parameters": [
           {
@@ -2418,7 +2974,7 @@
           "API Keys"
         ],
         "summary": "Create API key for a tenant",
-        "description": "Create a new API key scoped to the given tenant. The full secret is returned **once** in the ``raw_key`` field — store it immediately. Only the prefix and hash are stored server-side; the raw secret cannot be retrieved again.",
+        "description": "Create a new API key scoped to the given tenant. The full secret is returned **once** in the ``raw_key`` field \u2014 store it immediately. Only the prefix and hash are stored server-side; the raw secret cannot be retrieved again.",
         "operationId": "create_api_key_v1_tenants__tenant_id__api_keys_post",
         "parameters": [
           {
@@ -3853,6 +4409,93 @@
         }
       }
     },
+    "/v1/validate/json-schema": {
+      "post": {
+        "tags": [
+          "Validation"
+        ],
+        "summary": "Validate a JSON Schema Draft 2020-12 object",
+        "description": "Validate a submitted JSON object against the JSON Schema Draft 2020-12 metaschema. Returns whether the schema is valid and a list of structured error details if it is not. OpenAPI 3.2.0 Schema Objects are a superset of JSON Schema 2020-12, so this endpoint can be used to pre-validate schema payloads before creating or updating classes or properties.",
+        "operationId": "validate_schema_v1_validate_json_schema_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaValidationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/validate/openapi-document": {
+      "post": {
+        "tags": [
+          "Validation"
+        ],
+        "summary": "Validate an OpenAPI 3.x document structure",
+        "description": "Validate the structure of an OpenAPI 3.x document without importing it. Checks for required fields (openapi version, info.title, info.version) and reports warnings for missing optional sections (components, schemas, paths). Use this to pre-validate a document before calling the import endpoint.",
+        "operationId": "validate_openapi_document_v1_validate_openapi_document_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Doc",
+                "description": "OpenAPI 3.x document as JSON"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenAPIValidationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/tenants/{tenant_id}/projects/{project_id}/versions": {
       "get": {
         "tags": [
@@ -4593,7 +5236,7 @@
           "Versions"
         ],
         "summary": "Freeze (capture) a version schema snapshot",
-        "description": "Capture and freeze the current state of all classes and properties for a version as an immutable snapshot. This is a one-time operation per version — if a snapshot already exists, use the /snapshots endpoint to commit additional revisions. Freezing a schema requires user authentication (JWT token).",
+        "description": "Capture and freeze the current state of all classes and properties for a version as an immutable snapshot. This is a one-time operation per version \u2014 if a snapshot already exists, use the /snapshots endpoint to commit additional revisions. Freezing a schema requires user authentication (JWT token).",
         "operationId": "freeze_version_schema_v1_versions__version_id__freeze_schema_post",
         "parameters": [
           {
@@ -5273,7 +5916,7 @@
           "raw_key": {
             "type": "string",
             "title": "Raw Key",
-            "description": "Full API key value — shown ONCE at creation. Store it securely; it cannot be retrieved again."
+            "description": "Full API key value \u2014 shown ONCE at creation. Store it securely; it cannot be retrieved again."
           }
         },
         "type": "object",
@@ -5288,7 +5931,7 @@
           "raw_key"
         ],
         "title": "ApiKeyCreateResponse",
-        "description": "Response for API key creation — includes the raw secret once."
+        "description": "Response for API key creation \u2014 includes the raw secret once."
       },
       "ApiKeySchema": {
         "properties": {
@@ -5892,7 +6535,7 @@
           "created_at"
         ],
         "title": "ClassWithPropertiesAndTags",
-        "description": "Class with embedded properties and tags for canvas load.\n\nReturned by GET /v1/versions/{version_id}/classes/with-properties-tags.\nEach item includes the class fields plus:\n- properties: list of class_property rows (with optional property_name, property_data from join)\n- tags: list from class metadata.tags, or []"
+        "description": "Class with embedded properties and tags for canvas load.\n\nReturned by:\n- GET /v1/versions/{version_id}/classes/with-properties-tags (bulk)\n- GET /v1/versions/{version_id}/classes/{class_id}/with-properties-tags (single)\n\nEach item includes the class fields plus:\n- properties: list of class_property rows (with optional property_name, property_data from join)\n- tags: list from class metadata.tags, or []"
       },
       "HTTPValidationError": {
         "properties": {
@@ -5906,6 +6549,50 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "ImportResult": {
+        "properties": {
+          "classes_created": {
+            "type": "integer",
+            "title": "Classes Created",
+            "default": 0
+          },
+          "classes_updated": {
+            "type": "integer",
+            "title": "Classes Updated",
+            "default": 0
+          },
+          "properties_created": {
+            "type": "integer",
+            "title": "Properties Created",
+            "default": 0
+          },
+          "properties_reused": {
+            "type": "integer",
+            "title": "Properties Reused",
+            "default": 0
+          },
+          "class_properties_created": {
+            "type": "integer",
+            "title": "Class Properties Created",
+            "default": 0
+          },
+          "class_properties_skipped": {
+            "type": "integer",
+            "title": "Class Properties Skipped",
+            "default": 0
+          },
+          "detail": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "ImportResult",
+        "description": "Response schema summarising the result of an import operation."
       },
       "LoginRequest": {
         "properties": {
@@ -5942,7 +6629,7 @@
           "token_type": {
             "type": "string",
             "title": "Token Type",
-            "description": "Token type — always 'bearer'",
+            "description": "Token type \u2014 always 'bearer'",
             "default": "bearer"
           },
           "user_id": {
@@ -5976,6 +6663,44 @@
         ],
         "title": "LoginResponse",
         "description": "Response body for POST /v1/auth/login."
+      },
+      "OpenAPIValidationResponse": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "openapi_version": {
+            "type": "string",
+            "title": "Openapi Version",
+            "default": ""
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": ""
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid"
+        ],
+        "title": "OpenAPIValidationResponse",
+        "description": "Response body for OpenAPI document validation endpoint."
       },
       "ProfileUpdate": {
         "properties": {
@@ -6061,7 +6786,7 @@
           "slug"
         ],
         "title": "ProjectCreate",
-        "description": "Create payload for objectified.project.\n\n``tenant_id`` and ``creator_id`` are optional.  When omitted they are\ntaken from the URL path and the authenticated caller respectively.\nIf supplied they must match those authoritative sources exactly —\nany mismatch returns HTTP 400."
+        "description": "Create payload for objectified.project.\n\n``tenant_id`` and ``creator_id`` are optional.  When omitted they are\ntaken from the URL path and the authenticated caller respectively.\nIf supplied they must match those authoritative sources exactly \u2014\nany mismatch returns HTTP 400."
       },
       "ProjectHistorySchema": {
         "properties": {
@@ -6436,6 +7161,43 @@
         "title": "PropertyUpdate",
         "description": "Update payload for objectified.property."
       },
+      "SchemaValidationRequest": {
+        "properties": {
+          "schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schema"
+          }
+        },
+        "type": "object",
+        "title": "SchemaValidationRequest",
+        "description": "Request body for schema validation endpoint."
+      },
+      "SchemaValidationResponse": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid",
+          "errors"
+        ],
+        "title": "SchemaValidationResponse",
+        "description": "Response body for schema validation endpoint."
+      },
       "TenantAccessLevel": {
         "type": "string",
         "enum": [
@@ -6492,7 +7254,7 @@
         },
         "type": "object",
         "title": "TenantAccountCreate",
-        "description": "Create payload for objectified.tenant_account.\n\nEither ``account_id`` (UUID) or ``email`` must be provided to identify the\naccount to add.  If both are supplied, ``account_id`` takes precedence.\n``tenant_id`` is optional in the body — it is validated against the path\nparameter in the route handler."
+        "description": "Create payload for objectified.tenant_account.\n\nEither ``account_id`` (UUID) or ``email`` must be provided to identify the\naccount to add.  If both are supplied, ``account_id`` takes precedence.\n``tenant_id`` is optional in the body \u2014 it is validated against the path\nparameter in the route handler."
       },
       "TenantAccountSchema": {
         "properties": {
@@ -6629,7 +7391,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "TenantAdministratorCreate",
-        "description": "Request body for POST /v1/tenants/{id}/administrators.\n\nDedicated schema that intentionally omits ``access_level`` — the endpoint\nalways assigns ``administrator`` and the field is not meaningful here.\n\nEither ``account_id`` (UUID) or ``email`` must be provided to identify the\naccount.  If both are supplied, ``account_id`` takes precedence.\n``tenant_id`` is optional in the body — it is validated against the path\nparameter in the route handler."
+        "description": "Request body for POST /v1/tenants/{id}/administrators.\n\nDedicated schema that intentionally omits ``access_level`` \u2014 the endpoint\nalways assigns ``administrator`` and the field is not meaningful here.\n\nEither ``account_id`` (UUID) or ``email`` must be provided to identify the\naccount.  If both are supplied, ``account_id`` takes precedence.\n``tenant_id`` is optional in the body \u2014 it is validated against the path\nparameter in the route handler."
       },
       "TenantCreate": {
         "properties": {

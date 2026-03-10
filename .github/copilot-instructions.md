@@ -9,6 +9,8 @@
 - Fix any regressions found during testing
 - Use logging where appropriate
 - When using `git` commands, always use `--no-pager` to prevent output from being paginated
+- When updating a project, bump the patch version in the package.json file for the corresponding package
+- When updating the OpenAPI Specification, bump the patch version in the corresponding file
 
 # REST Instructions
 

@@ -604,3 +604,174 @@ def test_jsonschema_generator_single_structure():
     assert "age" in doc["properties"]
     assert "$defs" not in doc
 
+
+# ---------------------------------------------------------------------------
+# Enhanced OpenAPI generator tests (servers, tags, security, etc.)
+# ---------------------------------------------------------------------------
+
+
+def test_openapi_generator_with_servers():
+    """generate_openapi_spec includes servers when provided."""
+    from app.generators.openapi_generator import generate_openapi_spec
+
+    servers = [{"url": "https://api.example.com", "description": "Production"}]
+    doc = generate_openapi_spec([], servers=servers)
+    assert "servers" in doc
+    assert doc["servers"] == servers
+
+
+def test_openapi_generator_with_tags():
+    """generate_openapi_spec includes tags when provided."""
+    from app.generators.openapi_generator import generate_openapi_spec
+
+    tags = [{"name": "Users", "description": "User operations"}]
+    doc = generate_openapi_spec([], tags=tags)
+    assert "tags" in doc
+    assert doc["tags"] == tags
+
+
+def test_openapi_generator_with_security():
+    """generate_openapi_spec includes security when provided."""
+    from app.generators.openapi_generator import generate_openapi_spec
+
+    security = [{"Bearer": []}]
+    doc = generate_openapi_spec([], security=security)
+    assert "security" in doc
+    assert doc["security"] == security
+
+
+def test_openapi_generator_with_external_docs():
+    """generate_openapi_spec includes externalDocs when provided."""
+    from app.generators.openapi_generator import generate_openapi_spec
+
+    external_docs = {"url": "https://docs.example.com", "description": "API docs"}
+    doc = generate_openapi_spec([], external_docs=external_docs)
+    assert "externalDocs" in doc
+    assert doc["externalDocs"] == external_docs
+
+
+def test_openapi_generator_with_metadata_contact():
+    """generate_openapi_spec populates info.contact from metadata."""
+    from app.generators.openapi_generator import generate_openapi_spec
+
+    metadata = {"contact": {"name": "Support", "email": "support@example.com"}}
+    doc = generate_openapi_spec([], metadata=metadata)
+    assert "contact" in doc["info"]
+    assert doc["info"]["contact"]["name"] == "Support"
+    assert doc["info"]["contact"]["email"] == "support@example.com"
+
+
+def test_openapi_generator_with_metadata_license():
+    """generate_openapi_spec populates info.license from metadata."""
+    from app.generators.openapi_generator import generate_openapi_spec
+
+    metadata = {"license": {"name": "MIT", "url": "https://opensource.org/licenses/MIT"}}
+    doc = generate_openapi_spec([], metadata=metadata)
+    assert "license" in doc["info"]
+    assert doc["info"]["license"]["name"] == "MIT"
+
+
+def test_openapi_generator_with_metadata_summary():
+    """generate_openapi_spec populates info.summary from metadata."""
+    from app.generators.openapi_generator import generate_openapi_spec
+
+    metadata = {"summary": "A brief summary of the API"}
+    doc = generate_openapi_spec([], metadata=metadata)
+    assert doc["info"]["summary"] == "A brief summary of the API"
+
+
+def test_openapi_generator_with_metadata_terms_of_service():
+    """generate_openapi_spec populates info.termsOfService from metadata."""
+    from app.generators.openapi_generator import generate_openapi_spec
+
+    metadata = {"terms_of_service": "https://example.com/tos"}
+    doc = generate_openapi_spec([], metadata=metadata)
+    assert doc["info"]["termsOfService"] == "https://example.com/tos"
+
+
+def test_openapi_generator_omits_absent_optional_fields():
+    """generate_openapi_spec omits servers/tags/security/externalDocs when not supplied."""
+    from app.generators.openapi_generator import generate_openapi_spec
+
+    doc = generate_openapi_spec([])
+    assert "servers" not in doc
+    assert "tags" not in doc
+    assert "security" not in doc
+    assert "externalDocs" not in doc
+
+
+# ---------------------------------------------------------------------------
+# Export endpoint tests with JSON query parameters
+# ---------------------------------------------------------------------------
+
+
+def test_export_openapi_with_servers_param(client):
+    """servers JSON query param adds servers to the exported OpenAPI doc."""
+    import json as _json
+
+    servers = [{"url": "https://api.example.com", "description": "Production"}]
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [],  # no classes
+        ]
+        r = client.get(
+            f"/v1/versions/{_VERSION_ID}/export/openapi",
+            params={"servers": _json.dumps(servers)},
+        )
+    assert r.status_code == 200
+    assert r.json()["servers"] == servers
+
+
+def test_export_openapi_with_tags_param(client):
+    """tags JSON query param adds tags to the exported OpenAPI doc."""
+    import json as _json
+
+    tags = [{"name": "Users", "description": "User ops"}]
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [],
+        ]
+        r = client.get(
+            f"/v1/versions/{_VERSION_ID}/export/openapi",
+            params={"tags": _json.dumps(tags)},
+        )
+    assert r.status_code == 200
+    assert r.json()["tags"] == tags
+
+
+def test_export_openapi_with_metadata_param(client):
+    """metadata JSON query param populates info fields in exported doc."""
+    import json as _json
+
+    metadata = {"contact": {"name": "Dev Team"}, "summary": "Test API"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [],
+        ]
+        r = client.get(
+            f"/v1/versions/{_VERSION_ID}/export/openapi",
+            params={"metadata": _json.dumps(metadata)},
+        )
+    assert r.status_code == 200
+    info = r.json()["info"]
+    assert info["summary"] == "Test API"
+    assert info["contact"]["name"] == "Dev Team"
+
+
+def test_export_openapi_invalid_json_param_returns_400(client):
+    """Invalid JSON in servers param returns 400."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [],
+        ]
+        r = client.get(
+            f"/v1/versions/{_VERSION_ID}/export/openapi",
+            params={"servers": "not-valid-json"},
+        )
+    assert r.status_code == 400
+
+
