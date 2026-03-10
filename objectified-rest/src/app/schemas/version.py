@@ -168,6 +168,31 @@ class VersionPullResponse(BaseModel):
     classes: list[dict[str, Any]] = Field(default_factory=list)
     canvas_metadata: Optional[dict[str, Any]] = None
     pulled_at: datetime
+    diff_since_revision: Optional[int] = Field(
+        None,
+        description="When since_revision query param was set, this echoes it.",
+    )
+    diff: Optional["VersionPullDiff"] = Field(
+        None,
+        description="Changes since diff_since_revision (only when since_revision was requested).",
+    )
+
+
+class VersionPullModifiedClass(BaseModel):
+    """Describes property-level changes within a class since a revision."""
+
+    class_name: str
+    added_property_names: list[str] = Field(default_factory=list)
+    removed_property_names: list[str] = Field(default_factory=list)
+    modified_property_names: list[str] = Field(default_factory=list)
+
+
+class VersionPullDiff(BaseModel):
+    """Diff of version state since a given revision."""
+
+    added_class_names: list[str] = Field(default_factory=list)
+    removed_class_names: list[str] = Field(default_factory=list)
+    modified_classes: list[VersionPullModifiedClass] = Field(default_factory=list)
 
 
 class MergeConflict(BaseModel):

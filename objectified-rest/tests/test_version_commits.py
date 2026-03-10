@@ -98,6 +98,7 @@ class TestCommitVersion:
             mock_db.execute_query.side_effect = [
                 [_version_lookup_row()],  # _assert_version_exists
                 [],  # _capture_version_state: no classes
+                [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
             ]
             mock_db.execute_mutation.side_effect = [_SNAPSHOT_ROW, None]
             r = client.post(
@@ -138,6 +139,7 @@ class TestCommitVersion:
                 [],  # _upsert_class_properties: property not found (will create)
                 [],  # _upsert_class_properties: cp not found (will create)
                 [],  # _capture_version_state: class query
+                [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
             ]
             mock_db.execute_mutation.side_effect = [
                 {"id": _CLASS_ID},  # INSERT class
@@ -159,6 +161,7 @@ class TestCommitVersion:
             mock_db.execute_query.side_effect = [
                 [_version_lookup_row()],  # _assert_version_exists
                 [],  # _capture_version_state: no classes
+                [{"metadata": {"canvas_metadata": {"layout": "grid"}}}],  # _create_snapshot
             ]
             mock_db.execute_mutation.side_effect = [
                 None,  # UPDATE version metadata (returning=False)
@@ -194,6 +197,7 @@ class TestPushVersion:
                 [_version_lookup_row()],  # source _assert_version_exists
                 [_version_lookup_row(_TARGET_VERSION_ROW)],  # target _assert_version_exists
                 [],  # _capture_version_state: no classes
+                [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
             ]
             mock_db.execute_mutation.side_effect = [_SNAPSHOT_ROW, None]
             r = client.post(
@@ -321,6 +325,121 @@ class TestPullVersion:
             r = client.get(f"/v1/versions/{_VERSION_ID}/pull")
         assert r.status_code == 404
 
+    def test_pull_by_revision_returns_state_at_revision(self, client):
+        """Pull with revision query param returns state at that snapshot revision."""
+        snapshot_at_2 = {
+            **_SNAPSHOT_ROW,
+            "revision": 2,
+            "snapshot": {
+                "classes": [
+                    {
+                        "id": _CLASS_ID,
+                        "name": "Person",
+                        "description": "At rev 2",
+                        "schema": {},
+                        "metadata": {},
+                        "properties": [],
+                    }
+                ],
+                "canvas_metadata": {"layout": "at-rev-2"},
+            },
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [snapshot_at_2],
+            ]
+            r = client.get(f"/v1/versions/{_VERSION_ID}/pull?revision=2")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["revision"] == 2
+        assert len(body["classes"]) == 1
+        assert body["classes"][0]["name"] == "Person"
+        assert body["classes"][0]["description"] == "At rev 2"
+        assert body["canvas_metadata"] == {"layout": "at-rev-2"}
+
+    def test_pull_by_revision_not_found_returns_404(self, client):
+        """Pull with revision returns 404 when that snapshot does not exist."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [],  # no snapshot at revision 99
+            ]
+            r = client.get(f"/v1/versions/{_VERSION_ID}/pull?revision=99")
+        assert r.status_code == 404
+        assert "revision" in r.json()["detail"].lower()
+
+    def test_pull_with_since_revision_includes_diff(self, client):
+        """Pull with since_revision returns diff of changes since that revision."""
+        class_row = {
+            "id": _CLASS_ID,
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "A person",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": _NOW,
+            "updated_at": None,
+        }
+        prop_row = {
+            "id": _CP_ID,
+            "class_id": _CLASS_ID,
+            "property_id": _PROPERTY_ID,
+            "name": "email",
+            "description": "Email",
+            "data": {"type": "string"},
+            "property_name": "email",
+            "property_description": "Email",
+            "property_data": {"type": "string"},
+            "property_enabled": True,
+        }
+        old_snapshot = {
+            "snapshot": {
+                "classes": [
+                    {
+                        "id": _CLASS_ID,
+                        "name": "Person",
+                        "description": "A person",
+                        "schema": {},
+                        "metadata": {},
+                        "properties": [],  # no props at rev 1
+                    }
+                ]
+            }
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [class_row],  # _capture_version_state: class query
+                [prop_row],  # _capture_version_state: properties query
+                [{"max_revision": 3}],
+                [old_snapshot],
+            ]
+            r = client.get(f"/v1/versions/{_VERSION_ID}/pull?since_revision=1")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["diff_since_revision"] == 1
+        assert body["diff"] is not None
+        assert body["diff"]["added_class_names"] == []
+        assert body["diff"]["removed_class_names"] == []
+        assert len(body["diff"]["modified_classes"]) == 1
+        assert body["diff"]["modified_classes"][0]["class_name"] == "Person"
+        assert "email" in body["diff"]["modified_classes"][0]["added_property_names"]
+
+    def test_pull_since_revision_not_found_returns_404(self, client):
+        """Pull with since_revision returns 404 when that snapshot does not exist."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [],
+                [{"max_revision": 5}],
+                [],  # no snapshot at since_revision=99
+            ]
+            r = client.get(f"/v1/versions/{_VERSION_ID}/pull?since_revision=99")
+        assert r.status_code == 404
+        assert "since_revision" in r.json()["detail"].lower()
+
 
 # ---------------------------------------------------------------------------
 # POST /versions/{version_id}/merge
@@ -372,6 +491,7 @@ class TestMergeVersion:
                 [{"id": _CLASS_ID}],  # _upsert_class (Person): found
                 [],  # _upsert_class (Address): not found → create
                 [],  # _capture_version_state for snapshot: classes
+                [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
             ]
             mock_db.execute_mutation.side_effect = [
                 None,  # UPDATE class (Person, returning=False)
@@ -505,6 +625,7 @@ class TestMergeVersion:
                 # No property/cp queries because _capture_version_state
                 # resets properties to [] and prop query returns []
                 [],                                             # 8 _capture_version_state for snapshot
+                [{"metadata": {}}],                             # 9 _create_snapshot: version metadata
             ]
             # Trace execute_mutation calls:
             # 1. UPDATE class (returning=False)

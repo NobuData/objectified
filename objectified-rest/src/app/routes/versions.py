@@ -626,6 +626,12 @@ def commit_version_snapshot(
     committed_by = caller.get("user_id") if caller else None
 
     snapshot_data = _capture_version_state(version_id)
+    version_metadata = version.get("metadata") or {}
+    snapshot_data["canvas_metadata"] = (
+        version_metadata.get("canvas_metadata")
+        if isinstance(version_metadata, dict)
+        else None
+    )
 
     row = db.execute_mutation(
         f"""
