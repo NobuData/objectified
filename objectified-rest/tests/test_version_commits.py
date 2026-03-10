@@ -652,6 +652,112 @@ class TestMergeVersion:
         assert "merged_classes" in body
         assert "Person" in body["merged_classes"]
         assert body["revision"] == 2
+        assert "merged_state" in body
+        assert "classes" in body["merged_state"]
+        if body["conflicts"]:
+            c = body["conflicts"][0]
+            assert "path" in c
+            assert "description" in body["conflicts"][0]
+
+    def test_merge_preview_returns_merged_state_and_conflicts_without_persisting(self, client):
+        """POST /v1/versions/{id}/merge/preview returns merged state and conflicts, no snapshot."""
+        local_class = {
+            "id": _CLASS_ID,
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "Local",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": str(_NOW),
+            "updated_at": None,
+            "properties": [],
+        }
+        remote_class = {
+            "id": "00000000-0000-0000-0000-0000000000a0",
+            "version_id": _SOURCE_VERSION_ID,
+            "name": "Address",
+            "description": "An address",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": str(_NOW),
+            "updated_at": None,
+            "properties": [],
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [_version_lookup_row(_SOURCE_VERSION_ROW)],
+                [local_class],
+                [],
+                [remote_class],
+                [],
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/merge/preview",
+                json={
+                    "source_version_id": _SOURCE_VERSION_ID,
+                    "strategy": "additive",
+                },
+            )
+            assert r.status_code == 200
+            body = r.json()
+            assert "merged_state" in body
+            assert "classes" in body["merged_state"]
+            assert len(body["merged_state"]["classes"]) == 2
+            assert "conflicts" in body
+            mock_db.execute_mutation.assert_not_called()
+
+    def test_merge_resolve_without_apply_returns_merged_state_only(self, client):
+        """POST /v1/versions/{id}/merge/resolve with apply=false returns merged_state only."""
+        local_class = {
+            "id": _CLASS_ID,
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "Ours",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": str(_NOW),
+            "updated_at": None,
+            "properties": [],
+        }
+        remote_class = {
+            "id": "00000000-0000-0000-0000-0000000000a0",
+            "version_id": _SOURCE_VERSION_ID,
+            "name": "Person",
+            "description": "Theirs",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": str(_NOW),
+            "updated_at": None,
+            "properties": [],
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [_version_lookup_row(_SOURCE_VERSION_ROW)],
+                [local_class],
+                [],
+                [remote_class],
+                [],
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/merge/resolve",
+                json={
+                    "source_version_id": _SOURCE_VERSION_ID,
+                    "strategy": "override",
+                    "conflict_resolutions": [],
+                    "apply": False,
+                },
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert "merged_state" in body
+        assert body.get("revision") is None
+        assert body.get("snapshot_id") is None
 
 
 

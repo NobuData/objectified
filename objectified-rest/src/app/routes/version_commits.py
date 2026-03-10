@@ -9,6 +9,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 from datetime import datetime, timezone
@@ -18,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_authenticated
 from app.database import db
-from app.routes.merge_utils import merge_classes
+from app.routes.merge_utils import merge_classes, merge_classes_three_way
 from app.routes.versions import (
     _SNAPSHOT_COLUMNS,
     _assert_version_exists,
@@ -30,7 +31,10 @@ from app.schemas.version import (
     MergeConflict,
     VersionCommitPayload,
     VersionCommitResponse,
+    VersionMergePreviewResponse,
     VersionMergeRequest,
+    VersionMergeResolveRequest,
+    VersionMergeResolveResponse,
     VersionMergeResponse,
     VersionPullDiff,
     VersionPullModifiedClass,
@@ -55,6 +59,83 @@ def _class_name_key(name: Optional[str]) -> str:
 def _prop_name_key(prop: dict[str, Any]) -> str:
     """Normalize property name for comparison (case-insensitive)."""
     return (prop.get("name") or prop.get("property_name") or "").strip().lower()
+
+
+def _raw_conflicts_to_merge_conflicts(raw_conflicts: list[dict[str, Any]]) -> list[MergeConflict]:
+    """Convert merge_utils conflict dicts to MergeConflict models (path, description, etc.)."""
+    result: list[MergeConflict] = []
+    for rc in raw_conflicts:
+        field = rc.get("field", "")
+        path = rc.get("path", field)
+        description = rc.get("description", "")
+        parts = field.split(".")
+        class_name = parts[0] if parts else ""
+        property_name = parts[1] if len(parts) > 1 else None
+        result.append(
+            MergeConflict(
+                path=path,
+                description=description,
+                class_name=class_name,
+                property_name=property_name,
+                field=field,
+                local_value=rc.get("local_value"),
+                remote_value=rc.get("remote_value"),
+                resolution=rc.get("resolution", ""),
+            )
+        )
+    return result
+
+
+def _set_nested_dict_value(d: dict[str, Any], keys: list[str], value: Any) -> None:
+    """Recursively set a value in a nested dict by key path. Creates intermediate dicts as needed."""
+    if not keys:
+        return
+    if len(keys) == 1:
+        d[keys[0]] = value
+        return
+    key = keys[0]
+    if not isinstance(d.get(key), dict):
+        d[key] = {}
+    _set_nested_dict_value(d[key], keys[1:], value)
+
+
+def _set_merged_state_value(state: dict[str, Any], path_str: str, value: Any) -> None:
+    """Set a value in merged state by dot-separated path (e.g. Person.age.minimum). In place.
+
+    Path format:
+      - ``ClassName.description``                  → sets class description
+      - ``ClassName.propName.description``          → sets property description
+      - ``ClassName.propName.<field>``              → sets data[field]
+      - ``ClassName.propName.<field>.<subkey>...``  → recursively sets data[field][subkey]...
+    """
+    classes = state.get("classes") or []
+    if not classes or not path_str:
+        return
+    parts = [p.strip() for p in path_str.split(".") if p.strip()]
+    if len(parts) < 2:
+        return
+    class_name, rest = parts[0], parts[1:]
+    class_key = (class_name or "").strip().lower()
+    for cls in classes:
+        if ((cls.get("name") or "").strip().lower() == class_key):
+            if len(rest) == 1:
+                if rest[0] == "description":
+                    cls["description"] = value
+                return
+            # rest has 2+ parts: prop_name followed by field path
+            prop_name = rest[0]
+            field_parts = rest[1:]
+            prop_key = (prop_name or "").strip().lower()
+            for prop in (cls.get("properties") or []):
+                if ((prop.get("name") or "").strip().lower() == prop_key):
+                    if len(field_parts) == 1 and field_parts[0] == "description":
+                        prop["description"] = value
+                    else:
+                        data = prop.get("data") or {}
+                        _set_nested_dict_value(data, field_parts, value)
+                        prop["data"] = data
+                    return
+            return
 
 
 def _compute_pull_diff(
@@ -619,6 +700,83 @@ def pull_version(
     )
 
 
+# ---------------------------------------------------------------------------
+# Merge helpers
+# ---------------------------------------------------------------------------
+
+
+def _compute_merge(
+    version_id: str,
+    payload: VersionMergeRequest,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], list[Any]]:
+    """Shared merge computation for merge_version and merge_preview.
+
+    Validates versions, resolves ours/theirs states, performs two-way or three-way merge.
+
+    Returns:
+        (local_project_id, local_classes, merged_classes, raw_conflicts)
+    """
+    local_version = _assert_version_exists(version_id, include_deleted=False)
+    local_project = str(local_version["project_id"])
+
+    # Validate the source version and project membership only when
+    # theirs_state is not provided (otherwise source_version_id is unused).
+    if payload.theirs_state is None:
+        if not payload.source_version_id:
+            raise HTTPException(
+                status_code=400,
+                detail="source_version_id is required when theirs_state is not provided",
+            )
+        remote_version = _assert_version_exists(payload.source_version_id, include_deleted=False)
+        if str(remote_version["project_id"]) != local_project:
+            raise HTTPException(
+                status_code=400,
+                detail="Source and target versions must belong to the same project",
+            )
+
+    # Resolve ours state: payload.ours_state or current version state.
+    if payload.ours_state is not None:
+        local_classes = payload.ours_state.get("classes", [])
+    else:
+        local_state = _capture_version_state(version_id)
+        local_classes = local_state.get("classes", [])
+
+    # Resolve theirs state: payload.theirs_state or source version state.
+    if payload.theirs_state is not None:
+        remote_classes = payload.theirs_state.get("classes", [])
+    else:
+        remote_state = _capture_version_state(payload.source_version_id)
+        remote_classes = remote_state.get("classes", [])
+
+    base_classes: Optional[list[dict[str, Any]]] = None
+    if payload.base_revision is not None:
+        base_rows = db.execute_query(
+            """
+            SELECT snapshot FROM objectified.version_snapshot
+            WHERE version_id = %s AND revision = %s LIMIT 1
+            """,
+            (version_id, payload.base_revision),
+        )
+        if not base_rows:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Version snapshot not found: {version_id} @ revision {payload.base_revision}",
+            )
+        base_snapshot = base_rows[0].get("snapshot") or {}
+        base_classes = base_snapshot.get("classes", [])
+
+    if base_classes is not None:
+        merged_classes, raw_conflicts = merge_classes_three_way(
+            base_classes, local_classes, remote_classes, payload.strategy.value
+        )
+    else:
+        merged_classes, raw_conflicts = merge_classes(
+            local_classes, remote_classes, payload.strategy.value
+        )
+
+    return local_project, local_classes, merged_classes, raw_conflicts
+
+
 @router.post(
     "/versions/{version_id}/merge",
     response_model=VersionMergeResponse,
@@ -645,49 +803,14 @@ def merge_version(
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionMergeResponse:
     """Merge changes from a source version into the current version."""
-    local_version = _assert_version_exists(version_id, include_deleted=False)
-    remote_version = _assert_version_exists(payload.source_version_id, include_deleted=False)
-
-    local_project = str(local_version["project_id"])
-    remote_project = str(remote_version["project_id"])
-
-    if local_project != remote_project:
-        raise HTTPException(
-            status_code=400,
-            detail="Source and target versions must belong to the same project",
-        )
-
     user_id = caller.get("user_id") if caller else None
     logger.info(
-        "MERGE version_id=%s source_version_id=%s project_id=%s strategy=%s user_id=%s",
-        version_id, payload.source_version_id, local_project, payload.strategy.value, user_id,
+        "MERGE version_id=%s source_version_id=%s strategy=%s user_id=%s",
+        version_id, payload.source_version_id, payload.strategy.value, user_id,
     )
 
-    # Capture both states.
-    local_state = _capture_version_state(version_id)
-    remote_state = _capture_version_state(payload.source_version_id)
-
-    local_classes = local_state.get("classes", [])
-    remote_classes = remote_state.get("classes", [])
-
-    merged_classes, raw_conflicts = merge_classes(
-        local_classes, remote_classes, payload.strategy.value
-    )
-
-    # Convert raw conflict dicts to MergeConflict models.
-    conflicts: list[MergeConflict] = []
-    for rc in raw_conflicts:
-        field_parts = rc.get("field", "").split(".", 1)
-        conflicts.append(
-            MergeConflict(
-                class_name=field_parts[0] if field_parts else "",
-                property_name=field_parts[1] if len(field_parts) > 1 else None,
-                field=rc.get("field", ""),
-                local_value=rc.get("local_value"),
-                remote_value=rc.get("remote_value"),
-                resolution=rc.get("resolution", ""),
-            )
-        )
+    local_project, local_classes, merged_classes, raw_conflicts = _compute_merge(version_id, payload)
+    conflicts = _raw_conflicts_to_merge_conflicts(raw_conflicts)
 
     # Apply merged state: upsert classes and their properties.
     merged_class_names: list[str] = []
@@ -715,12 +838,127 @@ def merge_version(
         new_data=snapshot_row.get("snapshot"),
     )
 
+    merged_state: dict[str, Any] = {
+        "classes": merged_classes,
+        "canvas_metadata": (snapshot_row.get("snapshot") or {}).get("canvas_metadata"),
+    }
+
     return VersionMergeResponse(
         revision=snapshot_row["revision"],
         snapshot_id=str(snapshot_row["id"]),
         version_id=version_id,
         conflicts=conflicts,
         merged_classes=merged_class_names,
+        merged_state=merged_state,
+        committed_at=snapshot_row["created_at"],
+    )
+
+
+@router.post(
+    "/versions/{version_id}/merge/preview",
+    response_model=VersionMergePreviewResponse,
+    status_code=200,
+    summary="Preview merge result",
+    description=(
+        "Compute merged state and conflicts from ours and theirs without persisting. "
+        "Uses current version state as ours and source_version_id state as theirs unless "
+        "ours_state/theirs_state are provided. Optional base_revision for three-way merge."
+    ),
+    responses={
+        200: {"description": "Merged state and list of conflicts"},
+        404: {"description": "Version or source version or base snapshot not found"},
+    },
+)
+def merge_preview(
+    version_id: str,
+    payload: VersionMergeRequest,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> VersionMergePreviewResponse:
+    """Return merged state and conflicts without persisting."""
+    _local_project, _local_classes, merged_classes, raw_conflicts = _compute_merge(version_id, payload)
+    conflicts = _raw_conflicts_to_merge_conflicts(raw_conflicts)
+    merged_state = {"classes": merged_classes, "canvas_metadata": None}
+    return VersionMergePreviewResponse(merged_state=merged_state, conflicts=conflicts)
+
+
+@router.post(
+    "/versions/{version_id}/merge/resolve",
+    response_model=VersionMergeResolveResponse,
+    status_code=200,
+    summary="Merge with resolution choices",
+    description=(
+        "Submit resolution choices for conflicts and get merged state. "
+        "When apply=true, persist the merged state and create a snapshot."
+    ),
+    responses={
+        200: {"description": "Merged state; revision/snapshot_id when apply=true"},
+        404: {"description": "Version or source version not found"},
+    },
+)
+def merge_resolve(
+    version_id: str,
+    payload: VersionMergeResolveRequest,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> VersionMergeResolveResponse:
+    """Merge with explicit conflict resolutions; optionally persist."""
+    req = VersionMergeRequest(
+        source_version_id=payload.source_version_id,
+        strategy=payload.strategy,
+        message=payload.message,
+        base_revision=payload.base_revision,
+        ours_state=payload.ours_state,
+        theirs_state=payload.theirs_state,
+    )
+    preview = merge_preview(version_id, req, caller)
+    merged_state = copy.deepcopy(dict(preview.merged_state))
+    conflicts_by_path = {c.path: c for c in preview.conflicts}
+
+    for choice in payload.conflict_resolutions:
+        path = choice.path
+        conflict = conflicts_by_path.get(path)
+        if conflict is None:
+            continue
+        if choice.use == "ours":
+            _set_merged_state_value(merged_state, path, conflict.local_value)
+        elif choice.use == "theirs":
+            _set_merged_state_value(merged_state, path, conflict.remote_value)
+        elif choice.use == "custom" and choice.custom_value is not None:
+            _set_merged_state_value(merged_state, path, choice.custom_value)
+
+    if not payload.apply:
+        return VersionMergeResolveResponse(merged_state=merged_state)
+
+    # Persist: apply merged_state to version and create snapshot.
+    local_version = _assert_version_exists(version_id, include_deleted=False)
+    project_id = str(local_version["project_id"])
+    user_id = caller.get("user_id") if caller else None
+
+    for cls in merged_state.get("classes") or []:
+        class_id = _upsert_class(version_id, cls)
+        _upsert_class_properties(class_id, project_id, cls.get("properties") or [])
+
+    snapshot_row = _create_snapshot(
+        version_id=version_id,
+        project_id=project_id,
+        committed_by=user_id,
+        label="merge",
+        description=payload.message or "Merge with resolution choices",
+    )
+
+    _record_history(
+        version_id=version_id,
+        project_id=project_id,
+        changed_by=user_id,
+        operation="MERGE",
+        old_data=None,
+        new_data=snapshot_row.get("snapshot"),
+    )
+
+    return VersionMergeResolveResponse(
+        merged_state=merged_state,
+        revision=snapshot_row["revision"],
+        snapshot_id=str(snapshot_row["id"]),
+        version_id=version_id,
         committed_at=snapshot_row["created_at"],
     )
 

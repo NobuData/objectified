@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class VersionVisibility(str, Enum):
@@ -198,20 +198,55 @@ class VersionPullDiff(BaseModel):
 class MergeConflict(BaseModel):
     """Describes a single merge conflict between local and remote state."""
 
-    class_name: str
+    path: str = Field(
+        "",
+        description="Dot-separated path to the conflicting field (e.g. ClassName.property_name.field).",
+    )
+    description: str = Field(
+        "",
+        description="Human-readable description of the conflict.",
+    )
+    class_name: str = ""
     property_name: Optional[str] = None
-    field: str
+    field: str = ""
     local_value: Optional[Any] = None
     remote_value: Optional[Any] = None
-    resolution: str = ""
+    resolution: str = Field(
+        "",
+        description="Suggested or applied resolution (e.g. 'took stricter (max): 1', 'ours', 'theirs').",
+    )
 
 
 class VersionMergeRequest(BaseModel):
-    """Request body for POST /versions/{id}/merge."""
+    """Request body for POST /versions/{id}/merge and merge preview/resolve."""
 
-    source_version_id: str
+    source_version_id: Optional[str] = Field(
+        None,
+        description=(
+            "Source version UUID (theirs). Required when theirs_state is not provided; "
+            "ignored (and not validated) when theirs_state is supplied."
+        ),
+    )
     strategy: MergeStrategy = MergeStrategy.ADDITIVE
     message: Optional[str] = None
+    base_revision: Optional[int] = Field(
+        None,
+        description="Optional base snapshot revision of the current version for three-way merge.",
+    )
+    ours_state: Optional[dict[str, Any]] = Field(
+        None,
+        description="Optional 'ours' state (classes list). If omitted, server uses current version state.",
+    )
+    theirs_state: Optional[dict[str, Any]] = Field(
+        None,
+        description="Optional 'theirs' state (classes list). If omitted, server uses source_version_id state.",
+    )
+
+    @model_validator(mode="after")
+    def _require_source_or_theirs(self) -> "VersionMergeRequest":
+        if self.theirs_state is None and not self.source_version_id:
+            raise ValueError("source_version_id is required when theirs_state is not provided")
+        return self
 
 
 class VersionMergeResponse(BaseModel):
@@ -224,7 +259,79 @@ class VersionMergeResponse(BaseModel):
     version_id: str
     conflicts: list[MergeConflict] = Field(default_factory=list)
     merged_classes: list[str] = Field(default_factory=list)
+    merged_state: Optional[dict[str, Any]] = Field(
+        None,
+        description="Full merged state (classes, canvas_metadata) when requested or returned by merge.",
+    )
     committed_at: datetime
+
+
+class VersionMergePreviewResponse(BaseModel):
+    """Response from POST /versions/{id}/merge/preview — merged state and conflicts without persisting."""
+
+    merged_state: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Computed merged state (classes, canvas_metadata).",
+    )
+    conflicts: list[MergeConflict] = Field(default_factory=list)
+
+
+class ConflictResolutionChoice(BaseModel):
+    """A single conflict resolution: path and choice of ours, theirs, or custom value."""
+
+    path: str = Field(..., description="Conflict path (matches MergeConflict.path).")
+    use: str = Field(
+        ...,
+        description="Resolution: 'ours', 'theirs', or 'custom'.",
+    )
+    custom_value: Optional[Any] = Field(
+        None,
+        description="When use is 'custom', the value to apply.",
+    )
+
+
+class VersionMergeResolveRequest(BaseModel):
+    """Request body for POST /versions/{id}/merge/resolve — merge request plus resolution choices."""
+
+    source_version_id: Optional[str] = Field(
+        None,
+        description=(
+            "Source version UUID (theirs). Required when theirs_state is not provided; "
+            "ignored (and not validated) when theirs_state is supplied."
+        ),
+    )
+    strategy: MergeStrategy = MergeStrategy.ADDITIVE
+    message: Optional[str] = None
+    base_revision: Optional[int] = None
+    ours_state: Optional[dict[str, Any]] = None
+    theirs_state: Optional[dict[str, Any]] = None
+    conflict_resolutions: list[ConflictResolutionChoice] = Field(
+        default_factory=list,
+        description="Resolution for each conflict (path must match MergeConflict.path from preview).",
+    )
+    apply: bool = Field(
+        False,
+        description="If true, persist the merged state and create a snapshot.",
+    )
+
+    @model_validator(mode="after")
+    def _require_source_or_theirs(self) -> "VersionMergeResolveRequest":
+        if self.theirs_state is None and not self.source_version_id:
+            raise ValueError("source_version_id is required when theirs_state is not provided")
+        return self
+
+
+class VersionMergeResolveResponse(BaseModel):
+    """Response from POST /versions/{id}/merge/resolve."""
+
+    merged_state: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Merged state after applying resolution choices.",
+    )
+    revision: Optional[int] = Field(None, description="Set when apply=true.")
+    snapshot_id: Optional[str] = None
+    version_id: Optional[str] = None
+    committed_at: Optional[datetime] = None
 
 
 # Backward-compatible alias for older imports.
