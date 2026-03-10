@@ -17,6 +17,10 @@ Routes are split across focused modules:
                                    /v1/versions/{version_id}/export/jsonschema
   - app.routes.import_routes     → /v1/versions/{version_id}/import/openapi,
                                    /v1/versions/{version_id}/import/jsonschema
+  - app.routes.version_commits   → /v1/versions/{version_id}/commit,
+                                   /v1/versions/{version_id}/push,
+                                   /v1/versions/{version_id}/pull,
+                                   /v1/versions/{version_id}/merge
   - app.routes.validate          → /v1/validate/json-schema,
                                    /v1/validate/openapi-document
 
@@ -38,6 +42,7 @@ from app.routes.users import router as _users_router
 from app.routes.users import _hash_password, _verify_password  # noqa: F401 — re-export
 from app.routes.tenants import router as _tenants_router
 from app.routes.validate import router as _validate_router
+from app.routes.version_commits import router as _version_commits_router
 from app.routes.versions import router as _versions_router
 
 router = APIRouter(prefix="/v1")
@@ -52,4 +57,5 @@ router.include_router(_api_keys_router)
 router.include_router(_projects_router)
 router.include_router(_properties_router)
 router.include_router(_validate_router)
+router.include_router(_version_commits_router)
 router.include_router(_versions_router)

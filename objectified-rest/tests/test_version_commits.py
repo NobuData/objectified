@@ -1,0 +1,538 @@
+"""Tests for version commit REST endpoints (commit, push, pull, merge)."""
+
+from datetime import datetime, timezone
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.auth import require_authenticated
+from app.main import app
+from tests.conftest import mock_db_all
+
+_NOW = datetime.now(timezone.utc)
+
+_TENANT_ID = "00000000-0000-0000-0000-000000000010"
+_PROJECT_ID = "00000000-0000-0000-0000-000000000020"
+_VERSION_ID = "00000000-0000-0000-0000-000000000030"
+_TARGET_VERSION_ID = "00000000-0000-0000-0000-000000000031"
+_SOURCE_VERSION_ID = "00000000-0000-0000-0000-000000000032"
+_ACCOUNT_ID = "00000000-0000-0000-0000-000000000040"
+_SNAPSHOT_ID = "00000000-0000-0000-0000-000000000060"
+_CLASS_ID = "00000000-0000-0000-0000-000000000070"
+_PROPERTY_ID = "00000000-0000-0000-0000-000000000080"
+_CP_ID = "00000000-0000-0000-0000-000000000090"
+
+_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+
+_VERSION_ROW: dict[str, Any] = {
+    "id": _VERSION_ID,
+    "project_id": _PROJECT_ID,
+    "source_version_id": None,
+    "creator_id": _ACCOUNT_ID,
+    "name": "v1",
+    "description": "Initial",
+    "change_log": "Created",
+    "enabled": True,
+    "published": False,
+    "visibility": None,
+    "metadata": {},
+    "created_at": _NOW,
+    "updated_at": None,
+    "deleted_at": None,
+    "published_at": None,
+}
+
+_TARGET_VERSION_ROW: dict[str, Any] = {
+    **_VERSION_ROW,
+    "id": _TARGET_VERSION_ID,
+    "name": "v2",
+    "description": "Target version",
+}
+
+_SOURCE_VERSION_ROW: dict[str, Any] = {
+    **_VERSION_ROW,
+    "id": _SOURCE_VERSION_ID,
+    "name": "v3",
+    "description": "Source version",
+}
+
+_SNAPSHOT_ROW: dict[str, Any] = {
+    "id": _SNAPSHOT_ID,
+    "version_id": _VERSION_ID,
+    "project_id": _PROJECT_ID,
+    "committed_by": _ACCOUNT_ID,
+    "revision": 1,
+    "label": "commit",
+    "description": "Committed",
+    "snapshot": {"classes": []},
+    "created_at": _NOW,
+}
+
+
+def _version_lookup_row(version_row: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Version lookup row."""
+    row = version_row or _VERSION_ROW
+    return {**row, "project_deleted_at": None}
+
+
+@pytest.fixture
+def client():
+    """FastAPI test client with require_authenticated overridden."""
+    app.dependency_overrides[require_authenticated] = lambda: _CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /versions/{version_id}/commit
+# ---------------------------------------------------------------------------
+
+
+class TestCommitVersion:
+    """Tests for POST /v1/versions/{version_id}/commit."""
+
+    def test_commit_empty_payload_returns_201(self, client):
+        """Commit with no classes still creates a snapshot."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],  # _assert_version_exists
+                [],  # _capture_version_state: no classes
+            ]
+            mock_db.execute_mutation.side_effect = [_SNAPSHOT_ROW, None]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/commit",
+                json={"classes": [], "label": "empty-commit"},
+            )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["revision"] == 1
+        assert body["version_id"] == _VERSION_ID
+        assert "snapshot_id" in body
+        assert "committed_at" in body
+
+    def test_commit_with_classes_returns_201(self, client):
+        """Commit with classes upserts them and creates a snapshot."""
+        payload = {
+            "classes": [
+                {
+                    "name": "Person",
+                    "description": "A person",
+                    "schema": {"type": "object"},
+                    "properties": [
+                        {
+                            "name": "first_name",
+                            "description": "First name",
+                            "data": {"type": "string"},
+                        }
+                    ],
+                }
+            ],
+            "label": "initial",
+            "message": "First commit",
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],  # _assert_version_exists
+                [],  # _upsert_class: class not found (will create)
+                [],  # _upsert_class_properties: property not found (will create)
+                [],  # _upsert_class_properties: cp not found (will create)
+                [],  # _capture_version_state: class query
+            ]
+            mock_db.execute_mutation.side_effect = [
+                {"id": _CLASS_ID},  # INSERT class
+                {"id": _PROPERTY_ID},  # INSERT property
+                {"id": _CP_ID},  # INSERT class_property
+                _SNAPSHOT_ROW,  # INSERT snapshot
+                None,  # _record_history
+            ]
+            r = client.post(f"/v1/versions/{_VERSION_ID}/commit", json=payload)
+        assert r.status_code == 201
+
+    def test_commit_with_canvas_metadata_updates_version(self, client):
+        """Commit with canvas_metadata writes to version metadata."""
+        payload = {
+            "classes": [],
+            "canvas_metadata": {"layout": "grid"},
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],  # _assert_version_exists
+                [],  # _capture_version_state: no classes
+            ]
+            mock_db.execute_mutation.side_effect = [
+                None,  # UPDATE version metadata (returning=False)
+                _SNAPSHOT_ROW,  # INSERT snapshot
+                None,  # _record_history
+            ]
+            r = client.post(f"/v1/versions/{_VERSION_ID}/commit", json=payload)
+        assert r.status_code == 201
+
+    def test_commit_version_not_found_returns_404(self, client):
+        """Commit returns 404 if version does not exist."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.return_value = []
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/commit",
+                json={"classes": []},
+            )
+        assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /versions/{version_id}/push
+# ---------------------------------------------------------------------------
+
+
+class TestPushVersion:
+    """Tests for POST /v1/versions/{version_id}/push."""
+
+    def test_push_success_returns_201(self, client):
+        """Push to target version creates snapshot on target."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],  # source _assert_version_exists
+                [_version_lookup_row(_TARGET_VERSION_ROW)],  # target _assert_version_exists
+                [],  # _capture_version_state: no classes
+            ]
+            mock_db.execute_mutation.side_effect = [_SNAPSHOT_ROW, None]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/push?target_version_id={_TARGET_VERSION_ID}",
+                json={"classes": [], "label": "push-test"},
+            )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["version_id"] == _TARGET_VERSION_ID
+
+    def test_push_different_project_returns_400(self, client):
+        """Push returns 400 when versions belong to different projects."""
+        other_project_version = {
+            **_TARGET_VERSION_ROW,
+            "project_id": "00000000-0000-0000-0000-000000000099",
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [_version_lookup_row(other_project_version)],
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/push?target_version_id={_TARGET_VERSION_ID}",
+                json={"classes": []},
+            )
+        assert r.status_code == 400
+        assert "same project" in r.json()["detail"].lower()
+
+    def test_push_source_not_found_returns_404(self, client):
+        """Push returns 404 when source version not found."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.return_value = []
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/push?target_version_id={_TARGET_VERSION_ID}",
+                json={"classes": []},
+            )
+        assert r.status_code == 404
+
+    def test_push_target_not_found_returns_404(self, client):
+        """Push returns 404 when target version not found."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [],  # target not found
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/push?target_version_id={_TARGET_VERSION_ID}",
+                json={"classes": []},
+            )
+        assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /versions/{version_id}/pull
+# ---------------------------------------------------------------------------
+
+
+class TestPullVersion:
+    """Tests for GET /v1/versions/{version_id}/pull."""
+
+    def test_pull_returns_full_state(self, client):
+        """Pull returns full version state with classes."""
+        class_row = {
+            "id": _CLASS_ID,
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "A person",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": _NOW,
+            "updated_at": None,
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],  # _assert_version_exists
+                [class_row],  # _capture_version_state: class query
+                [],  # _capture_version_state: properties query
+                [{"max_revision": 3}],  # MAX(revision) query
+            ]
+            r = client.get(f"/v1/versions/{_VERSION_ID}/pull")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["version_id"] == _VERSION_ID
+        assert body["revision"] == 3
+        assert len(body["classes"]) == 1
+        assert body["classes"][0]["name"] == "Person"
+        assert "pulled_at" in body
+
+    def test_pull_empty_version_returns_empty_classes(self, client):
+        """Pull on version with no classes returns empty list."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [],  # no classes
+                [{"max_revision": None}],  # no snapshots
+            ]
+            r = client.get(f"/v1/versions/{_VERSION_ID}/pull")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["classes"] == []
+        assert body["revision"] is None
+
+    def test_pull_includes_canvas_metadata(self, client):
+        """Pull returns canvas_metadata from version metadata."""
+        version_with_canvas = {
+            **_version_lookup_row(),
+            "metadata": {"canvas_metadata": {"layout": "grid"}},
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [version_with_canvas],
+                [],  # no classes
+                [{"max_revision": 1}],
+            ]
+            r = client.get(f"/v1/versions/{_VERSION_ID}/pull")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["canvas_metadata"] == {"layout": "grid"}
+
+    def test_pull_version_not_found_returns_404(self, client):
+        """Pull returns 404 when version not found."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.return_value = []
+            r = client.get(f"/v1/versions/{_VERSION_ID}/pull")
+        assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /versions/{version_id}/merge
+# ---------------------------------------------------------------------------
+
+
+class TestMergeVersion:
+    """Tests for POST /v1/versions/{version_id}/merge."""
+
+    def test_merge_additive_adds_remote_only_classes(self, client):
+        """Additive merge adds remote-only classes without changing local."""
+        local_class = {
+            "id": _CLASS_ID,
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "A person",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": str(_NOW),
+            "updated_at": None,
+            "properties": [],
+        }
+        remote_class = {
+            "id": "00000000-0000-0000-0000-0000000000a0",
+            "version_id": _SOURCE_VERSION_ID,
+            "name": "Address",
+            "description": "An address",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": str(_NOW),
+            "updated_at": None,
+            "properties": [],
+        }
+        merge_snapshot = {
+            **_SNAPSHOT_ROW,
+            "label": "merge",
+            "description": f"Merged from {_SOURCE_VERSION_ID}",
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],  # local _assert_version_exists
+                [_version_lookup_row(_SOURCE_VERSION_ROW)],  # remote _assert_version_exists
+                [local_class],  # _capture_version_state (local): classes
+                [],  # _capture_version_state (local): properties
+                [remote_class],  # _capture_version_state (remote): classes
+                [],  # _capture_version_state (remote): properties
+                [{"id": _CLASS_ID}],  # _upsert_class (Person): found
+                [],  # _upsert_class (Address): not found → create
+                [],  # _capture_version_state for snapshot: classes
+            ]
+            mock_db.execute_mutation.side_effect = [
+                None,  # UPDATE class (Person, returning=False)
+                {"id": "00000000-0000-0000-0000-0000000000b0"},  # INSERT class (Address)
+                merge_snapshot,  # INSERT snapshot
+                None,  # _record_history
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/merge",
+                json={
+                    "source_version_id": _SOURCE_VERSION_ID,
+                    "strategy": "additive",
+                },
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["version_id"] == _VERSION_ID
+        assert "Person" in body["merged_classes"]
+        assert "Address" in body["merged_classes"]
+        assert body["revision"] == 1
+
+    def test_merge_different_project_returns_400(self, client):
+        """Merge returns 400 when versions belong to different projects."""
+        other_project = {
+            **_SOURCE_VERSION_ROW,
+            "project_id": "00000000-0000-0000-0000-000000000099",
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [_version_lookup_row(other_project)],
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/merge",
+                json={
+                    "source_version_id": _SOURCE_VERSION_ID,
+                    "strategy": "additive",
+                },
+            )
+        assert r.status_code == 400
+        assert "same project" in r.json()["detail"].lower()
+
+    def test_merge_source_not_found_returns_404(self, client):
+        """Merge returns 404 when source version not found."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [],  # source not found
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/merge",
+                json={
+                    "source_version_id": _SOURCE_VERSION_ID,
+                    "strategy": "additive",
+                },
+            )
+        assert r.status_code == 404
+
+    def test_merge_version_not_found_returns_404(self, client):
+        """Merge returns 404 when local version not found."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.return_value = []
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/merge",
+                json={
+                    "source_version_id": _SOURCE_VERSION_ID,
+                    "strategy": "override",
+                },
+            )
+        assert r.status_code == 404
+
+    def test_merge_override_reports_conflicts(self, client):
+        """Override merge reports conflicts when both sides differ."""
+        local_class = {
+            "id": _CLASS_ID,
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "Local person",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": str(_NOW),
+            "updated_at": None,
+            "properties": [
+                {
+                    "name": "age",
+                    "description": "Age",
+                    "data": {"type": "integer", "minimum": 0, "maximum": 150},
+                }
+            ],
+        }
+        remote_class = {
+            "id": "00000000-0000-0000-0000-0000000000a0",
+            "version_id": _SOURCE_VERSION_ID,
+            "name": "Person",
+            "description": "Remote person",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": str(_NOW),
+            "updated_at": None,
+            "properties": [
+                {
+                    "name": "age",
+                    "description": "Age in years",
+                    "data": {"type": "integer", "minimum": 1, "maximum": 200},
+                }
+            ],
+        }
+        merge_snapshot = {**_SNAPSHOT_ROW, "label": "merge", "revision": 2}
+        with mock_db_all() as mock_db:
+            # Trace the exact execute_query call sequence:
+            # 1. _assert_version_exists (local)
+            # 2. _assert_version_exists (remote/source)
+            # 3. _capture_version_state (local) — class query
+            # 4. _capture_version_state (local) — class_property query (inline props already set but query still runs)
+            # 5. _capture_version_state (remote) — class query
+            # 6. _capture_version_state (remote) — class_property query
+            # 7. _upsert_class (Person) — SELECT by name
+            # 8. _upsert_class_properties (age) — SELECT property by name
+            # 9. _upsert_class_properties (age) — SELECT class_property by name
+            # 10. _capture_version_state (snapshot) — class query
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],                        # 1
+                [_version_lookup_row(_SOURCE_VERSION_ROW)],     # 2
+                [local_class],                                  # 3 local classes
+                [],                                             # 4 local class_properties
+                [remote_class],                                 # 5 remote classes
+                [],                                             # 6 remote class_properties
+                [{"id": _CLASS_ID}],                            # 7 _upsert_class: found
+                # No property/cp queries because _capture_version_state
+                # resets properties to [] and prop query returns []
+                [],                                             # 8 _capture_version_state for snapshot
+            ]
+            # Trace execute_mutation calls:
+            # 1. UPDATE class (returning=False)
+            # 2. INSERT snapshot (RETURNING)
+            # 3. _record_history (returning=False via execute_mutation)
+            mock_db.execute_mutation.side_effect = [
+                None,           # 1 UPDATE class
+                merge_snapshot, # 2 INSERT snapshot
+                None,           # 3 _record_history
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/merge",
+                json={
+                    "source_version_id": _SOURCE_VERSION_ID,
+                    "strategy": "override",
+                    "message": "Override merge",
+                },
+            )
+        assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text[:500]}"
+        body = r.json()
+        assert "conflicts" in body
+        # Class-level description conflict is detected (Local person vs Remote person)
+        assert len(body["conflicts"]) >= 1
+        assert "merged_classes" in body
+        assert "Person" in body["merged_classes"]
+        assert body["revision"] == 2
+
+
+
+
+

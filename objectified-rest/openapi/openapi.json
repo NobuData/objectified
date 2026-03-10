@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.0"
+    "version": "1.0.1"
   },
   "paths": {
     "/v1/auth/login": {
@@ -1260,6 +1260,9 @@
                 "schema": {}
               }
             }
+          },
+          "400": {
+            "description": "Invalid JSON in query parameter"
           },
           "404": {
             "description": "Version not found"
@@ -4496,6 +4499,365 @@
         }
       }
     },
+    "/v1/versions/{version_id}/commit": {
+      "post": {
+        "tags": [
+          "Version Commits"
+        ],
+        "summary": "Commit version payload",
+        "description": "Accept a full version payload (classes, properties, class_properties, canvas_metadata), write to the database, create a snapshot in version history, and return the new revision ID. This is analogous to a git commit.",
+        "operationId": "commit_version_v1_versions__version_id__commit_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCommitPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Commit successful \u2014 new revision created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionCommitResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Version not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/push": {
+      "post": {
+        "tags": [
+          "Version Commits"
+        ],
+        "summary": "Push version state to a target version",
+        "description": "Push the provided version payload into a target version. Both versions must belong to the same project. The payload is applied to the target version and a new snapshot is created. Analogous to git push.",
+        "operationId": "push_version_v1_versions__version_id__push_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "target_version_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The target version UUID to push changes into.",
+              "title": "Target Version Id"
+            },
+            "description": "The target version UUID to push changes into."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCommitPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Push successful \u2014 target version updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionCommitResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Versions belong to different projects or self-push detected"
+          },
+          "404": {
+            "description": "Version or target version not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/pull": {
+      "get": {
+        "tags": [
+          "Version Commits"
+        ],
+        "summary": "Pull version state",
+        "description": "Pull the current full state of a version, including all classes, their properties, and canvas_metadata. Analogous to git pull. Returns the latest snapshot revision number if one exists.",
+        "operationId": "pull_version_v1_versions__version_id__pull_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full version state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionPullResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Version not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/merge": {
+      "post": {
+        "tags": [
+          "Version Commits"
+        ],
+        "summary": "Merge another version into this version",
+        "description": "Merge classes and properties from a source version into the current version. Two merge strategies are supported:\n\n- **additive**: Keep local classes and properties, only add remote-only items.\n- **override**: Remote wins for metadata fields; property constraints are merged using stricter-wins semantics (e.g. larger minLength, smaller maxLength, enum union).\n\nBoth versions must belong to the same project. Conflicts are reported in the response but do not block the merge. A new snapshot is created after merging.",
+        "operationId": "merge_version_v1_versions__version_id__merge_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionMergeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merge result with optional conflicts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionMergeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Versions belong to different projects"
+          },
+          "404": {
+            "description": "Version or source version not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/tenants/{tenant_id}/projects/{project_id}/versions": {
       "get": {
         "tags": [
@@ -6664,6 +7026,68 @@
         "title": "LoginResponse",
         "description": "Response body for POST /v1/auth/login."
       },
+      "MergeConflict": {
+        "properties": {
+          "class_name": {
+            "type": "string",
+            "title": "Class Name"
+          },
+          "property_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Name"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "local_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Value"
+          },
+          "remote_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Value"
+          },
+          "resolution": {
+            "type": "string",
+            "title": "Resolution",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "class_name",
+          "field"
+        ],
+        "title": "MergeConflict",
+        "description": "Describes a single merge conflict between local and remote state."
+      },
+      "MergeStrategy": {
+        "type": "string",
+        "enum": [
+          "additive",
+          "override"
+        ],
+        "title": "MergeStrategy",
+        "description": "Strategy for merging version states."
+      },
       "OpenAPIValidationResponse": {
         "properties": {
           "valid": {
@@ -7603,6 +8027,197 @@
         ],
         "title": "ValidationError"
       },
+      "VersionCommitClass": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/VersionCommitClassProperty"
+            },
+            "type": "array",
+            "title": "Properties"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "VersionCommitClass",
+        "description": "A class entry inside a version commit payload."
+      },
+      "VersionCommitClassProperty": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "property_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Name"
+          },
+          "property_data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "VersionCommitClassProperty",
+        "description": "A class-property entry inside a version commit payload."
+      },
+      "VersionCommitPayload": {
+        "properties": {
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/VersionCommitClass"
+            },
+            "type": "array",
+            "title": "Classes"
+          },
+          "canvas_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canvas Metadata"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "title": "VersionCommitPayload",
+        "description": "Request body for POST /versions/{id}/commit and POST /versions/{id}/push."
+      },
+      "VersionCommitResponse": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "title": "Snapshot Id"
+          },
+          "version_id": {
+            "type": "string",
+            "title": "Version Id"
+          },
+          "committed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Committed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revision",
+          "snapshot_id",
+          "version_id",
+          "committed_at"
+        ],
+        "title": "VersionCommitResponse",
+        "description": "Response from commit / push / merge operations."
+      },
       "VersionCreate": {
         "properties": {
           "project_id": {
@@ -7766,6 +8381,79 @@
         "title": "VersionHistorySchema",
         "description": "Response schema for objectified.version_history."
       },
+      "VersionMergeRequest": {
+        "properties": {
+          "source_version_id": {
+            "type": "string",
+            "title": "Source Version Id"
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/MergeStrategy",
+            "default": "additive"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_version_id"
+        ],
+        "title": "VersionMergeRequest",
+        "description": "Request body for POST /versions/{id}/merge."
+      },
+      "VersionMergeResponse": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "title": "Snapshot Id"
+          },
+          "version_id": {
+            "type": "string",
+            "title": "Version Id"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/MergeConflict"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          },
+          "merged_classes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Merged Classes"
+          },
+          "committed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Committed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revision",
+          "snapshot_id",
+          "version_id",
+          "committed_at"
+        ],
+        "title": "VersionMergeResponse",
+        "description": "Response from POST /versions/{id}/merge."
+      },
       "VersionMetadataUpdate": {
         "properties": {
           "description": {
@@ -7812,6 +8500,57 @@
         "type": "object",
         "title": "VersionPublishRequest",
         "description": "Payload for publishing a version."
+      },
+      "VersionPullResponse": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "title": "Version Id"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "classes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Classes"
+          },
+          "canvas_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canvas Metadata"
+          },
+          "pulled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Pulled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version_id",
+          "pulled_at"
+        ],
+        "title": "VersionPullResponse",
+        "description": "Response from GET /versions/{id}/pull \u2014 full version state."
       },
       "VersionSchema": {
         "properties": {
