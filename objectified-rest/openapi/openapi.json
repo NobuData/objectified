@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.3"
+    "version": "1.0.4"
   },
   "paths": {
     "/v1/auth/login": {
@@ -8658,9 +8658,16 @@
       "VersionMergeRequest": {
         "properties": {
           "source_version_id": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Source Version Id",
-            "description": "Source version UUID (theirs). Ignored when theirs_state is provided."
+            "description": "Source version UUID (theirs). Required when theirs_state is not provided; ignored (and not validated) when theirs_state is supplied."
           },
           "strategy": {
             "$ref": "#/components/schemas/MergeStrategy",
@@ -8717,17 +8724,22 @@
           }
         },
         "type": "object",
-        "required": [
-          "source_version_id"
-        ],
         "title": "VersionMergeRequest",
         "description": "Request body for POST /versions/{id}/merge and merge preview/resolve."
       },
       "VersionMergeResolveRequest": {
         "properties": {
           "source_version_id": {
-            "type": "string",
-            "title": "Source Version Id"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version Id",
+            "description": "Source version UUID (theirs). Required when theirs_state is not provided; ignored (and not validated) when theirs_state is supplied."
           },
           "strategy": {
             "$ref": "#/components/schemas/MergeStrategy",
@@ -8795,9 +8807,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "source_version_id"
-        ],
         "title": "VersionMergeResolveRequest",
         "description": "Request body for POST /versions/{id}/merge/resolve \u2014 merge request plus resolution choices."
       },

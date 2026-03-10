@@ -383,6 +383,10 @@ def _class_snapshot_equals(a: dict[str, Any], b: dict[str, Any]) -> bool:
         return False
     if (a.get("description") or "") != (b.get("description") or ""):
         return False
+    if (a.get("schema") or {}) != (b.get("schema") or {}):
+        return False
+    if (a.get("metadata") or {}) != (b.get("metadata") or {}):
+        return False
     a_props = a.get("properties") or []
     b_props = b.get("properties") or []
     if len(a_props) != len(b_props):
