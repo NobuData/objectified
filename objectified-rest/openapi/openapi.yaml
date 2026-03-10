@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.1
+  version: 1.0.2
 paths:
   /v1/auth/login:
     post:
@@ -2882,9 +2882,10 @@ paths:
       tags:
       - Version Commits
       summary: Pull version state
-      description: Pull the current full state of a version, including all classes,
-        their properties, and canvas_metadata. Analogous to git pull. Returns the
-        latest snapshot revision number if one exists.
+      description: Pull the full state of a version, including all classes, their
+        properties, and canvas_metadata. By default returns the latest state; use
+        optional query param `revision` to get state at a specific snapshot revision.
+        Use optional `since_revision` to include a diff of changes since that revision.
       operationId: pull_version_v1_versions__version_id__pull_get
       parameters:
       - name: version_id
@@ -2893,6 +2894,26 @@ paths:
         schema:
           type: string
           title: Version Id
+      - name: revision
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          description: If set, return state at this snapshot revision instead of latest.
+          title: Revision
+        description: If set, return state at this snapshot revision instead of latest.
+      - name: since_revision
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          description: If set, include a diff of changes since this revision.
+          title: Since Revision
+        description: If set, include a diff of changes since this revision.
       - name: authorization
         in: header
         required: false
@@ -2911,13 +2932,13 @@ paths:
           title: X-Api-Key
       responses:
         '200':
-          description: Full version state
+          description: Full version state (and optional diff)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/VersionPullResponse'
         '404':
-          description: Version not found
+          description: Version or snapshot revision not found
         '422':
           description: Validation Error
           content:
@@ -5309,6 +5330,51 @@ components:
       type: object
       title: VersionPublishRequest
       description: Payload for publishing a version.
+    VersionPullDiff:
+      properties:
+        added_class_names:
+          items:
+            type: string
+          type: array
+          title: Added Class Names
+        removed_class_names:
+          items:
+            type: string
+          type: array
+          title: Removed Class Names
+        modified_classes:
+          items:
+            $ref: '#/components/schemas/VersionPullModifiedClass'
+          type: array
+          title: Modified Classes
+      type: object
+      title: VersionPullDiff
+      description: Diff of version state since a given revision.
+    VersionPullModifiedClass:
+      properties:
+        class_name:
+          type: string
+          title: Class Name
+        added_property_names:
+          items:
+            type: string
+          type: array
+          title: Added Property Names
+        removed_property_names:
+          items:
+            type: string
+          type: array
+          title: Removed Property Names
+        modified_property_names:
+          items:
+            type: string
+          type: array
+          title: Modified Property Names
+      type: object
+      required:
+      - class_name
+      title: VersionPullModifiedClass
+      description: Describes property-level changes within a class since a revision.
     VersionPullResponse:
       properties:
         version_id:
@@ -5335,6 +5401,18 @@ components:
           type: string
           format: date-time
           title: Pulled At
+        diff_since_revision:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Diff Since Revision
+          description: When since_revision query param was set, this echoes it.
+        diff:
+          anyOf:
+          - $ref: '#/components/schemas/VersionPullDiff'
+          - type: 'null'
+          description: Changes since diff_since_revision (only when since_revision
+            was requested).
       type: object
       required:
       - version_id

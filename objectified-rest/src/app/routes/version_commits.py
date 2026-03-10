@@ -32,6 +32,8 @@ from app.schemas.version import (
     VersionCommitResponse,
     VersionMergeRequest,
     VersionMergeResponse,
+    VersionPullDiff,
+    VersionPullModifiedClass,
     VersionPullResponse,
 )
 
@@ -43,6 +45,81 @@ router = APIRouter(tags=["Version Commits"])
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _class_name_key(name: Optional[str]) -> str:
+    """Normalize class name for comparison (case-insensitive)."""
+    return (name or "").strip().lower()
+
+
+def _prop_name_key(prop: dict[str, Any]) -> str:
+    """Normalize property name for comparison (case-insensitive)."""
+    return (prop.get("name") or prop.get("property_name") or "").strip().lower()
+
+
+def _compute_pull_diff(
+    old_classes: list[dict[str, Any]],
+    new_classes: list[dict[str, Any]],
+) -> VersionPullDiff:
+    """Compute diff between two version states (class/property lists).
+
+    Matching is by class name and property name (case-insensitive).
+    """
+    old_by_name: dict[str, dict[str, Any]] = {}
+    for c in old_classes:
+        old_by_name[_class_name_key(c.get("name"))] = c
+    new_by_name: dict[str, dict[str, Any]] = {}
+    for c in new_classes:
+        new_by_name[_class_name_key(c.get("name"))] = c
+
+    added_class_names: list[str] = []
+    removed_class_names: list[str] = []
+    modified_classes: list[VersionPullModifiedClass] = []
+
+    for name_key, new_c in new_by_name.items():
+        class_display_name = (new_c.get("name") or name_key).strip() or name_key
+        if name_key not in old_by_name:
+            added_class_names.append(class_display_name)
+            continue
+        old_c = old_by_name[name_key]
+        old_props = {_prop_name_key(p): p for p in (old_c.get("properties") or [])}
+        new_props = {_prop_name_key(p): p for p in (new_c.get("properties") or [])}
+        added_props = [
+            (p.get("name") or k).strip() or k
+            for k, p in new_props.items()
+            if k not in old_props
+        ]
+        removed_props = [
+            (p.get("name") or k).strip() or k
+            for k, p in old_props.items()
+            if k not in new_props
+        ]
+        modified_props = [
+            (new_props[k].get("name") or k).strip() or k
+            for k in old_props
+            if k in new_props
+            and (old_props[k].get("data") or {}) != (new_props[k].get("data") or {})
+        ]
+        if added_props or removed_props or modified_props:
+            modified_classes.append(
+                VersionPullModifiedClass(
+                    class_name=class_display_name,
+                    added_property_names=added_props,
+                    removed_property_names=removed_props,
+                    modified_property_names=modified_props,
+                )
+            )
+
+    for name_key, old_c in old_by_name.items():
+        if name_key not in new_by_name:
+            class_display_name = (old_c.get("name") or name_key).strip() or name_key
+            removed_class_names.append(class_display_name)
+
+    return VersionPullDiff(
+        added_class_names=added_class_names,
+        removed_class_names=removed_class_names,
+        modified_classes=modified_classes,
+    )
 
 
 def _upsert_class(
@@ -421,47 +498,97 @@ def push_version(
     response_model=VersionPullResponse,
     summary="Pull version state",
     description=(
-        "Pull the current full state of a version, including all classes, their "
-        "properties, and canvas_metadata. Analogous to git pull. Returns the latest "
-        "snapshot revision number if one exists."
+        "Pull the full state of a version, including all classes, their "
+        "properties, and canvas_metadata. By default returns the latest state; "
+        "use optional query param `revision` to get state at a specific snapshot revision. "
+        "Use optional `since_revision` to include a diff of changes since that revision."
     ),
     responses={
-        200: {"description": "Full version state"},
-        404: {"description": "Version not found"},
+        200: {"description": "Full version state (and optional diff)"},
+        404: {"description": "Version or snapshot revision not found"},
     },
 )
 def pull_version(
     version_id: str,
+    revision: Optional[int] = Query(
+        None,
+        description="If set, return state at this snapshot revision instead of latest.",
+    ),
+    since_revision: Optional[int] = Query(
+        None,
+        description="If set, include a diff of changes since this revision.",
+    ),
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionPullResponse:
-    """Pull the full current state of a version."""
+    """Pull the full state of a version (latest or at a given revision); optionally include diff since a revision."""
     version = _assert_version_exists(version_id, include_deleted=False)
-
-    state = _capture_version_state(version_id)
-
-    # Fetch latest snapshot revision if any.
-    snapshot_rows = db.execute_query(
-        """
-        SELECT MAX(revision) AS max_revision
-        FROM objectified.version_snapshot
-        WHERE version_id = %s
-        """,
-        (version_id,),
-    )
-    latest_revision = None
-    if snapshot_rows and snapshot_rows[0].get("max_revision") is not None:
-        latest_revision = snapshot_rows[0]["max_revision"]
-
-    # Extract canvas_metadata from version metadata.
     version_metadata = version.get("metadata") or {}
     canvas_metadata = version_metadata.get("canvas_metadata") if isinstance(version_metadata, dict) else None
 
+    if revision is not None:
+        snapshot_rows = db.execute_query(
+            f"""
+            SELECT {_SNAPSHOT_COLUMNS}
+            FROM objectified.version_snapshot
+            WHERE version_id = %s AND revision = %s
+            LIMIT 1
+            """,
+            (version_id, revision),
+        )
+        if not snapshot_rows:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Version snapshot not found: {version_id} @ revision {revision}",
+            )
+        snapshot_row = dict(snapshot_rows[0])
+        state = snapshot_row.get("snapshot") or {}
+        classes = state.get("classes", [])
+        effective_revision = revision
+    else:
+        state = _capture_version_state(version_id)
+        classes = state.get("classes", [])
+        snapshot_rows = db.execute_query(
+            """
+            SELECT MAX(revision) AS max_revision
+            FROM objectified.version_snapshot
+            WHERE version_id = %s
+            """,
+            (version_id,),
+        )
+        effective_revision = None
+        if snapshot_rows and snapshot_rows[0].get("max_revision") is not None:
+            effective_revision = snapshot_rows[0]["max_revision"]
+
+    diff_since_revision: Optional[int] = None
+    diff_value: Optional[VersionPullDiff] = None
+    if since_revision is not None:
+        since_rows = db.execute_query(
+            """
+            SELECT snapshot
+            FROM objectified.version_snapshot
+            WHERE version_id = %s AND revision = %s
+            LIMIT 1
+            """,
+            (version_id, since_revision),
+        )
+        if not since_rows:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Version snapshot not found for since_revision: {version_id} @ revision {since_revision}",
+            )
+        old_snapshot = since_rows[0].get("snapshot") or {}
+        old_classes = old_snapshot.get("classes", [])
+        diff_value = _compute_pull_diff(old_classes, classes)
+        diff_since_revision = since_revision
+
     return VersionPullResponse(
         version_id=version_id,
-        revision=latest_revision,
-        classes=state.get("classes", []),
+        revision=effective_revision,
+        classes=classes,
         canvas_metadata=canvas_metadata,
         pulled_at=datetime.now(timezone.utc),
+        diff_since_revision=diff_since_revision,
+        diff=diff_value,
     )
 
 
