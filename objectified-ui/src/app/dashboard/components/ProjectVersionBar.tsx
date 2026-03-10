@@ -229,8 +229,7 @@ export default function ProjectVersionBar() {
         disabled={loadingVersions || !projectId}
       >
         <Select.Trigger
-          className={triggerClass}
-          style={{ minWidth: '140px' }}
+          className={`${triggerClass} min-w-[140px]`}
           aria-label="Select version"
         >
           {loadingVersions ? (

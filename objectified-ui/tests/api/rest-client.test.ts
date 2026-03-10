@@ -1,0 +1,421 @@
+/**
+ * Unit tests for the REST API client (lib/api/rest-client.ts).
+ * Covers: getRestClientOptions, buildAuthHeaders (via request), error parsing,
+ * 204 handling, query-param encoding, and representative endpoint helpers.
+ */
+
+import {
+  getRestBaseUrl,
+  getRestClientOptions,
+  listTenants,
+  getTenant,
+  createTenant,
+  listProjects,
+  listVersions,
+  listClassesWithPropertiesAndTags,
+  listProperties,
+  commitVersion,
+  pullVersion,
+  mergeVersion,
+  type RestClientOptions,
+  type TenantSchema,
+  type ProjectSchema,
+  type VersionSchema,
+} from '@lib/api/rest-client';
+
+// ---------------------------------------------------------------------------
+// fetch mock
+// ---------------------------------------------------------------------------
+
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
+
+function makeFetchResponse(
+  body: unknown,
+  status = 200,
+  ok = true
+): Response {
+  return {
+    ok,
+    status,
+    text: jest.fn().mockResolvedValue(body !== undefined ? JSON.stringify(body) : ''),
+  } as unknown as Response;
+}
+
+function makeEmptyFetchResponse(status = 204): Response {
+  return {
+    ok: true,
+    status,
+    text: jest.fn().mockResolvedValue(''),
+  } as unknown as Response;
+}
+
+function makeErrorFetchResponse(detail: string | object, status = 400): Response {
+  return {
+    ok: false,
+    status,
+    text: jest.fn().mockResolvedValue(JSON.stringify({ detail })),
+  } as unknown as Response;
+}
+
+// ---------------------------------------------------------------------------
+// getRestClientOptions
+// ---------------------------------------------------------------------------
+
+describe('getRestClientOptions', () => {
+  const origEnv = process.env;
+
+  afterEach(() => {
+    process.env = { ...origEnv };
+  });
+
+  it('returns empty options when session is null and no env var', () => {
+    delete process.env.REST_API_KEY;
+    const opts = getRestClientOptions(null);
+    expect(opts).toEqual({});
+  });
+
+  it('populates jwt from session.accessToken', () => {
+    delete process.env.REST_API_KEY;
+    const opts = getRestClientOptions({ accessToken: 'tok-123' });
+    expect(opts.jwt).toBe('tok-123');
+    expect(opts.apiKey).toBeUndefined();
+  });
+
+  it('does not include jwt when session has no accessToken', () => {
+    const opts = getRestClientOptions({});
+    expect(opts.jwt).toBeUndefined();
+  });
+
+  it('populates apiKey from REST_API_KEY (non-public env var)', () => {
+    process.env.REST_API_KEY = 'secret-key';
+    const opts = getRestClientOptions(null);
+    expect(opts.apiKey).toBe('secret-key');
+  });
+
+  it('includes both jwt and apiKey when both are present', () => {
+    process.env.REST_API_KEY = 'env-key';
+    const opts = getRestClientOptions({ accessToken: 'jwt-tok' });
+    expect(opts.jwt).toBe('jwt-tok');
+    expect(opts.apiKey).toBe('env-key');
+  });
+
+  it('does not set apiKey when REST_API_KEY is absent', () => {
+    delete process.env.REST_API_KEY;
+    const opts = getRestClientOptions(null);
+    expect(opts.apiKey).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auth headers construction (tested indirectly via request)
+// ---------------------------------------------------------------------------
+
+describe('auth headers via request()', () => {
+  const baseUrl = getRestBaseUrl();
+  const tenantId = 'tenant-uuid';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends Authorization: Bearer header when jwt is provided', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    const opts: RestClientOptions = { jwt: 'my-jwt-token' };
+    await listTenants(opts);
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({
+      Authorization: 'Bearer my-jwt-token',
+    });
+  });
+
+  it('sends X-API-Key header when apiKey is provided', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    const opts: RestClientOptions = { apiKey: 'my-api-key' };
+    await listTenants(opts);
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({
+      'X-API-Key': 'my-api-key',
+    });
+  });
+
+  it('sends both Authorization and X-API-Key when both are present', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    const opts: RestClientOptions = { jwt: 'tok', apiKey: 'key' };
+    await listTenants(opts);
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({
+      Authorization: 'Bearer tok',
+      'X-API-Key': 'key',
+    });
+  });
+
+  it('includes Content-Type: application/json in all requests', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listTenants({});
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({
+      'Content-Type': 'application/json',
+    });
+  });
+
+  it('sends no auth headers when options is empty', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listTenants({});
+    const [, init] = mockFetch.mock.calls[0];
+    const headers = (init as RequestInit).headers as Record<string, string>;
+    expect(headers['Authorization']).toBeUndefined();
+    expect(headers['X-API-Key']).toBeUndefined();
+  });
+
+  it('constructs URL from base url + path', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listTenants({});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants`);
+  });
+
+  it('constructs URL with include_deleted query param', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listTenants({}, true);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants?include_deleted=true`);
+  });
+
+  it('constructs nested project URL correctly', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listProjects(tenantId, {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/${tenantId}/projects`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Error parsing
+// ---------------------------------------------------------------------------
+
+describe('error handling in request()', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('throws with string detail from API error response', async () => {
+    mockFetch.mockResolvedValue(makeErrorFetchResponse('Not found', 404));
+    await expect(listTenants({})).rejects.toThrow('Not found');
+  });
+
+  it('throws with joined messages for array detail errors', async () => {
+    const detail = [
+      { loc: ['body', 'name'], msg: 'field required', type: 'missing' },
+      { loc: ['body', 'slug'], msg: 'field required', type: 'missing' },
+    ];
+    mockFetch.mockResolvedValue(makeErrorFetchResponse(detail, 422));
+    await expect(createTenant({ name: '', slug: '' }, {})).rejects.toThrow(
+      'field required; field required'
+    );
+  });
+
+  it('throws HTTP status fallback when no detail in error body', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: jest.fn().mockResolvedValue(JSON.stringify({ error: 'Server Error' })),
+    } as unknown as Response);
+    await expect(listTenants({})).rejects.toThrow('HTTP 500');
+  });
+
+  it('throws HTTP status when response body is not JSON', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: jest.fn().mockResolvedValue('Service Unavailable'),
+    } as unknown as Response);
+    await expect(listTenants({})).rejects.toThrow('HTTP 503');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 204 No Content handling
+// ---------------------------------------------------------------------------
+
+describe('204 No Content handling', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns undefined for 204 responses', async () => {
+    mockFetch.mockResolvedValue(makeEmptyFetchResponse(204));
+    const result = await getTenant('tenant-uuid', {});
+    expect(result).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Representative endpoint helpers
+// ---------------------------------------------------------------------------
+
+describe('listTenants', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns tenant list from API response', async () => {
+    const tenants: TenantSchema[] = [
+      { id: 't1', name: 'Acme', description: '', slug: 'acme', created_at: '2024-01-01', updated_at: null },
+    ];
+    mockFetch.mockResolvedValue(makeFetchResponse(tenants));
+    const result = await listTenants({});
+    expect(result).toEqual(tenants);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses GET method', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listTenants({});
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).method).toBe('GET');
+  });
+});
+
+describe('listProjects', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns project list from API response', async () => {
+    const projects: ProjectSchema[] = [
+      { id: 'p1', tenant_id: 't1', name: 'Demo', slug: 'demo', created_at: '2024-01-01', updated_at: null },
+    ];
+    mockFetch.mockResolvedValue(makeFetchResponse(projects));
+    const result = await listProjects('t1', {});
+    expect(result).toEqual(projects);
+  });
+
+  it('appends include_deleted query param when requested', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listProjects('t1', {}, true);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain('include_deleted=true');
+  });
+});
+
+describe('listVersions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns version list from API response', async () => {
+    const versions: VersionSchema[] = [
+      { id: 'v1', project_id: 'p1', name: '1.0.0', created_at: '2024-01-01', updated_at: null },
+    ];
+    mockFetch.mockResolvedValue(makeFetchResponse(versions));
+    const result = await listVersions('t1', 'p1', {});
+    expect(result).toEqual(versions);
+  });
+
+  it('constructs correct URL for versions endpoint', async () => {
+    const baseUrl = getRestBaseUrl();
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listVersions('t1', 'p1', {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/projects/p1/versions`);
+  });
+});
+
+describe('listClassesWithPropertiesAndTags', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('constructs correct URL for classes endpoint', async () => {
+    const baseUrl = getRestBaseUrl();
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listClassesWithPropertiesAndTags('v1', {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/versions/v1/classes/with-properties-tags`);
+  });
+});
+
+describe('listProperties', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('constructs correct URL for properties endpoint', async () => {
+    const baseUrl = getRestBaseUrl();
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listProperties('t1', 'p1', {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/projects/p1/properties`);
+  });
+});
+
+describe('commitVersion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('uses POST method and sends payload as JSON body', async () => {
+    const response = { revision: 1, snapshot_id: 's1', version_id: 'v1', committed_at: '2024-01-01' };
+    mockFetch.mockResolvedValue(makeFetchResponse(response));
+    const payload = { classes: [{ name: 'MyClass' }] };
+    await commitVersion('v1', payload, {});
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).method).toBe('POST');
+    expect((init as RequestInit).body).toBe(JSON.stringify(payload));
+  });
+});
+
+describe('pullVersion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('constructs URL without query params when no revision given', async () => {
+    const baseUrl = getRestBaseUrl();
+    const response = { version_id: 'v1', pulled_at: '2024-01-01' };
+    mockFetch.mockResolvedValue(makeFetchResponse(response));
+    await pullVersion('v1', {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/versions/v1/pull`);
+  });
+
+  it('appends revision query param when provided', async () => {
+    const response = { version_id: 'v1', pulled_at: '2024-01-01' };
+    mockFetch.mockResolvedValue(makeFetchResponse(response));
+    await pullVersion('v1', {}, 3);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain('revision=3');
+  });
+
+  it('appends since_revision query param when provided', async () => {
+    const response = { version_id: 'v1', pulled_at: '2024-01-01' };
+    mockFetch.mockResolvedValue(makeFetchResponse(response));
+    await pullVersion('v1', {}, null, 2);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain('since_revision=2');
+  });
+});
+
+describe('mergeVersion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends source_version_id and strategy in body', async () => {
+    const response = {
+      revision: 2,
+      snapshot_id: 's2',
+      version_id: 'v1',
+      committed_at: '2024-01-01',
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(response));
+    const body = { source_version_id: 'v2', strategy: 'additive' as const };
+    await mergeVersion('v1', body, {});
+    const [, init] = mockFetch.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      source_version_id: 'v2',
+      strategy: 'additive',
+    });
+  });
+});
