@@ -12,8 +12,16 @@ const REST_BASE =
     ? process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? ''
     : '';
 
-export function getRestBaseUrl(): string {
+/** Base URL for REST: when in browser, use Next.js API proxy (session auth); else direct REST base. */
+function getRequestBase(): string {
+  if (typeof window !== 'undefined') {
+    return '/api/rest';
+  }
   return REST_BASE;
+}
+
+export function getRestBaseUrl(): string {
+  return getRequestBase();
 }
 
 /** Build RestClientOptions from NextAuth session (JWT) or env API key for server/client use. */
@@ -56,7 +64,7 @@ async function request<T>(
   body?: unknown,
   options: RestClientOptions = {}
 ): Promise<T> {
-  const url = path.startsWith('http') ? path : `${REST_BASE}${path}`;
+  const url = path.startsWith('http') ? path : `${getRequestBase()}${path}`;
   const headers = buildAuthHeaders(options);
   const res = await fetch(url, {
     method,

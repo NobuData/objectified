@@ -17,13 +17,8 @@ type Profile = {
   updated_at: string | null;
 };
 
-const REST_BASE =
-  typeof process !== 'undefined'
-    ? process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? 'http://localhost:8000/v1'
-    : '';
-
 export default function ProfilePage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -33,18 +28,15 @@ export default function ProfilePage() {
   const [metadataError, setMetadataError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const accessToken = (session as { accessToken?: string } | null)?.accessToken;
-
   const fetchProfile = useCallback(async () => {
-    if (!accessToken || !REST_BASE) {
+    if (status === 'unauthenticated') {
       setLoading(false);
       return;
     }
+    if (status !== 'authenticated') return;
     setError(null);
     try {
-      const res = await fetch(`${REST_BASE}/me`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetch('/api/rest/me', { credentials: 'include' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setError((body.detail as string) ?? `Failed to load profile (${res.status})`);
@@ -62,7 +54,7 @@ export default function ProfilePage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [status]);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -75,7 +67,7 @@ export default function ProfilePage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accessToken || !REST_BASE) return;
+    if (status !== 'authenticated') return;
     let parsedMetadata: Record<string, unknown>;
     try {
       parsedMetadata = JSON.parse(metadataJson) as Record<string, unknown>;
@@ -88,12 +80,10 @@ export default function ProfilePage() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${REST_BASE}/me`, {
+      const res = await fetch('/api/rest/me', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name: name.trim() || undefined, metadata: parsedMetadata }),
       });
       if (!res.ok) {
@@ -126,16 +116,6 @@ export default function ProfilePage() {
     return (
       <div className="p-6">
         <p className="text-slate-600 dark:text-slate-400">You must be signed in to view your profile.</p>
-      </div>
-    );
-  }
-
-  if (!accessToken) {
-    return (
-      <div className="p-6">
-        <p className="text-slate-600 dark:text-slate-400">
-          Profile editing is available when you sign in with email and password. Sign out and sign in again with credentials to edit your name and metadata.
-        </p>
       </div>
     );
   }
