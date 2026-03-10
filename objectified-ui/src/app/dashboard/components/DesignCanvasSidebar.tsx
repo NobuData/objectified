@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Search, Plus, LayoutGrid, Tag, Loader2 } from 'lucide-react';
@@ -24,8 +24,12 @@ function SearchableList({
 }) {
   const [query, setQuery] = useState('');
 
-  const filtered = items.filter((item) =>
-    query.trim() ? item.toLowerCase().includes(query.toLowerCase()) : true
+  const filtered = useMemo(
+    () =>
+      items.filter((item) =>
+        query.trim() ? item.toLowerCase().includes(query.toLowerCase()) : true
+      ),
+    [items, query]
   );
 
   return (

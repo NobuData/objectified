@@ -9,7 +9,7 @@
 
 const REST_BASE =
   typeof process !== 'undefined'
-    ? process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? 'http://localhost:8000/v1'
+    ? process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? ''
     : '';
 
 export function getRestBaseUrl(): string {
@@ -22,8 +22,8 @@ export function getRestClientOptions(session: { accessToken?: string } | null): 
   if (session?.accessToken) {
     opts.jwt = session.accessToken;
   }
-  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_REST_API_KEY) {
-    opts.apiKey = process.env.NEXT_PUBLIC_REST_API_KEY;
+  if (typeof process !== 'undefined' && process.env.REST_API_KEY) {
+    opts.apiKey = process.env.REST_API_KEY;
   }
   return opts;
 }
@@ -259,52 +259,76 @@ export interface ClassPropertyUpdate {
   parent_id?: string | null;
 }
 
+export interface VersionCommitClassProperty {
+  name: string;
+  description?: string | null;
+  data?: Record<string, unknown>;
+  property_name?: string | null;
+  property_data?: Record<string, unknown> | null;
+}
+
+export interface VersionCommitClass {
+  name: string;
+  description?: string | null;
+  schema?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown>;
+  properties?: VersionCommitClassProperty[];
+}
+
 export interface VersionCommitPayload {
-  classes: Array<{
-    id?: string;
-    name: string;
-    description?: string;
-    schema?: Record<string, unknown>;
-    metadata?: Record<string, unknown>;
-    canvas_metadata?: Record<string, unknown>;
-    properties?: Array<{
-      id?: string;
-      property_id: string;
-      name: string;
-      parent_id?: string | null;
-      description?: string;
-      data?: Record<string, unknown>;
-    }>;
-  }>;
+  classes?: VersionCommitClass[];
+  canvas_metadata?: Record<string, unknown> | null;
+  label?: string | null;
+  description?: string | null;
+  message?: string | null;
 }
 
 export interface VersionCommitResponse {
   revision: number;
   snapshot_id: string;
+  version_id: string;
   committed_at: string;
+}
+
+export interface VersionPullModifiedClass {
+  class_name: string;
+  added_property_names?: string[];
+  removed_property_names?: string[];
+  modified_property_names?: string[];
+}
+
+export interface VersionPullDiff {
+  added_class_names?: string[];
+  removed_class_names?: string[];
+  modified_classes?: VersionPullModifiedClass[];
 }
 
 export interface VersionPullResponse {
   version_id: string;
-  revision: number;
-  snapshot_id: string;
-  classes: ClassWithPropertiesAndTags[];
+  revision?: number | null;
+  classes?: Record<string, unknown>[];
+  canvas_metadata?: Record<string, unknown> | null;
   pulled_at: string;
+  diff_since_revision?: number | null;
+  diff?: VersionPullDiff | null;
 }
 
 export interface VersionMergeRequest {
-  source_version_id: string;
-  strategy: 'additive' | 'override';
-  ours_state?: VersionCommitPayload | null;
-  theirs_state?: VersionCommitPayload | null;
+  source_version_id?: string | null;
+  strategy?: 'additive' | 'override';
+  message?: string | null;
+  ours_state?: Record<string, unknown> | null;
+  theirs_state?: Record<string, unknown> | null;
   base_revision?: number | null;
 }
 
 export interface VersionMergeResponse {
   revision: number;
   snapshot_id: string;
-  merged_state: VersionCommitPayload;
-  conflicts?: Array<{ path: string; description?: string }>;
+  version_id: string;
+  conflicts?: MergeConflict[];
+  merged_classes?: string[];
+  merged_state?: Record<string, unknown> | null;
   committed_at: string;
 }
 
@@ -320,7 +344,7 @@ export interface MergeConflict {
 }
 
 export interface MergePreviewResponse {
-  merged_state: VersionCommitPayload;
+  merged_state: Record<string, unknown>;
   conflicts: MergeConflict[];
 }
 
@@ -331,21 +355,22 @@ export interface ConflictResolutionChoice {
 }
 
 export interface MergeResolveRequest {
-  source_version_id: string;
-  strategy: 'additive' | 'override';
-  resolutions?: ConflictResolutionChoice[];
+  source_version_id?: string | null;
+  strategy?: 'additive' | 'override';
+  message?: string | null;
+  conflict_resolutions?: ConflictResolutionChoice[];
   apply?: boolean;
-  ours_state?: VersionCommitPayload | null;
-  theirs_state?: VersionCommitPayload | null;
+  ours_state?: Record<string, unknown> | null;
+  theirs_state?: Record<string, unknown> | null;
   base_revision?: number | null;
 }
 
 export interface MergeResolveResponse {
-  merged_state: VersionCommitPayload;
-  conflicts: MergeConflict[];
-  revision?: number;
-  snapshot_id?: string;
-  committed_at?: string;
+  merged_state: Record<string, unknown>;
+  revision?: number | null;
+  snapshot_id?: string | null;
+  version_id?: string | null;
+  committed_at?: string | null;
 }
 
 // ---------------------------------------------------------------------------
