@@ -103,5 +103,104 @@ class VersionSnapshotSchema(BaseModel):
     created_at: datetime
 
 
+# ---------------------------------------------------------------------------
+# Version Commit / Push / Pull / Merge schemas
+# ---------------------------------------------------------------------------
+
+
+class MergeStrategy(str, Enum):
+    """Strategy for merging version states."""
+
+    ADDITIVE = "additive"
+    OVERRIDE = "override"
+
+
+class VersionCommitClassProperty(BaseModel):
+    """A class-property entry inside a version commit payload."""
+
+    name: str
+    description: Optional[str] = None
+    data: dict[str, Any] = Field(default_factory=dict)
+    property_name: Optional[str] = None
+    property_data: Optional[dict[str, Any]] = None
+
+
+class VersionCommitClass(BaseModel):
+    """A class entry inside a version commit payload."""
+
+    name: str
+    description: Optional[str] = None
+    schema_: Optional[dict[str, Any]] = Field(None, alias="schema")
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    properties: list[VersionCommitClassProperty] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VersionCommitPayload(BaseModel):
+    """Request body for POST /versions/{id}/commit and POST /versions/{id}/push."""
+
+    classes: list[VersionCommitClass] = Field(default_factory=list)
+    canvas_metadata: Optional[dict[str, Any]] = None
+    label: Optional[str] = None
+    description: Optional[str] = None
+    message: Optional[str] = None
+
+
+class VersionCommitResponse(BaseModel):
+    """Response from commit / push / merge operations."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    revision: int
+    snapshot_id: str
+    version_id: str
+    committed_at: datetime
+
+
+class VersionPullResponse(BaseModel):
+    """Response from GET /versions/{id}/pull — full version state."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    version_id: str
+    revision: Optional[int] = None
+    classes: list[dict[str, Any]] = Field(default_factory=list)
+    canvas_metadata: Optional[dict[str, Any]] = None
+    pulled_at: datetime
+
+
+class MergeConflict(BaseModel):
+    """Describes a single merge conflict between local and remote state."""
+
+    class_name: str
+    property_name: Optional[str] = None
+    field: str
+    local_value: Optional[Any] = None
+    remote_value: Optional[Any] = None
+    resolution: str = ""
+
+
+class VersionMergeRequest(BaseModel):
+    """Request body for POST /versions/{id}/merge."""
+
+    source_version_id: str
+    strategy: MergeStrategy = MergeStrategy.ADDITIVE
+    message: Optional[str] = None
+
+
+class VersionMergeResponse(BaseModel):
+    """Response from POST /versions/{id}/merge."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    revision: int
+    snapshot_id: str
+    version_id: str
+    conflicts: list[MergeConflict] = Field(default_factory=list)
+    merged_classes: list[str] = Field(default_factory=list)
+    committed_at: datetime
+
+
 # Backward-compatible alias for older imports.
 VersionUpdate = VersionMetadataUpdate
