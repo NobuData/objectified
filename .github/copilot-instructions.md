@@ -38,6 +38,7 @@
 - Use Radix UI for all application components and design
 - Use custom alerts and confirm dialogs when needed, do not use browser built-ins
 - Favor using class definitions by name instead of setting them inline in the application: this way the themes can be applied across the board instead if hard-coded
+- Ensure UI changes remain working by testing the integration tests and make sure no warnings occur: if any warnings occur, fix them, do not let them linger
 
 # NextJS Application Instructions
 
@@ -45,6 +46,7 @@
 - Write code to make use of light and dark modes
 - Dark mode must be visible automatically based on system preferences
 - Use TypeScript for all code
+- Run `yarn build` after making changes to the application to ensure application stability
 
 # When creating files
 
