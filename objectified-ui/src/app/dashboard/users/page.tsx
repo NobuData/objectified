@@ -13,7 +13,6 @@ import {
   deactivateUser,
   getRestClientOptions,
   type AccountSchema,
-  type AccountCreate,
   type AccountUpdate,
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
@@ -40,6 +39,7 @@ export default function UsersPage() {
       setLoading(false);
       return;
     }
+    setLoading(true);
     setError(null);
     try {
       const data = await listUsers(
@@ -98,7 +98,18 @@ export default function UsersPage() {
     }
   };
 
-  if (status === 'loading' || (status === 'unauthenticated')) {
+  if (status === 'loading') {
+    return (
+      <div className="flex items-center justify-center min-h-[200px]">
+        <Loader2
+          className="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400"
+          aria-hidden
+        />
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated') {
     return (
       <div className="p-6">
         <p className="text-slate-600 dark:text-slate-400">

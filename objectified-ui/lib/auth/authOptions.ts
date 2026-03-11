@@ -107,12 +107,12 @@ export const authOptions: NextAuthOptions = {
         token.sub = user.id;
         if ('accessToken' in user && typeof (user as { accessToken?: string }).accessToken === 'string') {
           token.accessToken = (user as { accessToken: string }).accessToken;
-          // Resolve admin status by calling REST list users (admin-only); one-time at login.
+          // Resolve admin status by calling an admin-only endpoint; one-time at login.
           const baseUrl =
             process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? 'http://localhost:8000/v1';
           try {
             const res = await fetch(`${baseUrl}/users`, {
-              method: 'GET',
+              method: 'HEAD',
               headers: {
                 Authorization: `Bearer ${(user as { accessToken: string }).accessToken}`,
                 'Content-Type': 'application/json',
