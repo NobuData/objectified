@@ -515,6 +515,13 @@ export async function listTenants(
   return request<TenantSchema[]>('GET', `/tenants${q}`, undefined, options);
 }
 
+/** List tenants the current user is a member of (requires JWT). */
+export async function listMyTenants(
+  options: RestClientOptions = {}
+): Promise<TenantSchema[]> {
+  return request<TenantSchema[]>('GET', '/tenants/me', undefined, options);
+}
+
 export async function getTenant(
   tenantId: string,
   options: RestClientOptions = {},

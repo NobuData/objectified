@@ -2,11 +2,11 @@
 
 import json
 import logging
-from typing import List
+from typing import Annotated, Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_admin
+from app.auth import get_user_tenants, require_admin, require_authenticated
 from app.database import db
 from app.routes.helpers import (
     _assert_tenant_exists,
@@ -62,6 +62,40 @@ def list_tenants(
 
 
 @router.get(
+    "/tenants/me",
+    response_model=List[TenantSchema],
+    summary="List current user's tenants",
+    description=(
+        "List tenants the authenticated user is a member of (requires JWT). "
+        "Returns full tenant details. Soft-deleted tenants are excluded."
+    ),
+)
+def list_my_tenants(
+    caller: Annotated[dict[str, Any], Depends(require_authenticated)],
+) -> List[TenantSchema]:
+    """List tenants for the current user (JWT only)."""
+    user_id = caller.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="This endpoint requires JWT authentication.",
+        )
+    tenant_refs = get_user_tenants(user_id)
+    if not tenant_refs:
+        return []
+    ids = [t["id"] for t in tenant_refs]
+    placeholders = ",".join(["%s"] * len(ids))
+    query = f"""
+        SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+        FROM objectified.tenant
+        WHERE id IN ({placeholders}) AND deleted_at IS NULL
+        ORDER BY name ASC
+    """
+    rows = db.execute_query(query, tuple(ids))
+    return [TenantSchema(**dict(r)) for r in rows]
+
+
+@router.get(
     "/tenants/{tenant_id}",
     response_model=TenantSchema,
     summary="Get tenant by ID",
@@ -100,10 +134,16 @@ def get_tenant(
     response_model=TenantSchema,
     status_code=201,
     summary="Create tenant",
-    description="Create a new tenant. Slug must be unique and URL-safe (lowercase alphanumeric with hyphens).",
+    description=(
+        "Create a new tenant. Slug must be unique and URL-safe (lowercase alphanumeric with hyphens). "
+        "Requires authentication. The authenticated user is assigned as an administrator of the new tenant."
+    ),
 )
-def create_tenant(payload: TenantCreate) -> TenantSchema:
-    """Create a new tenant."""
+def create_tenant(
+    payload: TenantCreate,
+    caller: Annotated[dict[str, Any], Depends(require_authenticated)],
+) -> TenantSchema:
+    """Create a new tenant and assign the current user as administrator."""
     existing = db.execute_query(
         "SELECT id FROM objectified.tenant WHERE slug = %s",
         (payload.slug,),
@@ -111,16 +151,48 @@ def create_tenant(payload: TenantCreate) -> TenantSchema:
     if existing:
         raise HTTPException(status_code=409, detail=f"Slug already in use: {payload.slug}")
 
-    row = db.execute_mutation(
-        """
-        INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
-        VALUES (%s, %s, %s, %s, %s::jsonb)
-        RETURNING id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
-        """,
-        (payload.name, payload.description, payload.slug, payload.enabled, json.dumps(payload.metadata)),
-    )
+    user_id = caller.get("user_id")
+
+    if user_id:
+        # Atomically create the tenant and assign the creator as administrator using a CTE.
+        # If either INSERT fails the whole transaction is rolled back.
+        row = db.execute_mutation(
+            """
+            WITH inserted_tenant AS (
+                INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
+                RETURNING id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            ),
+            inserted_admin AS (
+                INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
+                SELECT id, %s, 'administrator', true
+                FROM inserted_tenant
+            )
+            SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            FROM inserted_tenant
+            """,
+            (
+                payload.name,
+                payload.description,
+                payload.slug,
+                payload.enabled,
+                json.dumps(payload.metadata),
+                user_id,
+            ),
+        )
+    else:
+        row = db.execute_mutation(
+            """
+            INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
+            VALUES (%s, %s, %s, %s, %s::jsonb)
+            RETURNING id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            """,
+            (payload.name, payload.description, payload.slug, payload.enabled, json.dumps(payload.metadata)),
+        )
+
     if not row:
         raise HTTPException(status_code=500, detail="Failed to create tenant")
+
     return TenantSchema(**dict(row))
 
 

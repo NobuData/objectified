@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.4"
+    "version": "1.0.5"
   },
   "paths": {
     "/v1/auth/login": {
@@ -2136,8 +2136,42 @@
           "Tenants"
         ],
         "summary": "Create tenant",
-        "description": "Create a new tenant. Slug must be unique and URL-safe (lowercase alphanumeric with hyphens).",
+        "description": "Create a new tenant. Slug must be unique and URL-safe (lowercase alphanumeric with hyphens). Requires authentication. The authenticated user is assigned as an administrator of the new tenant.",
         "operationId": "create_tenant_v1_tenants_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2155,6 +2189,76 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TenantSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/me": {
+      "get": {
+        "tags": [
+          "Tenants"
+        ],
+        "summary": "List current user's tenants",
+        "description": "List tenants the authenticated user is a member of (requires JWT). Returns full tenant details. Soft-deleted tenants are excluded.",
+        "operationId": "list_my_tenants_v1_tenants_me_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TenantSchema"
+                  },
+                  "title": "Response List My Tenants V1 Tenants Me Get"
                 }
               }
             }

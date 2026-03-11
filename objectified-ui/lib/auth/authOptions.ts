@@ -16,8 +16,12 @@ export async function authorizeCredentials(
     const user = await verifyCredentials(email, password);
     if (!user) return null;
 
+    // Use same base URL as REST proxy so server-side login reaches the backend
+    // (REST_API_BASE_URL for internal/deployed, NEXT_PUBLIC for client-default)
     const baseUrl =
-      process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? 'http://localhost:8000/v1';
+      process.env.REST_API_BASE_URL ??
+      process.env.NEXT_PUBLIC_REST_API_BASE_URL ??
+      'http://localhost:8000/v1';
     try {
       const res = await fetch(`${baseUrl}/auth/login`, {
         method: 'POST',
@@ -26,13 +30,23 @@ export async function authorizeCredentials(
       });
       if (res.ok) {
         const data = (await res.json()) as { access_token?: string };
-        return {
-          ...user,
-          accessToken: data.access_token,
-        };
+        if (data.access_token) {
+          return {
+            ...user,
+            accessToken: data.access_token,
+          };
+        }
+      } else {
+        const text = await res.text();
+        console.warn(
+          '[auth] REST login failed:',
+          res.status,
+          text.slice(0, 200)
+        );
       }
-    } catch {
-      // REST unavailable or login failed; still allow sign-in, profile edit may be limited
+    } catch (err) {
+      console.warn('[auth] REST login request failed:', err);
+      // REST unavailable or network error; still allow sign-in, REST proxy will return 403 until token is present
     }
     return user;
   } catch {
@@ -108,8 +122,12 @@ export const authOptions: NextAuthOptions = {
         if ('accessToken' in user && typeof (user as { accessToken?: string }).accessToken === 'string') {
           token.accessToken = (user as { accessToken: string }).accessToken;
           // Resolve admin status by calling an admin-only endpoint; one-time at login.
+          // Use the same fallback chain as authorizeCredentials so server-side calls
+          // always reach the backend via REST_API_BASE_URL when available.
           const baseUrl =
-            process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? 'http://localhost:8000/v1';
+            process.env.REST_API_BASE_URL ??
+            process.env.NEXT_PUBLIC_REST_API_BASE_URL ??
+            'http://localhost:8000/v1';
           try {
             const res = await fetch(`${baseUrl}/users`, {
               method: 'HEAD',

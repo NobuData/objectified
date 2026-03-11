@@ -168,10 +168,25 @@ class TestLogin:
         r = client.post("/v1/auth/login", json={"email": "alice@example.com"})
         assert r.status_code == 422
 
+    def test_login_bcrypt_hash_returns_token(self, client):
+        """Account with bcrypt-stored password (e.g. from UI) can log in and get JWT."""
+        import bcrypt
 
-# ===========================================================================
-# GET /v1/tenants/{tenant_id}/api-keys
-# ===========================================================================
+        bcrypt_hash = bcrypt.hashpw(b"bcryptpass", bcrypt.gensalt()).decode("utf-8")
+        bcrypt_account = {**_ACCOUNT_ROW, "password": bcrypt_hash}
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.return_value = [bcrypt_account]
+            with patch("app.routes.auth.settings") as mock_settings:
+                mock_settings.effective_jwt_secret = "test-secret-that-is-at-least-32-bytes-long"
+                mock_settings.jwt_algorithm = "HS256"
+                r = client.post(
+                    "/v1/auth/login",
+                    json={"email": "alice@example.com", "password": "bcryptpass"},
+                )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert "access_token" in body
+        assert body["email"] == "alice@example.com"
 
 
 class TestListApiKeys:
