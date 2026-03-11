@@ -3,6 +3,7 @@
 from datetime import datetime, timezone, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch, call
+import os
 import json
 
 import pytest
@@ -672,8 +673,9 @@ class TestConfig:
 
     def test_settings_effective_jwt_secret_from_jwt(self):
         """Test effective_jwt_secret falling back to JWT_SECRET."""
-        s = Settings(jwt_secret="jwt_key")
-        assert s.effective_jwt_secret == "jwt_key"
+        with patch.dict(os.environ, {"JWT_SECRET": "jwt_key", "NEXTAUTH_SECRET": ""}, clear=False):
+            s = Settings()
+            assert s.effective_jwt_secret == "jwt_key"
 
     def test_settings_effective_jwt_secret_missing(self):
         """Test effective_jwt_secret raises error when not configured."""

@@ -915,14 +915,9 @@ def test_create_tenant_server_error(jwt_client):
     assert r.status_code == 500
 
 
-def test_create_tenant_admin_assign_fails_returns_500(jwt_client):
-    """POST /v1/tenants returns 500 when tenant is created but assigning creator as admin fails."""
-    with mock_db_all() as mock_db:
-        mock_db.execute_query.return_value = []
-        mock_db.execute_mutation.side_effect = [_TENANT_ROW, None]
-        r = jwt_client.post("/v1/tenants", json={"name": "Acme", "description": "Acme Corp", "slug": "acme"})
-    assert r.status_code == 500
-    assert "administrator" in (r.json().get("detail") or "")
+# Note: create_tenant uses a single CTE to insert tenant + tenant_account atomically,
+# so there is no separate "admin assign fails" path; test_create_tenant_server_error
+# covers the case when the mutation returns None.
 
 
 # ---------------------------------------------------------------------------
