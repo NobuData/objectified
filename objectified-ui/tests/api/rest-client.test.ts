@@ -12,6 +12,11 @@ import {
   listTenants,
   getTenant,
   createTenant,
+  listUsers,
+  getUser,
+  createUser,
+  updateUser,
+  deactivateUser,
   listProjects,
   listVersions,
   listClassesWithPropertiesAndTags,
@@ -419,6 +424,142 @@ describe('mergeVersion', () => {
       source_version_id: 'v2',
       strategy: 'additive',
     });
+  });
+});
+
+describe('listUsers', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns user list from API', async () => {
+    const users = [
+      {
+        id: 'u1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        verified: true,
+        enabled: true,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: null,
+        deleted_at: null,
+      },
+    ];
+    mockFetch.mockResolvedValue(makeFetchResponse(users));
+    const result = await listUsers({});
+    expect(result).toEqual(users);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users`);
+  });
+
+  it('appends include_deleted when requested', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listUsers({}, true);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users?include_deleted=true`);
+  });
+});
+
+describe('getUser', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('constructs URL with user id', async () => {
+    const user = {
+      id: 'u1',
+      name: 'Alice',
+      email: 'alice@example.com',
+      created_at: '2024-01-01T00:00:00Z',
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(user));
+    await getUser('u1', {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users/u1`);
+  });
+});
+
+describe('createUser', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends POST with name, email, password', async () => {
+    const created = {
+      id: 'u1',
+      name: 'New User',
+      email: 'new@example.com',
+      verified: false,
+      enabled: true,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: null,
+      deleted_at: null,
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(created, 201));
+    const result = await createUser(
+      { name: 'New User', email: 'new@example.com', password: 'secret' },
+      {}
+    );
+    expect(result).toEqual(created);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users`);
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      name: 'New User',
+      email: 'new@example.com',
+      password: 'secret',
+    });
+  });
+});
+
+describe('updateUser', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends PUT with optional fields', async () => {
+    const updated = {
+      id: 'u1',
+      name: 'Updated',
+      email: 'up@example.com',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-02T00:00:00Z',
+      deleted_at: null,
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(updated));
+    await updateUser('u1', { name: 'Updated', enabled: true }, {});
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users/u1`);
+    expect((init as RequestInit).method).toBe('PUT');
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      name: 'Updated',
+      enabled: true,
+    });
+  });
+});
+
+describe('deactivateUser', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends DELETE and returns undefined', async () => {
+    mockFetch.mockResolvedValue(makeEmptyFetchResponse(204));
+    const result = await deactivateUser('u1', {});
+    expect(result).toBeUndefined();
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users/u1`);
+    expect((init as RequestInit).method).toBe('DELETE');
   });
 });
 

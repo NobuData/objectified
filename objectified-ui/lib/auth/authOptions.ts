@@ -96,6 +96,9 @@ export const authOptions: NextAuthOptions = {
         (session as { accessToken?: string }).accessToken = token.accessToken as
           | string
           | undefined;
+        (session.user as { is_administrator?: boolean }).is_administrator = (
+          token as { is_administrator?: boolean }
+        ).is_administrator ?? false;
       }
       return session;
     },
@@ -104,6 +107,23 @@ export const authOptions: NextAuthOptions = {
         token.sub = user.id;
         if ('accessToken' in user && typeof (user as { accessToken?: string }).accessToken === 'string') {
           token.accessToken = (user as { accessToken: string }).accessToken;
+          // Resolve admin status by calling an admin-only endpoint; one-time at login.
+          const baseUrl =
+            process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? 'http://localhost:8000/v1';
+          try {
+            const res = await fetch(`${baseUrl}/users`, {
+              method: 'HEAD',
+              headers: {
+                Authorization: `Bearer ${(user as { accessToken: string }).accessToken}`,
+                'Content-Type': 'application/json',
+              },
+            });
+            (token as { is_administrator?: boolean }).is_administrator = res.ok;
+          } catch {
+            (token as { is_administrator?: boolean }).is_administrator = false;
+          }
+        } else {
+          (token as { is_administrator?: boolean }).is_administrator = false;
         }
       }
       if (account?.provider === 'github' && profile) {
