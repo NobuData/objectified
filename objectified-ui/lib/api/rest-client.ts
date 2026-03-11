@@ -71,7 +71,7 @@ async function request<T>(
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
-    ...(isRelative && { credentials: 'include' as RequestCredentials }),
+    ...(isRelative ? { credentials: 'include' as RequestCredentials } : {}),
   });
   const text = await res.text();
   let parsed: T | ApiError | null = null;
@@ -391,11 +391,11 @@ export interface MeProfile {
   id: string;
   name: string;
   email: string;
-  verified: boolean;
-  enabled: boolean;
-  metadata: Record<string, unknown>;
+  verified?: boolean | null;
+  enabled?: boolean | null;
+  metadata?: Record<string, unknown> | null;
   created_at: string;
-  updated_at: string | null;
+  updated_at?: string | null;
   deleted_at?: string | null;
 }
 
