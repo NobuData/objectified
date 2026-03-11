@@ -554,6 +554,88 @@ export async function deleteTenant(
 }
 
 // ---------------------------------------------------------------------------
+// Tenant members
+// ---------------------------------------------------------------------------
+
+export type TenantAccessLevel = 'member' | 'administrator';
+
+export interface TenantAccountSchema {
+  id: string;
+  tenant_id: string;
+  account_id: string;
+  access_level: TenantAccessLevel;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string | null;
+  deleted_at?: string | null;
+}
+
+export interface TenantAccountCreate {
+  tenant_id?: string | null;
+  account_id?: string | null;
+  email?: string | null;
+  access_level?: TenantAccessLevel;
+  enabled?: boolean;
+}
+
+export interface TenantAccountUpdate {
+  access_level?: TenantAccessLevel | null;
+  enabled?: boolean | null;
+}
+
+export async function listTenantMembers(
+  tenantId: string,
+  options: RestClientOptions = {}
+): Promise<TenantAccountSchema[]> {
+  return request<TenantAccountSchema[]>(
+    'GET',
+    `/tenants/${tenantId}/members`,
+    undefined,
+    options
+  );
+}
+
+export async function addTenantMember(
+  tenantId: string,
+  body: TenantAccountCreate,
+  options: RestClientOptions = {}
+): Promise<TenantAccountSchema> {
+  return request<TenantAccountSchema>(
+    'POST',
+    `/tenants/${tenantId}/members`,
+    { ...body, tenant_id: tenantId },
+    options
+  );
+}
+
+export async function removeTenantMember(
+  tenantId: string,
+  accountId: string,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/tenants/${tenantId}/members/${encodeURIComponent(accountId)}`,
+    undefined,
+    options
+  );
+}
+
+export async function updateTenantMember(
+  tenantId: string,
+  accountId: string,
+  body: TenantAccountUpdate,
+  options: RestClientOptions = {}
+): Promise<TenantAccountSchema> {
+  return request<TenantAccountSchema>(
+    'PUT',
+    `/tenants/${tenantId}/members/${encodeURIComponent(accountId)}`,
+    body,
+    options
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Projects
 // ---------------------------------------------------------------------------
 

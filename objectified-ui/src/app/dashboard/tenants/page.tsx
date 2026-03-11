@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Loader2, Plus, Pencil, Building2, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { Loader2, Plus, Pencil, Building2, Trash2, Users } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
@@ -220,33 +221,43 @@ export default function TenantsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {!tenant.deleted_at && (
-                          <span className="inline-flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditTenant(tenant)}
-                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-                              aria-label={`Edit ${tenant.name}`}
-                            >
-                              <Pencil className="h-4 w-4" />
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(tenant)}
-                              disabled={deletingId === tenant.id}
-                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
-                              aria-label={`Deactivate ${tenant.name}`}
-                            >
-                              {deletingId === tenant.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                              Deactivate
-                            </button>
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-2">
+                          <Link
+                            href={`/dashboard/tenants/${tenant.id}/members`}
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                            aria-label={`View members of ${tenant.name}`}
+                          >
+                            <Users className="h-4 w-4" />
+                            Members
+                          </Link>
+                          {!tenant.deleted_at && (
+                            <span className="inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setEditTenant(tenant)}
+                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                                aria-label={`Edit ${tenant.name}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(tenant)}
+                                disabled={deletingId === tenant.id}
+                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+                                aria-label={`Deactivate ${tenant.name}`}
+                              >
+                                {deletingId === tenant.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                                Deactivate
+                              </button>
+                            </span>
+                          )}
+                        </span>
                       </td>
                     </tr>
                   ))

@@ -12,6 +12,10 @@ import {
   listTenants,
   getTenant,
   createTenant,
+  listTenantMembers,
+  addTenantMember,
+  removeTenantMember,
+  updateTenantMember,
   listUsers,
   getUser,
   createUser,
@@ -281,6 +285,118 @@ describe('listTenants', () => {
     await listTenants({});
     const [, init] = mockFetch.mock.calls[0];
     expect((init as RequestInit).method).toBe('GET');
+  });
+});
+
+describe('listTenantMembers', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns member list from API', async () => {
+    const members = [
+      {
+        id: 'm1',
+        tenant_id: 't1',
+        account_id: 'a1',
+        access_level: 'member',
+        enabled: true,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: null,
+        deleted_at: null,
+      },
+    ];
+    mockFetch.mockResolvedValue(makeFetchResponse(members));
+    const result = await listTenantMembers('t1', {});
+    expect(result).toEqual(members);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/members`);
+  });
+
+  it('uses GET method', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listTenantMembers('t1', {});
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).method).toBe('GET');
+  });
+});
+
+describe('addTenantMember', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends POST with email and access_level', async () => {
+    const created = {
+      id: 'm1',
+      tenant_id: 't1',
+      account_id: 'a1',
+      access_level: 'member',
+      enabled: true,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: null,
+      deleted_at: null,
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(created, 201));
+    await addTenantMember('t1', { email: 'u@example.com', access_level: 'member' }, {});
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/members`);
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      tenant_id: 't1',
+      email: 'u@example.com',
+      access_level: 'member',
+    });
+  });
+});
+
+describe('removeTenantMember', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends DELETE and returns undefined', async () => {
+    mockFetch.mockResolvedValue(makeEmptyFetchResponse(204));
+    await removeTenantMember('t1', 'a1', {});
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/members/a1`);
+    expect((init as RequestInit).method).toBe('DELETE');
+  });
+});
+
+describe('updateTenantMember', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends PUT with access_level and enabled', async () => {
+    const updated = {
+      id: 'm1',
+      tenant_id: 't1',
+      account_id: 'a1',
+      access_level: 'administrator',
+      enabled: true,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: null,
+      deleted_at: null,
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(updated));
+    await updateTenantMember('t1', 'a1', { access_level: 'administrator', enabled: true }, {});
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/members/a1`);
+    expect((init as RequestInit).method).toBe('PUT');
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      access_level: 'administrator',
+      enabled: true,
+    });
   });
 });
 
