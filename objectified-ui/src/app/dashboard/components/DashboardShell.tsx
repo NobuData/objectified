@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
-import { User, UserCircle, PenTool, Menu, X, LayoutDashboard, Palette } from 'lucide-react';
+import { User, UserCircle, PenTool, Menu, X, LayoutDashboard, Palette, Home } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import DashboardSideNav from './DashboardSideNav';
@@ -64,6 +64,13 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
               v0.1.0
             </span>
             <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
+              <Link
+                href="/"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Home className="h-4 w-4" />
+                Home
+              </Link>
               <Link
                 href="/dashboard"
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"

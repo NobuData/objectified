@@ -50,6 +50,7 @@ describe('DashboardShell', () => {
     );
 
     const nav = screen.getByLabelText(/main navigation/i);
+    expect(within(nav).getByRole('link', { name: /Home/i })).toHaveAttribute('href', '/');
     expect(within(nav).getByRole('link', { name: /Dashboard/i })).toHaveAttribute('href', '/dashboard');
     expect(within(nav).getByRole('link', { name: /Data Designer/i })).toHaveAttribute('href', '/data-designer');
     expect(within(nav).getByRole('link', { name: /Account/i })).toHaveAttribute('href', '/dashboard/profile');
