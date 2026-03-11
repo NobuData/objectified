@@ -63,19 +63,19 @@ describe('themes config', () => {
   });
 
   describe('theme css classes', () => {
-    it('system theme has theme-system class', () => {
+    it('system theme has system class', () => {
       const theme = getThemeById('system');
-      expect(theme!.cssClass).toBe('theme-system');
+      expect(theme!.cssClass).toBe('system');
     });
 
-    it('light theme has theme-light class', () => {
+    it('light theme has light class', () => {
       const theme = getThemeById('light');
-      expect(theme!.cssClass).toBe('theme-light');
+      expect(theme!.cssClass).toBe('light');
     });
 
-    it('dark theme has theme-dark class', () => {
+    it('dark theme has dark class', () => {
       const theme = getThemeById('dark');
-      expect(theme!.cssClass).toBe('theme-dark');
+      expect(theme!.cssClass).toBe('dark');
     });
   });
 });

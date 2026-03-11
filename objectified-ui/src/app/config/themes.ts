@@ -32,7 +32,7 @@ export const themes: Theme[] = [
     id: 'system',
     name: 'Follow System',
     description: 'Automatically matches your system light/dark preference',
-    cssClass: 'theme-system',
+    cssClass: 'system',
     colors: {
       background: '#ffffff',
       foreground: '#171717',
@@ -53,7 +53,7 @@ export const themes: Theme[] = [
     id: 'light',
     name: 'Light',
     description: 'Clean and bright default theme',
-    cssClass: 'theme-light',
+    cssClass: 'light',
     colors: {
       background: '#ffffff',
       foreground: '#171717',
@@ -74,7 +74,7 @@ export const themes: Theme[] = [
     id: 'dark',
     name: 'Dark',
     description: 'Easy on the eyes for low-light environments',
-    cssClass: 'theme-dark',
+    cssClass: 'dark',
     colors: {
       background: '#0a0a0a',
       foreground: '#ededed',
@@ -98,6 +98,7 @@ export const getThemeById = (id: string): Theme | undefined => {
 };
 
 export const getDefaultTheme = (): Theme => {
-  return themes[0]; // system theme
+  const systemTheme = getThemeById('system');
+  return systemTheme ?? themes[0];
 };
 
