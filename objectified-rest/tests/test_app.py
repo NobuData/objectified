@@ -416,6 +416,34 @@ def test_list_tenants_returns_tenants(client):
     assert r.json()[0]["slug"] == "acme"
 
 
+def test_list_tenants_me_requires_auth(client):
+    """GET /v1/tenants/me returns 401 with no credentials."""
+    r = client.get("/v1/tenants/me")
+    assert r.status_code == 401
+
+
+def test_list_tenants_me_returns_current_user_tenants(jwt_client):
+    """GET /v1/tenants/me returns tenants the authenticated user is a member of."""
+    tenant_refs = [{"id": _TENANT_ROW["id"], "slug": "acme", "name": "Acme"}]
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [tenant_refs, [_TENANT_ROW]]
+        r = jwt_client.get("/v1/tenants/me")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["id"] == _TENANT_ROW["id"]
+    assert data[0]["slug"] == "acme"
+
+
+def test_list_tenants_me_returns_empty_when_no_tenants(jwt_client):
+    """GET /v1/tenants/me returns empty list when user has no tenants."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = jwt_client.get("/v1/tenants/me")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
 def test_get_tenant_by_id_found(client):
     """GET /v1/tenants/{id} returns tenant when found."""
     with mock_db_all() as mock_db:
@@ -433,21 +461,29 @@ def test_get_tenant_by_id_not_found(client):
     assert r.status_code == 404
 
 
-def test_create_tenant_success(client):
-    """POST /v1/tenants creates a tenant and returns 201."""
+def test_create_tenant_success(jwt_client):
+    """POST /v1/tenants creates a tenant and assigns the caller as administrator; returns 201."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = []
-        mock_db.execute_mutation.return_value = _TENANT_ROW
-        r = client.post("/v1/tenants", json={"name": "Acme", "description": "Acme Corp", "slug": "acme"})
+        mock_db.execute_mutation.side_effect = [_TENANT_ROW, _TENANT_ACCOUNT_ROW]
+        r = jwt_client.post("/v1/tenants", json={"name": "Acme", "description": "Acme Corp", "slug": "acme"})
     assert r.status_code == 201
     assert r.json()["slug"] == "acme"
 
 
-def test_create_tenant_duplicate_slug(client):
+def test_create_tenant_requires_auth(client):
+    """POST /v1/tenants without authentication returns 401."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+    r = client.post("/v1/tenants", json={"name": "Acme", "description": "Acme Corp", "slug": "acme"})
+    assert r.status_code == 401
+
+
+def test_create_tenant_duplicate_slug(jwt_client):
     """POST /v1/tenants returns 409 when slug already exists."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = [_TENANT_ROW]
-        r = client.post("/v1/tenants", json={"name": "Acme2", "description": "", "slug": "acme"})
+        r = jwt_client.post("/v1/tenants", json={"name": "Acme2", "description": "", "slug": "acme"})
     assert r.status_code == 409
 
 
@@ -464,9 +500,9 @@ def test_create_tenant_duplicate_slug(client):
     "double--hyphen",   # consecutive hyphens
     "",                 # empty string
 ])
-def test_create_tenant_invalid_slug_returns_422(client, slug):
+def test_create_tenant_invalid_slug_returns_422(jwt_client, slug):
     """POST /v1/tenants returns 422 for slugs that violate the slug format."""
-    r = client.post(
+    r = jwt_client.post(
         "/v1/tenants",
         json={"name": "Test", "description": "", "slug": slug},
     )
@@ -483,12 +519,12 @@ def test_create_tenant_invalid_slug_returns_422(client, slug):
     "abc123",
     "123",
 ])
-def test_create_tenant_valid_slug_passes_validation(client, slug):
+def test_create_tenant_valid_slug_passes_validation(jwt_client, slug):
     """POST /v1/tenants accepts well-formed slugs (no 422)."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = []
-        mock_db.execute_mutation.return_value = {**_TENANT_ROW, "slug": slug}
-        r = client.post(
+        mock_db.execute_mutation.side_effect = [{**_TENANT_ROW, "slug": slug}, _TENANT_ACCOUNT_ROW]
+        r = jwt_client.post(
             "/v1/tenants",
             json={"name": "Test", "description": "", "slug": slug},
         )
@@ -870,13 +906,23 @@ def test_get_tenant_include_deleted(client):
     assert r.json()["id"] == _TENANT_ROW["id"]
 
 
-def test_create_tenant_server_error(client):
+def test_create_tenant_server_error(jwt_client):
     """POST /v1/tenants returns 500 when DB mutation returns None."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = []
         mock_db.execute_mutation.return_value = None
-        r = client.post("/v1/tenants", json={"name": "Acme", "description": "Acme Corp", "slug": "acme"})
+        r = jwt_client.post("/v1/tenants", json={"name": "Acme", "description": "Acme Corp", "slug": "acme"})
     assert r.status_code == 500
+
+
+def test_create_tenant_admin_assign_fails_returns_500(jwt_client):
+    """POST /v1/tenants returns 500 when tenant is created but assigning creator as admin fails."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        mock_db.execute_mutation.side_effect = [_TENANT_ROW, None]
+        r = jwt_client.post("/v1/tenants", json={"name": "Acme", "description": "Acme Corp", "slug": "acme"})
+    assert r.status_code == 500
+    assert "administrator" in (r.json().get("detail") or "")
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import datetime
 import logging
 from typing import Any
 
+import bcrypt
 import jwt
 from fastapi import APIRouter, HTTPException
 
@@ -19,6 +20,21 @@ router = APIRouter(tags=["Authentication"])
 
 # Default token lifetime (24 hours)
 _JWT_EXPIRY_SECONDS = 86_400
+
+
+def _password_matches(plain: str, stored_hash: str) -> bool:
+    """Verify plain password against stored hash. Supports Argon2 (REST) and bcrypt (UI/legacy)."""
+    if not plain or not stored_hash:
+        return False
+    stored = stored_hash.strip()
+    # bcrypt hashes start with $2a$, $2b$, or $2y$
+    if stored.startswith("$2"):
+        try:
+            return bcrypt.checkpw(plain.encode("utf-8"), stored.encode("utf-8"))
+        except (ValueError, TypeError):
+            return False
+    # Argon2 (default for REST-created accounts)
+    return _verify_password(plain, stored)
 
 
 @router.post(
@@ -41,7 +57,7 @@ def login(payload: LoginRequest) -> LoginResponse:
         logger.warning("login: unknown email %s", payload.email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if not _verify_password(payload.password, account["password"]):
+    if not _password_matches(payload.password, account["password"]):
         logger.warning("login: bad password for email %s", payload.email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 

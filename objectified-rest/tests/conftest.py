@@ -20,6 +20,7 @@ def mock_db_all():
     """
     mock = MagicMock()
     with (
+        patch("app.auth.db", mock),
         patch("app.routes.users.db", mock),
         patch("app.routes.tenants.db", mock),
         patch("app.routes.helpers.db", mock),
