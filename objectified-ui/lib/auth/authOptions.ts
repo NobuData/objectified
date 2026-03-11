@@ -122,8 +122,12 @@ export const authOptions: NextAuthOptions = {
         if ('accessToken' in user && typeof (user as { accessToken?: string }).accessToken === 'string') {
           token.accessToken = (user as { accessToken: string }).accessToken;
           // Resolve admin status by calling an admin-only endpoint; one-time at login.
+          // Use the same fallback chain as authorizeCredentials so server-side calls
+          // always reach the backend via REST_API_BASE_URL when available.
           const baseUrl =
-            process.env.NEXT_PUBLIC_REST_API_BASE_URL ?? 'http://localhost:8000/v1';
+            process.env.REST_API_BASE_URL ??
+            process.env.NEXT_PUBLIC_REST_API_BASE_URL ??
+            'http://localhost:8000/v1';
           try {
             const res = await fetch(`${baseUrl}/users`, {
               method: 'HEAD',

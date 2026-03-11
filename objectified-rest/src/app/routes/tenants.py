@@ -151,36 +151,47 @@ def create_tenant(
     if existing:
         raise HTTPException(status_code=409, detail=f"Slug already in use: {payload.slug}")
 
-    row = db.execute_mutation(
-        """
-        INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
-        VALUES (%s, %s, %s, %s, %s::jsonb)
-        RETURNING id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
-        """,
-        (payload.name, payload.description, payload.slug, payload.enabled, json.dumps(payload.metadata)),
-    )
+    user_id = caller.get("user_id")
+
+    if user_id:
+        # Atomically create the tenant and assign the creator as administrator using a CTE.
+        # If either INSERT fails the whole transaction is rolled back.
+        row = db.execute_mutation(
+            """
+            WITH inserted_tenant AS (
+                INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
+                RETURNING id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            ),
+            inserted_admin AS (
+                INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
+                SELECT id, %s, 'administrator', true
+                FROM inserted_tenant
+            )
+            SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            FROM inserted_tenant
+            """,
+            (
+                payload.name,
+                payload.description,
+                payload.slug,
+                payload.enabled,
+                json.dumps(payload.metadata),
+                user_id,
+            ),
+        )
+    else:
+        row = db.execute_mutation(
+            """
+            INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
+            VALUES (%s, %s, %s, %s, %s::jsonb)
+            RETURNING id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            """,
+            (payload.name, payload.description, payload.slug, payload.enabled, json.dumps(payload.metadata)),
+        )
+
     if not row:
         raise HTTPException(status_code=500, detail="Failed to create tenant")
-
-    user_id = caller.get("user_id")
-    if user_id:
-        admin_row = db.execute_mutation(
-            """
-            INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
-            VALUES (%s, %s, 'administrator', true)
-            RETURNING id, tenant_id, account_id, access_level, enabled, created_at, updated_at, deleted_at
-            """,
-            (row["id"], user_id),
-        )
-        if not admin_row:
-            logger.warning(
-                "create_tenant: failed to add creator as administrator for tenant %s",
-                row["id"],
-            )
-            raise HTTPException(
-                status_code=500,
-                detail="Tenant created but failed to assign administrator",
-            )
 
     return TenantSchema(**dict(row))
 
