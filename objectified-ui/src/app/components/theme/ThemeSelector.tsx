@@ -4,30 +4,12 @@ import React, { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Check, Monitor, Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { themes } from '@/app/config/themes';
 
 interface ThemeSelectorProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-/** Available theme choices — maps directly to next-themes values. */
-const THEME_OPTIONS = [
-  {
-    id: 'system',
-    name: 'Follow System',
-    description: 'Automatically matches your system light/dark preference',
-  },
-  {
-    id: 'light',
-    name: 'Light',
-    description: 'Clean and bright default theme',
-  },
-  {
-    id: 'dark',
-    name: 'Dark',
-    description: 'Easy on the eyes for low-light environments',
-  },
-] as const;
 
 function getThemeIcon(themeId: string) {
   switch (themeId) {
@@ -56,10 +38,10 @@ export default function ThemeSelector({ isOpen, onClose }: ThemeSelectorProps) {
   };
 
   return (
-    <Dialog.Root open={isOpen} onOpenChange={onClose}>
+    <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-9998 animate-in fade-in-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-lg max-h-[80vh] overflow-hidden z-9999 animate-in focus:outline-none">
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[9998] animate-in fade-in-0" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-lg max-h-[80vh] overflow-hidden z-[9999] animate-in focus:outline-none">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
             <div>
@@ -83,7 +65,7 @@ export default function ThemeSelector({ isOpen, onClose }: ThemeSelectorProps) {
           {/* Theme list */}
           <div className="p-6 overflow-y-auto max-h-[calc(80vh-140px)]">
             <div className="space-y-3">
-              {THEME_OPTIONS.map((option) => {
+              {themes.map((option) => {
                 const isSelected = theme === option.id;
                 return (
                   <button
@@ -130,11 +112,11 @@ export default function ThemeSelector({ isOpen, onClose }: ThemeSelectorProps) {
                     {option.id === 'system' ? (
                       <div className="mt-3 flex gap-2">
                         <div
-                          className="w-8 h-8 rounded-md shadow-sm border border-slate-200 dark:border-slate-600 bg-linear-to-br from-white to-slate-100"
+                          className="w-8 h-8 rounded-md shadow-sm border border-slate-200 dark:border-slate-600 bg-gradient-to-br from-white to-slate-100"
                           title="Light mode"
                         />
                         <div
-                          className="w-8 h-8 rounded-md shadow-sm border border-slate-200 dark:border-slate-600 bg-linear-to-br from-slate-700 to-slate-900"
+                          className="w-8 h-8 rounded-md shadow-sm border border-slate-200 dark:border-slate-600 bg-gradient-to-br from-slate-700 to-slate-900"
                           title="Dark mode"
                         />
                         <div className="w-8 h-8 rounded-md shadow-sm border border-slate-200 dark:border-slate-600 flex items-center justify-center bg-slate-50 dark:bg-slate-700">
@@ -180,7 +162,4 @@ export default function ThemeSelector({ isOpen, onClose }: ThemeSelectorProps) {
     </Dialog.Root>
   );
 }
-
-
-
 

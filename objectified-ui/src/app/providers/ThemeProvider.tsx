@@ -11,5 +11,5 @@
  * All theme state (theme, resolvedTheme, setTheme, systemTheme) comes from
  * next-themes.  No custom context is needed.
  */
-export { useTheme } from 'next-themes';
+export { ThemeProvider, useTheme } from 'next-themes';
 
