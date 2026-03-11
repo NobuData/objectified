@@ -9,6 +9,10 @@ import {
   getRestClientOptions,
   getMe,
   updateMe,
+  listUsers,
+  createUser,
+  updateUser,
+  deactivateUser,
   listTenants,
   getTenant,
   createTenant,
@@ -23,6 +27,7 @@ import {
   type TenantSchema,
   type ProjectSchema,
   type VersionSchema,
+  type AccountSchema,
 } from '@lib/api/rest-client';
 
 // ---------------------------------------------------------------------------
@@ -485,3 +490,106 @@ describe('updateMe', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Users CRUD
+// ---------------------------------------------------------------------------
+
+const mockUser: AccountSchema = {
+  id: 'user-1',
+  name: 'Test User',
+  email: 'test@example.com',
+  verified: true,
+  enabled: true,
+  metadata: {},
+  created_at: '2025-01-01T00:00:00Z',
+  updated_at: null,
+  deleted_at: null,
+};
+
+describe('listUsers', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('fetches users via GET /users', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([mockUser]));
+    const result = await listUsers({});
+    expect(result).toEqual([mockUser]);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users`);
+    expect((init as RequestInit).method).toBe('GET');
+  });
+
+  it('passes include_deleted query param when true', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([mockUser]));
+    await listUsers({}, true);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users?include_deleted=true`);
+  });
+
+  it('omits include_deleted when false', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listUsers({}, false);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users`);
+  });
+});
+
+describe('createUser', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends POST /users with AccountCreate body', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse(mockUser, 201));
+    const body = { name: 'New', email: 'new@test.com', password: 'secret' };
+    const result = await createUser(body, {});
+    expect(result).toEqual(mockUser);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users`);
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual(body);
+  });
+});
+
+describe('updateUser', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends PUT /users/{id} with AccountUpdate body', async () => {
+    const updated = { ...mockUser, name: 'Updated' };
+    mockFetch.mockResolvedValue(makeFetchResponse(updated));
+    const body = { name: 'Updated' };
+    const result = await updateUser('user-1', body, {});
+    expect(result).toEqual(updated);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users/user-1`);
+    expect((init as RequestInit).method).toBe('PUT');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual(body);
+  });
+});
+
+describe('deactivateUser', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends DELETE /users/{id}', async () => {
+    mockFetch.mockResolvedValue(makeEmptyFetchResponse(204));
+    await deactivateUser('user-1', {});
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users/user-1`);
+    expect((init as RequestInit).method).toBe('DELETE');
+  });
+});
+

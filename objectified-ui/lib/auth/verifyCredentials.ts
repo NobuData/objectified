@@ -10,6 +10,27 @@ export interface VerifiedUser {
   id: string;
   name: string;
   email: string;
+  is_administrator?: boolean;
+}
+
+/**
+ * Check whether the given account is an administrator in at least one
+ * active tenant. Mirrors the REST API's ``_is_platform_admin`` logic.
+ */
+async function isAdministratorInAnyTenant(accountId: string): Promise<boolean> {
+  const row = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM objectified.tenant_account ta
+       JOIN objectified.tenant t ON t.id = ta.tenant_id
+       WHERE ta.account_id = $1
+         AND LOWER(ta.access_level) = LOWER('administrator')
+         AND ta.deleted_at IS NULL
+         AND t.deleted_at IS NULL
+     ) AS exists`,
+    [accountId]
+  );
+  return row?.exists === true;
 }
 
 /**
@@ -57,7 +78,8 @@ export async function verifyCredentials(
     return null;
   }
 
-  return { id: row.id, name: row.name, email: row.email };
+  const isAdmin = await isAdministratorInAnyTenant(row.id);
+  return { id: row.id, name: row.name, email: row.email, is_administrator: isAdmin };
 }
 
 /**
@@ -79,5 +101,7 @@ export async function getAccountByEmail(
     [normalizedEmail]
   );
 
-  return row ? { id: row.id, name: row.name, email: row.email } : null;
+  if (!row) return null;
+  const isAdmin = await isAdministratorInAnyTenant(row.id);
+  return { id: row.id, name: row.name, email: row.email, is_administrator: isAdmin };
 }

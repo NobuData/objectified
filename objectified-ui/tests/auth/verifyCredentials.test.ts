@@ -185,12 +185,14 @@ describe('verifyCredentials', () => {
 
   describe('success path', () => {
     it('returns VerifiedUser when compare returns true', async () => {
-      mockQueryOne.mockResolvedValue({
-        id: 'uuid-123',
-        name: 'Test User',
-        email: 'user@example.com',
-        password: '$2a$10$hashed',
-      });
+      mockQueryOne
+        .mockResolvedValueOnce({
+          id: 'uuid-123',
+          name: 'Test User',
+          email: 'user@example.com',
+          password: '$2a$10$hashed',
+        })
+        .mockResolvedValueOnce({ exists: false });
       mockCompare.mockResolvedValue(true as never);
 
       const result = await verifyCredentials('user@example.com', 'correct');
@@ -199,24 +201,48 @@ describe('verifyCredentials', () => {
         id: 'uuid-123',
         name: 'Test User',
         email: 'user@example.com',
+        is_administrator: false,
       });
       expect(mockCompare).toHaveBeenCalledWith('correct', '$2a$10$hashed');
     });
 
-    it('returns id, name, email only (no password in result)', async () => {
-      mockQueryOne.mockResolvedValue({
-        id: 'id-1',
-        name: 'Alice',
-        email: 'alice@example.com',
-        password: '$2a$10$hash',
+    it('returns is_administrator true when user is admin in a tenant', async () => {
+      mockQueryOne
+        .mockResolvedValueOnce({
+          id: 'uuid-admin',
+          name: 'Admin User',
+          email: 'admin@example.com',
+          password: '$2a$10$hashed',
+        })
+        .mockResolvedValueOnce({ exists: true });
+      mockCompare.mockResolvedValue(true as never);
+
+      const result = await verifyCredentials('admin@example.com', 'correct');
+
+      expect(result).toEqual({
+        id: 'uuid-admin',
+        name: 'Admin User',
+        email: 'admin@example.com',
+        is_administrator: true,
       });
+    });
+
+    it('returns id, name, email, is_administrator only (no password in result)', async () => {
+      mockQueryOne
+        .mockResolvedValueOnce({
+          id: 'id-1',
+          name: 'Alice',
+          email: 'alice@example.com',
+          password: '$2a$10$hash',
+        })
+        .mockResolvedValueOnce({ exists: false });
       mockCompare.mockResolvedValue(true as never);
 
       const result = await verifyCredentials('alice@example.com', 'secret');
 
       expect(result).not.toBeNull();
-      expect(result).toEqual({ id: 'id-1', name: 'Alice', email: 'alice@example.com' });
-      expect(Object.keys(result!)).toEqual(['id', 'name', 'email']);
+      expect(result).toEqual({ id: 'id-1', name: 'Alice', email: 'alice@example.com', is_administrator: false });
+      expect(Object.keys(result!)).toEqual(['id', 'name', 'email', 'is_administrator']);
     });
   });
 });
@@ -262,11 +288,13 @@ describe('getAccountByEmail', () => {
   });
 
   it('returns VerifiedUser when account exists and is enabled', async () => {
-    mockQueryOne.mockResolvedValue({
-      id: 'uuid-sso',
-      name: 'SSO User',
-      email: 'sso@example.com',
-    });
+    mockQueryOne
+      .mockResolvedValueOnce({
+        id: 'uuid-sso',
+        name: 'SSO User',
+        email: 'sso@example.com',
+      })
+      .mockResolvedValueOnce({ exists: false });
 
     const result = await getAccountByEmail('sso@example.com');
 
@@ -274,6 +302,26 @@ describe('getAccountByEmail', () => {
       id: 'uuid-sso',
       name: 'SSO User',
       email: 'sso@example.com',
+      is_administrator: false,
+    });
+  });
+
+  it('returns is_administrator true when account is admin in a tenant', async () => {
+    mockQueryOne
+      .mockResolvedValueOnce({
+        id: 'uuid-admin',
+        name: 'Admin SSO',
+        email: 'admin@example.com',
+      })
+      .mockResolvedValueOnce({ exists: true });
+
+    const result = await getAccountByEmail('admin@example.com');
+
+    expect(result).toEqual({
+      id: 'uuid-admin',
+      name: 'Admin SSO',
+      email: 'admin@example.com',
+      is_administrator: true,
     });
   });
 });

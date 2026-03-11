@@ -11,7 +11,7 @@ import { getAccountByEmail, verifyCredentials } from '@lib/auth/verifyCredential
 export async function authorizeCredentials(
   email: string,
   password: string
-): Promise<{ id: string; name: string; email: string; accessToken?: string } | null> {
+): Promise<{ id: string; name: string; email: string; accessToken?: string; is_administrator?: boolean } | null> {
   try {
     const user = await verifyCredentials(email, password);
     if (!user) return null;
@@ -93,6 +93,8 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (token && session.user) {
         (session.user as { id?: string }).id = token.sub ?? undefined;
+        (session.user as { is_administrator?: boolean }).is_administrator =
+          token.is_administrator === true;
         (session as { accessToken?: string }).accessToken = token.accessToken as
           | string
           | undefined;
@@ -105,6 +107,9 @@ export const authOptions: NextAuthOptions = {
         if ('accessToken' in user && typeof (user as { accessToken?: string }).accessToken === 'string') {
           token.accessToken = (user as { accessToken: string }).accessToken;
         }
+        if ('is_administrator' in user) {
+          token.is_administrator = (user as { is_administrator?: boolean }).is_administrator === true;
+        }
       }
       if (account?.provider === 'github' && profile) {
         const email =
@@ -115,6 +120,7 @@ export const authOptions: NextAuthOptions = {
             const dbAccount = await getAccountByEmail(email);
             if (dbAccount) {
               token.sub = dbAccount.id;
+              token.is_administrator = dbAccount.is_administrator === true;
             }
           } catch {
             // Leave token.sub unchanged on DB failure

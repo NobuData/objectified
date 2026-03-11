@@ -23,10 +23,10 @@ describe('authorizeCredentials', () => {
   });
 
   it('returns user when verifyCredentials returns user', async () => {
-    const user = { id: 'user-1', name: 'Test User', email: 'user@example.com' };
+    const user = { id: 'user-1', name: 'Test User', email: 'user@example.com', is_administrator: false };
     mockVerifyCredentials.mockResolvedValue(user);
     const result = await authorizeCredentials('user@example.com', 'correct');
-    expect(result).toEqual({ id: user.id, name: user.name, email: user.email });
+    expect(result).toEqual({ id: user.id, name: user.name, email: user.email, is_administrator: false });
     expect(mockVerifyCredentials).toHaveBeenCalledWith('user@example.com', 'correct');
   });
 
@@ -57,14 +57,14 @@ describe('Credentials provider authorize()', () => {
   });
 
   it('returns user when credentials are valid', async () => {
-    const user = { id: 'user-1', name: 'Test User', email: 'user@example.com' };
+    const user = { id: 'user-1', name: 'Test User', email: 'user@example.com', is_administrator: false };
     mockVerifyCredentials.mockResolvedValue(user);
     const provider = authOptions.providers[0] as { options: { authorize: (c: unknown) => Promise<unknown> } };
     const result = await provider.options.authorize({
       email: 'user@example.com',
       password: 'correct',
     });
-    expect(result).toEqual({ id: user.id, name: user.name, email: user.email });
+    expect(result).toEqual({ id: user.id, name: user.name, email: user.email, is_administrator: false });
     expect(mockVerifyCredentials).toHaveBeenCalledWith('user@example.com', 'correct');
   });
 });

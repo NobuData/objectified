@@ -125,6 +125,7 @@ describe('jwt callback', () => {
       id: 'db-account-id',
       name: 'DB User',
       email: 'gh@example.com',
+      is_administrator: true,
     });
     const token = { sub: 'github-oauth-id' };
     const result = await jwt({
@@ -134,6 +135,7 @@ describe('jwt callback', () => {
       profile: { email: 'gh@example.com' },
     });
     expect(result.sub).toBe('db-account-id');
+    expect(result.is_administrator).toBe(true);
     expect(mockGetAccountByEmail).toHaveBeenCalledWith('gh@example.com');
   });
 

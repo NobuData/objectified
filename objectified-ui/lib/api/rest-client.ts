@@ -418,6 +418,77 @@ export async function updateMe(
 }
 
 // ---------------------------------------------------------------------------
+// Users (admin)
+// ---------------------------------------------------------------------------
+
+export interface AccountSchema {
+  id: string;
+  name: string;
+  email: string;
+  verified?: boolean;
+  enabled?: boolean;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string | null;
+  deleted_at?: string | null;
+}
+
+export interface AccountCreate {
+  name: string;
+  email: string;
+  password: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AccountUpdate {
+  name?: string | null;
+  email?: string | null;
+  password?: string | null;
+  verified?: boolean | null;
+  enabled?: boolean | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export async function listUsers(
+  options: RestClientOptions = {},
+  includeDeleted = false
+): Promise<AccountSchema[]> {
+  const q = includeDeleted ? '?include_deleted=true' : '';
+  return request<AccountSchema[]>('GET', `/users${q}`, undefined, options);
+}
+
+export async function getUser(
+  userId: string,
+  options: RestClientOptions = {},
+  includeDeleted = false
+): Promise<AccountSchema> {
+  const q = includeDeleted ? '?include_deleted=true' : '';
+  return request<AccountSchema>('GET', `/users/${userId}${q}`, undefined, options);
+}
+
+export async function createUser(
+  body: AccountCreate,
+  options: RestClientOptions = {}
+): Promise<AccountSchema> {
+  return request<AccountSchema>('POST', '/users', body, options);
+}
+
+export async function updateUser(
+  userId: string,
+  body: AccountUpdate,
+  options: RestClientOptions = {}
+): Promise<AccountSchema> {
+  return request<AccountSchema>('PUT', `/users/${userId}`, body, options);
+}
+
+export async function deactivateUser(
+  userId: string,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>('DELETE', `/users/${userId}`, undefined, options);
+}
+
+// ---------------------------------------------------------------------------
 // Tenants
 // ---------------------------------------------------------------------------
 
