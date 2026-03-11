@@ -2,6 +2,21 @@ import React from 'react';
 import { render, screen, within } from '@testing-library/react';
 import DashboardShell from '../../src/app/dashboard/components/DashboardShell';
 
+// Mock window.matchMedia for jsdom
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: jest.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(),
+    removeListener: jest.fn(),
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  })),
+});
+
 jest.mock('next-auth/react', () => ({
   useSession: jest.fn(() => ({ data: { user: { name: 'Test User', email: 'test@example.com' } } })),
   signOut: jest.fn(),
@@ -10,6 +25,21 @@ jest.mock('next-auth/react', () => ({
 jest.mock('next/navigation', () => ({
   usePathname: () => '/dashboard/profile',
 }));
+
+jest.mock('next-themes', () => ({
+  useTheme: () => ({
+    theme: 'system',
+    setTheme: jest.fn(),
+    resolvedTheme: 'light',
+    systemTheme: 'light',
+  }),
+}));
+
+jest.mock('@/app/components/theme/ThemeSelector', () => {
+  return function MockThemeSelector() {
+    return null;
+  };
+});
 
 describe('DashboardShell', () => {
   it('renders header with Dashboard, Data Designer, and Account links', () => {

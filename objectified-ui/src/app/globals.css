@@ -8,25 +8,20 @@
   --foreground: #171717;
 }
 
-/* ===== THEME SYSTEM ===== */
-/* Light themes */
-.theme-light,
-[data-theme="light"],
-.light {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-/* Dark themes - also add .dark class for Tailwind compatibility */
-.theme-dark,
-[data-theme="dark"],
+/*
+  Dark mode variables.
+  next-themes adds .dark on <html> via attribute="class".
+  Radix Themes reads .dark / .light automatically.
+  Tailwind uses @custom-variant dark above.
+*/
 .dark {
   --background: #0a0a0a;
   --foreground: #ededed;
 }
 
-/* System preference dark mode */
+/* System preference dark mode (fallback before next-themes hydrates) */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
+  :root:not(.light) {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
