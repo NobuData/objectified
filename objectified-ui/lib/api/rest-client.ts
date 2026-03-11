@@ -673,27 +673,6 @@ export async function deleteClass(
   );
 }
 
-export interface ClassCanvasMetadata {
-  position?: { x: number; y: number };
-  dimensions?: { width?: number; height?: number };
-  style?: Record<string, unknown>;
-  group?: string | null;
-}
-
-export async function updateClassCanvasMetadata(
-  versionId: string,
-  classId: string,
-  canvasMetadata: ClassCanvasMetadata | null,
-  options: RestClientOptions = {}
-): Promise<ClassSchema> {
-  return request<ClassSchema>(
-    'PUT',
-    `/versions/${versionId}/classes/${classId}`,
-    { canvas_metadata: canvasMetadata },
-    options
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Properties (project-scoped library properties)
 // ---------------------------------------------------------------------------
