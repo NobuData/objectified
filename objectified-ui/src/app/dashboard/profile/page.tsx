@@ -5,21 +5,11 @@ import { useSession } from 'next-auth/react';
 import { Loader2 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import { Flex, Text } from '@radix-ui/themes';
-
-type Profile = {
-  id: string;
-  name: string;
-  email: string;
-  verified: boolean;
-  enabled: boolean;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string | null;
-};
+import { getMe, updateMe, type MeProfile } from '@lib/api/rest-client';
 
 export default function ProfilePage() {
   const { status } = useSession();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<MeProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,14 +26,7 @@ export default function ProfilePage() {
     if (status !== 'authenticated') return;
     setError(null);
     try {
-      const res = await fetch('/api/rest/me', { credentials: 'include' });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError((body.detail as string) ?? `Failed to load profile (${res.status})`);
-        setLoading(false);
-        return;
-      }
-      const data = (await res.json()) as Profile;
+      const data = await getMe();
       setProfile(data);
       setName(data.name);
       setMetadataJson(
@@ -80,19 +63,9 @@ export default function ProfilePage() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch('/api/rest/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ name: name.trim() || undefined, metadata: parsedMetadata }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError((body.detail as string) ?? `Failed to save (${res.status})`);
-        setSaving(false);
-        return;
-      }
-      const data = (await res.json()) as Profile;
+      const data = await updateMe(
+        { name: name.trim() || undefined, metadata: parsedMetadata }
+      );
       setProfile(data);
       setMetadataJson(JSON.stringify(data.metadata ?? {}, null, 2));
       setSaveSuccess(true);

@@ -7,6 +7,8 @@
 import {
   getRestBaseUrl,
   getRestClientOptions,
+  getMe,
+  updateMe,
   listTenants,
   getTenant,
   createTenant,
@@ -416,6 +418,70 @@ describe('mergeVersion', () => {
     expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
       source_version_id: 'v2',
       strategy: 'additive',
+    });
+  });
+});
+
+describe('getMe', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns current user profile from API', async () => {
+    const profile = {
+      id: 'user-1',
+      name: 'Test User',
+      email: 'test@example.com',
+      verified: true,
+      enabled: true,
+      metadata: {},
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-02T00:00:00Z',
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(profile));
+    const result = await getMe({});
+    expect(result).toEqual(profile);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/me`);
+  });
+
+  it('uses GET method', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse({ id: 'u1', name: '', email: '', created_at: '' }));
+    await getMe({});
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).method).toBe('GET');
+  });
+});
+
+describe('updateMe', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends PATCH with name and metadata', async () => {
+    const updated = {
+      id: 'user-1',
+      name: 'New Name',
+      email: 'test@example.com',
+      verified: true,
+      enabled: true,
+      metadata: { key: 'value' },
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-02T00:00:00Z',
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(updated));
+    const result = await updateMe({ name: 'New Name', metadata: { key: 'value' } }, {});
+    expect(result).toEqual(updated);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/me`);
+    expect((init as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      name: 'New Name',
+      metadata: { key: 'value' },
     });
   });
 });
