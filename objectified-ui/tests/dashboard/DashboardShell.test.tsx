@@ -3,7 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import DashboardShell from '../../src/app/dashboard/components/DashboardShell';
 
 jest.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { user: { name: 'Test User', email: 'test@example.com' } } }),
+  useSession: jest.fn(() => ({ data: { user: { name: 'Test User', email: 'test@example.com' } } })),
   signOut: jest.fn(),
 }));
 
@@ -25,17 +25,42 @@ describe('DashboardShell', () => {
     expect(within(nav).getByRole('link', { name: /Account/i })).toHaveAttribute('href', '/dashboard/profile');
   });
 
-  it('renders ACCOUNT sidebar with Profile link', () => {
+  it('renders dashboard sidebar with Dashboard home, Projects, Versions, Tenants, Profile', () => {
     render(
       <DashboardShell>
         <div>Content</div>
       </DashboardShell>
     );
 
-    expect(screen.getByLabelText(/Account navigation/i)).toBeInTheDocument();
-    expect(screen.getByText(/ACCOUNT/)).toBeInTheDocument();
-    const profileLink = screen.getByRole('link', { name: /Profile/i });
-    expect(profileLink).toHaveAttribute('href', '/dashboard/profile');
+    const sidebar = screen.getByLabelText(/dashboard navigation/i);
+    expect(sidebar).toBeInTheDocument();
+    expect(within(sidebar).getByRole('link', { name: /^Dashboard$/i })).toHaveAttribute('href', '/dashboard');
+    expect(within(sidebar).getByRole('link', { name: /Projects/i })).toHaveAttribute('href', '/dashboard/projects');
+    expect(within(sidebar).getByRole('link', { name: /Versions/i })).toHaveAttribute('href', '/dashboard/versions');
+    expect(within(sidebar).getByRole('link', { name: /Tenants/i })).toHaveAttribute('href', '/dashboard/tenants');
+    expect(within(sidebar).getByRole('link', { name: /Profile/i })).toHaveAttribute('href', '/dashboard/profile');
+  });
+
+  it('shows Users link in sidebar when user is administrator', () => {
+    const { useSession } = require('next-auth/react');
+    useSession.mockReturnValue({
+      data: {
+        user: {
+          name: 'Admin User',
+          email: 'admin@example.com',
+          is_administrator: true,
+        },
+      },
+    });
+
+    render(
+      <DashboardShell>
+        <div>Content</div>
+      </DashboardShell>
+    );
+
+    const sidebar = screen.getByLabelText(/dashboard navigation/i);
+    expect(within(sidebar).getByRole('link', { name: /Users/i })).toHaveAttribute('href', '/dashboard/users');
   });
 
   it('renders children in main content', () => {
