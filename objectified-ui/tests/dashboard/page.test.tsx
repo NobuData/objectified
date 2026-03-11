@@ -1,23 +1,11 @@
 import React from 'react';
-import { render } from '@testing-library/react';
-import { redirect } from 'next/navigation';
+import { render, screen } from '@testing-library/react';
 import DashboardPage from '../../src/app/dashboard/page';
 
-jest.mock('next/navigation', () => ({
-  redirect: jest.fn(),
-}));
-
 describe('DashboardPage', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('redirects to /dashboard/profile', () => {
-    try {
-      render(<DashboardPage />);
-    } catch {
-      // Next.js redirect() throws when called
-    }
-    expect(redirect).toHaveBeenCalledWith('/dashboard/profile');
+  it('renders dashboard home with welcome content', () => {
+    render(<DashboardPage />);
+    expect(screen.getByRole('heading', { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByText(/welcome/i)).toBeInTheDocument();
   });
 });
