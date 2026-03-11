@@ -6,7 +6,7 @@ import "@radix-ui/themes/styles.css";
 import SessionWrapper from "@/app/components/auth/SessionWrapper";
 import ThemeRegistry from "@/app/components/theme/ThemeRegistry";
 import { DialogProvider } from "@/app/components/providers/DialogProvider";
-import { ThemeProvider as NextThemesProvider } from "next-themes";
+import { ThemeProvider } from "next-themes";
 import { Theme as RadixTheme } from "@radix-ui/themes";
 
 const inter = Inter({
@@ -28,8 +28,12 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="antialiased">
-        {/* Follow system light/dark per Radix Themes: https://www.radix-ui.com/themes/docs/theme/dark-mode — use attribute="class" and do not set Theme appearance; next-themes applies .light/.dark for Radix. */}
-        <NextThemesProvider
+        {/*
+          Radix Themes dark mode: https://www.radix-ui.com/themes/docs/theme/dark-mode
+          Use attribute="class" so next-themes applies .light/.dark on <html>.
+          Do NOT set <Theme appearance={…}>; Radix inherits from the class.
+        */}
+        <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
@@ -50,7 +54,7 @@ export default function RootLayout({
               </SessionWrapper>
             </ThemeRegistry>
           </RadixTheme>
-        </NextThemesProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

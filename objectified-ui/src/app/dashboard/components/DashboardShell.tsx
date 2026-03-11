@@ -1,13 +1,15 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
-import { User, UserCircle, PenTool, Menu, X, LayoutDashboard } from 'lucide-react';
+import { User, UserCircle, PenTool, Menu, X, LayoutDashboard, Palette } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import DashboardSideNav from './DashboardSideNav';
+import ThemeSelector from '@/app/components/theme/ThemeSelector';
+import { useTheme } from 'next-themes';
 
 const SIDEBAR_WIDTH = 280;
 
@@ -16,9 +18,25 @@ type SessionUser = { is_administrator?: boolean };
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const { data: session } = useSession();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showThemeSelector, setShowThemeSelector] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { theme, resolvedTheme } = useTheme();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSignOut = () => {
     signOut({ callbackUrl: '/login' });
+  };
+
+  const getThemeDisplayName = () => {
+    if (!mounted) return '';
+    if (theme === 'system') {
+      return `System (${resolvedTheme === 'dark' ? 'Dark' : 'Light'})`;
+    }
+    if (theme === 'dark') return 'Dark';
+    return 'Light';
   };
 
   const isAdministrator = Boolean(
@@ -93,6 +111,19 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
                 align="end"
               >
                 <DropdownMenu.Item
+                  onSelect={() => setShowThemeSelector(true)}
+                  className="rounded-md px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Palette className="h-4 w-4" />
+                    Theme
+                  </span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                    {getThemeDisplayName()}
+                  </span>
+                </DropdownMenu.Item>
+                <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
+                <DropdownMenu.Item
                   onSelect={handleSignOut}
                   className="rounded-md px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800"
                 >
@@ -146,6 +177,12 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Theme Selector Dialog */}
+      <ThemeSelector
+        isOpen={showThemeSelector}
+        onClose={() => setShowThemeSelector(false)}
+      />
     </div>
   );
 }
