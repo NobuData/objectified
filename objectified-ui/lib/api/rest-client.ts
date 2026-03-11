@@ -66,10 +66,12 @@ async function request<T>(
 ): Promise<T> {
   const url = path.startsWith('http') ? path : `${getRequestBase()}${path}`;
   const headers = buildAuthHeaders(options);
+  const isRelative = url.startsWith('/');
   const res = await fetch(url, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    ...(isRelative && { credentials: 'include' as RequestCredentials }),
   });
   const text = await res.text();
   let parsed: T | ApiError | null = null;
@@ -379,6 +381,40 @@ export interface MergeResolveResponse {
   snapshot_id?: string | null;
   version_id?: string | null;
   committed_at?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Current user profile (GET /me, PATCH /me)
+// ---------------------------------------------------------------------------
+
+export interface MeProfile {
+  id: string;
+  name: string;
+  email: string;
+  verified: boolean;
+  enabled: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string | null;
+  deleted_at?: string | null;
+}
+
+export interface MeProfileUpdate {
+  name?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export async function getMe(
+  options: RestClientOptions = {}
+): Promise<MeProfile> {
+  return request<MeProfile>('GET', '/me', undefined, options);
+}
+
+export async function updateMe(
+  body: MeProfileUpdate,
+  options: RestClientOptions = {}
+): Promise<MeProfile> {
+  return request<MeProfile>('PATCH', '/me', body, options);
 }
 
 // ---------------------------------------------------------------------------
