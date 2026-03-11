@@ -24,7 +24,7 @@ async function isAdministratorInAnyTenant(accountId: string): Promise<boolean> {
        FROM objectified.tenant_account ta
        JOIN objectified.tenant t ON t.id = ta.tenant_id
        WHERE ta.account_id = $1
-         AND LOWER(ta.access_level) = LOWER('administrator')
+         AND ta.access_level = 'administrator'
          AND ta.deleted_at IS NULL
          AND t.deleted_at IS NULL
      ) AS exists`,

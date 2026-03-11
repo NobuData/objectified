@@ -190,9 +190,8 @@ function UserFormDialog({
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  tabIndex={-1}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -390,7 +389,7 @@ export default function UsersPage() {
           id="include-deactivated"
           checked={includeDeactivated}
           onCheckedChange={(checked) => setIncludeDeactivated(checked)}
-          className="w-[42px] h-[25px] bg-slate-200 dark:bg-slate-700 rounded-full relative data-[state=checked]:bg-indigo-600 outline-none cursor-pointer transition-colors"
+          className="w-[42px] h-[25px] bg-slate-200 dark:bg-slate-700 rounded-full relative data-[state=checked]:bg-indigo-600 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 dark:focus-visible:ring-offset-slate-900"
         >
           <Switch.Thumb className="block w-[21px] h-[21px] bg-white rounded-full shadow-md transition-transform duration-100 translate-x-0.5 will-change-transform data-[state=checked]:translate-x-[19px]" />
         </Switch.Root>
