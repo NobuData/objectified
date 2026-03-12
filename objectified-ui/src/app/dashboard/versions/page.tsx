@@ -11,6 +11,8 @@ import {
   MoreVertical,
   Lock,
   CheckCircle,
+  GitCompare,
+  Network,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -31,6 +33,8 @@ import {
   type VersionMetadataUpdate,
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
+import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
+import RelationshipGraphDialog from '@/app/dashboard/components/RelationshipGraphDialog';
 
 const inputClass =
   'w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
@@ -61,6 +65,8 @@ export default function VersionsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editVersion, setEditVersion] = useState<VersionSchema | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [diffDialogVersion, setDiffDialogVersion] = useState<VersionSchema | null>(null);
+  const [graphDialogVersion, setGraphDialogVersion] = useState<VersionSchema | null>(null);
 
   // Create form
   const [createName, setCreateName] = useState('');
@@ -522,6 +528,20 @@ export default function VersionsPage() {
                               <Pencil className="h-4 w-4" />
                               Edit
                             </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                              onSelect={() => setDiffDialogVersion(v)}
+                            >
+                              <GitCompare className="h-4 w-4" />
+                              View diff
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                              onSelect={() => setGraphDialogVersion(v)}
+                            >
+                              <Network className="h-4 w-4" />
+                              Relationship graph
+                            </DropdownMenu.Item>
                             <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
                             <DropdownMenu.Item
                               className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 data-[disabled]:opacity-50"
@@ -762,6 +782,21 @@ export default function VersionsPage() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      <VersionDiffDialog
+        open={!!diffDialogVersion}
+        onOpenChange={(open) => !open && setDiffDialogVersion(null)}
+        versionId={diffDialogVersion?.id ?? ''}
+        versionName={diffDialogVersion?.name ?? ''}
+        options={opts}
+      />
+      <RelationshipGraphDialog
+        open={!!graphDialogVersion}
+        onOpenChange={(open) => !open && setGraphDialogVersion(null)}
+        versionId={graphDialogVersion?.id ?? ''}
+        versionName={graphDialogVersion?.name ?? ''}
+        options={opts}
+      />
     </div>
   );
 }

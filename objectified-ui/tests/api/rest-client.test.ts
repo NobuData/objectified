@@ -26,6 +26,7 @@ import {
   deactivateUser,
   listProjects,
   listVersions,
+  listVersionSnapshots,
   listClassesWithPropertiesAndTags,
   listProperties,
   commitVersion,
@@ -540,6 +541,30 @@ describe('listVersions', () => {
     await listVersions('t1', 'p1', {});
     const [url] = mockFetch.mock.calls[0];
     expect(url).toBe(`${baseUrl}/tenants/t1/projects/p1/versions`);
+  });
+});
+
+describe('listVersionSnapshots', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns snapshot list from API and constructs correct URL', async () => {
+    const snapshots = [
+      {
+        id: 's1',
+        version_id: 'v1',
+        project_id: 'p1',
+        revision: 1,
+        created_at: '2024-01-01',
+        snapshot: {},
+      },
+    ];
+    mockFetch.mockResolvedValue(makeFetchResponse(snapshots));
+    const result = await listVersionSnapshots('v1', {});
+    expect(result).toEqual(snapshots);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${getRestBaseUrl()}/versions/v1/snapshots`);
   });
 });
 
