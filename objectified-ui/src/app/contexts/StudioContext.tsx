@@ -229,7 +229,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const checkServerForUpdates = useCallback(
     async (options: RestClientOptions) => {
       const current = state;
-      if (!current?.revision) return;
+      if (!current || current.revision == null) return;
       try {
         const res = await pullVersion(
           current.versionId,
@@ -245,6 +245,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             (res.diff.modified_classes?.length ?? 0));
         if (serverRev > current.revision || hasDiff) {
           setServerHasNewChanges(true);
+        } else {
+          setServerHasNewChanges(false);
         }
       } catch {
         // Ignore errors (e.g. network); leave serverHasNewChanges unchanged
@@ -294,17 +296,22 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       try {
         await mergeVersion(
           current.versionId,
-          { strategy: 'override', message: message ?? null },
+          {
+            strategy: 'override',
+            message: message ?? null,
+            source_version_id: current.versionId,
+          },
           options
         );
-        setServerHasNewChanges(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to merge');
-      } finally {
         setLoading(false);
+        return;
       }
+      // Reload from server to pick up the merged state
+      await loadFromServer(current.versionId, options);
     },
-    [state]
+    [state, loadFromServer]
   );
 
   const canUndo = stack.undoStack.length > 0;

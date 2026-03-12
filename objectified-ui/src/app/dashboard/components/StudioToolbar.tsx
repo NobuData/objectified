@@ -36,9 +36,9 @@ export default function StudioToolbar() {
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (!studio?.state?.versionId || !options.jwt) return;
+    if (!studio?.state?.versionId || (!options.jwt && !options.apiKey)) return;
     void studio.checkServerForUpdates(options);
-  }, [studio?.state?.versionId, studio?.state?.revision, options.jwt]);
+  }, [studio?.state?.versionId, studio?.state?.revision, options.jwt, options.apiKey]);
 
   if (!studio) return null;
   if (!studio.state) return null;
@@ -48,12 +48,12 @@ export default function StudioToolbar() {
   const projectId = workspace?.project?.id ?? '';
 
   const handlePull = useCallback(() => {
-    if (!versionId || !workspace) return;
+    if (!versionId) return;
     void studio.loadFromServer(versionId, options, {
       tenantId: tenantId || undefined,
       projectId: projectId || undefined,
     });
-  }, [studio, versionId, options, tenantId, projectId, workspace]);
+  }, [studio, versionId, options, tenantId, projectId]);
 
   const handleReset = useCallback(() => {
     handlePull();
