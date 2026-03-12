@@ -643,6 +643,7 @@ export interface TenantAdministratorCreate {
   tenant_id?: string | null;
   account_id?: string | null;
   email?: string | null;
+  enabled?: boolean | null;
 }
 
 export async function listTenantAdministrators(
