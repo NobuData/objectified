@@ -10,6 +10,7 @@ import {
   listProperties,
 } from '@lib/api/rest-client';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
+import { useStudioOptional } from '@/app/contexts/StudioContext';
 
 function SearchableList({
   items,
@@ -91,6 +92,7 @@ export default function DesignCanvasSidebar() {
     (session as { accessToken?: string } | null) ?? null
   );
   const workspace = useWorkspaceOptional();
+  const studio = useStudioOptional();
   const [classNames, setClassNames] = useState<string[]>([]);
   const [propertyNames, setPropertyNames] = useState<string[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
@@ -135,15 +137,25 @@ export default function DesignCanvasSidebar() {
   }, [tenantId, projectId, options.jwt, options.apiKey]);
 
   useEffect(() => {
+    if (studio?.state) return;
     loadClasses();
-  }, [loadClasses]);
+  }, [loadClasses, studio?.state]);
 
   useEffect(() => {
+    if (studio?.state) return;
     loadProperties();
-  }, [loadProperties]);
+  }, [loadProperties, studio?.state]);
 
   const noVersion = !versionId;
   const noProject = !tenantId || !projectId;
+
+  const classNamesFromStudio = studio?.state?.classes?.map((c) => c.name).sort((a, b) => a.localeCompare(b)) ?? null;
+  const propertyNamesFromStudio = studio?.state?.properties?.map((p) => p.name).sort((a, b) => a.localeCompare(b)) ?? null;
+  const useStudioData = Boolean(studio?.state);
+  const classesLoading = useStudioData ? (studio?.loading ?? false) : loadingClasses;
+  const classesItems = useStudioData ? (classNamesFromStudio ?? []) : classNames;
+  const propertiesLoading = useStudioData ? false : loadingProperties;
+  const propertiesItems = useStudioData ? (propertyNamesFromStudio ?? []) : propertyNames;
 
   return (
     <aside className="w-64 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col shrink-0">
@@ -171,10 +183,10 @@ export default function DesignCanvasSidebar() {
             </p>
           ) : (
             <SearchableList
-              items={classNames}
+              items={classesItems}
               emptyMessage="No classes match your search."
               addLabel="Add class"
-              loading={loadingClasses}
+              loading={classesLoading}
             />
           )}
         </Tabs.Content>
@@ -185,10 +197,10 @@ export default function DesignCanvasSidebar() {
             </p>
           ) : (
             <SearchableList
-              items={propertyNames}
+              items={propertiesItems}
               emptyMessage="No properties match your search."
               addLabel="Add property"
-              loading={loadingProperties}
+              loading={propertiesLoading}
             />
           )}
         </Tabs.Content>
