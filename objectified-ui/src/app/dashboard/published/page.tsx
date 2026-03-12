@@ -11,7 +11,6 @@ import {
   getRestClientOptions,
   isForbiddenError,
   type TenantSchema,
-  type ProjectSchema,
   type VersionSchema,
 } from '@lib/api/rest-client';
 
@@ -40,7 +39,6 @@ export default function PublishedPage() {
   const { data: session, status } = useSession();
   const [tenants, setTenants] = useState<TenantSchema[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
-  const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [publishedVersions, setPublishedVersions] = useState<PublishedVersionRow[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -84,27 +82,27 @@ export default function PublishedPage() {
       setLoading(false);
       return;
     }
+    const tenantIdAtStart = selectedTenantId;
     setError(null);
     setLoading(true);
     try {
-      const projectList = await listProjects(selectedTenantId, opts);
-      const rows: PublishedVersionRow[] = [];
-      for (const project of projectList) {
-        const versions = await listVersions(
-          selectedTenantId,
-          project.id,
-          opts
-        );
+      const projectList = await listProjects(tenantIdAtStart, opts);
+      const projectVersionRowsPromises = projectList.map(async (project) => {
+        const versions = await listVersions(tenantIdAtStart, project.id, opts);
         const published = versions.filter((v) => v.published);
-        for (const v of published) {
-          rows.push({ ...v, projectName: project.name });
-        }
-      }
+        return published.map<PublishedVersionRow>((v) => ({
+          ...v,
+          projectName: project.name,
+        }));
+      });
+      const projectVersionRowsNested = await Promise.all(projectVersionRowsPromises);
+      const rows: PublishedVersionRow[] = projectVersionRowsNested.flat();
       rows.sort(
         (a, b) =>
           new Date(b.published_at ?? 0).getTime() -
           new Date(a.published_at ?? 0).getTime()
       );
+      if (selectedTenantId !== tenantIdAtStart) return;
       setPublishedVersions(rows);
     } catch (e) {
       setError(
