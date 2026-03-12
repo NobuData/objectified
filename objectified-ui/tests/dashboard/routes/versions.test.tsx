@@ -32,6 +32,7 @@ jest.mock('@/app/components/providers/DialogProvider', () => ({
 
 describe('VersionsPage', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     const { useSession } = require('next-auth/react');
     useSession.mockReturnValue({
       status: 'authenticated',
