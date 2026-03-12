@@ -178,7 +178,7 @@ export default function TenantAdministratorsPage() {
           page.
         </span>
       ),
-      variant: 'default',
+      variant: 'warning',
       confirmLabel: 'Demote',
     });
     if (!ok) return;
