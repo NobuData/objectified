@@ -9,6 +9,7 @@ import {
   Building2,
   Users,
   User,
+  Upload,
 } from 'lucide-react';
 
 export interface DashboardSideNavProps {
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Projects', href: '/dashboard/projects', icon: FolderKanban },
   { label: 'Versions', href: '/dashboard/versions', icon: GitBranch },
+  { label: 'Publish', href: '/dashboard/publish', icon: Upload },
   { label: 'Tenants', href: '/dashboard/tenants', icon: Building2 },
   {
     label: 'Users',

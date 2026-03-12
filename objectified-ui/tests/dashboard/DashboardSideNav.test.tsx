@@ -23,11 +23,12 @@ describe('DashboardSideNav', () => {
     expect(screen.getByText('Navigation')).toBeInTheDocument();
   });
 
-  it('renders Dashboard, Projects, Versions, Tenants, and Profile links by default', () => {
+  it('renders Dashboard, Projects, Versions, Publish, Tenants, and Profile links by default', () => {
     render(<DashboardSideNav />);
     expect(screen.getByRole('link', { name: /Dashboard/i })).toHaveAttribute('href', '/dashboard');
     expect(screen.getByRole('link', { name: /Projects/i })).toHaveAttribute('href', '/dashboard/projects');
     expect(screen.getByRole('link', { name: /Versions/i })).toHaveAttribute('href', '/dashboard/versions');
+    expect(screen.getByRole('link', { name: /Publish/i })).toHaveAttribute('href', '/dashboard/publish');
     expect(screen.getByRole('link', { name: /Tenants/i })).toHaveAttribute('href', '/dashboard/tenants');
     expect(screen.getByRole('link', { name: /Profile/i })).toHaveAttribute('href', '/dashboard/profile');
   });

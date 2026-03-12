@@ -5,7 +5,7 @@ export default function DashboardHomePage() {
         Dashboard
       </h1>
       <p className="text-slate-600 dark:text-slate-400">
-        Welcome. Use the sidebar to navigate to Projects, Versions, Tenants, or
+        Welcome. Use the sidebar to navigate to Projects, Versions, Publish, Tenants, or
         your Profile.
       </p>
     </div>
