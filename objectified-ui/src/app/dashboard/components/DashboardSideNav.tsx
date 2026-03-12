@@ -10,6 +10,7 @@ import {
   Users,
   User,
   Upload,
+  BookOpen,
 } from 'lucide-react';
 
 export interface DashboardSideNavProps {
@@ -26,17 +27,18 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Profile', href: '/dashboard/profile', icon: User },
+  { label: 'Tenants', href: '/dashboard/tenants', icon: Building2 },
   { label: 'Projects', href: '/dashboard/projects', icon: FolderKanban },
   { label: 'Versions', href: '/dashboard/versions', icon: GitBranch },
   { label: 'Publish', href: '/dashboard/publish', icon: Upload },
-  { label: 'Tenants', href: '/dashboard/tenants', icon: Building2 },
+  { label: 'Published', href: '/dashboard/published', icon: BookOpen },
   {
     label: 'Users',
     href: '/dashboard/users',
     icon: Users,
     show: false,
   },
-  { label: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 
 export default function DashboardSideNav({
@@ -48,6 +50,10 @@ export default function DashboardSideNav({
   const isActive = (href: string) => {
     if (href === '/dashboard') {
       return pathname === '/dashboard';
+    }
+    // Use exact match for /dashboard/publish so /dashboard/published does not match
+    if (href === '/dashboard/publish') {
+      return pathname === '/dashboard/publish';
     }
     return pathname?.startsWith(href) ?? false;
   };
