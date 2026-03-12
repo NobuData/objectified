@@ -191,6 +191,7 @@ export interface VersionSchema {
   published?: boolean;
   published_at?: string | null;
   visibility?: string | null;
+  enabled?: boolean;
   created_at: string;
   updated_at: string | null;
   deleted_at?: string | null;
@@ -873,6 +874,18 @@ export async function unpublishVersion(
   return request<VersionSchema>(
     'POST',
     `/versions/${versionId}/unpublish`,
+    undefined,
+    options
+  );
+}
+
+export async function deleteVersion(
+  versionId: string,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/versions/${versionId}`,
     undefined,
     options
   );
