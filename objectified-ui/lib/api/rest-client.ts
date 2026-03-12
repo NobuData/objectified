@@ -348,6 +348,18 @@ export interface VersionPullResponse {
   diff?: VersionPullDiff | null;
 }
 
+export interface VersionSnapshotSchema {
+  id: string;
+  version_id: string;
+  project_id: string;
+  committed_by?: string | null;
+  revision: number;
+  label?: string | null;
+  description?: string | null;
+  snapshot: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface VersionMergeRequest {
   source_version_id?: string | null;
   strategy?: 'additive' | 'override';
@@ -830,6 +842,18 @@ export async function getVersion(
   options: RestClientOptions = {}
 ): Promise<VersionSchema> {
   return request<VersionSchema>('GET', `/versions/${versionId}`, undefined, options);
+}
+
+export async function listVersionSnapshots(
+  versionId: string,
+  options: RestClientOptions = {}
+): Promise<VersionSnapshotSchema[]> {
+  return request<VersionSnapshotSchema[]>(
+    'GET',
+    `/versions/${versionId}/snapshots`,
+    undefined,
+    options
+  );
 }
 
 export async function createVersion(
