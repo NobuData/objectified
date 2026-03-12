@@ -95,7 +95,8 @@ export default function TenantAdministratorsPage() {
       if (
         msg.includes('403') ||
         msg.toLowerCase().includes('forbidden') ||
-        msg.toLowerCase().includes('not authorized')
+        msg.toLowerCase().includes('not authorized') ||
+        msg.toLowerCase().includes('admin privileges required')
       ) {
         setForbidden(true);
       }

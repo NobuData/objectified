@@ -637,7 +637,7 @@ function EditMemberDialog({
       if (accessLevel === 'administrator') {
         await addTenantAdministrator(
           tenantId,
-          { tenant_id: tenantId, account_id: member.account_id },
+          { tenant_id: tenantId, account_id: member.account_id, enabled },
           opts
         );
       } else {
