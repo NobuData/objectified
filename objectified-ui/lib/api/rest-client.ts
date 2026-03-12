@@ -636,6 +636,55 @@ export async function updateTenantMember(
 }
 
 // ---------------------------------------------------------------------------
+// Tenant administrators (admin-only; list/add/remove)
+// ---------------------------------------------------------------------------
+
+export interface TenantAdministratorCreate {
+  tenant_id?: string | null;
+  account_id?: string | null;
+  email?: string | null;
+  enabled?: boolean | null;
+}
+
+export async function listTenantAdministrators(
+  tenantId: string,
+  options: RestClientOptions = {}
+): Promise<TenantAccountSchema[]> {
+  return request<TenantAccountSchema[]>(
+    'GET',
+    `/tenants/${tenantId}/administrators`,
+    undefined,
+    options
+  );
+}
+
+export async function addTenantAdministrator(
+  tenantId: string,
+  body: TenantAdministratorCreate,
+  options: RestClientOptions = {}
+): Promise<TenantAccountSchema> {
+  return request<TenantAccountSchema>(
+    'POST',
+    `/tenants/${tenantId}/administrators`,
+    { ...body, tenant_id: tenantId },
+    options
+  );
+}
+
+export async function removeTenantAdministrator(
+  tenantId: string,
+  accountId: string,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/tenants/${tenantId}/administrators/${encodeURIComponent(accountId)}`,
+    undefined,
+    options
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Projects
 // ---------------------------------------------------------------------------
 

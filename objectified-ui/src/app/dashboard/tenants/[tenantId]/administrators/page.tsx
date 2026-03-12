@@ -7,53 +7,47 @@ import Link from 'next/link';
 import {
   Loader2,
   Plus,
-  Pencil,
   UserMinus,
   ArrowLeft,
   Users,
   ShieldCheck,
+  ArrowDownToLine,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
-import * as Switch from '@radix-ui/react-switch';
 import {
   getTenant,
-  listTenantMembers,
-  addTenantMember,
+  listTenantAdministrators,
   addTenantAdministrator,
-  removeTenantMember,
+  removeTenantAdministrator,
   updateTenantMember,
   listUsers,
   getRestClientOptions,
   type TenantSchema,
   type TenantAccountSchema,
-  type TenantAccountCreate,
-  type TenantAccountUpdate,
-  type TenantAccessLevel,
   type TenantAdministratorCreate,
   type AccountSchema,
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 
-type SessionUser = { is_administrator?: boolean };
-
-export default function TenantMembersPage() {
+export default function TenantAdministratorsPage() {
   const params = useParams();
   const tenantId = typeof params?.tenantId === 'string' ? params.tenantId : '';
   const { data: session, status } = useSession();
   const { confirm } = useDialog();
   const [tenant, setTenant] = useState<TenantSchema | null>(null);
-  const [members, setMembers] = useState<TenantAccountSchema[]>([]);
+  const [administrators, setAdministrators] = useState<TenantAccountSchema[]>(
+    []
+  );
   const [userMap, setUserMap] = useState<Record<string, AccountSchema>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [editMember, setEditMember] = useState<TenantAccountSchema | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [demotingId, setDemotingId] = useState<string | null>(null);
 
-  const isAdministrator = Boolean(
-    (session?.user as SessionUser | undefined)?.is_administrator
-  );
+  const currentAccountId = (session?.user as { id?: string } | undefined)?.id;
 
   const fetchTenant = useCallback(async () => {
     if (!tenantId || status !== 'authenticated' || !session) return null;
@@ -70,34 +64,46 @@ export default function TenantMembersPage() {
     }
   }, [tenantId, status, session]);
 
-  const fetchMembers = useCallback(async () => {
+  const fetchAdministrators = useCallback(async () => {
     if (!tenantId || status !== 'authenticated' || !session) {
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
+    setForbidden(false);
     try {
       const opts = getRestClientOptions(
         (session as { accessToken?: string } | null) ?? null
       );
-      const [memberList, usersList] = await Promise.all([
-        listTenantMembers(tenantId, opts),
-        isAdministrator ? listUsers(opts) : Promise.resolve([]),
-      ]);
-      setMembers(memberList.filter((m) => m.access_level === 'member'));
-      const map: Record<string, AccountSchema> = {};
-      usersList.forEach((u) => {
-        map[u.id] = u;
-      });
-      setUserMap(map);
+      const adminList = await listTenantAdministrators(tenantId, opts);
+      setAdministrators(adminList);
+      try {
+        const usersList = await listUsers(opts);
+        const map: Record<string, AccountSchema> = {};
+        usersList.forEach((u) => {
+          map[u.id] = u;
+        });
+        setUserMap(map);
+      } catch {
+        setUserMap({});
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load members');
-      setMembers([]);
+      const msg = e instanceof Error ? e.message : 'Failed to load administrators';
+      setError(msg);
+      setAdministrators([]);
+      if (
+        msg.includes('403') ||
+        msg.toLowerCase().includes('forbidden') ||
+        msg.toLowerCase().includes('not authorized') ||
+        msg.toLowerCase().includes('admin privileges required')
+      ) {
+        setForbidden(true);
+      }
     } finally {
       setLoading(false);
     }
-  }, [tenantId, status, session, isAdministrator]);
+  }, [tenantId, status, session]);
 
   useEffect(() => {
     if (status === 'loading' || !tenantId) return;
@@ -113,54 +119,85 @@ export default function TenantMembersPage() {
         setLoading(false);
         return;
       }
-      await fetchMembers();
+      await fetchAdministrators();
     })();
     return () => {
       cancelled = true;
     };
-  }, [tenantId, status, fetchTenant, fetchMembers]);
+  }, [tenantId, status, fetchTenant, fetchAdministrators]);
 
   const handleAddSuccess = () => {
     setAddOpen(false);
-    fetchMembers();
+    fetchAdministrators();
   };
 
-  const handleEditSuccess = () => {
-    setEditMember(null);
-    fetchMembers();
-  };
-
-  const handleRemove = async (member: TenantAccountSchema) => {
+  const handleRemove = async (admin: TenantAccountSchema) => {
     const displayName =
-      userMap[member.account_id]?.name ??
-      userMap[member.account_id]?.email ??
-      member.account_id;
+      userMap[admin.account_id]?.name ??
+      userMap[admin.account_id]?.email ??
+      admin.account_id;
     const ok = await confirm({
-      title: 'Remove member',
+      title: 'Remove administrator',
       message: (
         <span>
           Remove <strong>{displayName}</strong> from this tenant? They will lose
-          access.
+          all access.
         </span>
       ),
       variant: 'danger',
       confirmLabel: 'Remove',
     });
     if (!ok) return;
-    setRemovingId(member.account_id);
+    setRemovingId(admin.account_id);
     try {
-      await removeTenantMember(
+      await removeTenantAdministrator(
         tenantId,
-        member.account_id,
+        admin.account_id,
         getRestClientOptions((session as { accessToken?: string } | null) ?? null)
       );
-      await fetchMembers();
+      await fetchAdministrators();
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : 'Failed to remove member'
+        e instanceof Error ? e.message : 'Failed to remove administrator'
       );
     } finally {
       setRemovingId(null);
+    }
+  };
+
+  const handleDemote = async (admin: TenantAccountSchema) => {
+    const displayName =
+      userMap[admin.account_id]?.name ??
+      userMap[admin.account_id]?.email ??
+      admin.account_id;
+    const ok = await confirm({
+      title: 'Demote to member',
+      message: (
+        <span>
+          Do you want to demote <strong>{displayName}</strong>&#39;s access
+          level? They will become a member and can be managed from the Members
+          page.
+        </span>
+      ),
+      variant: 'warning',
+      confirmLabel: 'Demote',
+    });
+    if (!ok) return;
+    setDemotingId(admin.account_id);
+    try {
+      await updateTenantMember(
+        tenantId,
+        admin.account_id,
+        { access_level: 'member' },
+        getRestClientOptions((session as { accessToken?: string } | null) ?? null)
+      );
+      await fetchAdministrators();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : 'Failed to demote administrator'
+      );
+    } finally {
+      setDemotingId(null);
     }
   };
 
@@ -188,9 +225,7 @@ export default function TenantMembersPage() {
   if (!tenantId) {
     return (
       <div className="p-6">
-        <p className="text-slate-600 dark:text-slate-400">
-          Missing tenant.
-        </p>
+        <p className="text-slate-600 dark:text-slate-400">Missing tenant.</p>
       </div>
     );
   }
@@ -211,9 +246,33 @@ export default function TenantMembersPage() {
     );
   }
 
+  if (forbidden) {
+    return (
+      <div className="p-6">
+        <p className="text-slate-600 dark:text-slate-400 mb-4">
+          Only tenant administrators can view this page.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href={`/dashboard/tenants/${tenantId}/members`}
+            className="text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            View Members
+          </Link>
+          <Link
+            href="/dashboard/tenants"
+            className="text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            Back to Tenants
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
-        <div className="flex flex-col gap-4 mb-6">
+      <div className="flex flex-col gap-4 mb-6">
         <div className="flex items-center gap-3">
           <Link
             href="/dashboard/tenants"
@@ -226,17 +285,17 @@ export default function TenantMembersPage() {
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Users className="h-6 w-6 text-indigo-500" aria-hidden />
-            {tenant?.name ?? 'Tenant'} — Members
+            <ShieldCheck className="h-6 w-6 text-indigo-500" aria-hidden />
+            {tenant?.name ?? 'Tenant'} — Administrators
           </h1>
           <span className="inline-flex items-center gap-2">
             <Link
-              href={`/dashboard/tenants/${tenantId}/administrators`}
+              href={`/dashboard/tenants/${tenantId}/members`}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-              aria-label={`View administrators of ${tenant?.name ?? 'tenant'}`}
+              aria-label={`View members of ${tenant?.name ?? 'tenant'}`}
             >
-              <ShieldCheck className="h-4 w-4" aria-hidden />
-              Administrators
+              <Users className="h-4 w-4" aria-hidden />
+              Members
             </Link>
             {tenant && (
               <button
@@ -245,14 +304,14 @@ export default function TenantMembersPage() {
                 className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
               >
                 <Plus className="h-4 w-4" aria-hidden />
-                Add member
+                Add administrator
               </button>
             )}
           </span>
         </div>
       </div>
 
-      {error && (
+      {error && !forbidden && (
         <div
           className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm"
           role="alert"
@@ -274,26 +333,26 @@ export default function TenantMembersPage() {
             <table className="w-full text-sm text-left text-slate-700 dark:text-slate-200">
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Member</th>
-                  <th className="px-4 py-3 font-medium">Role</th>
+                  <th className="px-4 py-3 font-medium">Administrator</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Added</th>
                   <th className="px-4 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {members.length === 0 ? (
+                {administrators.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={4}
                       className="px-4 py-8 text-center text-slate-500 dark:text-slate-400"
                     >
-                      No members yet. Add a member by user ID or email.
+                      No administrators yet. Add an administrator by user ID or
+                      email.
                     </td>
                   </tr>
                 ) : (
-                  members.map((member) => {
-                    const account = userMap[member.account_id];
+                  administrators.map((admin) => {
+                    const account = userMap[admin.account_id];
                     const displayName = account?.name ?? account?.email ?? null;
                     const displayEmail =
                       account?.email && account?.email !== displayName
@@ -301,38 +360,26 @@ export default function TenantMembersPage() {
                         : null;
                     return (
                       <tr
-                        key={member.id}
+                        key={admin.id}
                         className="border-t border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/30"
                       >
                         <td className="px-4 py-3">
                           <div className="font-medium text-slate-900 dark:text-slate-100">
                             {displayName ?? (
                               <span className="font-mono text-slate-600 dark:text-slate-400">
-                                {member.account_id.slice(0, 8)}…
+                                {admin.account_id.slice(0, 8)}…
                               </span>
                             )}
                           </div>
-                          {(displayEmail || (!displayName && member.account_id)) && (
+                          {(displayEmail ||
+                            (!displayName && admin.account_id)) && (
                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                              {displayEmail ?? member.account_id}
+                              {displayEmail ?? admin.account_id}
                             </div>
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <span
-                            className={
-                              member.access_level === 'administrator'
-                                ? 'text-amber-600 dark:text-amber-400 font-medium'
-                                : 'text-slate-600 dark:text-slate-400'
-                            }
-                          >
-                            {member.access_level === 'administrator'
-                              ? 'Administrator'
-                              : 'Member'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {member.enabled ? (
+                          {admin.enabled ? (
                             <span className="text-green-600 dark:text-green-400">
                               Enabled
                             </span>
@@ -343,36 +390,53 @@ export default function TenantMembersPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
-                          {member.created_at
-                            ? new Date(member.created_at).toLocaleDateString()
+                          {admin.created_at
+                            ? new Date(admin.created_at).toLocaleDateString()
                             : '—'}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <span className="inline-flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditMember(member)}
-                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-                              aria-label="Edit role"
-                            >
-                              <Pencil className="h-4 w-4" />
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRemove(member)}
-                              disabled={removingId === member.account_id}
-                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
-                              aria-label="Remove member"
-                            >
-                              {removingId === member.account_id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <UserMinus className="h-4 w-4" />
-                              )}
-                              Remove
-                            </button>
-                          </span>
+                          {admin.account_id === currentAccountId ? (
+                            <span className="text-slate-500 dark:text-slate-400 text-sm">
+                              You
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleDemote(admin)}
+                                disabled={
+                                  demotingId === admin.account_id ||
+                                  removingId === admin.account_id
+                                }
+                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                                aria-label="Demote to member"
+                              >
+                                {demotingId === admin.account_id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <ArrowDownToLine className="h-4 w-4" />
+                                )}
+                                Demote to member
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemove(admin)}
+                                disabled={
+                                  removingId === admin.account_id ||
+                                  demotingId === admin.account_id
+                                }
+                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+                                aria-label="Remove administrator"
+                              >
+                                {removingId === admin.account_id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <UserMinus className="h-4 w-4" />
+                                )}
+                                Remove
+                              </button>
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -384,28 +448,18 @@ export default function TenantMembersPage() {
         </div>
       )}
 
-      <AddMemberDialog
+      <AddAdministratorDialog
         tenantId={tenantId}
         open={addOpen}
         onOpenChange={setAddOpen}
         onSuccess={handleAddSuccess}
         session={session}
       />
-      {editMember && (
-        <EditMemberDialog
-          tenantId={tenantId}
-          member={editMember}
-          open={!!editMember}
-          onOpenChange={(open) => !open && setEditMember(null)}
-          onSuccess={handleEditSuccess}
-          session={session}
-        />
-      )}
     </div>
   );
 }
 
-interface AddMemberDialogProps {
+interface AddAdministratorDialogProps {
   tenantId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -413,23 +467,21 @@ interface AddMemberDialogProps {
   session: ReturnType<typeof useSession>['data'];
 }
 
-function AddMemberDialog({
+function AddAdministratorDialog({
   tenantId,
   open,
   onOpenChange,
   onSuccess,
   session,
-}: AddMemberDialogProps) {
+}: AddAdministratorDialogProps) {
   const [accountId, setAccountId] = useState('');
   const [email, setEmail] = useState('');
-  const [accessLevel, setAccessLevel] = useState<TenantAccessLevel>('member');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const reset = () => {
     setAccountId('');
     setEmail('');
-    setAccessLevel('member');
     setFormError(null);
   };
 
@@ -450,33 +502,21 @@ function AddMemberDialog({
     }
     setSaving(true);
     try {
-      if (accessLevel === 'administrator') {
-        const adminBody: TenantAdministratorCreate = { tenant_id: tenantId };
-        if (trimmedAccountId) adminBody.account_id = trimmedAccountId;
-        if (trimmedEmail) adminBody.email = trimmedEmail;
-        await addTenantAdministrator(
-          tenantId,
-          adminBody,
-          getRestClientOptions((session as { accessToken?: string } | null) ?? null)
-        );
-      } else {
-        const body: TenantAccountCreate = {
-          tenant_id: tenantId,
-          access_level: accessLevel,
-        };
-        if (trimmedAccountId) body.account_id = trimmedAccountId;
-        if (trimmedEmail) body.email = trimmedEmail;
-        await addTenantMember(
-          tenantId,
-          body,
-          getRestClientOptions((session as { accessToken?: string } | null) ?? null)
-        );
-      }
+      const body: TenantAdministratorCreate = {
+        tenant_id: tenantId,
+      };
+      if (trimmedAccountId) body.account_id = trimmedAccountId;
+      if (trimmedEmail) body.email = trimmedEmail;
+      await addTenantAdministrator(
+        tenantId,
+        body,
+        getRestClientOptions((session as { accessToken?: string } | null) ?? null)
+      );
       handleOpenChange(false);
       onSuccess();
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : 'Failed to add member'
+        err instanceof Error ? err.message : 'Failed to add administrator'
       );
     } finally {
       setSaving(false);
@@ -494,8 +534,8 @@ function AddMemberDialog({
           onPointerDownOutside={() => handleOpenChange(false)}
         >
           <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-            <Users className="h-5 w-5 text-indigo-500" aria-hidden />
-            Add member
+            <ShieldCheck className="h-5 w-5 text-indigo-500" aria-hidden />
+            Add administrator
           </Dialog.Title>
           <form onSubmit={handleSubmit} className="space-y-4">
             {formError && (
@@ -508,13 +548,13 @@ function AddMemberDialog({
             )}
             <div className="space-y-2">
               <Label.Root
-                htmlFor="add-account-id"
+                htmlFor="add-admin-account-id"
                 className="text-sm font-medium text-slate-700 dark:text-slate-300"
               >
                 User ID
               </Label.Root>
               <input
-                id="add-account-id"
+                id="add-admin-account-id"
                 type="text"
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
@@ -525,13 +565,13 @@ function AddMemberDialog({
             </div>
             <div className="space-y-2">
               <Label.Root
-                htmlFor="add-email"
+                htmlFor="add-admin-email"
                 className="text-sm font-medium text-slate-700 dark:text-slate-300"
               >
                 Email
               </Label.Root>
               <input
-                id="add-email"
+                id="add-admin-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -544,26 +584,6 @@ function AddMemberDialog({
                 User ID or Email is required (one or the other). If both are
                 provided, User ID takes precedence.
               </p>
-            </div>
-            <div className="space-y-2">
-              <Label.Root
-                htmlFor="add-role"
-                className="text-sm font-medium text-slate-700 dark:text-slate-300"
-              >
-                Role
-              </Label.Root>
-              <select
-                id="add-role"
-                value={accessLevel}
-                onChange={(e) =>
-                  setAccessLevel(e.target.value as TenantAccessLevel)
-                }
-                disabled={saving}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              >
-                <option value="member">Member</option>
-                <option value="administrator">Administrator</option>
-              </select>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -584,163 +604,7 @@ function AddMemberDialog({
                     Adding…
                   </>
                 ) : (
-                  'Add member'
-                )}
-              </button>
-            </div>
-          </form>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
-
-interface EditMemberDialogProps {
-  tenantId: string;
-  member: TenantAccountSchema;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
-  session: ReturnType<typeof useSession>['data'];
-}
-
-function EditMemberDialog({
-  tenantId,
-  member,
-  open,
-  onOpenChange,
-  onSuccess,
-  session,
-}: EditMemberDialogProps) {
-  const [accessLevel, setAccessLevel] = useState<TenantAccessLevel>(
-    member.access_level
-  );
-  const [enabled, setEnabled] = useState(member.enabled);
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setAccessLevel(member.access_level);
-    setEnabled(member.enabled);
-    setFormError(null);
-  }, [member]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!session) return;
-    setFormError(null);
-    setSaving(true);
-    try {
-      const opts = getRestClientOptions(
-        (session as { accessToken?: string } | null) ?? null
-      );
-      if (accessLevel === 'administrator') {
-        await addTenantAdministrator(
-          tenantId,
-          { tenant_id: tenantId, account_id: member.account_id, enabled },
-          opts
-        );
-      } else {
-        await updateTenantMember(
-          tenantId,
-          member.account_id,
-          { access_level: accessLevel, enabled },
-          opts
-        );
-      }
-      onOpenChange(false);
-      onSuccess();
-    } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : 'Failed to update member'
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
-        <Dialog.Content
-          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 p-6"
-          aria-describedby={undefined}
-          onEscapeKeyDown={() => onOpenChange(false)}
-          onPointerDownOutside={() => onOpenChange(false)}
-        >
-          <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
-            Edit member role
-          </Dialog.Title>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {formError && (
-              <div
-                className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm"
-                role="alert"
-              >
-                {formError}
-              </div>
-            )}
-            <p className="text-sm text-slate-600 dark:text-slate-400 font-mono">
-              {member.account_id}
-            </p>
-            <div className="space-y-2">
-              <Label.Root
-                htmlFor="edit-role"
-                className="text-sm font-medium text-slate-700 dark:text-slate-300"
-              >
-                Role
-              </Label.Root>
-              <select
-                id="edit-role"
-                value={accessLevel}
-                onChange={(e) =>
-                  setAccessLevel(e.target.value as TenantAccessLevel)
-                }
-                disabled={saving}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              >
-                <option value="member">Member</option>
-                <option value="administrator">Administrator</option>
-              </select>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <Label.Root
-                htmlFor="edit-enabled"
-                className="text-sm font-medium text-slate-700 dark:text-slate-300"
-              >
-                Enabled
-              </Label.Root>
-              <Switch.Root
-                id="edit-enabled"
-                checked={enabled}
-                onCheckedChange={setEnabled}
-                disabled={saving}
-                className="w-11 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 dark:data-[state=checked]:bg-indigo-500 relative outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 cursor-pointer disabled:opacity-50"
-              >
-                <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
-              </Switch.Root>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => onOpenChange(false)}
-                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    Saving…
-                  </>
-                ) : (
-                  'Save changes'
+                  'Add administrator'
                 )}
               </button>
             </div>
