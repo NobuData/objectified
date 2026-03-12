@@ -43,6 +43,12 @@ function formatDateTime(dateString: string): string {
   });
 }
 
+function getVisibilityLabel(visibility: string | null | undefined): string {
+  if (visibility === 'public') return 'Public';
+  if (visibility === 'private') return 'Private';
+  return '—';
+}
+
 export default function PublishPage() {
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
@@ -406,9 +412,7 @@ export default function PublishPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
-                      {v.published
-                        ? (v.visibility === 'public' ? 'Public' : 'Private')
-                        : '—'}
+                      {v.published ? getVisibilityLabel(v.visibility) : '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
                       {v.published_at
@@ -443,7 +447,7 @@ export default function PublishPage() {
                             )}
                             {v.published && (
                               <DropdownMenu.Item
-                                className="flex items-center gap-2 px-3 py-2 text-sm text-amber-600 dark:text-amber-400 outline-none cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-amber-600 dark:text-amber-400 outline-none cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed data-[disabled]:hover:bg-transparent data-[disabled]:dark:hover:bg-transparent"
                                 onSelect={() => handleUnpublish(v)}
                                 disabled={unpublishingId === v.id}
                               >
