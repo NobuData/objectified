@@ -16,6 +16,9 @@ import {
   addTenantMember,
   removeTenantMember,
   updateTenantMember,
+  listTenantAdministrators,
+  addTenantAdministrator,
+  removeTenantAdministrator,
   listUsers,
   getUser,
   createUser,
@@ -397,6 +400,80 @@ describe('updateTenantMember', () => {
       access_level: 'administrator',
       enabled: true,
     });
+  });
+});
+
+describe('listTenantAdministrators', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns administrator list from API', async () => {
+    const admins = [
+      {
+        id: 'a1',
+        tenant_id: 't1',
+        account_id: 'u1',
+        access_level: 'administrator' as const,
+        enabled: true,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: null,
+        deleted_at: null,
+      },
+    ];
+    mockFetch.mockResolvedValue(makeFetchResponse(admins));
+    const result = await listTenantAdministrators('t1', {});
+    expect(result).toEqual(admins);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/administrators`);
+  });
+});
+
+describe('addTenantAdministrator', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends POST with account_id', async () => {
+    const created = {
+      id: 'a1',
+      tenant_id: 't1',
+      account_id: 'u1',
+      access_level: 'administrator' as const,
+      enabled: true,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: null,
+      deleted_at: null,
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(created, 201));
+    await addTenantAdministrator('t1', { account_id: 'u1' }, {});
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/administrators`);
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      tenant_id: 't1',
+      account_id: 'u1',
+    });
+  });
+});
+
+describe('removeTenantAdministrator', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sends DELETE and returns undefined', async () => {
+    mockFetch.mockResolvedValue(makeEmptyFetchResponse(204));
+    await removeTenantAdministrator('t1', 'a1', {});
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/administrators/a1`);
+    expect((init as RequestInit).method).toBe('DELETE');
   });
 });
 
