@@ -57,8 +57,8 @@ export default function VersionDiffDialog({
     try {
       const list = await listVersionSnapshots(versionId, options);
       setSnapshots(list);
-      if (list.length > 0 && selectedRevision === '') {
-        setSelectedRevision(list[list.length - 1].revision);
+      if (list.length > 0) {
+        setSelectedRevision((prev) => (prev === '' ? list[list.length - 1].revision : prev));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load snapshots');
@@ -66,15 +66,17 @@ export default function VersionDiffDialog({
     } finally {
       setLoadingSnapshots(false);
     }
-  }, [versionId, open, options, selectedRevision]);
+  }, [versionId, open, options]);
 
   useEffect(() => {
     if (open) {
+      setSnapshots([]);
+      setSelectedRevision('');
       fetchSnapshots();
       setDiff(null);
       setError(null);
     }
-  }, [open, fetchSnapshots]);
+  }, [open, versionId, fetchSnapshots]);
 
   const loadDiff = async () => {
     if (selectedRevision === '') return;

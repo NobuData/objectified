@@ -27,11 +27,25 @@ function propKey(p: { name?: string }): string {
   return (p.name ?? '').trim().toLowerCase();
 }
 
+function sortedStringify(val: unknown): string {
+  if (val === null || typeof val !== 'object') {
+    return JSON.stringify(val);
+  }
+  if (Array.isArray(val)) {
+    return '[' + val.map(sortedStringify).join(',') + ']';
+  }
+  const keys = Object.keys(val as object).sort();
+  const pairs = keys.map(
+    (k) => JSON.stringify(k) + ':' + sortedStringify((val as Record<string, unknown>)[k])
+  );
+  return '{' + pairs.join(',') + '}';
+}
+
 function propDataEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;
   try {
-    return JSON.stringify(a) === JSON.stringify(b);
+    return sortedStringify(a) === sortedStringify(b);
   } catch {
     return false;
   }
@@ -49,11 +63,29 @@ export function compareSchemas(
   const newByName = new Map<string, ClassLike>();
   for (const c of oldClasses) {
     const k = classKey(c);
-    if (k) oldByName.set(k, c);
+    if (!k) continue;
+    if (oldByName.has(k)) {
+      console.warn('compareSchemas: duplicate class name encountered in oldClasses after normalization', {
+        normalizedName: k,
+        existingClassName: oldByName.get(k)?.name,
+        duplicateClassName: c.name,
+      });
+      continue;
+    }
+    oldByName.set(k, c);
   }
   for (const c of newClasses) {
     const k = classKey(c);
-    if (k) newByName.set(k, c);
+    if (!k) continue;
+    if (newByName.has(k)) {
+      console.warn('compareSchemas: duplicate class name encountered in newClasses after normalization', {
+        normalizedName: k,
+        existingClassName: newByName.get(k)?.name,
+        duplicateClassName: c.name,
+      });
+      continue;
+    }
+    newByName.set(k, c);
   }
 
   const added_class_names: string[] = [];
