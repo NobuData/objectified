@@ -55,6 +55,7 @@ export default function VersionsPage() {
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionSchema[]>([]);
+  const [tenantsLoading, setTenantsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -86,12 +87,14 @@ export default function VersionsPage() {
   const fetchTenants = useCallback(async () => {
     if (status !== 'authenticated' || !session) return;
     setError(null);
+    setTenantsLoading(true);
     try {
       const data = await listMyTenants(opts);
       setTenants(data);
-      if (data.length > 0 && !selectedTenantId) {
-        setSelectedTenantId(data[0].id);
-      }
+      setSelectedTenantId((prev) => {
+        if (prev) return prev;
+        return data.length > 0 ? data[0].id : null;
+      });
     } catch (e) {
       setError(
         isForbiddenError(e)
@@ -100,6 +103,8 @@ export default function VersionsPage() {
             ? e.message
             : 'Failed to load tenants'
       );
+    } finally {
+      setTenantsLoading(false);
     }
   }, [status, session, opts]);
 
@@ -114,9 +119,10 @@ export default function VersionsPage() {
     try {
       const data = await listProjects(selectedTenantId, opts);
       setProjects(data);
-      if (data.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(data[0].id);
-      }
+      setSelectedProjectId((prev) => {
+        if (prev) return prev;
+        return data.length > 0 ? data[0].id : null;
+      });
     } catch (e) {
       setError(
         isForbiddenError(e)
@@ -274,7 +280,19 @@ export default function VersionsPage() {
     }
   };
 
-  if (status === 'loading' || !session) {
+  if (status === 'loading') {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated' || !session) {
+    return null;
+  }
+
+  if (tenantsLoading) {
     return (
       <div className="p-6 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
@@ -329,7 +347,13 @@ export default function VersionsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={selectedTenantId ?? ''}
-            onChange={(e) => setSelectedTenantId(e.target.value || null)}
+            onChange={(e) => {
+              const newTenantId = e.target.value || null;
+              setSelectedTenantId(newTenantId);
+              setSelectedProjectId(null);
+              setProjects([]);
+              setVersions([]);
+            }}
             className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             aria-label="Select tenant"
           >
@@ -529,8 +553,20 @@ export default function VersionsPage() {
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
           <Dialog.Content
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-0 flex flex-col max-h-[90vh]"
-            onEscapeKeyDown={() => !createSubmitting && setCreateOpen(false)}
-            onPointerDownOutside={() => !createSubmitting && setCreateOpen(false)}
+            onEscapeKeyDown={(event) => {
+              if (createSubmitting) {
+                event.preventDefault();
+                return;
+              }
+              setCreateOpen(false);
+            }}
+            onPointerDownOutside={(event) => {
+              if (createSubmitting) {
+                event.preventDefault();
+                return;
+              }
+              setCreateOpen(false);
+            }}
           >
             <div className="p-6 pb-2">
               <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -641,8 +677,20 @@ export default function VersionsPage() {
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
           <Dialog.Content
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-0 flex flex-col max-h-[90vh]"
-            onEscapeKeyDown={() => !editSubmitting && setEditVersion(null)}
-            onPointerDownOutside={() => !editSubmitting && setEditVersion(null)}
+            onEscapeKeyDown={(event) => {
+              if (editSubmitting) {
+                event.preventDefault();
+                return;
+              }
+              setEditVersion(null);
+            }}
+            onPointerDownOutside={(event) => {
+              if (editSubmitting) {
+                event.preventDefault();
+                return;
+              }
+              setEditVersion(null);
+            }}
           >
             <div className="p-6 pb-2">
               <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
