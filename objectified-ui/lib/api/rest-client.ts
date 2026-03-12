@@ -155,9 +155,11 @@ export interface TenantUpdate {
 export interface ProjectSchema {
   id: string;
   tenant_id: string;
+  creator_id?: string;
   name: string;
   description?: string;
   slug: string;
+  enabled?: boolean;
   metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string | null;
@@ -176,6 +178,7 @@ export interface ProjectUpdate {
   name?: string | null;
   description?: string | null;
   slug?: string | null;
+  enabled?: boolean | null;
   metadata?: Record<string, unknown> | null;
 }
 
@@ -773,6 +776,32 @@ export async function deleteProject(
   return request<void>(
     'DELETE',
     `/tenants/${tenantId}/projects/${projectId}`,
+    undefined,
+    options
+  );
+}
+
+export async function restoreProject(
+  tenantId: string,
+  projectId: string,
+  options: RestClientOptions = {}
+): Promise<ProjectSchema> {
+  return request<ProjectSchema>(
+    'POST',
+    `/tenants/${tenantId}/projects/${projectId}/restore`,
+    undefined,
+    options
+  );
+}
+
+export async function permanentDeleteProject(
+  tenantId: string,
+  projectId: string,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/tenants/${tenantId}/projects/${projectId}/permanent`,
     undefined,
     options
   );

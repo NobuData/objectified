@@ -371,6 +371,97 @@ def delete_project(
     )
 
 
+@router.post(
+    "/tenants/{tenant_id}/projects/{project_id}/restore",
+    response_model=ProjectSchema,
+    summary="Restore a soft-deleted project",
+    description=(
+        "Restore a previously soft-deleted project by clearing its "
+        "``deleted_at`` timestamp and re-enabling it."
+    ),
+)
+def restore_project(
+    tenant_id: str,
+    project_id: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> ProjectSchema:
+    """Restore a soft-deleted project."""
+    _assert_tenant_exists(tenant_id)
+    _assert_project_exists(project_id, tenant_id)
+
+    old_rows = db.execute_query(
+        f"SELECT {_PROJECT_COLUMNS} FROM objectified.project WHERE id = %s AND deleted_at IS NOT NULL",
+        (project_id,),
+    )
+    if not old_rows:
+        raise HTTPException(status_code=409, detail="Project is not deleted and cannot be restored")
+    old_row = dict(old_rows[0])
+
+    row = db.execute_mutation(
+        f"""
+        UPDATE objectified.project
+        SET deleted_at = NULL, enabled = true, updated_at = timezone('utc', clock_timestamp())
+        WHERE id = %s AND tenant_id = %s AND deleted_at IS NOT NULL
+        RETURNING {_PROJECT_COLUMNS}
+        """,
+        (project_id, tenant_id),
+    )
+    if not row:
+        raise _not_found("Project", project_id)
+
+    changed_by = caller.get("user_id") if caller else None
+    _record_history(
+        project_id=project_id,
+        tenant_id=tenant_id,
+        changed_by=changed_by,
+        operation="RESTORE",
+        old_data=old_row,
+        new_data=dict(row),
+    )
+
+    return ProjectSchema(**dict(row))
+
+
+@router.delete(
+    "/tenants/{tenant_id}/projects/{project_id}/permanent",
+    status_code=204,
+    summary="Permanently delete a project",
+    description="Permanently remove a soft-deleted project and all its data. This action cannot be undone.",
+)
+def permanent_delete_project(
+    tenant_id: str,
+    project_id: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> None:
+    """Permanently delete a previously soft-deleted project."""
+    _assert_tenant_exists(tenant_id)
+    _assert_project_exists(project_id, tenant_id)
+
+    rows = db.execute_query(
+        f"SELECT {_PROJECT_COLUMNS} FROM objectified.project WHERE id = %s AND deleted_at IS NOT NULL",
+        (project_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=409, detail="Project must be soft-deleted before permanent deletion")
+    old_row = dict(rows[0])
+
+    db.execute_mutation(
+        "DELETE FROM objectified.project WHERE id = %s AND tenant_id = %s AND deleted_at IS NOT NULL",
+        (project_id, tenant_id),
+        returning=False,
+    )
+
+    changed_by = caller.get("user_id") if caller else None
+    _record_history(
+        project_id=project_id,
+        tenant_id=tenant_id,
+        changed_by=changed_by,
+        operation="PERMANENT_DELETE",
+        old_data=old_row,
+        new_data=None,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Project history
 # ---------------------------------------------------------------------------
