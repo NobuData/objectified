@@ -12,6 +12,7 @@ import {
   updateUser,
   deactivateUser,
   getRestClientOptions,
+  isForbiddenError,
   type AccountSchema,
   type AccountUpdate,
 } from '@lib/api/rest-client';
@@ -48,7 +49,13 @@ export default function UsersPage() {
       );
       setUsers(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load users');
+      setError(
+        isForbiddenError(e)
+          ? 'Admin privileges required to list and manage users.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to load users'
+      );
       setUsers([]);
     } finally {
       setLoading(false);
@@ -92,7 +99,13 @@ export default function UsersPage() {
       await deactivateUser(user.id, getRestClientOptions((session as { accessToken?: string } | null) ?? null));
       await fetchUsers();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to deactivate user');
+      setError(
+        isForbiddenError(e)
+          ? 'Admin privileges required to deactivate a user.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to deactivate user'
+      );
     } finally {
       setDeactivatingId(null);
     }
@@ -343,7 +356,11 @@ function CreateUserDialog({
       onSuccess();
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : 'Failed to create user'
+        isForbiddenError(err)
+          ? 'Admin privileges required to create a user.'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to create user'
       );
     } finally {
       setSaving(false);
@@ -512,7 +529,11 @@ function EditUserDialog({
       onSuccess();
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : 'Failed to update user'
+        isForbiddenError(err)
+          ? 'Admin privileges required to update a user.'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to update user'
       );
     } finally {
       setSaving(false);

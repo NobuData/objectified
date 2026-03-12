@@ -7,7 +7,7 @@ jest.mock('next-auth/react', () => ({
   useSession: jest.fn(() => ({
     status: 'authenticated',
     data: {
-      user: { name: 'User', email: 'user@example.com' },
+      user: { name: 'User', email: 'user@example.com', is_administrator: true },
       accessToken: 'token',
     },
   })),
@@ -33,6 +33,13 @@ jest.mock('@lib/api/rest-client', () => ({
   updateTenantMember: (...args: unknown[]) => mockUpdateTenantMember(...args),
   listUsers: (...args: unknown[]) => mockListUsers(...args),
   getRestClientOptions: jest.fn(() => ({})),
+  isForbiddenError: (e: unknown) =>
+    Boolean(
+      e &&
+        typeof e === 'object' &&
+        'statusCode' in e &&
+        (e as { statusCode: number }).statusCode === 403
+    ),
 }));
 
 const mockConfirm = jest.fn(() => Promise.resolve(false));
@@ -115,11 +122,14 @@ describe('TenantAdministratorsPage', () => {
   });
 
   it('shows forbidden message when list returns 403', async () => {
-    mockListTenantAdministrators.mockRejectedValue(new Error('403 Forbidden'));
+    const err = Object.assign(new Error('Admin privileges required.'), {
+      statusCode: 403,
+    });
+    mockListTenantAdministrators.mockRejectedValue(err);
     render(<TenantAdministratorsPage />);
     await waitFor(() => {
       expect(
-        screen.getByText(/only tenant administrators can view this page/i)
+        screen.getByText(/only platform administrators can view and manage tenant administrators/i)
       ).toBeInTheDocument();
     });
   });
@@ -129,7 +139,7 @@ describe('TenantAdministratorsPage', () => {
     useSession.mockReturnValue({
       status: 'authenticated',
       data: {
-        user: { id: 'current-user-id', name: 'Me', email: 'me@example.com' },
+        user: { id: 'current-user-id', name: 'Me', email: 'me@example.com', is_administrator: true },
         accessToken: 'token',
       },
     });
@@ -160,18 +170,19 @@ describe('TenantAdministratorsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('You')).toBeInTheDocument();
     });
-    const removeButtons = screen.getAllByRole('button', { name: /remove administrator/i });
+    const removeButtons = screen.queryAllByRole('button', { name: /remove/i });
     expect(removeButtons).toHaveLength(1);
   });
 
   it('shows forbidden message when list returns "Admin privileges required"', async () => {
-    mockListTenantAdministrators.mockRejectedValue(
-      new Error('Admin privileges required.')
-    );
+    const err = Object.assign(new Error('Admin privileges required.'), {
+      statusCode: 403,
+    });
+    mockListTenantAdministrators.mockRejectedValue(err);
     render(<TenantAdministratorsPage />);
     await waitFor(() => {
       expect(
-        screen.getByText(/only tenant administrators can view this page/i)
+        screen.getByText(/only platform administrators can view and manage tenant administrators/i)
       ).toBeInTheDocument();
     });
   });

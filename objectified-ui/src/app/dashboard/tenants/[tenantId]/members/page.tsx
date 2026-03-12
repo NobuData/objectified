@@ -25,6 +25,7 @@ import {
   updateTenantMember,
   listUsers,
   getRestClientOptions,
+  isForbiddenError,
   type TenantSchema,
   type TenantAccountSchema,
   type TenantAccountCreate,
@@ -92,7 +93,13 @@ export default function TenantMembersPage() {
       });
       setUserMap(map);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load members');
+      setError(
+        isForbiddenError(e)
+          ? 'You do not have permission to view or manage members.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to load members'
+      );
       setMembers([]);
     } finally {
       setLoading(false);
@@ -157,7 +164,11 @@ export default function TenantMembersPage() {
       await fetchMembers();
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : 'Failed to remove member'
+        isForbiddenError(e)
+          ? 'Admin privileges required to remove a member.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to remove member'
       );
     } finally {
       setRemovingId(null);
@@ -238,7 +249,7 @@ export default function TenantMembersPage() {
               <ShieldCheck className="h-4 w-4" aria-hidden />
               Administrators
             </Link>
-            {tenant && (
+            {tenant && isAdministrator && (
               <button
                 type="button"
                 onClick={() => setAddOpen(true)}
@@ -348,6 +359,7 @@ export default function TenantMembersPage() {
                             : '—'}
                         </td>
                         <td className="px-4 py-3 text-right">
+                          {isAdministrator && (
                           <span className="inline-flex items-center gap-2">
                             <button
                               type="button"
@@ -373,6 +385,7 @@ export default function TenantMembersPage() {
                               Remove
                             </button>
                           </span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -476,7 +489,11 @@ function AddMemberDialog({
       onSuccess();
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : 'Failed to add member'
+        isForbiddenError(err)
+          ? 'Admin privileges required to add a member.'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to add member'
       );
     } finally {
       setSaving(false);
@@ -652,7 +669,11 @@ function EditMemberDialog({
       onSuccess();
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : 'Failed to update member'
+        isForbiddenError(err)
+          ? 'Admin privileges required to update member role.'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to update member'
       );
     } finally {
       setSaving(false);

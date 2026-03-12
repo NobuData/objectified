@@ -58,6 +58,27 @@ export interface ApiError {
   detail?: string | { loc: string[]; msg: string; type: string }[];
 }
 
+/** Thrown when the REST API returns a non-2xx response. Includes status and detail for permission handling. */
+export class RestApiError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+    public readonly detail?: ApiError['detail']
+  ) {
+    super(message);
+    this.name = 'RestApiError';
+    Object.setPrototypeOf(this, RestApiError.prototype);
+  }
+}
+
+export function isRestApiError(e: unknown): e is RestApiError {
+  return e instanceof RestApiError;
+}
+
+export function isForbiddenError(e: unknown): e is RestApiError {
+  return isRestApiError(e) && e.statusCode === 403;
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -91,7 +112,7 @@ async function request<T>(
         : Array.isArray(detail)
           ? detail.map((d) => d.msg).join('; ')
           : `HTTP ${res.status}`;
-    throw new Error(message || `HTTP ${res.status}`);
+    throw new RestApiError(message || `HTTP ${res.status}`, res.status, detail);
   }
   if (res.status === 204) {
     return undefined as T;

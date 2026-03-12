@@ -31,6 +31,8 @@ import {
   commitVersion,
   pullVersion,
   mergeVersion,
+  isForbiddenError,
+  RestApiError,
   type RestClientOptions,
   type TenantSchema,
   type ProjectSchema,
@@ -245,6 +247,25 @@ describe('error handling in request()', () => {
       text: jest.fn().mockResolvedValue('Service Unavailable'),
     } as unknown as Response);
     await expect(listTenants({})).rejects.toThrow('HTTP 503');
+  });
+
+  it('throws RestApiError with statusCode and detail for non-2xx', async () => {
+    mockFetch.mockResolvedValue(makeErrorFetchResponse('Admin privileges required.', 403));
+    const promise = listTenants({});
+    await expect(promise).rejects.toThrow('Admin privileges required.');
+    const e = await promise.catch((x) => x);
+    expect(e).toBeInstanceOf(RestApiError);
+    expect((e as RestApiError).statusCode).toBe(403);
+    expect((e as RestApiError).message).toBe('Admin privileges required.');
+    expect(isForbiddenError(e)).toBe(true);
+  });
+
+  it('isForbiddenError returns false for non-403 errors', async () => {
+    mockFetch.mockResolvedValue(makeErrorFetchResponse('Not found', 404));
+    const promise = listTenants({});
+    await expect(promise).rejects.toThrow('Not found');
+    const e = await promise.catch((x) => x);
+    expect(isForbiddenError(e)).toBe(false);
   });
 });
 
