@@ -63,7 +63,7 @@ export class RestApiError extends Error {
   constructor(
     message: string,
     public readonly statusCode: number,
-    public readonly detail?: string
+    public readonly detail?: ApiError['detail']
   ) {
     super(message);
     this.name = 'RestApiError';
@@ -112,11 +112,7 @@ async function request<T>(
         : Array.isArray(detail)
           ? detail.map((d) => d.msg).join('; ')
           : `HTTP ${res.status}`;
-    throw new RestApiError(
-      message || `HTTP ${res.status}`,
-      res.status,
-      typeof detail === 'string' ? detail : undefined
-    );
+    throw new RestApiError(message || `HTTP ${res.status}`, res.status, detail);
   }
   if (res.status === 204) {
     return undefined as T;

@@ -251,23 +251,21 @@ describe('error handling in request()', () => {
 
   it('throws RestApiError with statusCode and detail for non-2xx', async () => {
     mockFetch.mockResolvedValue(makeErrorFetchResponse('Admin privileges required.', 403));
-    try {
-      await listTenants({});
-    } catch (e) {
-      expect(e).toBeInstanceOf(RestApiError);
-      expect((e as RestApiError).statusCode).toBe(403);
-      expect((e as RestApiError).message).toBe('Admin privileges required.');
-      expect(isForbiddenError(e)).toBe(true);
-    }
+    const promise = listTenants({});
+    await expect(promise).rejects.toThrow('Admin privileges required.');
+    const e = await promise.catch((x) => x);
+    expect(e).toBeInstanceOf(RestApiError);
+    expect((e as RestApiError).statusCode).toBe(403);
+    expect((e as RestApiError).message).toBe('Admin privileges required.');
+    expect(isForbiddenError(e)).toBe(true);
   });
 
   it('isForbiddenError returns false for non-403 errors', async () => {
     mockFetch.mockResolvedValue(makeErrorFetchResponse('Not found', 404));
-    try {
-      await listTenants({});
-    } catch (e) {
-      expect(isForbiddenError(e)).toBe(false);
-    }
+    const promise = listTenants({});
+    await expect(promise).rejects.toThrow('Not found');
+    const e = await promise.catch((x) => x);
+    expect(isForbiddenError(e)).toBe(false);
   });
 });
 
