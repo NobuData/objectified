@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   Loader2,
@@ -10,15 +10,22 @@ import {
   Trash2,
   MoreVertical,
   AlertTriangle,
+  RotateCcw,
+  Flame,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   listMyTenants,
   listProjects,
   createProject,
   updateProject,
   deleteProject,
+  restoreProject,
+  permanentDeleteProject,
   getRestClientOptions,
   isForbiddenError,
   type TenantSchema,
@@ -70,11 +77,12 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editProject, setEditProject] = useState<ProjectSchema | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [dropdownProjectId, setDropdownProjectId] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [permanentDeletingId, setPermanentDeletingId] = useState<string | null>(null);
 
   const opts = getRestClientOptions(
     (session as { accessToken?: string } | null) ?? null
@@ -82,11 +90,12 @@ export default function ProjectsPage() {
 
   const fetchTenants = useCallback(async () => {
     if (status !== 'authenticated' || !session) return;
+    setError(null);
     try {
       const data = await listMyTenants(opts);
       setTenants(data);
-      if (data.length > 0 && !selectedTenantId) {
-        setSelectedTenantId(data[0].id);
+      if (data.length > 0) {
+        setSelectedTenantId((cur) => cur ?? data[0].id);
       }
     } catch (e) {
       setError(
@@ -97,7 +106,7 @@ export default function ProjectsPage() {
             : 'Failed to load tenants'
       );
     }
-  }, [status, session, selectedTenantId]);
+  }, [status, session]);
 
   const fetchProjects = useCallback(async () => {
     if (status !== 'authenticated' || !selectedTenantId) {
@@ -108,7 +117,7 @@ export default function ProjectsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await listProjects(selectedTenantId, opts, true);
+      const data = await listProjects(selectedTenantId, opts, showDeleted);
       setProjects(data);
     } catch (e) {
       setError(
@@ -122,7 +131,7 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, selectedTenantId, session]);
+  }, [status, selectedTenantId, session, showDeleted]);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -137,19 +146,6 @@ export default function ProjectsPage() {
     if (status !== 'authenticated' || !selectedTenantId) return;
     fetchProjects();
   }, [status, selectedTenantId, fetchProjects]);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setDropdownProjectId(null);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const handleCreateSuccess = () => {
     setCreateOpen(false);
@@ -175,7 +171,6 @@ export default function ProjectsPage() {
       confirmLabel: 'Delete',
     });
     if (!ok) return;
-    setDropdownProjectId(null);
     setDeletingId(project.id);
     try {
       await deleteProject(selectedTenantId, project.id, opts);
@@ -192,6 +187,72 @@ export default function ProjectsPage() {
       });
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleRestore = async (project: ProjectSchema) => {
+    if (!selectedTenantId) return;
+    const ok = await confirm({
+      title: 'Restore project',
+      message: (
+        <span>
+          Restore <strong>{project.name}</strong> ({project.slug})? The project
+          will become active again.
+        </span>
+      ),
+      variant: 'info',
+      confirmLabel: 'Restore',
+    });
+    if (!ok) return;
+    setRestoringId(project.id);
+    try {
+      await restoreProject(selectedTenantId, project.id, opts);
+      await fetchProjects();
+    } catch (e) {
+      await alertDialog({
+        message:
+          isForbiddenError(e)
+            ? 'You do not have permission to restore this project.'
+            : e instanceof Error
+              ? e.message
+              : 'Failed to restore project',
+        variant: 'error',
+      });
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const handlePermanentDelete = async (project: ProjectSchema) => {
+    if (!selectedTenantId) return;
+    const ok = await confirm({
+      title: 'Permanently delete project',
+      message: (
+        <span>
+          Permanently delete <strong>{project.name}</strong> ({project.slug})?
+          This action cannot be undone and all project data will be lost.
+        </span>
+      ),
+      variant: 'danger',
+      confirmLabel: 'Permanently Delete',
+    });
+    if (!ok) return;
+    setPermanentDeletingId(project.id);
+    try {
+      await permanentDeleteProject(selectedTenantId, project.id, opts);
+      await fetchProjects();
+    } catch (e) {
+      await alertDialog({
+        message:
+          isForbiddenError(e)
+            ? 'You do not have permission to permanently delete this project.'
+            : e instanceof Error
+              ? e.message
+              : 'Failed to permanently delete project',
+        variant: 'error',
+      });
+    } finally {
+      setPermanentDeletingId(null);
     }
   };
 
@@ -241,6 +302,19 @@ export default function ProjectsPage() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setShowDeleted((v) => !v)}
+              disabled={!selectedTenantId}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
+              title={showDeleted ? 'Hide deleted projects' : 'Show deleted projects'}
+            >
+              {showDeleted ? (
+                <><EyeOff className="h-4 w-4" aria-hidden />Hide deleted</>
+              ) : (
+                <><Eye className="h-4 w-4" aria-hidden />Show deleted</>
+              )}
+            </button>
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
@@ -344,48 +418,67 @@ export default function ProjectsPage() {
                           : '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="relative inline-block" ref={dropdownProjectId === project.id ? dropdownRef : undefined}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setDropdownProjectId(
-                                dropdownProjectId === project.id ? null : project.id
-                              )
-                            }
-                            className="p-2 rounded-md text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            aria-label={`Actions for ${project.name}`}
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                          {dropdownProjectId === project.id && (
-                            <div className="absolute right-0 top-full mt-1 py-1 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-10">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setDropdownProjectId(null);
-                                  setEditProject(project);
-                                }}
-                                className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
-                              >
-                                <Pencil className="h-4 w-4 text-indigo-500" />
-                                Edit project
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(project)}
-                                disabled={!!project.deleted_at || deletingId === project.id}
-                                className="w-full px-4 py-2 text-left text-sm text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 disabled:opacity-50"
-                              >
-                                {deletingId === project.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
+                        <DropdownMenu.Root>
+                          <DropdownMenu.Trigger asChild>
+                            <button
+                              type="button"
+                              className="p-2 rounded-md text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              aria-label={`Actions for ${project.name}`}
+                              disabled={deletingId === project.id || restoringId === project.id || permanentDeletingId === project.id}
+                            >
+                              {(deletingId === project.id || restoringId === project.id || permanentDeletingId === project.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <MoreVertical className="h-4 w-4" />
+                              )}
+                            </button>
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Portal>
+                            <DropdownMenu.Content
+                              className="min-w-[180px] rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-lg p-1 z-50"
+                              sideOffset={4}
+                              align="end"
+                            >
+                              {!project.deleted_at && (
+                                <DropdownMenu.Item
+                                  onSelect={() => setEditProject(project)}
+                                  className="rounded-md px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 flex items-center gap-2"
+                                >
+                                  <Pencil className="h-4 w-4 text-indigo-500" />
+                                  Edit project
+                                </DropdownMenu.Item>
+                              )}
+                              {!project.deleted_at && (
+                                <DropdownMenu.Item
+                                  onSelect={() => handleDelete(project)}
+                                  className="rounded-md px-3 py-2 text-sm text-red-700 dark:text-red-300 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 dark:focus:bg-red-900/20 flex items-center gap-2"
+                                >
                                   <Trash2 className="h-4 w-4" />
-                                )}
-                                Delete project
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                                  Delete project
+                                </DropdownMenu.Item>
+                              )}
+                              {project.deleted_at && (
+                                <>
+                                  <DropdownMenu.Item
+                                    onSelect={() => handleRestore(project)}
+                                    className="rounded-md px-3 py-2 text-sm text-green-700 dark:text-green-300 outline-none cursor-pointer hover:bg-green-50 dark:hover:bg-green-900/20 focus:bg-green-50 dark:focus:bg-green-900/20 flex items-center gap-2"
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                    Restore project
+                                  </DropdownMenu.Item>
+                                  <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
+                                  <DropdownMenu.Item
+                                    onSelect={() => handlePermanentDelete(project)}
+                                    className="rounded-md px-3 py-2 text-sm text-red-700 dark:text-red-300 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 dark:focus:bg-red-900/20 flex items-center gap-2"
+                                  >
+                                    <Flame className="h-4 w-4" />
+                                    Permanently delete
+                                  </DropdownMenu.Item>
+                                </>
+                              )}
+                            </DropdownMenu.Content>
+                          </DropdownMenu.Portal>
+                        </DropdownMenu.Root>
                       </td>
                     </tr>
                   ))

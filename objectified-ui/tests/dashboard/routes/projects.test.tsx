@@ -18,6 +18,8 @@ jest.mock('@lib/api/rest-client', () => ({
   createProject: jest.fn(),
   updateProject: jest.fn(),
   deleteProject: jest.fn(),
+  restoreProject: jest.fn(),
+  permanentDeleteProject: jest.fn(),
   getRestClientOptions: jest.fn(() => ({})),
   isForbiddenError: jest.fn(() => false),
 }));
@@ -83,6 +85,21 @@ describe('ProjectsPage', () => {
     render(<ProjectsPage />);
     await waitFor(() => {
       expect(screen.getByText(/you must be signed in/i)).toBeInTheDocument();
+    });
+  });
+
+  it('renders show deleted toggle button', async () => {
+    render(<ProjectsPage />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /show deleted/i })).toBeInTheDocument();
+    });
+  });
+
+  it('calls listProjects with include_deleted=false by default', async () => {
+    const { listProjects } = require('@lib/api/rest-client');
+    render(<ProjectsPage />);
+    await waitFor(() => {
+      expect(listProjects).toHaveBeenCalledWith('t1', expect.anything(), false);
     });
   });
 });
