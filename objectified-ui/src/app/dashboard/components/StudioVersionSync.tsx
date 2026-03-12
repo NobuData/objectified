@@ -26,10 +26,8 @@ export default function StudioVersionSync() {
 
     if (versionId !== lastVersionIdRef.current) {
       lastVersionIdRef.current = versionId;
-      if (!versionId) {
-        studio.clear();
-        return;
-      }
+      studio.clear();
+      if (!versionId) return;
       void studio.loadFromServer(versionId, options, {
         tenantId: tenantId ?? undefined,
         projectId: projectId ?? undefined,

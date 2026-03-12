@@ -27,9 +27,27 @@ export interface StudioClassProperty {
   property_data?: Record<string, unknown>;
 }
 
+/**
+ * Generate a stable client-side id for a new class (e.g. before save).
+ * Use this when creating a class so React Flow and draft updates key off a stable id.
+ */
+export function generateLocalId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/** Return a stable key for a class: server id when present, otherwise client localId. */
+export function getStableClassId(cls: { id?: string; localId?: string }): string {
+  return cls.id ?? cls.localId ?? '';
+}
+
 /** A class in the local version state (with properties in order and optional canvas_metadata). */
 export interface StudioClass {
   id?: string;
+  /** Client-generated stable id when the class is created before save (no server id yet). */
+  localId?: string;
   version_id?: string;
   name: string;
   description?: string;

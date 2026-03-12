@@ -8,6 +8,7 @@ import {
   classesAndPropertiesToState,
 } from '@lib/studio/stateAdapter';
 import type { LocalVersionState } from '@lib/studio/types';
+import { getStableClassId } from '@lib/studio/types';
 
 describe('pullResponseToState', () => {
   it('converts empty pull response to state', () => {
@@ -62,6 +63,22 @@ describe('pullResponseToState', () => {
     expect(state.classes[0].properties).toHaveLength(1);
     expect(state.classes[0].properties[0].name).toBe('email');
     expect(state.canvas_metadata).toEqual({ layout: 'grid' });
+  });
+
+  it('assigns localId when class has no id (e.g. edge case from server)', () => {
+    const pull = {
+      version_id: 'v1',
+      revision: 1,
+      classes: [{ name: 'NoId', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    };
+    const state = pullResponseToState(pull);
+    expect(state.classes).toHaveLength(1);
+    expect(state.classes[0].id).toBeUndefined();
+    expect(state.classes[0].localId).toBeDefined();
+    expect(typeof state.classes[0].localId).toBe('string');
+    expect(getStableClassId(state.classes[0])).toBe(state.classes[0].localId);
   });
 
   it('merges project properties when provided', () => {

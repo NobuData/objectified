@@ -17,6 +17,7 @@ import type {
   StudioProperty,
   ClassCanvasMetadata,
 } from './types';
+import { generateLocalId } from './types';
 
 /** Build LocalVersionState from pull response and optional project properties. */
 export function pullResponseToState(
@@ -29,8 +30,10 @@ export function pullResponseToState(
     const props = (cls.properties as Record<string, unknown>[] | undefined) ?? [];
     const metadata = (cls.metadata as Record<string, unknown> | undefined) ?? {};
     const canvasMeta = metadata.canvas_metadata as ClassCanvasMetadata | undefined;
+    const id = typeof cls.id === 'string' ? cls.id : undefined;
     return {
-      id: typeof cls.id === 'string' ? cls.id : undefined,
+      id,
+      localId: id ? undefined : generateLocalId(),
       version_id: typeof cls.version_id === 'string' ? cls.version_id : undefined,
       name: String(cls.name ?? ''),
       description:
@@ -96,8 +99,10 @@ export function classesAndPropertiesToState(
   const classes: StudioClass[] = classesRaw.map((c) => {
     const metadata = c.metadata ?? {};
     const canvasMeta = metadata?.canvas_metadata as ClassCanvasMetadata | undefined;
+    const id = c.id;
     return {
-      id: c.id,
+      id,
+      localId: id ? undefined : generateLocalId(),
       version_id: c.version_id,
       name: c.name,
       description: c.description ?? undefined,

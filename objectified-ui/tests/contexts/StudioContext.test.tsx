@@ -5,6 +5,7 @@
 import React from 'react';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { StudioProvider, useStudio } from '@/app/contexts/StudioContext';
+import { generateLocalId } from '@lib/studio/types';
 
 const mockPullVersion = jest.fn();
 const mockListProperties = jest.fn();
@@ -38,6 +39,7 @@ function TestConsumer() {
         onClick={() =>
           studio.applyChange((draft) => {
             draft.classes.push({
+              localId: generateLocalId(),
               name: 'NewClass',
               properties: [],
             });

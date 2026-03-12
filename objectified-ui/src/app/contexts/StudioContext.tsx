@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -76,6 +77,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [stack, setStack] = useState<StudioStackState>(initialStack);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   const state = stack.state;
 
@@ -90,8 +92,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       options: RestClientOptions,
       opts?: { tenantId?: string; projectId?: string }
     ) => {
+      const requestId = (loadRequestIdRef.current += 1);
       setLoading(true);
       setError(null);
+      setStack(initialStack);
       try {
         const [pullRes, propertiesList] = await Promise.all([
           pullVersion(versionId, options),
@@ -99,18 +103,23 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             ? listProperties(opts.tenantId, opts.projectId, options)
             : Promise.resolve([]),
         ]);
+        if (requestId !== loadRequestIdRef.current) return;
         const newState = pullResponseToState(pullRes, propertiesList);
+        if (newState.versionId !== versionId) return;
         setStack({
           state: newState,
           undoStack: [],
           redoStack: [],
         });
       } catch (e) {
+        if (requestId !== loadRequestIdRef.current) return;
         const message = e instanceof Error ? e.message : 'Failed to load version';
         setError(message);
         setStack(initialStack);
       } finally {
-        setLoading(false);
+        if (requestId === loadRequestIdRef.current) {
+          setLoading(false);
+        }
       }
     },
     []

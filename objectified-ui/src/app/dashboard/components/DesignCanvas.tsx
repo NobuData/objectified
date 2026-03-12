@@ -13,20 +13,17 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
+import { getStableClassId } from '@lib/studio/types';
 
 const defaultPosition = { x: 0, y: 0 };
-
-function getClassNodeId(cls: { id?: string; name: string }, index: number): string {
-  return cls.id ?? `class-${index}-${cls.name}`;
-}
 
 export default function DesignCanvas() {
   const studio = useStudioOptional();
   const classes = studio?.state?.classes ?? [];
   const initialNodesFromState = useMemo(
     () =>
-      classes.map((cls, index) => {
-        const id = getClassNodeId(cls, index);
+      classes.map((cls) => {
+        const id = getStableClassId(cls);
         const pos = cls.canvas_metadata?.position ?? defaultPosition;
         return {
           id,
@@ -61,9 +58,7 @@ export default function DesignCanvas() {
       if (positionUpdates.length === 0) return;
       studio.applyChange((draft) => {
         for (const { nodeId, position } of positionUpdates) {
-          const idx = draft.classes.findIndex(
-            (c, i) => getClassNodeId(c, i) === nodeId
-          );
+          const idx = draft.classes.findIndex((c) => getStableClassId(c) === nodeId);
           if (idx >= 0) {
             const target = draft.classes[idx];
             target.canvas_metadata = {
