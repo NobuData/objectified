@@ -10,11 +10,15 @@ import { generateLocalId } from '@lib/studio/types';
 const mockPullVersion = jest.fn();
 const mockListProperties = jest.fn();
 const mockCommitVersion = jest.fn();
+const mockPushVersion = jest.fn();
+const mockMergeVersion = jest.fn();
 
 jest.mock('@lib/api/rest-client', () => ({
   pullVersion: (...args: unknown[]) => mockPullVersion(...args),
   listProperties: (...args: unknown[]) => mockListProperties(...args),
   commitVersion: (...args: unknown[]) => mockCommitVersion(...args),
+  pushVersion: (...args: unknown[]) => mockPushVersion(...args),
+  mergeVersion: (...args: unknown[]) => mockMergeVersion(...args),
   getRestClientOptions: () => ({}),
 }));
 

@@ -13,6 +13,8 @@ import {
   pullVersion,
   listProperties,
   commitVersion,
+  pushVersion,
+  mergeVersion,
   type RestClientOptions,
 } from '@lib/api/rest-client';
 import type { LocalVersionState } from '@lib/studio/types';
@@ -48,11 +50,28 @@ export interface StudioContextValue {
   /** Redo last undone change. */
   redo: () => void;
   /** Persist current state to server via commit. Updates revision on success. */
-  save: (options: RestClientOptions) => Promise<void>;
+  save: (
+    options: RestClientOptions,
+    commitOpts?: { message?: string | null; label?: string | null }
+  ) => Promise<void>;
   /** Whether undo is available. */
   canUndo: boolean;
   /** Whether redo is available. */
   canRedo: boolean;
+  /** Whether there are uncommitted local changes (dirty). */
+  isDirty: boolean;
+  /** Whether the server has newer changes (after checkServerForUpdates). */
+  serverHasNewChanges: boolean;
+  /** Check server for updates since current revision; sets serverHasNewChanges. */
+  checkServerForUpdates: (options: RestClientOptions) => Promise<void>;
+  /** Push current state to another version. */
+  push: (
+    targetVersionId: string,
+    options: RestClientOptions,
+    commitOpts?: { message?: string | null }
+  ) => Promise<void>;
+  /** Merge server changes (e.g. after diverged/conflicts). */
+  merge: (options: RestClientOptions, message?: string | null) => Promise<void>;
   /** Clear state and stacks (e.g. when switching version). */
   clear: () => void;
 }
@@ -77,6 +96,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [stack, setStack] = useState<StudioStackState>(initialStack);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [serverHasNewChanges, setServerHasNewChanges] = useState(false);
   const loadRequestIdRef = useRef(0);
 
   const state = stack.state;
@@ -84,6 +104,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const clear = useCallback(() => {
     setStack(initialStack);
     setError(null);
+    setServerHasNewChanges(false);
   }, []);
 
   const loadFromServer = useCallback(
@@ -111,6 +132,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           undoStack: [],
           redoStack: [],
         });
+        setServerHasNewChanges(false);
       } catch (e) {
         if (requestId !== loadRequestIdRef.current) return;
         const message = e instanceof Error ? e.message : 'Failed to load version';
@@ -167,7 +189,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const save = useCallback(
-    async (options: RestClientOptions) => {
+    async (
+      options: RestClientOptions,
+      commitOpts?: { message?: string | null; label?: string | null }
+    ) => {
       const current = state;
       if (!current) {
         setError('No version state to save');
@@ -176,7 +201,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setError(null);
       try {
-        const payload = stateToCommitPayload(current);
+        const payload = stateToCommitPayload(current, {
+          message: commitOpts?.message ?? null,
+          label: commitOpts?.label ?? 'save',
+        });
         const res = await commitVersion(current.versionId, payload, options);
         setStack((s) =>
           s.state
@@ -188,6 +216,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               }
             : s
         );
+        setServerHasNewChanges(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to save');
       } finally {
@@ -197,8 +226,90 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [state]
   );
 
+  const checkServerForUpdates = useCallback(
+    async (options: RestClientOptions) => {
+      const current = state;
+      if (!current?.revision) return;
+      try {
+        const res = await pullVersion(
+          current.versionId,
+          options,
+          undefined,
+          current.revision
+        );
+        const serverRev = res.revision ?? 0;
+        const hasDiff =
+          res.diff &&
+          (res.diff.added_class_names?.length ||
+            res.diff.removed_class_names?.length ||
+            (res.diff.modified_classes?.length ?? 0));
+        if (serverRev > current.revision || hasDiff) {
+          setServerHasNewChanges(true);
+        }
+      } catch {
+        // Ignore errors (e.g. network); leave serverHasNewChanges unchanged
+      }
+    },
+    [state]
+  );
+
+  const push = useCallback(
+    async (
+      targetVersionId: string,
+      options: RestClientOptions,
+      commitOpts?: { message?: string | null }
+    ) => {
+      const current = state;
+      if (!current) {
+        setError('No version state to push');
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const payload = stateToCommitPayload(current, {
+          message: commitOpts?.message ?? null,
+          label: 'push',
+        });
+        await pushVersion(current.versionId, targetVersionId, payload, options);
+        setServerHasNewChanges(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to push');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [state]
+  );
+
+  const merge = useCallback(
+    async (options: RestClientOptions, message?: string | null) => {
+      const current = state;
+      if (!current) {
+        setError('No version state to merge');
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        await mergeVersion(
+          current.versionId,
+          { strategy: 'override', message: message ?? null },
+          options
+        );
+        setServerHasNewChanges(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to merge');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [state]
+  );
+
   const canUndo = stack.undoStack.length > 0;
   const canRedo = stack.redoStack.length > 0;
+  const isDirty = stack.undoStack.length > 0;
 
   const value = useMemo<StudioContextValue>(
     () => ({
@@ -212,6 +323,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       save,
       canUndo,
       canRedo,
+      isDirty,
+      serverHasNewChanges,
+      checkServerForUpdates,
+      push,
+      merge,
       clear,
     }),
     [
@@ -225,6 +341,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       save,
       canUndo,
       canRedo,
+      isDirty,
+      serverHasNewChanges,
+      checkServerForUpdates,
+      push,
+      merge,
       clear,
     ]
   );

@@ -144,8 +144,18 @@ export function classesAndPropertiesToState(
   };
 }
 
+export interface CommitPayloadOptions {
+  label?: string | null;
+  description?: string | null;
+  message?: string | null;
+}
+
 /** Build VersionCommitPayload from LocalVersionState for commit/push. */
-export function stateToCommitPayload(state: LocalVersionState): VersionCommitPayload {
+export function stateToCommitPayload(
+  state: LocalVersionState,
+  opts?: CommitPayloadOptions
+): VersionCommitPayload {
+  const options = opts ?? {};
   const classesPayload: VersionCommitClass[] = state.classes.map((c) => {
     const propertiesPayload: VersionCommitClassProperty[] = c.properties.map((p) => ({
       name: p.name,
@@ -172,8 +182,8 @@ export function stateToCommitPayload(state: LocalVersionState): VersionCommitPay
   return {
     classes: classesPayload,
     canvas_metadata: state.canvas_metadata,
-    label: 'save',
-    description: null,
-    message: null,
+    label: options.label ?? 'save',
+    description: options.description ?? null,
+    message: options.message ?? null,
   };
 }
