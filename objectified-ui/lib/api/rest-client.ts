@@ -781,6 +781,32 @@ export async function deleteProject(
   );
 }
 
+export async function restoreProject(
+  tenantId: string,
+  projectId: string,
+  options: RestClientOptions = {}
+): Promise<ProjectSchema> {
+  return request<ProjectSchema>(
+    'POST',
+    `/tenants/${tenantId}/projects/${projectId}/restore`,
+    undefined,
+    options
+  );
+}
+
+export async function permanentDeleteProject(
+  tenantId: string,
+  projectId: string,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/tenants/${tenantId}/projects/${projectId}/permanent`,
+    undefined,
+    options
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Versions
 // ---------------------------------------------------------------------------
