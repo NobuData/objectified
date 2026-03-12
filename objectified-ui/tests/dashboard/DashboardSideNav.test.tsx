@@ -23,12 +23,13 @@ describe('DashboardSideNav', () => {
     expect(screen.getByText('Navigation')).toBeInTheDocument();
   });
 
-  it('renders Dashboard, Projects, Versions, Publish, Tenants, and Profile links by default', () => {
+  it('renders Dashboard, Projects, Versions, Publish, Published, Tenants, and Profile links by default', () => {
     render(<DashboardSideNav />);
     expect(screen.getByRole('link', { name: /Dashboard/i })).toHaveAttribute('href', '/dashboard');
     expect(screen.getByRole('link', { name: /Projects/i })).toHaveAttribute('href', '/dashboard/projects');
     expect(screen.getByRole('link', { name: /Versions/i })).toHaveAttribute('href', '/dashboard/versions');
-    expect(screen.getByRole('link', { name: /Publish/i })).toHaveAttribute('href', '/dashboard/publish');
+    expect(screen.getByRole('link', { name: 'Publish' })).toHaveAttribute('href', '/dashboard/publish');
+    expect(screen.getByRole('link', { name: 'Published' })).toHaveAttribute('href', '/dashboard/published');
     expect(screen.getByRole('link', { name: /Tenants/i })).toHaveAttribute('href', '/dashboard/tenants');
     expect(screen.getByRole('link', { name: /Profile/i })).toHaveAttribute('href', '/dashboard/profile');
   });
@@ -62,6 +63,20 @@ describe('DashboardSideNav', () => {
     render(<DashboardSideNav />);
     const dashboardLink = screen.getByRole('link', { name: /Dashboard/i });
     expect(dashboardLink.className).not.toContain('border-indigo-500');
+  });
+
+  it('highlights only Publish (not Published) when on /dashboard/publish', () => {
+    mockPathname = '/dashboard/publish';
+    render(<DashboardSideNav />);
+    expect(screen.getByRole('link', { name: 'Publish' }).className).toContain('border-indigo-500');
+    expect(screen.getByRole('link', { name: 'Published' }).className).not.toContain('border-indigo-500');
+  });
+
+  it('highlights only Published (not Publish) when on /dashboard/published', () => {
+    mockPathname = '/dashboard/published';
+    render(<DashboardSideNav />);
+    expect(screen.getByRole('link', { name: 'Published' }).className).toContain('border-indigo-500');
+    expect(screen.getByRole('link', { name: 'Publish' }).className).not.toContain('border-indigo-500');
   });
 
   it('calls onNavigate when a link is clicked', () => {
