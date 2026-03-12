@@ -23,6 +23,7 @@ import {
   updateTenantMember,
   listUsers,
   getRestClientOptions,
+  isForbiddenError,
   type TenantSchema,
   type TenantAccountSchema,
   type TenantAdministratorCreate,
@@ -46,6 +47,11 @@ export default function TenantAdministratorsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [demotingId, setDemotingId] = useState<string | null>(null);
+
+  type SessionUser = { is_administrator?: boolean };
+  const isAdministrator = Boolean(
+    (session?.user as SessionUser | undefined)?.is_administrator
+  );
 
   const currentAccountId = (session?.user as { id?: string } | undefined)?.id;
 
@@ -92,12 +98,7 @@ export default function TenantAdministratorsPage() {
       const msg = e instanceof Error ? e.message : 'Failed to load administrators';
       setError(msg);
       setAdministrators([]);
-      if (
-        msg.includes('403') ||
-        msg.toLowerCase().includes('forbidden') ||
-        msg.toLowerCase().includes('not authorized') ||
-        msg.toLowerCase().includes('admin privileges required')
-      ) {
+      if (isForbiddenError(e)) {
         setForbidden(true);
       }
     } finally {
@@ -158,7 +159,11 @@ export default function TenantAdministratorsPage() {
       await fetchAdministrators();
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : 'Failed to remove administrator'
+        isForbiddenError(e)
+          ? 'Admin privileges required to remove an administrator.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to remove administrator'
       );
     } finally {
       setRemovingId(null);
@@ -194,7 +199,11 @@ export default function TenantAdministratorsPage() {
       await fetchAdministrators();
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : 'Failed to demote administrator'
+        isForbiddenError(e)
+          ? 'Admin privileges required to demote an administrator.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to demote administrator'
       );
     } finally {
       setDemotingId(null);
@@ -250,7 +259,7 @@ export default function TenantAdministratorsPage() {
     return (
       <div className="p-6">
         <p className="text-slate-600 dark:text-slate-400 mb-4">
-          Only tenant administrators can view this page.
+          Only platform administrators can view and manage tenant administrators.
         </p>
         <div className="flex flex-wrap gap-3">
           <Link
@@ -297,7 +306,7 @@ export default function TenantAdministratorsPage() {
               <Users className="h-4 w-4" aria-hidden />
               Members
             </Link>
-            {tenant && (
+            {tenant && isAdministrator && (
               <button
                 type="button"
                 onClick={() => setAddOpen(true)}
@@ -399,7 +408,7 @@ export default function TenantAdministratorsPage() {
                             <span className="text-slate-500 dark:text-slate-400 text-sm">
                               You
                             </span>
-                          ) : (
+                          ) : isAdministrator ? (
                             <span className="inline-flex items-center gap-2">
                               <button
                                 type="button"
@@ -436,7 +445,7 @@ export default function TenantAdministratorsPage() {
                                 Remove
                               </button>
                             </span>
-                          )}
+                          ) : null}
                         </td>
                       </tr>
                     );
@@ -516,7 +525,11 @@ function AddAdministratorDialog({
       onSuccess();
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : 'Failed to add administrator'
+        isForbiddenError(err)
+          ? 'Admin privileges required to add an administrator.'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to add administrator'
       );
     } finally {
       setSaving(false);

@@ -12,6 +12,7 @@ import {
   updateTenant,
   deleteTenant,
   getRestClientOptions,
+  isForbiddenError,
   type TenantSchema,
   type TenantCreate,
   type TenantUpdate,
@@ -48,6 +49,11 @@ export default function TenantsPage() {
   const [editTenant, setEditTenant] = useState<TenantSchema | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  type SessionUser = { is_administrator?: boolean };
+  const isAdministrator = Boolean(
+    (session?.user as SessionUser | undefined)?.is_administrator
+  );
+
   const fetchTenants = useCallback(async () => {
     if (status !== 'authenticated' || !session) {
       setLoading(false);
@@ -61,7 +67,13 @@ export default function TenantsPage() {
       );
       setTenants(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load tenants');
+      setError(
+        isForbiddenError(e)
+          ? 'You do not have permission to view tenants.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to load tenants'
+      );
       setTenants([]);
     } finally {
       setLoading(false);
@@ -108,7 +120,13 @@ export default function TenantsPage() {
       );
       await fetchTenants();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to deactivate tenant');
+      setError(
+        isForbiddenError(e)
+          ? 'Admin privileges required to deactivate a tenant.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to deactivate tenant'
+      );
     } finally {
       setDeletingId(null);
     }
@@ -238,7 +256,7 @@ export default function TenantsPage() {
                             <ShieldCheck className="h-4 w-4" />
                             Administrators
                           </Link>
-                          {!tenant.deleted_at && (
+                          {!tenant.deleted_at && isAdministrator && (
                             <span className="inline-flex items-center gap-2">
                               <button
                                 type="button"
@@ -536,7 +554,11 @@ function EditTenantDialog({
       onSuccess();
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : 'Failed to update tenant'
+        isForbiddenError(err)
+          ? 'Admin privileges required to update a tenant.'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to update tenant'
       );
     } finally {
       setSaving(false);
