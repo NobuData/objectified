@@ -32,7 +32,7 @@ function extractRefs(obj: unknown, classNames: Set<string>): Set<string> {
       const o = val as Record<string, unknown>;
       if (typeof o.$ref === 'string') {
         const ref = o.$ref;
-        const match = ref.match(/#\/(?:components\/schemas|$defs)\/(.+)$/);
+        const match = ref.match(/#\/(?:components\/schemas|\$defs)\/(.+)$/);
         const name = match ? match[1].trim() : ref.split('/').pop()?.trim();
         if (name && classNames.has(name)) {
           out.add(name);
@@ -81,8 +81,17 @@ export default function RelationshipGraphDialog({
       classes.map((c) => (c.name as string)?.trim()).filter(Boolean)
     );
     const nameToId = new Map<string, string>();
+    const usedIds = new Set<string>();
     for (const name of classNames) {
-      nameToId.set(name, sanitizeId(name));
+      const baseId = sanitizeId(name);
+      let uniqueId = baseId;
+      let suffix = 1;
+      while (usedIds.has(uniqueId)) {
+        suffix += 1;
+        uniqueId = `${baseId}__${suffix}`;
+      }
+      usedIds.add(uniqueId);
+      nameToId.set(name, uniqueId);
     }
 
     const edgesMap = new Map<string, { target: string; label?: string }[]>();
@@ -101,12 +110,11 @@ export default function RelationshipGraphDialog({
         for (const targetName of refs) {
           const targetId = nameToId.get(targetName);
           if (!targetId || targetId === sourceId) continue;
-          const key = `${sourceId}->${targetId}`;
-            const list = edgesMap.get(sourceId) ?? [];
-            if (!list.some((e) => e.target === targetId)) {
-              list.push({ target: targetId, label: propName || undefined });
-            }
-            edgesMap.set(sourceId, list);
+          const list = edgesMap.get(sourceId) ?? [];
+          if (!list.some((e) => e.target === targetId)) {
+            list.push({ target: targetId, label: propName || undefined });
+          }
+          edgesMap.set(sourceId, list);
         }
       }
     }
