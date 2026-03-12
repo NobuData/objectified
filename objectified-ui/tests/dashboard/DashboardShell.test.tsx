@@ -56,7 +56,7 @@ describe('DashboardShell', () => {
     expect(within(nav).getByRole('link', { name: /Account/i })).toHaveAttribute('href', '/dashboard/profile');
   });
 
-  it('renders dashboard sidebar with Dashboard home, Projects, Versions, Tenants, Profile', () => {
+  it('renders dashboard sidebar with Dashboard home, Projects, Versions, Publish, Tenants, Profile', () => {
     render(
       <DashboardShell>
         <div>Content</div>
@@ -68,6 +68,7 @@ describe('DashboardShell', () => {
     expect(within(sidebar).getByRole('link', { name: /^Dashboard$/i })).toHaveAttribute('href', '/dashboard');
     expect(within(sidebar).getByRole('link', { name: /Projects/i })).toHaveAttribute('href', '/dashboard/projects');
     expect(within(sidebar).getByRole('link', { name: /Versions/i })).toHaveAttribute('href', '/dashboard/versions');
+    expect(within(sidebar).getByRole('link', { name: /Publish/i })).toHaveAttribute('href', '/dashboard/publish');
     expect(within(sidebar).getByRole('link', { name: /Tenants/i })).toHaveAttribute('href', '/dashboard/tenants');
     expect(within(sidebar).getByRole('link', { name: /Profile/i })).toHaveAttribute('href', '/dashboard/profile');
   });
