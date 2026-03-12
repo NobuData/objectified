@@ -162,6 +162,38 @@ describe('StudioToolbar', () => {
     expect(screen.getByRole('dialog', { name: /commit/i })).toBeInTheDocument();
   });
 
+  it('submitting commit dialog calls studio.save with the typed message', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    const input = screen.getByRole('textbox', { name: /commit message/i });
+    await userEvent.type(input, 'my commit message');
+    await userEvent.click(screen.getByRole('button', { name: /^commit$/i }));
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: 'my commit message' })
+    );
+  });
+
+  it('commit dialog submit button is disabled while loading', async () => {
+    // Render with loading=false so dialog can be opened
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    const { rerender } = render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    expect(screen.getByRole('dialog', { name: /commit/i })).toBeInTheDocument();
+    // Switch to loading=true while dialog is open
+    useStudioOptional.mockReturnValue({ ...defaultStudioWithState, loading: true });
+    rerender(<StudioToolbar />);
+    // When loading, button label changes to "Committing…" and is disabled
+    expect(screen.getByRole('button', { name: /committing/i })).toBeDisabled();
+    // The commit message input is also disabled
+    expect(screen.getByRole('textbox', { name: /commit message/i })).toBeDisabled();
+  });
+
   it('shows error when studio has error', () => {
     useStudioOptional.mockReturnValue({
       ...defaultStudioWithState,
