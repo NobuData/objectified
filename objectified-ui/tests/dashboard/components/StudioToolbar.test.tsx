@@ -18,9 +18,21 @@ jest.mock('@lib/api/rest-client', () => ({
 const mockUndo = jest.fn();
 const mockRedo = jest.fn();
 const mockSave = jest.fn();
+const mockLoadFromServer = jest.fn();
+const mockCheckServerForUpdates = jest.fn();
+const mockPush = jest.fn();
+const mockMerge = jest.fn();
 
 jest.mock('@/app/contexts/StudioContext', () => ({
   useStudioOptional: jest.fn(),
+}));
+
+jest.mock('@/app/contexts/WorkspaceContext', () => ({
+  useWorkspaceOptional: jest.fn(() => ({
+    tenant: { id: 't1' },
+    project: { id: 'p1' },
+    version: { id: 'v1' },
+  })),
 }));
 
 const useStudioOptional =
@@ -56,12 +68,18 @@ describe('StudioToolbar', () => {
       save: mockSave,
       canUndo: false,
       canRedo: false,
+      isDirty: false,
+      serverHasNewChanges: false,
+      checkServerForUpdates: mockCheckServerForUpdates,
+      loadFromServer: mockLoadFromServer,
+      push: mockPush,
+      merge: mockMerge,
     });
     const { container } = render(<StudioToolbar />);
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders Undo, Redo, Save when studio has state', () => {
+  it('renders Undo, Redo, Commit, Reset, Push, Pull, Merge when studio has state', () => {
     useStudioOptional.mockReturnValue({
       state: studioState,
       loading: false,
@@ -71,23 +89,54 @@ describe('StudioToolbar', () => {
       save: mockSave,
       canUndo: false,
       canRedo: false,
+      isDirty: false,
+      serverHasNewChanges: false,
+      checkServerForUpdates: mockCheckServerForUpdates,
+      loadFromServer: mockLoadFromServer,
+      push: mockPush,
+      merge: mockMerge,
     });
     render(<StudioToolbar />);
     expect(screen.getByRole('button', { name: /undo/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /redo/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /save to server/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /reset to last committed state/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /push to another version/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /pull from server/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /merge server changes/i })
+    ).toBeInTheDocument();
   });
+
+  const defaultStudioWithState = {
+    state: studioState,
+    loading: false,
+    error: null,
+    undo: mockUndo,
+    redo: mockRedo,
+    save: mockSave,
+    canUndo: false,
+    canRedo: false,
+    isDirty: false,
+    serverHasNewChanges: false,
+    checkServerForUpdates: mockCheckServerForUpdates,
+    loadFromServer: mockLoadFromServer,
+    push: mockPush,
+    merge: mockMerge,
+  };
 
   it('calls undo when Undo is clicked', async () => {
     useStudioOptional.mockReturnValue({
-      state: studioState,
-      loading: false,
-      error: null,
-      undo: mockUndo,
-      redo: mockRedo,
-      save: mockSave,
+      ...defaultStudioWithState,
       canUndo: true,
-      canRedo: false,
     });
     render(<StudioToolbar />);
     await userEvent.click(screen.getByRole('button', { name: /undo/i }));
@@ -96,13 +145,7 @@ describe('StudioToolbar', () => {
 
   it('calls redo when Redo is clicked', async () => {
     useStudioOptional.mockReturnValue({
-      state: studioState,
-      loading: false,
-      error: null,
-      undo: mockUndo,
-      redo: mockRedo,
-      save: mockSave,
-      canUndo: false,
+      ...defaultStudioWithState,
       canRedo: true,
     });
     render(<StudioToolbar />);
@@ -110,51 +153,86 @@ describe('StudioToolbar', () => {
     expect(mockRedo).toHaveBeenCalledTimes(1);
   });
 
-  it('calls save when Save is clicked', async () => {
-    useStudioOptional.mockReturnValue({
-      state: studioState,
-      loading: false,
-      error: null,
-      undo: mockUndo,
-      redo: mockRedo,
-      save: mockSave,
-      canUndo: false,
-      canRedo: false,
-    });
+  it('opens commit dialog when Commit is clicked', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
     render(<StudioToolbar />);
-    await userEvent.click(screen.getByRole('button', { name: /save to server/i }));
-    expect(mockSave).toHaveBeenCalledTimes(1);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    expect(screen.getByRole('dialog', { name: /commit/i })).toBeInTheDocument();
+  });
+
+  it('submitting commit dialog calls studio.save with the typed message', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    const input = screen.getByRole('textbox', { name: /commit message/i });
+    await userEvent.type(input, 'my commit message');
+    await userEvent.click(screen.getByRole('button', { name: /^commit$/i }));
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: 'my commit message' })
+    );
+  });
+
+  it('commit dialog submit button is disabled while loading', async () => {
+    // Render with loading=false so dialog can be opened
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    const { rerender } = render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    expect(screen.getByRole('dialog', { name: /commit/i })).toBeInTheDocument();
+    // Switch to loading=true while dialog is open
+    useStudioOptional.mockReturnValue({ ...defaultStudioWithState, loading: true });
+    rerender(<StudioToolbar />);
+    // When loading, button label changes to "Committing…" and is disabled
+    expect(screen.getByRole('button', { name: /committing/i })).toBeDisabled();
+    // The commit message input is also disabled
+    expect(screen.getByRole('textbox', { name: /commit message/i })).toBeDisabled();
   });
 
   it('shows error when studio has error', () => {
     useStudioOptional.mockReturnValue({
-      state: studioState,
-      loading: false,
+      ...defaultStudioWithState,
       error: 'Save failed',
-      undo: mockUndo,
-      redo: mockRedo,
-      save: mockSave,
-      canUndo: false,
-      canRedo: false,
     });
     render(<StudioToolbar />);
     expect(screen.getByRole('alert')).toHaveTextContent('Save failed');
   });
 
-  it('disables Undo and Redo when loading', () => {
+  it('disables Undo, Redo, and Commit when loading', () => {
     useStudioOptional.mockReturnValue({
-      state: studioState,
+      ...defaultStudioWithState,
       loading: true,
-      error: null,
-      undo: mockUndo,
-      redo: mockRedo,
-      save: mockSave,
       canUndo: true,
       canRedo: true,
     });
     render(<StudioToolbar />);
     expect(screen.getByRole('button', { name: /undo/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /redo/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /save to server/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    ).toBeDisabled();
+  });
+
+  it('shows Dirty indicator when isDirty is true', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      isDirty: true,
+    });
+    render(<StudioToolbar />);
+    expect(screen.getByText('Dirty')).toBeInTheDocument();
+  });
+
+  it('shows server has new changes indicator when serverHasNewChanges is true', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      serverHasNewChanges: true,
+    });
+    render(<StudioToolbar />);
+    expect(screen.getByText('Server has new changes')).toBeInTheDocument();
   });
 });
