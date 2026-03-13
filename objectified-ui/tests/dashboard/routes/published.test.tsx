@@ -98,7 +98,10 @@ describe('PublishedPage', () => {
     expect(screen.getByText('Project One')).toBeInTheDocument();
     expect(screen.getAllByText('Public').length).toBeGreaterThanOrEqual(1);
     const studioLink = screen.getByRole('link', { name: 'Open 1.0.0 in Studio' });
-    expect(studioLink).toHaveAttribute('href', '/data-designer');
+    expect(studioLink).toHaveAttribute(
+      'href',
+      '/data-designer?tenantId=t1&projectId=p1&versionId=v1'
+    );
   });
 
   it('filters out unpublished versions', async () => {

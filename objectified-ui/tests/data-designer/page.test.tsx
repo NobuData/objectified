@@ -7,6 +7,10 @@ jest.mock('next-auth/react', () => ({
   signOut: jest.fn(),
 }));
 
+jest.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 jest.mock('@lib/api/rest-client', () => ({
   getRestBaseUrl: () => 'http://test/v1',
   getRestClientOptions: () => ({}),
@@ -15,6 +19,9 @@ jest.mock('@lib/api/rest-client', () => ({
   listVersions: jest.fn().mockResolvedValue([]),
   listClassesWithPropertiesAndTags: jest.fn().mockResolvedValue([]),
   listProperties: jest.fn().mockResolvedValue([]),
+  getTenant: jest.fn(),
+  getProject: jest.fn(),
+  getVersion: jest.fn(),
 }));
 
 jest.mock('@xyflow/react', () => ({

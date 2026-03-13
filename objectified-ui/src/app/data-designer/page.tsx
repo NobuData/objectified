@@ -6,6 +6,7 @@ import DesignCanvasSidebar from '@/app/dashboard/components/DesignCanvasSidebar'
 import DesignCanvas from '@/app/dashboard/components/DesignCanvas';
 import StudioVersionSync from '@/app/dashboard/components/StudioVersionSync';
 import StudioToolbar from '@/app/dashboard/components/StudioToolbar';
+import StudioUrlLoader from '@/app/dashboard/components/StudioUrlLoader';
 import { WorkspaceProvider } from '@/app/contexts/WorkspaceContext';
 import { StudioProvider } from '@/app/contexts/StudioContext';
 
@@ -14,6 +15,7 @@ export default function DataDesignerPage() {
     <WorkspaceProvider>
       <StudioProvider>
         <StudioVersionSync />
+        <StudioUrlLoader />
         <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
           <TopHeader />
           <div className="flex items-center justify-between shrink-0">
