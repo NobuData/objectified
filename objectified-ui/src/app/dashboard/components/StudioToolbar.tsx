@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   Undo2,
@@ -18,6 +18,7 @@ import {
 import { getRestClientOptions } from '@lib/api/rest-client';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
+import { useUndoKeyboard, getModifierLabel } from '@lib/studio/useUndoKeyboard';
 import CommitMessageDialog from '@/app/dashboard/components/CommitMessageDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 
@@ -78,6 +79,18 @@ export default function StudioToolbar() {
     void studio.merge(options);
   }, [studio, options]);
 
+  const modLabel = useMemo(() => getModifierLabel(), []);
+
+  useUndoKeyboard({
+    onUndo: () => {
+      if (studio?.canUndo && !studio?.loading) studio.undo();
+    },
+    onRedo: () => {
+      if (studio?.canRedo && !studio?.loading) studio.redo();
+    },
+    disabled: !studio?.state,
+  });
+
   if (!studio) return null;
   if (!studio.state) return null;
 
@@ -130,7 +143,7 @@ export default function StudioToolbar() {
         disabled={!studio.canUndo || studio.loading}
         className={btnBase}
         aria-label="Undo"
-        title="Undo"
+        title={`Undo (${modLabel}+Z)`}
       >
         <Undo2 className="h-4 w-4" />
       </button>
@@ -140,7 +153,7 @@ export default function StudioToolbar() {
         disabled={!studio.canRedo || studio.loading}
         className={btnBase}
         aria-label="Redo"
-        title="Redo"
+        title={`Redo (${modLabel}+Shift+Z)`}
       >
         <Redo2 className="h-4 w-4" />
       </button>
