@@ -13,6 +13,7 @@ import {
   Loader2,
   Circle,
   Cloud,
+  GitBranchPlus,
 } from 'lucide-react';
 import { getRestClientOptions } from '@lib/api/rest-client';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
@@ -97,6 +98,15 @@ export default function StudioToolbar() {
         >
           <Circle className="h-2 w-2 fill-current" />
           Dirty
+        </span>
+      )}
+      {studio.hasUnpushedCommits && (
+        <span
+          className="flex items-center gap-1.5 text-violet-600 dark:text-violet-400 text-xs font-medium"
+          title="Committed locally but not yet pushed to another version"
+        >
+          <GitBranchPlus className="h-4 w-4" />
+          Unpushed commits
         </span>
       )}
       {studio.serverHasNewChanges && (

@@ -23,6 +23,42 @@ import {
   stateToCommitPayload,
 } from '@lib/studio/stateAdapter';
 
+// ─── localStorage helpers ─────────────────────────────────────────────────────
+
+const STORAGE_KEY_PREFIX = 'objectified:studio:';
+
+interface PersistedCommitInfo {
+  revision: number | null;
+  lastCommittedAt: string;
+  hasUnpushedCommits: boolean;
+}
+
+function commitStorageKey(versionId: string): string {
+  return `${STORAGE_KEY_PREFIX}${versionId}:lastCommit`;
+}
+
+function loadPersistedCommitInfo(versionId: string): PersistedCommitInfo | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(commitStorageKey(versionId));
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedCommitInfo;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedCommitInfo(versionId: string, info: PersistedCommitInfo): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(commitStorageKey(versionId), JSON.stringify(info));
+  } catch {
+    // Ignore localStorage errors (e.g. private browsing quota exceeded)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function deepClone<T>(x: T): T {
   if (typeof structuredClone === 'function') {
     return structuredClone(x) as T;
@@ -60,6 +96,8 @@ export interface StudioContextValue {
   canRedo: boolean;
   /** Whether there are uncommitted local changes (dirty). */
   isDirty: boolean;
+  /** Whether there are commits that have not yet been pushed to another version. */
+  hasUnpushedCommits: boolean;
   /** Whether the server has newer changes (after checkServerForUpdates). */
   serverHasNewChanges: boolean;
   /** Check server for updates since current revision; sets serverHasNewChanges. */
@@ -97,6 +135,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serverHasNewChanges, setServerHasNewChanges] = useState(false);
+  const [hasUnpushedCommits, setHasUnpushedCommits] = useState(false);
   const loadRequestIdRef = useRef(0);
 
   const state = stack.state;
@@ -105,6 +144,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setStack(initialStack);
     setError(null);
     setServerHasNewChanges(false);
+    setHasUnpushedCommits(false);
   }, []);
 
   const loadFromServer = useCallback(
@@ -133,6 +173,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           redoStack: [],
         });
         setServerHasNewChanges(false);
+        // Restore persisted commit info only when the persisted revision matches
+        // the revision that was just loaded, to avoid a stale indicator.
+        const persisted = loadPersistedCommitInfo(versionId);
+        const revisionMatches = typeof persisted?.revision === 'number' && persisted.revision === newState.revision;
+        setHasUnpushedCommits(revisionMatches ? (persisted?.hasUnpushedCommits ?? false) : false);
       } catch (e) {
         if (requestId !== loadRequestIdRef.current) return;
         const message = e instanceof Error ? e.message : 'Failed to load version';
@@ -217,6 +262,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             : s
         );
         setServerHasNewChanges(false);
+        setHasUnpushedCommits(true);
+        savePersistedCommitInfo(current.versionId, {
+          revision: res.revision,
+          lastCommittedAt: res.committed_at,
+          hasUnpushedCommits: true,
+        });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to save');
       } finally {
@@ -275,6 +326,16 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         });
         await pushVersion(current.versionId, targetVersionId, payload, options);
         setServerHasNewChanges(false);
+        setHasUnpushedCommits(false);
+        // Only flip hasUnpushedCommits; leave revision/lastCommittedAt unchanged
+        // since push updates the target version, not the source.
+        const existingInfo = loadPersistedCommitInfo(current.versionId);
+        if (existingInfo) {
+          savePersistedCommitInfo(current.versionId, {
+            ...existingInfo,
+            hasUnpushedCommits: false,
+          });
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to push');
       } finally {
@@ -331,6 +392,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       canUndo,
       canRedo,
       isDirty,
+      hasUnpushedCommits,
       serverHasNewChanges,
       checkServerForUpdates,
       push,
@@ -349,6 +411,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       canUndo,
       canRedo,
       isDirty,
+      hasUnpushedCommits,
       serverHasNewChanges,
       checkServerForUpdates,
       push,
