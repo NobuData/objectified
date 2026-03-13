@@ -35,12 +35,12 @@ describe('useUndoKeyboard', () => {
     expect(onRedo).not.toHaveBeenCalled();
   });
 
-  it('calls onUndo when Meta+Z is pressed (macOS)', () => {
+  it('calls onUndo when Ctrl+Z is pressed with Caps Lock (uppercase Z)', () => {
     const onUndo = jest.fn();
     const onRedo = jest.fn();
     renderHook(() => useUndoKeyboard({ onUndo, onRedo }));
 
-    fireKey('z', { metaKey: true });
+    fireKey('Z', { ctrlKey: true });
 
     expect(onUndo).toHaveBeenCalledTimes(1);
     expect(onRedo).not.toHaveBeenCalled();
@@ -57,17 +57,6 @@ describe('useUndoKeyboard', () => {
     expect(onUndo).not.toHaveBeenCalled();
   });
 
-  it('calls onRedo when Meta+Shift+Z is pressed (macOS)', () => {
-    const onUndo = jest.fn();
-    const onRedo = jest.fn();
-    renderHook(() => useUndoKeyboard({ onUndo, onRedo }));
-
-    fireKey('Z', { metaKey: true, shiftKey: true });
-
-    expect(onRedo).toHaveBeenCalledTimes(1);
-    expect(onUndo).not.toHaveBeenCalled();
-  });
-
   it('calls onRedo when Ctrl+Y is pressed', () => {
     const onUndo = jest.fn();
     const onRedo = jest.fn();
@@ -77,6 +66,67 @@ describe('useUndoKeyboard', () => {
 
     expect(onRedo).toHaveBeenCalledTimes(1);
     expect(onUndo).not.toHaveBeenCalled();
+  });
+
+  it('calls onRedo when Ctrl+Y is pressed with Caps Lock (uppercase Y)', () => {
+    const onUndo = jest.fn();
+    const onRedo = jest.fn();
+    renderHook(() => useUndoKeyboard({ onUndo, onRedo }));
+
+    fireKey('Y', { ctrlKey: true });
+
+    expect(onRedo).toHaveBeenCalledTimes(1);
+    expect(onUndo).not.toHaveBeenCalled();
+  });
+
+  it('does not intercept Win+Z (metaKey) on non-Mac platforms', () => {
+    const onUndo = jest.fn();
+    const onRedo = jest.fn();
+    renderHook(() => useUndoKeyboard({ onUndo, onRedo }));
+
+    fireKey('z', { metaKey: true });
+
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRedo).not.toHaveBeenCalled();
+  });
+
+  describe('macOS platform', () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(navigator, 'platform');
+
+    beforeEach(() => {
+      Object.defineProperty(navigator, 'platform', {
+        value: 'MacIntel',
+        configurable: true,
+      });
+    });
+
+    afterEach(() => {
+      if (originalPlatform) {
+        Object.defineProperty(navigator, 'platform', originalPlatform);
+      }
+    });
+
+    it('calls onUndo when Meta+Z is pressed', () => {
+      const onUndo = jest.fn();
+      const onRedo = jest.fn();
+      renderHook(() => useUndoKeyboard({ onUndo, onRedo }));
+
+      fireKey('z', { metaKey: true });
+
+      expect(onUndo).toHaveBeenCalledTimes(1);
+      expect(onRedo).not.toHaveBeenCalled();
+    });
+
+    it('calls onRedo when Meta+Shift+Z is pressed', () => {
+      const onUndo = jest.fn();
+      const onRedo = jest.fn();
+      renderHook(() => useUndoKeyboard({ onUndo, onRedo }));
+
+      fireKey('Z', { metaKey: true, shiftKey: true });
+
+      expect(onRedo).toHaveBeenCalledTimes(1);
+      expect(onUndo).not.toHaveBeenCalled();
+    });
   });
 
   it('does nothing when disabled is true', () => {

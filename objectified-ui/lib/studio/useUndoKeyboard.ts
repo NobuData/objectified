@@ -1,8 +1,12 @@
 /**
  * Keyboard shortcut hook for undo/redo.
  *
- * Listens for Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z or Cmd/Ctrl+Y (redo)
- * on the document and dispatches the corresponding studio actions.
+ * Listens for Cmd+Z (macOS) or Ctrl+Z (Windows/Linux) to undo, and
+ * Cmd/Ctrl+Shift+Z or Ctrl+Y (Windows/Linux only) to redo, then dispatches
+ * the corresponding studio actions.
+ *
+ * Uses metaKey on macOS and ctrlKey on all other platforms to avoid
+ * intercepting OS-level shortcuts (e.g. Win+Z on Windows).
  *
  * Reference: GitHub #64 — undo/redo keyboard shortcuts.
  */
@@ -29,10 +33,11 @@ export function getModifierLabel(): string {
 
 /**
  * Attach global keydown listeners for undo (Cmd/Ctrl+Z) and
- * redo (Cmd/Ctrl+Shift+Z or Cmd/Ctrl+Y).
+ * redo (Cmd/Ctrl+Shift+Z or Ctrl+Y on Windows/Linux).
  *
  * Uses refs internally so callers do not need to memoise callbacks.
- * Automatically uses `metaKey` on macOS and `ctrlKey` elsewhere.
+ * Uses metaKey on macOS and ctrlKey on Windows/Linux to avoid intercepting
+ * OS-level shortcuts (e.g. Win+Z on Windows).
  */
 export function useUndoKeyboard({ onUndo, onRedo, disabled }: UndoKeyboardOptions): void {
   const onUndoRef = useRef(onUndo);
@@ -47,6 +52,10 @@ export function useUndoKeyboard({ onUndo, onRedo, disabled }: UndoKeyboardOption
   useEffect(() => {
     if (disabled) return;
 
+    const isMac =
+      typeof navigator !== 'undefined' &&
+      /Mac|iPhone|iPad|iPod/i.test(navigator.platform ?? '');
+
     function handleKeyDown(event: KeyboardEvent) {
       // Skip if the user is typing in an input, textarea, or contenteditable
       const target = event.target as HTMLElement | null;
@@ -60,22 +69,20 @@ export function useUndoKeyboard({ onUndo, onRedo, disabled }: UndoKeyboardOption
         return;
       }
 
-      const mod = event.metaKey || event.ctrlKey;
+      const mod = isMac ? event.metaKey : event.ctrlKey;
       if (!mod) return;
 
-      // Redo: Cmd/Ctrl + Shift + Z  or  Cmd/Ctrl + Y
-      if (
-        (event.key === 'z' && event.shiftKey) ||
-        (event.key === 'Z' && event.shiftKey) ||
-        event.key === 'y'
-      ) {
+      const key = event.key.toLowerCase();
+
+      // Redo: Cmd/Ctrl + Shift + Z  or  Ctrl + Y (Windows/Linux only)
+      if ((key === 'z' && event.shiftKey) || (!isMac && key === 'y')) {
         event.preventDefault();
         onRedoRef.current();
         return;
       }
 
       // Undo: Cmd/Ctrl + Z (no shift)
-      if ((event.key === 'z' || event.key === 'Z') && !event.shiftKey) {
+      if (key === 'z' && !event.shiftKey) {
         event.preventDefault();
         onUndoRef.current();
       }
