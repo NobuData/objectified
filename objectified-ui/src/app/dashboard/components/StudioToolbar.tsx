@@ -67,9 +67,14 @@ export default function StudioToolbar() {
   );
 
   const handlePushToTarget = useCallback(
-    (targetVersionId: string) => {
+    async (targetVersionId: string) => {
       if (!studio) return;
-      void studio.push(targetVersionId, options);
+      try {
+        await studio.push(targetVersionId, options);
+        setPushDialogOpen(false);
+      } catch {
+        // Error and pushConflict409 set in context; dialog stays open for Pull then Merge suggestion
+      }
     },
     [studio, options]
   );
@@ -226,13 +231,21 @@ export default function StudioToolbar() {
       />
       <PushTargetDialog
         open={pushDialogOpen}
-        onOpenChange={setPushDialogOpen}
+        onOpenChange={(open) => {
+          setPushDialogOpen(open);
+          if (!open) studio.clearPushConflict409();
+        }}
         tenantId={tenantId}
         projectId={projectId}
         currentVersionId={versionId}
         options={options}
         onPush={handlePushToTarget}
+        onPull={handlePull}
+        onMerge={handleMerge}
         loading={studio.loading}
+        pushConflict409={studio.pushConflict409}
+        pushError={studio.error}
+        clearPushConflict409={studio.clearPushConflict409}
       />
     </div>
   );

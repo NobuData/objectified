@@ -15,6 +15,7 @@ import {
   commitVersion,
   pushVersion,
   mergeVersion,
+  isConflictError,
   type RestClientOptions,
 } from '@lib/api/rest-client';
 import type { LocalVersionState } from '@lib/studio/types';
@@ -117,6 +118,10 @@ export interface StudioContextValue {
   merge: (options: RestClientOptions, message?: string | null) => Promise<void>;
   /** Clear state and stacks (e.g. when switching version). */
   clear: () => void;
+  /** True when last push failed with 409 (target has newer changes); suggest pull then merge. */
+  pushConflict409: boolean;
+  /** Clear the push 409 suggestion state (e.g. after user dismisses or runs pull/merge). */
+  clearPushConflict409: () => void;
 }
 
 const StudioContext = createContext<StudioContextValue | null>(null);
@@ -141,15 +146,21 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [serverHasNewChanges, setServerHasNewChanges] = useState(false);
   const [hasUnpushedCommits, setHasUnpushedCommits] = useState(false);
+  const [pushConflict409, setPushConflict409] = useState(false);
   const loadRequestIdRef = useRef(0);
 
   const state = stack.state;
+
+  const clearPushConflict409 = useCallback(() => {
+    setPushConflict409(false);
+  }, []);
 
   const clear = useCallback(() => {
     setStack(initialStack);
     setError(null);
     setServerHasNewChanges(false);
     setHasUnpushedCommits(false);
+    setPushConflict409(false);
   }, []);
 
   const loadFromServer = useCallback(
@@ -179,6 +190,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         });
         saveStateBackup(newState);
         setServerHasNewChanges(false);
+        setPushConflict409(false);
         // Restore persisted commit info only when the persisted revision matches
         // the revision that was just loaded, to avoid a stale indicator.
         const persisted = loadPersistedCommitInfo(versionId);
@@ -364,7 +376,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           });
         }
       } catch (e) {
+        setPushConflict409(isConflictError(e));
         setError(e instanceof Error ? e.message : 'Failed to push');
+        throw e;
       } finally {
         setLoading(false);
       }
@@ -396,6 +410,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
+      setPushConflict409(false);
       // Reload from server to pick up the merged state
       await loadFromServer(current.versionId, options);
     },
@@ -425,6 +440,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       push,
       merge,
       clear,
+      pushConflict409,
+      clearPushConflict409,
     }),
     [
       state,
@@ -444,6 +461,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       push,
       merge,
       clear,
+      pushConflict409,
+      clearPushConflict409,
     ]
   );
 

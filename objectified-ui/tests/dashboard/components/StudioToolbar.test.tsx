@@ -22,6 +22,7 @@ const mockLoadFromServer = jest.fn();
 const mockCheckServerForUpdates = jest.fn();
 const mockPush = jest.fn();
 const mockMerge = jest.fn();
+const mockClearPushConflict409 = jest.fn();
 
 jest.mock('@/app/contexts/StudioContext', () => ({
   useStudioOptional: jest.fn(),
@@ -74,6 +75,8 @@ describe('StudioToolbar', () => {
       loadFromServer: mockLoadFromServer,
       push: mockPush,
       merge: mockMerge,
+      pushConflict409: false,
+      clearPushConflict409: mockClearPushConflict409,
     });
     const { container } = render(<StudioToolbar />);
     expect(container.firstChild).toBeNull();
@@ -95,6 +98,8 @@ describe('StudioToolbar', () => {
       loadFromServer: mockLoadFromServer,
       push: mockPush,
       merge: mockMerge,
+      pushConflict409: false,
+      clearPushConflict409: mockClearPushConflict409,
     });
     render(<StudioToolbar />);
     expect(screen.getByRole('button', { name: /undo/i })).toBeInTheDocument();
@@ -131,6 +136,8 @@ describe('StudioToolbar', () => {
     loadFromServer: mockLoadFromServer,
     push: mockPush,
     merge: mockMerge,
+    pushConflict409: false,
+    clearPushConflict409: mockClearPushConflict409,
   };
 
   it('calls undo when Undo is clicked', async () => {

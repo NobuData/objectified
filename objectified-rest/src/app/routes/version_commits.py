@@ -538,6 +538,7 @@ def commit_version(
         201: {"description": "Push successful — target version updated"},
         400: {"description": "Versions belong to different projects or self-push detected"},
         404: {"description": "Version or target version not found"},
+        409: {"description": "Target version has newer changes on server; pull then merge first"},
     },
 )
 def push_version(
@@ -565,6 +566,25 @@ def push_version(
         raise HTTPException(
             status_code=400,
             detail="Source and target versions must belong to the same project",
+        )
+
+    # Reject push when target has a newer revision than source (server has new changes).
+    rev_rows = db.execute_query(
+        """
+        SELECT version_id, MAX(revision) AS max_revision
+        FROM objectified.version_snapshot
+        WHERE version_id IN (%s, %s)
+        GROUP BY version_id
+        """,
+        (version_id, target_version_id),
+    )
+    rev_by_id = {str(r["version_id"]): r["max_revision"] for r in rev_rows}
+    source_rev = rev_by_id.get(version_id)
+    target_rev = rev_by_id.get(target_version_id)
+    if source_rev is not None and target_rev is not None and target_rev > source_rev:
+        raise HTTPException(
+            status_code=409,
+            detail="Target version has newer changes on the server; pull then merge first.",
         )
 
     user_id = caller.get("user_id") if caller else None

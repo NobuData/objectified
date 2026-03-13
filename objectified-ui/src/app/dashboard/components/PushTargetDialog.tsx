@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Loader2, Upload } from 'lucide-react';
+import { Loader2, Upload, Download, GitMerge } from 'lucide-react';
 import { listVersions, type VersionSchema, type RestClientOptions } from '@lib/api/rest-client';
 
 const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300';
@@ -14,8 +14,15 @@ export interface PushTargetDialogProps {
   projectId: string;
   currentVersionId: string;
   options: RestClientOptions;
-  onPush: (targetVersionId: string) => void;
+  onPush: (targetVersionId: string) => void | Promise<void>;
+  onPull?: () => void;
+  onMerge?: () => void;
   loading?: boolean;
+  /** When true, push failed with 409 (target has newer changes); show Pull then Merge suggestion. */
+  pushConflict409?: boolean;
+  /** Last push/studio error message to show in dialog. */
+  pushError?: string | null;
+  clearPushConflict409?: () => void;
 }
 
 export default function PushTargetDialog({
@@ -26,12 +33,19 @@ export default function PushTargetDialog({
   currentVersionId,
   options,
   onPush,
+  onPull,
+  onMerge,
   loading = false,
+  pushConflict409 = false,
+  pushError = null,
+  clearPushConflict409,
 }: PushTargetDialogProps) {
   const [versions, setVersions] = useState<VersionSchema[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [selectedId, setSelectedId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const showConflictSuggestion = pushConflict409 && (onPull || onMerge);
+  const displayError = pushError ?? error;
 
   useEffect(() => {
     if (!open || !tenantId || !projectId) return;
@@ -77,12 +91,53 @@ export default function PushTargetDialog({
           <Dialog.Description className="text-sm text-slate-500 dark:text-slate-400 mb-3">
             Push current state to another version in this project.
           </Dialog.Description>
-          {error && (
+          {displayError && (
             <div
               className="mb-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm"
               role="alert"
             >
-              {error}
+              {displayError}
+            </div>
+          )}
+          {showConflictSuggestion && (
+            <div
+              className="mb-3 p-3 rounded-lg bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200 text-sm"
+              role="status"
+            >
+              <p className="font-medium mb-2">Server has newer changes</p>
+              <p className="mb-3 text-slate-600 dark:text-slate-400">
+                Pull to refresh your version, then merge to combine changes before pushing again.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {onPull && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPull();
+                      clearPushConflict409?.();
+                      onOpenChange(false);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                  >
+                    <Download className="h-4 w-4" />
+                    Pull
+                  </button>
+                )}
+                {onMerge && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onMerge();
+                      clearPushConflict409?.();
+                      onOpenChange(false);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                  >
+                    <GitMerge className="h-4 w-4" />
+                    Merge
+                  </button>
+                )}
+              </div>
             </div>
           )}
           <label htmlFor="push-target" className={labelClass}>

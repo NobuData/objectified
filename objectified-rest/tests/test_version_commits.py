@@ -196,6 +196,10 @@ class TestPushVersion:
             mock_db.execute_query.side_effect = [
                 [_version_lookup_row()],  # source _assert_version_exists
                 [_version_lookup_row(_TARGET_VERSION_ROW)],  # target _assert_version_exists
+                [  # revision check: source and target, target not newer
+                    {"version_id": _VERSION_ID, "max_revision": 2},
+                    {"version_id": _TARGET_VERSION_ID, "max_revision": 1},
+                ],
                 [],  # _capture_version_state: no classes
                 [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
             ]
@@ -207,6 +211,25 @@ class TestPushVersion:
         assert r.status_code == 201
         body = r.json()
         assert body["version_id"] == _TARGET_VERSION_ID
+
+    def test_push_target_newer_returns_409(self, client):
+        """Push returns 409 when target version has newer revision than source."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],  # source _assert_version_exists
+                [_version_lookup_row(_TARGET_VERSION_ROW)],  # target _assert_version_exists
+                [  # revision check: target has newer revision
+                    {"version_id": _VERSION_ID, "max_revision": 1},
+                    {"version_id": _TARGET_VERSION_ID, "max_revision": 3},
+                ],
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/push?target_version_id={_TARGET_VERSION_ID}",
+                json={"classes": [], "label": "push-test"},
+            )
+        assert r.status_code == 409
+        assert "newer" in r.json()["detail"].lower()
+        assert "pull" in r.json()["detail"].lower()
 
     def test_push_different_project_returns_400(self, client):
         """Push returns 400 when versions belong to different projects."""
