@@ -74,7 +74,7 @@ describe('saveStateBackup', () => {
 
   it('saves state to localStorage', () => {
     const state = makeState();
-    saveStateBackup(VERSION_ID, state);
+    saveStateBackup(state);
     expect(localStorageMock.setItem).toHaveBeenCalledTimes(1);
     const [key, value] = localStorageMock.setItem.mock.calls[0];
     expect(key).toBe(backupStorageKey(VERSION_ID));
@@ -88,7 +88,7 @@ describe('saveStateBackup', () => {
       classes: [{ name: 'User', properties: [] }],
       properties: [{ id: 'p1', name: 'email' }],
     });
-    saveStateBackup(VERSION_ID, state);
+    saveStateBackup(state);
     const [, value] = localStorageMock.setItem.mock.calls[0];
     const parsed = JSON.parse(value);
     expect(parsed.state.classes).toHaveLength(1);
@@ -100,7 +100,7 @@ describe('saveStateBackup', () => {
     localStorageMock.setItem.mockImplementationOnce(() => {
       throw new Error('QuotaExceededError');
     });
-    expect(() => saveStateBackup(VERSION_ID, makeState())).not.toThrow();
+    expect(() => saveStateBackup(makeState())).not.toThrow();
   });
 });
 
@@ -116,7 +116,7 @@ describe('loadStateBackup', () => {
 
   it('returns saved state', () => {
     const state = makeState({ revision: 42 });
-    saveStateBackup(VERSION_ID, state);
+    saveStateBackup(state);
     const loaded = loadStateBackup(VERSION_ID);
     expect(loaded).toEqual(state);
   });
@@ -137,8 +137,8 @@ describe('loadStateBackup', () => {
     const s1 = makeState({ versionId: 'v1', revision: 1 });
     const s2 = makeState({ versionId: 'v2', revision: 2 });
 
-    saveStateBackup('v1', s1);
-    saveStateBackup('v2', s2);
+    saveStateBackup(s1);
+    saveStateBackup(s2);
 
     expect(loadStateBackup('v1')).toEqual(s1);
     expect(loadStateBackup('v2')).toEqual(s2);
@@ -152,7 +152,7 @@ describe('clearStateBackup', () => {
   });
 
   it('removes the backup from localStorage', () => {
-    saveStateBackup(VERSION_ID, makeState());
+    saveStateBackup(makeState());
     expect(loadStateBackup(VERSION_ID)).not.toBeNull();
 
     clearStateBackup(VERSION_ID);
@@ -173,8 +173,8 @@ describe('clearStateBackup', () => {
   it('does not affect other version backups', () => {
     const s1 = makeState({ versionId: 'v1' });
     const s2 = makeState({ versionId: 'v2' });
-    saveStateBackup('v1', s1);
-    saveStateBackup('v2', s2);
+    saveStateBackup(s1);
+    saveStateBackup(s2);
 
     clearStateBackup('v1');
 

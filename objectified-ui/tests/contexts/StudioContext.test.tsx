@@ -894,6 +894,49 @@ describe('StudioContext', () => {
     expect(screen.getByTestId('can-undo').textContent).toBe('yes');
   });
 
+  it('loadFromServer restores backup state on API failure when backup exists', async () => {
+    // Pre-populate localStorage with a backup containing one class
+    const backupKey = 'objectified:studio:backup:v1';
+    const backupState = {
+      versionId: 'v1',
+      revision: 3,
+      classes: [{ name: 'BackedUpClass', properties: [] }],
+      properties: [],
+      canvas_metadata: null,
+      groups: [],
+    };
+    localStorageMock.getItem.mockImplementation((key: string) =>
+      key === backupKey
+        ? JSON.stringify({ state: backupState, savedAt: new Date().toISOString() })
+        : null
+    );
+
+    mockPullVersion.mockRejectedValueOnce(new Error('Service unavailable'));
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error').textContent).toBe('Service unavailable');
+    });
+
+    // Should have restored the backed-up class instead of showing 0 classes
+    expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    expect(screen.getByTestId('class-count').textContent).toBe('1');
+    expect(screen.getByTestId('version-id').textContent).toBe('v1');
+  });
+
   // ─── localStorage backup tests (GitHub #65) ────────────────────────────────
 
   it('loadFromServer saves a backup to localStorage', async () => {
