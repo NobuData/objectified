@@ -166,6 +166,12 @@ function ClassListPanel({
     [classes, query]
   );
 
+  // Precompute a Map of classId → index in `classes` to avoid O(n²) lookups in the render loop.
+  const classIndexMap = useMemo(
+    () => new Map(classes.map((c, i) => [getStableClassId(c), i])),
+    [classes]
+  );
+
   const toggleExpand = (classId: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -230,7 +236,7 @@ function ClassListPanel({
             {filtered.map((cls) => {
               const classId = getStableClassId(cls);
               const isExpanded = expandedIds.has(classId);
-              const classIndex = classes.findIndex((c) => getStableClassId(c) === classId);
+              const classIndex = classIndexMap.get(classId) ?? -1;
 
               return (
                 <li key={classId} className="rounded-lg overflow-hidden">
@@ -306,7 +312,7 @@ function ClassListPanel({
                       )}
                       {cls.properties.map((prop, propIdx) => (
                         <div
-                          key={prop.id ?? `${classId}-prop-${propIdx}`}
+                          key={prop.id ?? prop.localId ?? `${classId}-prop-${propIdx}`}
                           className="flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 group/prop"
                         >
                           <span className="flex-1 text-xs text-slate-600 dark:text-slate-300 truncate">
@@ -586,6 +592,7 @@ export default function DesignCanvasSidebar() {
         const idx = draft.classes.findIndex((c) => getStableClassId(c) === classId);
         if (idx >= 0) {
           draft.classes[idx].properties.push({
+            localId: generateLocalId(),
             name: data.name,
             description: data.description,
             property_id: data.propertyId,

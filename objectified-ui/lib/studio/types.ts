@@ -17,6 +17,8 @@ export interface ClassCanvasMetadata {
 /** A single class-property in a class (order preserved; overrides via data). */
 export interface StudioClassProperty {
   id?: string;
+  /** Client-generated stable id for locally-created properties (before save). */
+  localId?: string;
   class_id?: string;
   property_id?: string;
   parent_id?: string | null;

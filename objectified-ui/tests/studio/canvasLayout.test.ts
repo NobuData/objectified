@@ -28,9 +28,16 @@ const localStorageMock = (() => {
     }),
   };
 })();
+const _originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(global, 'localStorage');
 Object.defineProperty(global, 'localStorage', {
   value: localStorageMock,
   writable: true,
+  configurable: true,
+});
+afterAll(() => {
+  if (_originalLocalStorageDescriptor) {
+    Object.defineProperty(global, 'localStorage', _originalLocalStorageDescriptor);
+  }
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
