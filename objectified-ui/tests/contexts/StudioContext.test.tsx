@@ -671,7 +671,7 @@ describe('StudioContext', () => {
     );
   });
 
-  it('hasUnpushedCommits becomes false after push and undo/redo stack is cleared', async () => {
+  it('hasUnpushedCommits becomes false after push', async () => {
     mockPullVersion.mockResolvedValueOnce({
       version_id: 'v1',
       revision: 1,
@@ -720,7 +720,7 @@ describe('StudioContext', () => {
     await waitFor(() => {
       expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('no');
     });
-    // Undo/redo stacks should also be cleared after push
+    // Undo/redo stacks were cleared by save; push leaves them unchanged
     expect(screen.getByTestId('can-undo').textContent).toBe('no');
     expect(screen.getByTestId('can-redo').textContent).toBe('no');
 
@@ -734,7 +734,7 @@ describe('StudioContext', () => {
   it('hasUnpushedCommits is restored from localStorage on loadFromServer', async () => {
     // Pre-populate localStorage with a persisted commit info
     const storageKey = 'objectified:studio:v1:lastCommit';
-    localStorageMock.getItem.mockImplementation((key: string) =>
+    localStorageMock.getItem.mockImplementationOnce((key: string) =>
       key === storageKey
         ? JSON.stringify({ revision: 1, lastCommittedAt: new Date().toISOString(), hasUnpushedCommits: true })
         : null
@@ -762,6 +762,39 @@ describe('StudioContext', () => {
 
     // Should have restored hasUnpushedCommits = true from localStorage
     expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('yes');
+  });
+
+  it('hasUnpushedCommits is not restored when persisted revision does not match loaded revision', async () => {
+    // Pre-populate localStorage with a persisted commit info for a different revision
+    const storageKey = 'objectified:studio:v1:lastCommit';
+    localStorageMock.getItem.mockImplementationOnce((key: string) =>
+      key === storageKey
+        ? JSON.stringify({ revision: 5, lastCommittedAt: new Date().toISOString(), hasUnpushedCommits: true })
+        : null
+    );
+
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => { void studio.loadFromServer('v1', {}); }, []);
+      return <TestConsumer />;
+    }
+
+    render(<StudioProvider><LoadConsumer /></StudioProvider>);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    // Should NOT restore hasUnpushedCommits because persisted revision (5) != loaded revision (1)
+    expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('no');
   });
 
   it('clear resets hasUnpushedCommits to false', async () => {

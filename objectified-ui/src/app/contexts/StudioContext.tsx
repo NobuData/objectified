@@ -173,9 +173,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           redoStack: [],
         });
         setServerHasNewChanges(false);
-        // Restore persisted commit info for this version
+        // Restore persisted commit info only when the persisted revision matches
+        // the revision that was just loaded, to avoid a stale indicator.
         const persisted = loadPersistedCommitInfo(versionId);
-        setHasUnpushedCommits(persisted?.hasUnpushedCommits ?? false);
+        const revisionMatches = typeof persisted?.revision === 'number' && persisted.revision === newState.revision;
+        setHasUnpushedCommits(revisionMatches ? (persisted?.hasUnpushedCommits ?? false) : false);
       } catch (e) {
         if (requestId !== loadRequestIdRef.current) return;
         const message = e instanceof Error ? e.message : 'Failed to load version';
@@ -263,7 +265,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setHasUnpushedCommits(true);
         savePersistedCommitInfo(current.versionId, {
           revision: res.revision,
-          lastCommittedAt: new Date().toISOString(),
+          lastCommittedAt: res.committed_at,
           hasUnpushedCommits: true,
         });
       } catch (e) {
@@ -323,17 +325,17 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           label: 'push',
         });
         await pushVersion(current.versionId, targetVersionId, payload, options);
-        // Clear dirty state and undo/redo after a successful push
-        setStack((s) =>
-          s.state ? { ...s, undoStack: [], redoStack: [] } : s
-        );
         setServerHasNewChanges(false);
         setHasUnpushedCommits(false);
-        savePersistedCommitInfo(current.versionId, {
-          revision: current.revision,
-          lastCommittedAt: new Date().toISOString(),
-          hasUnpushedCommits: false,
-        });
+        // Only flip hasUnpushedCommits; leave revision/lastCommittedAt unchanged
+        // since push updates the target version, not the source.
+        const existingInfo = loadPersistedCommitInfo(current.versionId);
+        if (existingInfo) {
+          savePersistedCommitInfo(current.versionId, {
+            ...existingInfo,
+            hasUnpushedCommits: false,
+          });
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to push');
       } finally {
