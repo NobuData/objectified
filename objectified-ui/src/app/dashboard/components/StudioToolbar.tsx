@@ -88,7 +88,7 @@ export default function StudioToolbar() {
     onRedo: () => {
       if (studio?.canRedo && !studio?.loading) studio.redo();
     },
-    disabled: !studio?.state,
+    disabled: !studio?.state || studio?.loading,
   });
 
   if (!studio) return null;
