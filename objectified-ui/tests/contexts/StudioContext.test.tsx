@@ -48,6 +48,9 @@ function TestConsumer() {
       <span data-testid="class-count">
         {studio.state?.classes?.length ?? 0}
       </span>
+      <span data-testid="error">{studio.error ?? ''}</span>
+      <span data-testid="loading">{studio.loading ? 'yes' : 'no'}</span>
+      <span data-testid="version-id">{studio.state?.versionId ?? ''}</span>
       <button type="button" onClick={studio.undo} data-testid="undo">
         Undo
       </button>
@@ -831,5 +834,63 @@ describe('StudioContext', () => {
 
     await act(async () => { screen.getByTestId('clear').click(); });
     expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('no');
+  });
+
+  it('loadFromServer sets valid empty state and error on API failure', async () => {
+    mockPullVersion.mockRejectedValueOnce(new Error('Network error'));
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error').textContent).toBe('Network error');
+    });
+    // State should be a valid empty state (not null)
+    expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    expect(screen.getByTestId('version-id').textContent).toBe('v1');
+    expect(screen.getByTestId('class-count').textContent).toBe('0');
+    expect(screen.getByTestId('loading').textContent).toBe('no');
+  });
+
+  it('applyChange works on fallback state after loadFromServer failure', async () => {
+    mockPullVersion.mockRejectedValueOnce(new Error('Connection refused'));
+
+    function LoadAndApplyConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadAndApplyConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+      expect(screen.getByTestId('error').textContent).toBe('Connection refused');
+    });
+
+    // User should still be able to add classes on the fallback empty state
+    await act(async () => {
+      screen.getByTestId('add-class').click();
+    });
+
+    expect(screen.getByTestId('class-count').textContent).toBe('1');
+    expect(screen.getByTestId('can-undo').textContent).toBe('yes');
   });
 });

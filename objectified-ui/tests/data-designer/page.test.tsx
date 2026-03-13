@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import DataDesignerPage from '../../src/app/data-designer/page';
+import { DialogProvider } from '../../src/app/components/providers/DialogProvider';
 
 jest.mock('next-auth/react', () => ({
   useSession: () => ({ data: { user: { name: 'Test User', email: 'test@example.com' } } }),
@@ -36,9 +37,13 @@ jest.mock('@xyflow/react', () => ({
   useEdgesState: () => [[], jest.fn(), jest.fn()],
 }));
 
+function renderWithProviders(ui: React.ReactElement) {
+  return render(<DialogProvider>{ui}</DialogProvider>);
+}
+
 describe('DataDesignerPage', () => {
   it('renders design canvas layout with header, project/version bar, sidebar and canvas', async () => {
-    render(<DataDesignerPage />);
+    renderWithProviders(<DataDesignerPage />);
 
     await waitFor(() => {
       expect(screen.getByLabelText(/main navigation/i)).toBeInTheDocument();
@@ -55,7 +60,7 @@ describe('DataDesignerPage', () => {
   });
 
   it('renders tenant and profile in header', async () => {
-    render(<DataDesignerPage />);
+    renderWithProviders(<DataDesignerPage />);
 
     await waitFor(() => {
       expect(screen.getByText(/Default Tenant/i)).toBeInTheDocument();
@@ -64,7 +69,7 @@ describe('DataDesignerPage', () => {
   });
 
   it('renders Classes tab content with empty state when no version selected', async () => {
-    render(<DataDesignerPage />);
+    renderWithProviders(<DataDesignerPage />);
 
     await waitFor(() => {
       expect(

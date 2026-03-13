@@ -29,15 +29,21 @@ _VERSION_COLUMNS = (
 )
 
 
+def _qualify_columns(columns: str, alias: str) -> str:
+    """Prefix each column in a comma-separated list with a table alias."""
+    return ", ".join(f"{alias}.{col.strip()}" for col in columns.split(","))
+
+
 def _get_version_by_id(
     version_id: str,
     *,
     include_deleted: bool = False,
 ) -> Optional[dict[str, Any]]:
     deleted_clause = "" if include_deleted else "AND v.deleted_at IS NULL"
+    qualified = _qualify_columns(_VERSION_COLUMNS, "v")
     rows = db.execute_query(
         f"""
-        SELECT {_VERSION_COLUMNS}
+        SELECT {qualified}
         FROM objectified.version v
         JOIN objectified.project p ON p.id = v.project_id
         WHERE v.id = %s
