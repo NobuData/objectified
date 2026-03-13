@@ -44,7 +44,7 @@ export default function PushTargetDialog({
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [selectedId, setSelectedId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const showConflictSuggestion = pushConflict409 && (onPull || onMerge);
+  const showConflictSuggestion = pushConflict409 && Boolean(onPull || onMerge);
   const displayError = pushError ?? error;
 
   useEffect(() => {
@@ -63,10 +63,14 @@ export default function PushTargetDialog({
       .finally(() => setLoadingVersions(false));
   }, [open, tenantId, projectId, options.jwt, options.apiKey]);
 
-  const handlePush = useCallback(() => {
+  const handlePush = useCallback(async () => {
     if (!selectedId) return;
-    onPush(selectedId);
-    onOpenChange(false);
+    try {
+      await onPush(selectedId);
+      onOpenChange(false);
+    } catch {
+      // Keep dialog open so the error/conflict suggestion remains visible.
+    }
   }, [selectedId, onPush, onOpenChange]);
 
   const targets = versions.filter((v) => v.id !== currentVersionId);
