@@ -1,9 +1,9 @@
 /**
- * Unit tests for StudioToolbar: visibility and button states.
+ * Unit tests for StudioToolbar: visibility, button states, and keyboard shortcuts.
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import StudioToolbar from '@/app/dashboard/components/StudioToolbar';
 
@@ -234,5 +234,83 @@ describe('StudioToolbar', () => {
     });
     render(<StudioToolbar />);
     expect(screen.getByText('Server has new changes')).toBeInTheDocument();
+  });
+
+  it('Undo button tooltip includes keyboard shortcut hint', () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    const undoBtn = screen.getByRole('button', { name: /undo/i });
+    expect(undoBtn.getAttribute('title')).toMatch(/\+Z/);
+  });
+
+  it('Redo button tooltip includes keyboard shortcut hint', () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    const redoBtn = screen.getByRole('button', { name: /redo/i });
+    expect(redoBtn.getAttribute('title')).toMatch(/\+Shift\+Z/);
+  });
+
+  it('Ctrl+Z keyboard shortcut calls undo when canUndo is true', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      canUndo: true,
+    });
+    render(<StudioToolbar />);
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    expect(mockUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('Ctrl+Shift+Z keyboard shortcut calls redo when canRedo is true', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      canRedo: true,
+    });
+    render(<StudioToolbar />);
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(mockRedo).toHaveBeenCalledTimes(1);
+  });
+
+  it('Ctrl+Y keyboard shortcut calls redo when canRedo is true', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      canRedo: true,
+    });
+    render(<StudioToolbar />);
+    fireEvent.keyDown(document, { key: 'y', ctrlKey: true });
+    expect(mockRedo).toHaveBeenCalledTimes(1);
+  });
+
+  it('keyboard shortcut does not call undo when canUndo is false', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      canUndo: false,
+    });
+    render(<StudioToolbar />);
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    expect(mockUndo).not.toHaveBeenCalled();
+  });
+
+  it('keyboard shortcut does not call redo when canRedo is false', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      canRedo: false,
+    });
+    render(<StudioToolbar />);
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(mockRedo).not.toHaveBeenCalled();
+  });
+
+  it('keyboard shortcuts are disabled when loading', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      loading: true,
+      canUndo: true,
+      canRedo: true,
+    });
+    render(<StudioToolbar />);
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(mockUndo).not.toHaveBeenCalled();
+    expect(mockRedo).not.toHaveBeenCalled();
   });
 });
