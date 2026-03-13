@@ -39,6 +39,7 @@ export function getRestClientOptions(session: { accessToken?: string } | null): 
 export interface RestClientOptions {
   jwt?: string;
   apiKey?: string;
+  signal?: AbortSignal;
 }
 
 function buildAuthHeaders(options: RestClientOptions): Record<string, string> {
@@ -93,6 +94,7 @@ async function request<T>(
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
     ...(isRelative ? { credentials: 'include' as RequestCredentials } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   const text = await res.text();
   let parsed: T | ApiError | null = null;

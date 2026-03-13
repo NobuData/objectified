@@ -33,6 +33,7 @@ function getVisibilityLabel(visibility: string | null | undefined): string {
 
 interface PublishedVersionRow extends VersionSchema {
   projectName: string;
+  tenantId: string;
 }
 
 export default function PublishedPage() {
@@ -90,10 +91,11 @@ export default function PublishedPage() {
       const projectVersionRowsPromises = projectList.map(async (project) => {
         const versions = await listVersions(tenantIdAtStart, project.id, opts);
         const published = versions.filter((v) => v.published);
-        return published.map<PublishedVersionRow>((v) => ({
-          ...v,
-          projectName: project.name,
-        }));
+          return published.map<PublishedVersionRow>((v) => ({
+              ...v,
+              projectName: project.name,
+              tenantId: tenantIdAtStart,
+            }));
       });
       const projectVersionRowsNested = await Promise.all(projectVersionRowsPromises);
       const rows: PublishedVersionRow[] = projectVersionRowsNested.flat();
@@ -294,7 +296,7 @@ export default function PublishedPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
-                        href="/data-designer"
+                        href={`/data-designer?tenantId=${encodeURIComponent(v.tenantId)}&projectId=${encodeURIComponent(v.project_id)}&versionId=${encodeURIComponent(v.id)}`}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         aria-label={`Open ${v.name} in Studio`}
                       >
