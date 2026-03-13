@@ -22,6 +22,19 @@ jest.mock('@lib/api/rest-client', () => ({
   getRestClientOptions: () => ({}),
 }));
 
+// ─── localStorage mock ──────────────────────────────────────────────────────
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: jest.fn((key: string) => store[key] ?? null),
+    setItem: jest.fn((key: string, value: string) => { store[key] = value; }),
+    removeItem: jest.fn((key: string) => { delete store[key]; }),
+    clear: jest.fn(() => { store = {}; }),
+  };
+})();
+Object.defineProperty(global, 'localStorage', { value: localStorageMock, writable: true });
+// ────────────────────────────────────────────────────────────────────────────
+
 function TestConsumer() {
   const studio = useStudio();
   return (
@@ -30,6 +43,7 @@ function TestConsumer() {
       <span data-testid="can-undo">{studio.canUndo ? 'yes' : 'no'}</span>
       <span data-testid="can-redo">{studio.canRedo ? 'yes' : 'no'}</span>
       <span data-testid="is-dirty">{studio.isDirty ? 'yes' : 'no'}</span>
+      <span data-testid="has-unpushed-commits">{studio.hasUnpushedCommits ? 'yes' : 'no'}</span>
       <span data-testid="server-has-changes">{studio.serverHasNewChanges ? 'yes' : 'no'}</span>
       <span data-testid="class-count">
         {studio.state?.classes?.length ?? 0}
@@ -90,6 +104,7 @@ describe('StudioContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockListProperties.mockResolvedValue([]);
+    localStorageMock.clear();
   });
 
   it('starts with null state and no undo/redo', () => {
@@ -589,5 +604,199 @@ describe('StudioContext', () => {
     await waitFor(() => {
       expect(screen.getByTestId('class-count').textContent).toBe('2');
     });
+  });
+
+  it('hasUnpushedCommits starts false', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => { void studio.loadFromServer('v1', {}); }, []);
+      return <TestConsumer />;
+    }
+
+    render(<StudioProvider><LoadConsumer /></StudioProvider>);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+    expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('no');
+  });
+
+  it('hasUnpushedCommits becomes true after save and is persisted to localStorage', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+    mockCommitVersion.mockResolvedValueOnce({
+      revision: 2,
+      snapshot_id: 'snap1',
+      version_id: 'v1',
+      committed_at: new Date().toISOString(),
+    });
+
+    function LoadAndSaveConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => { void studio.loadFromServer('v1', {}); }, []);
+      return <TestConsumer />;
+    }
+
+    render(<StudioProvider><LoadAndSaveConsumer /></StudioProvider>);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    await act(async () => {
+      screen.getByTestId('save').click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('yes');
+    });
+
+    // localStorage should have been written with hasUnpushedCommits: true
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      expect.stringContaining('v1'),
+      expect.stringContaining('"hasUnpushedCommits":true')
+    );
+  });
+
+  it('hasUnpushedCommits becomes false after push and undo/redo stack is cleared', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+    mockCommitVersion.mockResolvedValueOnce({
+      revision: 2,
+      snapshot_id: 'snap1',
+      version_id: 'v1',
+      committed_at: new Date().toISOString(),
+    });
+    mockPushVersion.mockResolvedValueOnce({
+      revision: 2,
+      snapshot_id: 'snap2',
+      version_id: 'v1',
+      committed_at: new Date().toISOString(),
+    });
+
+    function LoadSaveAndPushConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => { void studio.loadFromServer('v1', {}); }, []);
+      return <TestConsumer />;
+    }
+
+    render(<StudioProvider><LoadSaveAndPushConsumer /></StudioProvider>);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    // Add a class (making dirty) then save (commit)
+    await act(async () => { screen.getByTestId('add-class').click(); });
+    expect(screen.getByTestId('is-dirty').textContent).toBe('yes');
+
+    await act(async () => { screen.getByTestId('save').click(); });
+    await waitFor(() => {
+      expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('yes');
+    });
+    // After save, undo stack is cleared → no longer dirty
+    expect(screen.getByTestId('is-dirty').textContent).toBe('no');
+
+    // Push → should clear hasUnpushedCommits
+    await act(async () => { screen.getByTestId('push').click(); });
+    await waitFor(() => {
+      expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('no');
+    });
+    // Undo/redo stacks should also be cleared after push
+    expect(screen.getByTestId('can-undo').textContent).toBe('no');
+    expect(screen.getByTestId('can-redo').textContent).toBe('no');
+
+    // localStorage should have been written with hasUnpushedCommits: false
+    expect(localStorageMock.setItem).toHaveBeenLastCalledWith(
+      expect.stringContaining('v1'),
+      expect.stringContaining('"hasUnpushedCommits":false')
+    );
+  });
+
+  it('hasUnpushedCommits is restored from localStorage on loadFromServer', async () => {
+    // Pre-populate localStorage with a persisted commit info
+    const storageKey = 'objectified:studio:v1:lastCommit';
+    localStorageMock.getItem.mockImplementation((key: string) =>
+      key === storageKey
+        ? JSON.stringify({ revision: 1, lastCommittedAt: new Date().toISOString(), hasUnpushedCommits: true })
+        : null
+    );
+
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => { void studio.loadFromServer('v1', {}); }, []);
+      return <TestConsumer />;
+    }
+
+    render(<StudioProvider><LoadConsumer /></StudioProvider>);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    // Should have restored hasUnpushedCommits = true from localStorage
+    expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('yes');
+  });
+
+  it('clear resets hasUnpushedCommits to false', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+    mockCommitVersion.mockResolvedValueOnce({
+      revision: 2,
+      snapshot_id: 'snap1',
+      version_id: 'v1',
+      committed_at: new Date().toISOString(),
+    });
+
+    function LoadSaveAndClearConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => { void studio.loadFromServer('v1', {}); }, []);
+      return <TestConsumer />;
+    }
+
+    render(<StudioProvider><LoadSaveAndClearConsumer /></StudioProvider>);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    await act(async () => { screen.getByTestId('save').click(); });
+    await waitFor(() => {
+      expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('yes');
+    });
+
+    await act(async () => { screen.getByTestId('clear').click(); });
+    expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('no');
   });
 });
