@@ -22,6 +22,11 @@ import {
   pullResponseToState,
   stateToCommitPayload,
 } from '@lib/studio/stateAdapter';
+import {
+  saveStateBackup,
+  loadStateBackup,
+  clearStateBackup,
+} from '@lib/studio/stateBackup';
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 
@@ -172,6 +177,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           undoStack: [],
           redoStack: [],
         });
+        saveStateBackup(newState);
         setServerHasNewChanges(false);
         // Restore persisted commit info only when the persisted revision matches
         // the revision that was just loaded, to avoid a stale indicator.
@@ -182,10 +188,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         if (requestId !== loadRequestIdRef.current) return;
         const message = e instanceof Error ? e.message : 'Failed to load version';
         setError(message);
-        // Initialise with a valid empty state so the UI remains interactive
-        // even when the backend is unreachable or the pull fails.
+        // Fall back to a locally-saved backup if one exists, so work is not lost
+        // on page refresh or when the backend is temporarily unreachable.
+        // If no backup exists, initialise with a valid empty state so the UI
+        // remains interactive.
+        const backup = loadStateBackup(versionId);
         setStack({
-          state: {
+          state: backup ?? {
             versionId,
             revision: null,
             classes: [],
@@ -212,6 +221,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       updater(draft);
       const undoStack = [...prev.undoStack, deepClone(prev.state)];
       if (undoStack.length > MAX_UNDO) undoStack.shift();
+      saveStateBackup(draft);
       return {
         state: draft,
         undoStack,
@@ -225,6 +235,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       if (prev.undoStack.length === 0) return prev;
       const nextState = prev.undoStack[prev.undoStack.length - 1];
       const redoStack = prev.state ? [...prev.redoStack, prev.state] : prev.redoStack;
+      if (nextState) saveStateBackup(nextState);
       return {
         state: nextState,
         undoStack: prev.undoStack.slice(0, -1),
@@ -238,6 +249,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       if (prev.redoStack.length === 0) return prev;
       const nextState = prev.redoStack[prev.redoStack.length - 1];
       const undoStack = prev.state ? [...prev.undoStack, prev.state] : prev.undoStack;
+      if (nextState) saveStateBackup(nextState);
       return {
         state: nextState,
         undoStack,
@@ -274,6 +286,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               }
             : s
         );
+        saveStateBackup({ ...current, revision: res.revision });
         setServerHasNewChanges(false);
         setHasUnpushedCommits(true);
         savePersistedCommitInfo(current.versionId, {
@@ -338,6 +351,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           label: 'push',
         });
         await pushVersion(current.versionId, targetVersionId, payload, options);
+        clearStateBackup(current.versionId);
         setServerHasNewChanges(false);
         setHasUnpushedCommits(false);
         // Only flip hasUnpushedCommits; leave revision/lastCommittedAt unchanged

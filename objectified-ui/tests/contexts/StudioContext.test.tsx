@@ -893,4 +893,269 @@ describe('StudioContext', () => {
     expect(screen.getByTestId('class-count').textContent).toBe('1');
     expect(screen.getByTestId('can-undo').textContent).toBe('yes');
   });
+
+  it('loadFromServer restores backup state on API failure when backup exists', async () => {
+    // Pre-populate localStorage with a backup containing one class
+    const backupKey = 'objectified:studio:backup:v1';
+    const backupState = {
+      versionId: 'v1',
+      revision: 3,
+      classes: [{ name: 'BackedUpClass', properties: [] }],
+      properties: [],
+      canvas_metadata: null,
+      groups: [],
+    };
+    localStorageMock.getItem.mockImplementation((key: string) =>
+      key === backupKey
+        ? JSON.stringify({ state: backupState, savedAt: new Date().toISOString() })
+        : null
+    );
+
+    mockPullVersion.mockRejectedValueOnce(new Error('Service unavailable'));
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error').textContent).toBe('Service unavailable');
+    });
+
+    // Should have restored the backed-up class instead of showing 0 classes
+    expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    expect(screen.getByTestId('class-count').textContent).toBe('1');
+    expect(screen.getByTestId('version-id').textContent).toBe('v1');
+  });
+
+  // ─── localStorage backup tests (GitHub #65) ────────────────────────────────
+
+  it('loadFromServer saves a backup to localStorage', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    // Backup should have been written keyed by versionId
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'objectified:studio:backup:v1',
+      expect.stringContaining('"versionId":"v1"')
+    );
+  });
+
+  it('applyChange updates the localStorage backup', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadAndApplyConsumer2() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadAndApplyConsumer2 />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    localStorageMock.setItem.mockClear();
+
+    await act(async () => {
+      screen.getByTestId('add-class').click();
+    });
+
+    // Should have written a backup with the new class
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'objectified:studio:backup:v1',
+      expect.stringContaining('NewClass')
+    );
+  });
+
+  it('push clears the localStorage backup on success', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+    mockPushVersion.mockResolvedValueOnce({
+      revision: 2,
+      snapshot_id: 'snap1',
+      version_id: 'v1',
+      committed_at: new Date().toISOString(),
+    });
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    // Backup should exist before push
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'objectified:studio:backup:v1',
+      expect.any(String)
+    );
+
+    localStorageMock.removeItem.mockClear();
+
+    await act(async () => {
+      screen.getByTestId('push').click();
+    });
+
+    await waitFor(() => {
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith(
+        'objectified:studio:backup:v1'
+      );
+    });
+  });
+
+  it('push does not clear backup on failure', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+    mockPushVersion.mockRejectedValueOnce(new Error('Push failed'));
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    localStorageMock.removeItem.mockClear();
+
+    await act(async () => {
+      screen.getByTestId('push').click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error').textContent).toBe('Push failed');
+    });
+
+    // Backup should NOT have been cleared because push failed
+    expect(localStorageMock.removeItem).not.toHaveBeenCalledWith(
+      'objectified:studio:backup:v1'
+    );
+  });
+
+  it('save updates the localStorage backup with new revision', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+    mockCommitVersion.mockResolvedValueOnce({
+      revision: 2,
+      snapshot_id: 'snap1',
+      version_id: 'v1',
+      committed_at: new Date().toISOString(),
+    });
+
+    function LoadAndSaveConsumer2() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadAndSaveConsumer2 />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    localStorageMock.setItem.mockClear();
+
+    await act(async () => {
+      screen.getByTestId('save').click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-unpushed-commits').textContent).toBe('yes');
+    });
+
+    // Backup should have been updated with the new revision
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'objectified:studio:backup:v1',
+      expect.stringContaining('"revision":2')
+    );
+  });
 });
