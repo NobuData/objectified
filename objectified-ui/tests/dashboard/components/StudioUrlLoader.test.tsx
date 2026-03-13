@@ -39,17 +39,12 @@ jest.mock('@lib/api/rest-client', () => ({
   getVersion: (...args: unknown[]) => mockGetVersion(...args),
 }));
 
-// ─── Helper: spy on WorkspaceContext mutations ───────────────────────────────
+// ─── Helper: capture WorkspaceContext state ──────────────────────────────────
 
-let setTenantSpy: jest.Mock;
-let setProjectSpy: jest.Mock;
-let setVersionSpy: jest.Mock;
+let capturedWorkspace: ReturnType<typeof useWorkspace> | null = null;
 
 function WorkspaceSpy() {
-  const ws = useWorkspace();
-  setTenantSpy = ws.setTenant as jest.Mock;
-  setProjectSpy = ws.setProject as jest.Mock;
-  setVersionSpy = ws.setVersion as jest.Mock;
+  capturedWorkspace = useWorkspace();
   return null;
 }
 
@@ -70,6 +65,7 @@ describe('StudioUrlLoader', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSearchParams = new URLSearchParams();
+    capturedWorkspace = null;
   });
 
   it('renders without crashing when no query params are present', () => {
@@ -116,13 +112,12 @@ describe('StudioUrlLoader', () => {
     );
 
     await waitFor(() => {
-      expect(mockGetTenant).toHaveBeenCalledWith('t1', expect.any(Object));
-    });
-    await waitFor(() => {
-      expect(mockGetProject).toHaveBeenCalledWith('t1', 'p1', expect.any(Object));
-    });
-    await waitFor(() => {
-      expect(mockGetVersion).toHaveBeenCalledWith('v1', expect.any(Object));
+      expect(mockGetTenant).toHaveBeenCalledWith('t1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+      expect(mockGetProject).toHaveBeenCalledWith('t1', 'p1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+      expect(mockGetVersion).toHaveBeenCalledWith('v1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+      expect(capturedWorkspace?.tenant).toEqual(tenant);
+      expect(capturedWorkspace?.project).toEqual(project);
+      expect(capturedWorkspace?.version).toEqual(version);
     });
   });
 

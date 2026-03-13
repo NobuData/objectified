@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
@@ -24,8 +24,10 @@ function StudioUrlLoaderInner() {
   const searchParams = useSearchParams();
   const workspace = useWorkspaceOptional();
   const { data: session } = useSession();
-  const opts = getRestClientOptions(
-    (session as { accessToken?: string } | null) ?? null
+  const sessionToken = (session as { accessToken?: string } | null)?.accessToken ?? null;
+  const options = useMemo(
+    () => getRestClientOptions(sessionToken ? { accessToken: sessionToken } : null),
+    [sessionToken]
   );
   const loadedKeyRef = useRef<string | null>(null);
 
@@ -38,25 +40,35 @@ function StudioUrlLoaderInner() {
 
     const key = `${tenantId}:${projectId}:${versionId}`;
     if (loadedKeyRef.current === key) return;
-    loadedKeyRef.current = key;
+
+    const controller = new AbortController();
 
     void (async () => {
       try {
+        const callOptions = { ...options, signal: controller.signal };
         const [tenant, project, version] = await Promise.all([
-          getTenant(tenantId, opts),
-          getProject(tenantId, projectId, opts),
-          getVersion(versionId, opts),
+          getTenant(tenantId, callOptions),
+          getProject(tenantId, projectId, callOptions),
+          getVersion(versionId, callOptions),
         ]);
-        // Set in order: tenant (resets project+version) → project (resets version) → version
-        workspace.setTenant(tenant);
-        workspace.setProject(project);
-        workspace.setVersion(version);
+        if (!controller.signal.aborted) {
+          // Set in order: tenant (resets project+version) → project (resets version) → version
+          loadedKeyRef.current = key;
+          workspace.setTenant(tenant);
+          workspace.setProject(project);
+          workspace.setVersion(version);
+        }
       } catch (e) {
-        console.error('[StudioUrlLoader] Failed to load version from URL params:', e);
+        if (!controller.signal.aborted) {
+          console.error('[StudioUrlLoader] Failed to load version from URL params:', e);
+        }
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, projectId, versionId, workspace, opts.jwt, opts.apiKey]);
+
+    return () => {
+      controller.abort();
+    };
+  }, [tenantId, projectId, versionId, workspace, options]);
 
   return null;
 }
