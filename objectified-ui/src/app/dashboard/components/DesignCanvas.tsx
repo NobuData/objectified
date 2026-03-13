@@ -14,25 +14,37 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { getStableClassId } from '@lib/studio/types';
+import {
+  saveDefaultCanvasLayout,
+  getDefaultCanvasLayout,
+} from '@lib/studio/canvasLayout';
 
 const defaultPosition = { x: 0, y: 0 };
 
 export default function DesignCanvas() {
   const studio = useStudioOptional();
-  const classes = studio?.state?.classes ?? [];
-  const initialNodesFromState = useMemo(
-    () =>
-      classes.map((cls) => {
-        const id = getStableClassId(cls);
-        const pos = cls.canvas_metadata?.position ?? defaultPosition;
-        return {
-          id,
-          position: { x: pos.x ?? 0, y: pos.y ?? 0 },
-          data: { label: cls.name },
-        };
-      }),
-    [classes]
-  );
+  const versionId = studio?.state?.versionId ?? null;
+  const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
+
+  const initialNodesFromState = useMemo(() => {
+    // Merge server positions with any locally-saved canvas layout
+    const saved = versionId ? getDefaultCanvasLayout(versionId) : [];
+    const savedMap = new Map(saved.map((e) => [e.classId, e.position]));
+
+    return classes.map((cls) => {
+      const id = getStableClassId(cls);
+      const serverPos = cls.canvas_metadata?.position ?? defaultPosition;
+      // Prefer locally-saved position (updated on drag before commit) over server position
+      const savedPos = savedMap.get(id);
+      const pos = savedPos ?? serverPos;
+      return {
+        id,
+        position: { x: pos.x ?? 0, y: pos.y ?? 0 },
+        data: { label: cls.name },
+      };
+    });
+  }, [classes, versionId]);
+
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodesFromState);
   const [edges, , onEdgesChange] = useEdgesState([]);
 
@@ -45,6 +57,7 @@ export default function DesignCanvas() {
     (changes: NodeChange[]) => {
       onNodesChange(changes as Parameters<typeof onNodesChange>[0]);
       if (!studio?.applyChange) return;
+
       const positionUpdates: { nodeId: string; position: { x: number; y: number } }[] = [];
       for (const change of changes) {
         if (
@@ -56,6 +69,7 @@ export default function DesignCanvas() {
         }
       }
       if (positionUpdates.length === 0) return;
+
       studio.applyChange((draft) => {
         for (const { nodeId, position } of positionUpdates) {
           const idx = draft.classes.findIndex((c) => getStableClassId(c) === nodeId);
@@ -68,8 +82,22 @@ export default function DesignCanvas() {
           }
         }
       });
+
+      // Persist positions to localStorage outside of state updater to avoid side effects
+      if (versionId) {
+        const updatedMap = new Map(positionUpdates.map((u) => [u.nodeId, u.position]));
+        const allPositions = classes.map((c) => {
+          const id = getStableClassId(c);
+          const updatedPos = updatedMap.get(id);
+          return {
+            classId: id,
+            position: updatedPos ?? c.canvas_metadata?.position ?? defaultPosition,
+          };
+        });
+        saveDefaultCanvasLayout(versionId, allPositions);
+      }
     },
-    [onNodesChange, studio]
+    [onNodesChange, studio, classes, versionId]
   );
 
   const displayNodes = classes.length > 0 ? nodes : initialNodesFromState;

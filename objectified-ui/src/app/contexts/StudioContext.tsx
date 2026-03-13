@@ -182,7 +182,20 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         if (requestId !== loadRequestIdRef.current) return;
         const message = e instanceof Error ? e.message : 'Failed to load version';
         setError(message);
-        setStack(initialStack);
+        // Initialise with a valid empty state so the UI remains interactive
+        // even when the backend is unreachable or the pull fails.
+        setStack({
+          state: {
+            versionId,
+            revision: null,
+            classes: [],
+            properties: [],
+            canvas_metadata: null,
+            groups: [],
+          },
+          undoStack: [],
+          redoStack: [],
+        });
       } finally {
         if (requestId === loadRequestIdRef.current) {
           setLoading(false);

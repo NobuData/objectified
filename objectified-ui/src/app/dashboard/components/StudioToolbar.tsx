@@ -36,20 +36,17 @@ export default function StudioToolbar() {
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
 
+  const versionId = studio?.state?.versionId ?? '';
+  const tenantId = workspace?.tenant?.id ?? '';
+  const projectId = workspace?.project?.id ?? '';
+
   useEffect(() => {
     if (!studio?.state?.versionId || (!options.jwt && !options.apiKey)) return;
     void studio.checkServerForUpdates(options);
   }, [studio?.state?.versionId, studio?.state?.revision, options.jwt, options.apiKey]);
 
-  if (!studio) return null;
-  if (!studio.state) return null;
-
-  const versionId = studio.state.versionId;
-  const tenantId = workspace?.tenant?.id ?? '';
-  const projectId = workspace?.project?.id ?? '';
-
   const handlePull = useCallback(() => {
-    if (!versionId) return;
+    if (!versionId || !studio) return;
     void studio.loadFromServer(versionId, options, {
       tenantId: tenantId || undefined,
       projectId: projectId || undefined,
@@ -62,6 +59,7 @@ export default function StudioToolbar() {
 
   const handleCommitWithMessage = useCallback(
     (message: string | null) => {
+      if (!studio) return;
       void studio.save(options, { message });
     },
     [studio, options]
@@ -69,14 +67,19 @@ export default function StudioToolbar() {
 
   const handlePushToTarget = useCallback(
     (targetVersionId: string) => {
+      if (!studio) return;
       void studio.push(targetVersionId, options);
     },
     [studio, options]
   );
 
   const handleMerge = useCallback(() => {
+    if (!studio) return;
     void studio.merge(options);
   }, [studio, options]);
+
+  if (!studio) return null;
+  if (!studio.state) return null;
 
   return (
     <div className="flex items-center gap-2 shrink-0 flex-wrap">

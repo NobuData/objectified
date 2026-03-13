@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { getRestClientOptions } from '@lib/api/rest-client';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
@@ -18,29 +18,39 @@ export default function StudioVersionSync() {
   );
   const lastVersionIdRef = useRef<string | null>(null);
 
+  // Keep stable refs so the effect only fires on workspace selection changes,
+  // not on every studio state / options identity change.
+  const studioRef = useRef(studio);
+  const optionsRef = useRef(options);
   useEffect(() => {
-    if (!studio) return;
-    const versionId = workspace?.version?.id ?? null;
-    const tenantId = workspace?.tenant?.id ?? null;
-    const projectId = workspace?.project?.id ?? null;
+    studioRef.current = studio;
+  }, [studio]);
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
+
+  const versionId = workspace?.version?.id ?? null;
+  const tenantId = workspace?.tenant?.id ?? null;
+  const projectId = workspace?.project?.id ?? null;
+
+  const syncVersion = useCallback(() => {
+    const studioValue = studioRef.current;
+    if (!studioValue) return;
 
     if (versionId !== lastVersionIdRef.current) {
       lastVersionIdRef.current = versionId;
-      studio.clear();
+      studioValue.clear();
       if (!versionId) return;
-      void studio.loadFromServer(versionId, options, {
+      void studioValue.loadFromServer(versionId, optionsRef.current, {
         tenantId: tenantId ?? undefined,
         projectId: projectId ?? undefined,
       });
     }
-  }, [
-    workspace?.version?.id,
-    workspace?.tenant?.id,
-    workspace?.project?.id,
-    studio,
-    options.jwt,
-    options.apiKey,
-  ]);
+  }, [versionId, tenantId, projectId]);
+
+  useEffect(() => {
+    syncVersion();
+  }, [syncVersion]);
 
   return null;
 }
