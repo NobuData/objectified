@@ -18,15 +18,15 @@ export function backupStorageKey(versionId: string): string {
   return `${BACKUP_KEY_PREFIX}${versionId}`;
 }
 
-/** Persist current state to localStorage as a backup. */
-export function saveStateBackup(versionId: string, state: LocalVersionState): void {
+/** Persist current state to localStorage as a backup, keyed by state.versionId. */
+export function saveStateBackup(state: LocalVersionState): void {
   try {
     if (typeof localStorage === 'undefined') return;
     const data = {
       state,
       savedAt: new Date().toISOString(),
     };
-    localStorage.setItem(backupStorageKey(versionId), JSON.stringify(data));
+    localStorage.setItem(backupStorageKey(state.versionId), JSON.stringify(data));
   } catch {
     // Ignore localStorage errors (quota exceeded, SSR, private browsing, etc.)
   }
