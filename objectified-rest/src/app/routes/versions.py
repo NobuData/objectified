@@ -778,6 +778,7 @@ def _record_history(
     operation: str,
     old_data: Optional[dict[str, Any]],
     new_data: Optional[dict[str, Any]],
+    _conn: Any = None,
 ) -> None:
     """Insert a revision row into version_history atomically. Failures are logged only."""
     try:
@@ -804,6 +805,7 @@ def _record_history(
                 json.dumps(new_data, default=str) if new_data is not None else None,
             ),
             returning=False,
+            _conn=_conn,
         )
     except Exception:
         logger.exception(

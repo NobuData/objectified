@@ -1,13 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { History, Loader2, Pencil, Eye } from 'lucide-react';
+import { History, Loader2, Pencil, Eye, RotateCcw } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   listVersionSnapshotsMetadata,
+  rollbackVersion,
   type VersionSnapshotMetadataSchema,
   type RestClientOptions,
 } from '@lib/api/rest-client';
+import { useDialog } from '@/app/components/providers/DialogProvider';
 
 export interface VersionHistoryDialogProps {
   open: boolean;
@@ -17,6 +19,8 @@ export interface VersionHistoryDialogProps {
   options: RestClientOptions;
   /** Called when user chooses to load a revision. If not provided, Load/View actions are hidden. */
   onLoadRevision?: (revision: number, readOnly: boolean) => void;
+  /** Called after successful rollback so parent can reload version state. If provided, Rollback button is shown. */
+  onRollbackSuccess?: () => void;
 }
 
 function formatDateTime(dateString: string): string {
@@ -42,9 +46,12 @@ export default function VersionHistoryDialog({
   versionName,
   options,
   onLoadRevision,
+  onRollbackSuccess,
 }: VersionHistoryDialogProps) {
+  const { confirm } = useDialog();
   const [snapshots, setSnapshots] = useState<VersionSnapshotMetadataSchema[]>([]);
   const [loading, setLoading] = useState(false);
+  const [rollbackSubmitting, setRollbackSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchSnapshots = useCallback(async () => {
@@ -69,6 +76,36 @@ export default function VersionHistoryDialog({
       fetchSnapshots();
     }
   }, [open, versionId, fetchSnapshots]);
+
+  const handleRollback = useCallback(
+    async (revision: number) => {
+      if (!versionId || !onRollbackSuccess) return;
+      const ok = await confirm({
+        title: 'Rollback to this revision?',
+        message:
+          'Version state will be set to this revision and a new snapshot will be appended to history. Continue?',
+        variant: 'warning',
+        confirmLabel: 'Rollback',
+        cancelLabel: 'Cancel',
+      });
+      if (!ok) return;
+      setRollbackSubmitting(true);
+      setError(null);
+      try {
+        await rollbackVersion(versionId, { revision }, options);
+        await fetchSnapshots();
+        onRollbackSuccess();
+        onOpenChange(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Rollback failed');
+      } finally {
+        setRollbackSubmitting(false);
+      }
+    },
+    [versionId, options, onRollbackSuccess, onOpenChange, confirm, fetchSnapshots]
+  );
+
+  const showActions = Boolean(onLoadRevision || onRollbackSuccess);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -133,7 +170,7 @@ export default function VersionHistoryDialog({
                       <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                         ID
                       </th>
-                      {onLoadRevision && (
+                      {showActions && (
                         <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                           Actions
                         </th>
@@ -158,33 +195,55 @@ export default function VersionHistoryDialog({
                         <td className="px-4 py-2.5 font-mono text-xs text-slate-400 dark:text-slate-500">
                           {snap.id.slice(0, 8)}…
                         </td>
-                        {onLoadRevision && (
+                        {showActions && (
                           <td className="px-4 py-2.5 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onLoadRevision(snap.revision, true);
-                                  onOpenChange(false);
-                                }}
-                                className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                title="View this revision (read-only)"
-                                aria-label={`View revision ${snap.revision} read-only`}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onLoadRevision(snap.revision, false);
-                                  onOpenChange(false);
-                                }}
-                                className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                title="Load this revision to edit"
-                                aria-label={`Load revision ${snap.revision} to edit`}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
+                              {onLoadRevision && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onLoadRevision(snap.revision, true);
+                                      onOpenChange(false);
+                                    }}
+                                    disabled={rollbackSubmitting}
+                                    className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50"
+                                    title="View this revision (read-only)"
+                                    aria-label={`View revision ${snap.revision} read-only`}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onLoadRevision(snap.revision, false);
+                                      onOpenChange(false);
+                                    }}
+                                    disabled={rollbackSubmitting}
+                                    className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50"
+                                    title="Load this revision to edit"
+                                    aria-label={`Load revision ${snap.revision} to edit`}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
+                              {onRollbackSuccess && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRollback(snap.revision)}
+                                  disabled={rollbackSubmitting}
+                                  className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50"
+                                  title="Rollback version to this revision"
+                                  aria-label={`Rollback to revision ${snap.revision}`}
+                                >
+                                  {rollbackSubmitting ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="h-4 w-4" />
+                                  )}
+                                </button>
+                              )}
                             </div>
                           </td>
                         )}

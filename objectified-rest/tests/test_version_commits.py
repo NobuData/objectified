@@ -465,6 +465,119 @@ class TestPullVersion:
 
 
 # ---------------------------------------------------------------------------
+# POST /versions/{version_id}/rollback
+# ---------------------------------------------------------------------------
+
+
+class TestRollbackVersion:
+    """Tests for POST /v1/versions/{version_id}/rollback."""
+
+    def test_rollback_returns_201_and_creates_snapshot(self, client):
+        """Rollback to revision 1 sets version state and appends new snapshot."""
+        snapshot_at_1 = {
+            **_SNAPSHOT_ROW,
+            "revision": 1,
+            "snapshot": {
+                "classes": [
+                    {
+                        "name": "Person",
+                        "description": "Rolled back",
+                        "schema": {},
+                        "metadata": {},
+                        "properties": [],
+                    }
+                ],
+                "canvas_metadata": None,
+            },
+        }
+        class_row = {
+            "id": _CLASS_ID,
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "Rolled back",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": _NOW,
+            "updated_at": None,
+        }
+        rollback_snapshot_row = {
+            **_SNAPSHOT_ROW,
+            "revision": 2,
+            "label": "rollback",
+            "description": "Rollback to revision 1",
+            "created_at": _NOW,
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [snapshot_at_1],
+                [],  # current classes (empty)
+                [],  # _upsert_class: find by name (not found)
+                [class_row],  # _capture_version_state: classes
+                [],  # _capture_version_state: properties
+                [{"metadata": {}}],  # _create_snapshot: version metadata
+            ]
+            mock_db.execute_mutation.side_effect = [
+                {"id": _CLASS_ID},  # INSERT class
+                None,  # DELETE class_property (empty list branch)
+                None,  # UPDATE version: clear canvas_metadata (snapshot has canvas_metadata=None)
+                rollback_snapshot_row,  # INSERT snapshot
+                None,  # _record_history
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/rollback",
+                json={"revision": 1},
+            )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["version_id"] == _VERSION_ID
+        assert body["revision"] == 2
+        assert "snapshot_id" in body
+        assert "committed_at" in body
+
+    def test_rollback_version_not_found_returns_404(self, client):
+        """Rollback returns 404 when version not found."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.return_value = []
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/rollback",
+                json={"revision": 1},
+            )
+        assert r.status_code == 404
+
+    def test_rollback_snapshot_not_found_returns_404(self, client):
+        """Rollback returns 404 when snapshot revision does not exist."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [],  # no snapshot at revision 99
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/rollback",
+                json={"revision": 99},
+            )
+        assert r.status_code == 404
+        assert "revision" in r.json()["detail"].lower() or "snapshot" in r.json()["detail"].lower()
+
+    def test_rollback_api_key_caller_returns_403(self):
+        """Rollback returns 403 when caller is an API-key user without a user_id."""
+        api_key_caller = {"auth_method": "api_key", "account_id": _ACCOUNT_ID}
+        app.dependency_overrides[require_authenticated] = lambda: api_key_caller
+        try:
+            with mock_db_all() as mock_db:
+                mock_db.execute_query.return_value = [_version_lookup_row()]
+                r = TestClient(app).post(
+                    f"/v1/versions/{_VERSION_ID}/rollback",
+                    json={"revision": 1},
+                )
+        finally:
+            app.dependency_overrides.clear()
+        assert r.status_code == 403
+        assert "jwt" in r.json()["detail"].lower() or "user" in r.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
 # POST /versions/{version_id}/merge
 # ---------------------------------------------------------------------------
 
