@@ -387,4 +387,20 @@ describe('StudioToolbar', () => {
     expect(mockUndo).not.toHaveBeenCalled();
     expect(mockRedo).not.toHaveBeenCalled();
   });
+
+  it('disables Merge button when tenantId or projectId are empty', () => {
+    const { useWorkspaceOptional } = require('@/app/contexts/WorkspaceContext') as {
+      useWorkspaceOptional: jest.Mock;
+    };
+    useWorkspaceOptional.mockReturnValueOnce({
+      tenant: { id: '' },
+      project: { id: '' },
+      version: { id: 'v1' },
+    });
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    expect(
+      screen.getByRole('button', { name: /merge from another version/i })
+    ).toBeDisabled();
+  });
 });

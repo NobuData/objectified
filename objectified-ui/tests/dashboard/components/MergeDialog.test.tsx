@@ -62,9 +62,10 @@ beforeEach(() => {
 });
 
 describe('MergeDialog', () => {
-  it('renders the dialog title when open', () => {
+  it('renders the dialog title when open', async () => {
     render(<MergeDialog {...baseProps} />);
     expect(screen.getByText('Merge versions')).toBeInTheDocument();
+    await waitFor(() => expect(listVersions).toHaveBeenCalled());
   });
 
   it('shows source version dropdown when no initialSourceVersionId', async () => {
@@ -81,6 +82,7 @@ describe('MergeDialog', () => {
     });
     render(<MergeDialog {...baseProps} initialSourceVersionId="v2" />);
     await waitFor(() => {
+      expect(listVersions).toHaveBeenCalled();
       expect(mergePreview).toHaveBeenCalledWith(
         'v1',
         expect.objectContaining({
@@ -89,6 +91,8 @@ describe('MergeDialog', () => {
         }),
         { jwt: 'tok' }
       );
+      // Source version name should be resolved from the versions list (not 'Selected version')
+      expect(screen.getByText('Version 2')).toBeInTheDocument();
     });
   });
 
@@ -109,6 +113,7 @@ describe('MergeDialog', () => {
     });
     render(<MergeDialog {...baseProps} initialSourceVersionId="v2" />);
     await waitFor(() => {
+      expect(listVersions).toHaveBeenCalled();
       expect(screen.getByText('Use mine')).toBeInTheDocument();
       expect(screen.getByText('Use theirs')).toBeInTheDocument();
       expect(screen.getByText('Edit manually')).toBeInTheDocument();
@@ -124,6 +129,7 @@ describe('MergeDialog', () => {
     });
     render(<MergeDialog {...baseProps} initialSourceVersionId="v2" />);
     await waitFor(() => {
+      expect(listVersions).toHaveBeenCalled();
       expect(screen.getByText(/no conflicts/i)).toBeInTheDocument();
     });
   });
