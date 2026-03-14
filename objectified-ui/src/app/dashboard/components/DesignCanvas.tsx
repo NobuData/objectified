@@ -12,11 +12,13 @@ import {
   type NodeChange,
   type OnMoveEnd,
   type Viewport,
+  type Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
+import { useEditClassRequestOptional } from '@/app/contexts/EditClassRequestContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
 import { getStableClassId } from '@lib/studio/types';
 import {
@@ -25,6 +27,11 @@ import {
   getViewport,
   saveViewport,
 } from '@lib/studio/canvasLayout';
+import {
+  getClassNodeConfig,
+  saveClassNodeConfig,
+  type ClassNodeConfig,
+} from '@lib/studio/canvasClassNodeConfig';
 import ClassNode from './ClassNode';
 
 const defaultPosition = { x: 0, y: 0 };
@@ -40,11 +47,24 @@ function useResolvedCanvasSettings() {
 export default function DesignCanvas() {
   const studio = useStudioOptional();
   const workspace = useWorkspaceOptional();
+  const editClassRequest = useEditClassRequestOptional();
   const versionId = studio?.state?.versionId ?? null;
   const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
   const canvasSettings = useResolvedCanvasSettings();
   const isReadOnly =
     studio?.state?.readOnly === true || workspace?.version?.published === true;
+
+  const [configOverrides, setConfigOverrides] = useState<
+    Record<string, ClassNodeConfig>
+  >({});
+
+  const onConfigChange = useCallback(
+    (classId: string, config: ClassNodeConfig) => {
+      if (versionId) saveClassNodeConfig(versionId, classId, config);
+      setConfigOverrides((prev) => ({ ...prev, [classId]: config }));
+    },
+    [versionId]
+  );
 
   const [viewportState, setViewportState] = useState<Viewport | undefined>(
     () =>
@@ -163,7 +183,22 @@ export default function DesignCanvas() {
     [onNodesChange, studio, classes, versionId, isReadOnly]
   );
 
-  const displayNodes = classes.length > 0 ? nodes : initialNodesFromState;
+  const baseNodes = classes.length > 0 ? nodes : initialNodesFromState;
+
+  const displayNodes = useMemo(() => {
+    if (!versionId) return baseNodes;
+    return baseNodes.map((node: Node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        classNodeConfig: {
+          ...getClassNodeConfig(versionId, node.id),
+          ...configOverrides[node.id],
+        },
+        onConfigChange,
+      },
+    }));
+  }, [baseNodes, versionId, configOverrides, onConfigChange]);
 
   // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
   const onViewportChange = useCallback(
@@ -189,6 +224,13 @@ export default function DesignCanvas() {
     [canvasSettings.viewportPersistence, versionId]
   );
 
+  const handleNodeDoubleClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      editClassRequest?.requestEditClass(node.id);
+    },
+    [editClassRequest]
+  );
+
   return (
     <div className="w-full h-full bg-slate-100 dark:bg-slate-950">
       <ReactFlow
@@ -196,6 +238,7 @@ export default function DesignCanvas() {
         edges={edges}
         onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDoubleClick={handleNodeDoubleClick}
         viewport={viewportState}
         onViewportChange={onViewportChange}
         onMoveEnd={onMoveEnd}
