@@ -13,6 +13,7 @@ import {
   CheckCircle,
   GitCompare,
   Network,
+  History,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -34,6 +35,7 @@ import {
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
+import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 import RelationshipGraphDialog from '@/app/dashboard/components/RelationshipGraphDialog';
 
 const inputClass =
@@ -67,6 +69,7 @@ export default function VersionsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [diffDialogVersion, setDiffDialogVersion] = useState<VersionSchema | null>(null);
   const [graphDialogVersion, setGraphDialogVersion] = useState<VersionSchema | null>(null);
+  const [historyDialogVersion, setHistoryDialogVersion] = useState<VersionSchema | null>(null);
 
   // Create form
   const [createName, setCreateName] = useState('');
@@ -542,6 +545,13 @@ export default function VersionsPage() {
                               <Network className="h-4 w-4" />
                               Relationship graph
                             </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                              onSelect={() => setHistoryDialogVersion(v)}
+                            >
+                              <History className="h-4 w-4" />
+                              Version history
+                            </DropdownMenu.Item>
                             <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
                             <DropdownMenu.Item
                               className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 data-[disabled]:opacity-50"
@@ -795,6 +805,13 @@ export default function VersionsPage() {
         onOpenChange={(open) => !open && setGraphDialogVersion(null)}
         versionId={graphDialogVersion?.id ?? ''}
         versionName={graphDialogVersion?.name ?? ''}
+        options={opts}
+      />
+      <VersionHistoryDialog
+        open={!!historyDialogVersion}
+        onOpenChange={(open) => !open && setHistoryDialogVersion(null)}
+        versionId={historyDialogVersion?.id ?? ''}
+        versionName={historyDialogVersion?.name}
         options={opts}
       />
     </div>

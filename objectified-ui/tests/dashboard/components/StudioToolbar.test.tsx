@@ -11,8 +11,10 @@ jest.mock('next-auth/react', () => ({
   useSession: () => ({ data: { accessToken: 'token' } }),
 }));
 
+const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve([]));
 jest.mock('@lib/api/rest-client', () => ({
   getRestClientOptions: () => ({}),
+  listVersionSnapshotsMetadata: (...args: unknown[]) => mockListVersionSnapshotsMetadata(...args),
 }));
 
 const mockUndo = jest.fn();
@@ -135,6 +137,32 @@ describe('StudioToolbar', () => {
     expect(
       screen.getByRole('button', { name: /merge from another version/i })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /version history/i })
+    ).toBeInTheDocument();
+  });
+
+  it('opens version history dialog when History is clicked', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    mockListVersionSnapshotsMetadata.mockResolvedValueOnce([
+      {
+        id: 'snap-1',
+        version_id: 'v1',
+        project_id: 'p1',
+        revision: 1,
+        label: 'Initial',
+        description: null,
+        created_at: '2026-03-01T12:00:00Z',
+      },
+    ]);
+    render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /version history/i })
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /version history/i })).toBeInTheDocument();
+    });
+    expect(mockListVersionSnapshotsMetadata).toHaveBeenCalledWith('v1', {});
   });
 
   const defaultStudioWithState = {

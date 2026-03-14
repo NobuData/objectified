@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import VersionsPage from '../../../src/app/dashboard/versions/page';
 
 jest.mock('next-auth/react', () => ({
@@ -19,6 +20,7 @@ jest.mock('@lib/api/rest-client', () => ({
   createVersion: jest.fn(),
   updateVersion: jest.fn(),
   deleteVersion: jest.fn(),
+  listVersionSnapshotsMetadata: jest.fn(),
   getRestClientOptions: jest.fn(() => ({})),
   isForbiddenError: jest.fn(() => false),
 }));
@@ -29,6 +31,20 @@ jest.mock('@/app/components/providers/DialogProvider', () => ({
     alert: jest.fn(() => Promise.resolve()),
   })),
 }));
+
+const sampleVersion = {
+  id: 'v1',
+  project_id: 'p1',
+  name: 'v1.0.0',
+  description: 'First version',
+  change_log: '',
+  enabled: true,
+  published: false,
+  visibility: 'private',
+  metadata: {},
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+};
 
 describe('VersionsPage', () => {
   beforeEach(() => {
@@ -100,6 +116,37 @@ describe('VersionsPage', () => {
     render(<VersionsPage />);
     await waitFor(() => {
       expect(listVersions).toHaveBeenCalledWith('t1', 'p1', expect.anything());
+    });
+  });
+
+  it('shows Version history menu item in version actions dropdown', async () => {
+    const { listVersions } = require('@lib/api/rest-client');
+    listVersions.mockResolvedValue([sampleVersion]);
+    render(<VersionsPage />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /version actions/i })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole('button', { name: /version actions/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/version history/i)).toBeInTheDocument();
+    });
+  });
+
+  it('opens version history dialog and calls listVersionSnapshotsMetadata when Version history is selected', async () => {
+    const { listVersions, listVersionSnapshotsMetadata } = require('@lib/api/rest-client');
+    listVersions.mockResolvedValue([sampleVersion]);
+    listVersionSnapshotsMetadata.mockResolvedValue([]);
+    render(<VersionsPage />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /version actions/i })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole('button', { name: /version actions/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/version history/i)).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText(/version history/i));
+    await waitFor(() => {
+      expect(listVersionSnapshotsMetadata).toHaveBeenCalledWith('v1', expect.anything());
     });
   });
 });
