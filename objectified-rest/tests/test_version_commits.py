@@ -521,6 +521,7 @@ class TestRollbackVersion:
             mock_db.execute_mutation.side_effect = [
                 {"id": _CLASS_ID},  # INSERT class
                 None,  # DELETE class_property (empty list branch)
+                None,  # UPDATE version: clear canvas_metadata (snapshot has canvas_metadata=None)
                 rollback_snapshot_row,  # INSERT snapshot
                 None,  # _record_history
             ]
@@ -558,6 +559,22 @@ class TestRollbackVersion:
             )
         assert r.status_code == 404
         assert "revision" in r.json()["detail"].lower() or "snapshot" in r.json()["detail"].lower()
+
+    def test_rollback_api_key_caller_returns_403(self):
+        """Rollback returns 403 when caller is an API-key user without a user_id."""
+        api_key_caller = {"auth_method": "api_key", "account_id": _ACCOUNT_ID}
+        app.dependency_overrides[require_authenticated] = lambda: api_key_caller
+        try:
+            with mock_db_all() as mock_db:
+                mock_db.execute_query.return_value = [_version_lookup_row()]
+                r = TestClient(app).post(
+                    f"/v1/versions/{_VERSION_ID}/rollback",
+                    json={"revision": 1},
+                )
+        finally:
+            app.dependency_overrides.clear()
+        assert r.status_code == 403
+        assert "jwt" in r.json()["detail"].lower() or "user" in r.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------

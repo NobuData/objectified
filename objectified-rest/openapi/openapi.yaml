@@ -3080,6 +3080,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/VersionCommitResponse'
+        '403':
+          description: Rollback requires user authentication (JWT token)
         '404':
           description: Version or snapshot revision not found
         '422':

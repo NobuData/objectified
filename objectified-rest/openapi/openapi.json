@@ -5029,6 +5029,9 @@
               }
             }
           },
+          "403": {
+            "description": "Rollback requires user authentication (JWT token)"
+          },
           "404": {
             "description": "Version or snapshot revision not found"
           },

@@ -11,7 +11,8 @@ psycopg2.pool.ThreadedConnectionPool or async psycopg/asyncpg).
 """
 
 import logging
-from typing import Any, Optional
+from contextlib import contextmanager
+from typing import Any, Generator, Optional
 
 from app.config import settings
 
@@ -79,6 +80,7 @@ class Database:
         query: str,
         params: Optional[tuple] = None,
         returning: bool = True,
+        _conn: Any = None,
     ) -> Optional[dict[str, Any]]:
         """Execute an INSERT/UPDATE/DELETE with optional RETURNING clause.
 
@@ -86,26 +88,57 @@ class Database:
             query: SQL statement; include RETURNING ... to get back a row.
             params: Query parameters.
             returning: If True, fetchone() is called and the row returned.
+            _conn: Optional connection override (used inside a transaction block).
 
         Returns:
             The first returned row as a dict, or None if not found / no RETURNING.
         """
-        conn = self.connect()
+        conn = _conn if _conn is not None else self.connect()
         if conn is None:
             return None
+        auto_commit = _conn is None
         try:
             with conn.cursor() as cursor:
                 cursor.execute(query, params or ())
-                conn.commit()
+                if auto_commit:
+                    conn.commit()
                 if returning:
                     return cursor.fetchone()
                 return None
         except Exception:
+            if auto_commit:
+                try:
+                    conn.rollback()
+                except Exception as rollback_err:
+                    logger.exception("Rollback failed after mutation error: %s", rollback_err)
+            logger.exception("Mutation failed: %s", query[:200] if query else "")
+            raise
+
+    @contextmanager
+    def transaction(self) -> Generator[Any, None, None]:
+        """Context manager that runs multiple mutations in a single DB transaction.
+
+        All execute_mutation calls made via the yielded connection will be part
+        of the same transaction and only committed when the ``with`` block exits
+        successfully.  Any exception causes a full rollback.
+
+        Usage::
+
+            with db.transaction() as conn:
+                db.execute_mutation(sql1, params1, _conn=conn)
+                db.execute_mutation(sql2, params2, _conn=conn)
+        """
+        conn = self.connect()
+        if conn is None:
+            raise RuntimeError("Database connection unavailable")
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
             try:
                 conn.rollback()
             except Exception as rollback_err:
-                logger.exception("Rollback failed after mutation error: %s", rollback_err)
-            logger.exception("Mutation failed: %s", query[:200] if query else "")
+                logger.exception("Transaction rollback failed: %s", rollback_err)
             raise
 
     def validate_api_key(self, api_key: str) -> Optional[dict[str, Any]]:
