@@ -243,7 +243,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => openMergeDialog(null)}
-        disabled={studio.loading}
+        disabled={studio.loading || !tenantId || !projectId}
         className={btnBase}
         aria-label="Merge from another version"
         title="Merge changes from another version"

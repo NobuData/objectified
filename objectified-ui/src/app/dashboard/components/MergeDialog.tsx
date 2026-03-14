@@ -140,10 +140,10 @@ export default function MergeDialog({
   }, [versionId, effectiveSourceId, state, isDirty, options.jwt, options.apiKey]);
 
   useEffect(() => {
-    if (open && !effectiveSourceId) {
+    if (open) {
       fetchVersions();
     }
-  }, [open, effectiveSourceId, fetchVersions]);
+  }, [open, fetchVersions]);
 
   useEffect(() => {
     if (open && effectiveSourceId && state) {
@@ -152,10 +152,10 @@ export default function MergeDialog({
   }, [open, effectiveSourceId, state?.versionId, fetchPreview]);
 
   useEffect(() => {
-    if (initialSourceVersionId) {
-      setSourceVersionId(initialSourceVersionId);
+    if (open) {
+      setSourceVersionId(initialSourceVersionId ?? '');
     }
-  }, [initialSourceVersionId]);
+  }, [open, initialSourceVersionId]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -282,8 +282,6 @@ export default function MergeDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
         <Dialog.Content
           className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-2xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-xl shadow-xl flex flex-col border border-slate-200 dark:border-slate-700 p-4"
-          onEscapeKeyDown={() => handleOpenChange(false)}
-          onPointerDownOutside={() => handleOpenChange(false)}
         >
           <div className="flex items-center gap-3 mb-4 shrink-0">
             <div className="w-10 h-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-400/10 flex items-center justify-center">
@@ -429,10 +427,14 @@ export default function MergeDialog({
                           </div>
                           {customEditPath === conflict.path && (
                             <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
-                              <label className="text-xs text-slate-500 dark:text-slate-400">
+                              <label
+                                htmlFor={`custom-value-${conflict.path}`}
+                                className="text-xs text-slate-500 dark:text-slate-400"
+                              >
                                 Custom value
                               </label>
                               <textarea
+                                id={`custom-value-${conflict.path}`}
                                 value={customEditValue}
                                 onChange={(e) => setCustomEditValue(e.target.value)}
                                 rows={3}
