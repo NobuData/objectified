@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import StudioToolbar from '@/app/dashboard/components/StudioToolbar';
 
@@ -266,10 +266,11 @@ describe('StudioToolbar', () => {
 
   it('Pull when not dirty calls loadFromServer without confirm', async () => {
     useStudioOptional.mockReturnValue(defaultStudioWithState);
+    const user = userEvent.setup();
     render(<StudioToolbar />);
-    await userEvent.click(screen.getByRole('button', { name: /pull from server/i }));
+    await user.click(screen.getByRole('button', { name: /pull from server/i }));
     expect(mockConfirm).not.toHaveBeenCalled();
-    expect(mockLoadFromServer).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockLoadFromServer).toHaveBeenCalledTimes(1));
   });
 
   it('Pull when dirty opens confirm dialog; confirming calls loadFromServer', async () => {
@@ -278,8 +279,9 @@ describe('StudioToolbar', () => {
       isDirty: true,
     });
     mockConfirm.mockResolvedValueOnce(true);
+    const user = userEvent.setup();
     render(<StudioToolbar />);
-    await userEvent.click(screen.getByRole('button', { name: /pull from server/i }));
+    await user.click(screen.getByRole('button', { name: /pull from server/i }));
     expect(mockConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Discard local changes?',
@@ -287,8 +289,7 @@ describe('StudioToolbar', () => {
         variant: 'warning',
       })
     );
-    await Promise.resolve();
-    expect(mockLoadFromServer).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockLoadFromServer).toHaveBeenCalledTimes(1));
   });
 
   it('Pull when dirty and user cancels confirm does not call loadFromServer', async () => {
@@ -297,10 +298,10 @@ describe('StudioToolbar', () => {
       isDirty: true,
     });
     mockConfirm.mockResolvedValueOnce(false);
+    const user = userEvent.setup();
     render(<StudioToolbar />);
-    await userEvent.click(screen.getByRole('button', { name: /pull from server/i }));
+    await user.click(screen.getByRole('button', { name: /pull from server/i }));
     expect(mockConfirm).toHaveBeenCalled();
-    await Promise.resolve();
     expect(mockLoadFromServer).not.toHaveBeenCalled();
   });
 
