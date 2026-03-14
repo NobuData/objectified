@@ -17,6 +17,7 @@ import {
   Cloud,
   GitBranchPlus,
   Eye,
+  Settings2,
 } from 'lucide-react';
 import { getRestClientOptions } from '@lib/api/rest-client';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
@@ -24,6 +25,7 @@ import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import { useUndoKeyboard, getModifierLabel } from '@lib/studio/useUndoKeyboard';
 import CommitMessageDialog from '@/app/dashboard/components/CommitMessageDialog';
+import CanvasSettingsDialog from '@/app/dashboard/components/CanvasSettingsDialog';
 import MergeDialog from '@/app/dashboard/components/MergeDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
@@ -48,6 +50,7 @@ export default function StudioToolbar() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeSourceVersionId, setMergeSourceVersionId] = useState<string | null>(null);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [canvasSettingsDialogOpen, setCanvasSettingsDialogOpen] = useState(false);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
@@ -166,23 +169,22 @@ export default function StudioToolbar() {
     disabled: !studio?.state || studio?.loading,
   });
 
-  if (!studio) return null;
-  if (!studio.state) return null;
+  const showGitToolbar = Boolean(studio && studio.state);
 
   return (
     <div className="flex items-center gap-2 shrink-0 flex-wrap">
-      {studio.error && (
+      {showGitToolbar && studio!.error && (
         <span
           className="text-sm text-red-600 dark:text-red-400"
           role="alert"
-          title={studio.error}
+          title={studio!.error}
         >
-          {studio.error}
+          {studio!.error}
         </span>
       )}
 
-      {/* Indicators */}
-      {studio.isDirty && (
+      {/* Indicators and git-like buttons — only when a version is loaded */}
+      {showGitToolbar && studio!.isDirty && (
         <span
           className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs font-medium"
           title="Uncommitted local changes"
@@ -191,7 +193,7 @@ export default function StudioToolbar() {
           Dirty
         </span>
       )}
-      {studio.hasUnpushedCommits && (
+      {showGitToolbar && studio!.hasUnpushedCommits && (
         <span
           className="flex items-center gap-1.5 text-violet-600 dark:text-violet-400 text-xs font-medium"
           title="Committed locally but not yet pushed to another version"
@@ -200,7 +202,7 @@ export default function StudioToolbar() {
           Unpushed commits
         </span>
       )}
-      {studio.serverHasNewChanges && (
+      {showGitToolbar && studio!.serverHasNewChanges && (
         <span
           className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400 text-xs font-medium"
           title="Server has new changes"
@@ -209,33 +211,34 @@ export default function StudioToolbar() {
           Server has new changes
         </span>
       )}
-      {studio.state.readOnly && (
+      {showGitToolbar && studio!.state?.readOnly && (
         <span
           className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs font-medium"
-          title={`Viewing revision ${studio.state.revision ?? '?'} (read-only)`}
+          title={`Viewing revision ${studio!.state?.revision ?? '?'} (read-only)`}
         >
           <Eye className="h-3.5 w-3.5" />
-          Revision {studio.state.revision ?? '?'} (read-only)
+          Revision {studio!.state?.revision ?? '?'} (read-only)
         </span>
       )}
 
-      <div className="h-4 w-px bg-slate-200 dark:bg-slate-600" aria-hidden />
-
-      {studio.state.readOnly && (
+      {showGitToolbar && (
+        <div className="h-4 w-px bg-slate-200 dark:bg-slate-600" aria-hidden />
+      )}
+      {showGitToolbar && studio!.state?.readOnly && (
         <button
           type="button"
           onClick={() => {
-            void studio.loadFromServer(versionId, options, {
+            void studio!.loadFromServer(versionId, options, {
               tenantId: tenantId || undefined,
               projectId: projectId || undefined,
             });
           }}
-          disabled={studio.loading}
+          disabled={studio!.loading}
           className={btnPrimary}
           aria-label="Load latest revision to edit"
           title="Load latest revision to edit"
         >
-          {studio.loading ? (
+          {studio!.loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Download className="h-4 w-4" />
@@ -244,10 +247,12 @@ export default function StudioToolbar() {
         </button>
       )}
 
+      {showGitToolbar && (
+        <>
       <button
         type="button"
-        onClick={studio.undo}
-        disabled={!studio.canUndo || studio.loading || studio.state.readOnly}
+        onClick={studio!.undo}
+        disabled={!studio!.canUndo || studio!.loading || studio!.state?.readOnly}
         className={btnBase}
         aria-label="Undo"
         title={`Undo (${modLabel}+Z)`}
@@ -256,8 +261,8 @@ export default function StudioToolbar() {
       </button>
       <button
         type="button"
-        onClick={studio.redo}
-        disabled={!studio.canRedo || studio.loading || studio.state.readOnly}
+        onClick={studio!.redo}
+        disabled={!studio!.canRedo || studio!.loading || studio!.state?.readOnly}
         className={btnBase}
         aria-label="Redo"
         title={`Redo (${modLabel}+Shift+Z)`}
@@ -268,16 +273,16 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => setCommitDialogOpen(true)}
-        disabled={studio.loading || studio.state.readOnly}
+        disabled={studio!.loading || studio!.state?.readOnly}
         className={btnPrimary}
         aria-label="Commit (snapshot to server)"
         title={
-          studio.state.readOnly
+          studio!.state?.readOnly
             ? 'Cannot commit while viewing a past revision (read-only)'
             : 'Commit local state to server (optional message)'
         }
       >
-        {studio.loading ? (
+        {studio!.loading ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
           <GitCommit className="h-4 w-4" />
@@ -288,7 +293,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={handleReset}
-        disabled={studio.loading || studio.state.readOnly}
+        disabled={studio!.loading || studio!.state?.readOnly}
         className={btnBase}
         aria-label="Reset to last committed state"
         title="Discard local changes and reload from server"
@@ -299,7 +304,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => setPushDialogOpen(true)}
-        disabled={studio.loading || studio.state.readOnly || !tenantId || !projectId}
+        disabled={studio!.loading || studio!.state?.readOnly || !tenantId || !projectId}
         className={btnBase}
         aria-label="Push to another version"
         title="Push current state to another version"
@@ -310,7 +315,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={handlePull}
-        disabled={studio.loading}
+        disabled={studio!.loading}
         className={btnBase}
         aria-label="Pull from server"
         title="Reload from server"
@@ -321,7 +326,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => openMergeDialog(null)}
-        disabled={studio.loading || studio.state.readOnly || !tenantId || !projectId}
+        disabled={studio!.loading || studio!.state?.readOnly || !tenantId || !projectId}
         className={btnBase}
         aria-label="Merge from another version"
         title="Merge changes from another version"
@@ -332,25 +337,43 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => setHistoryDialogOpen(true)}
-        disabled={studio.loading}
+        disabled={studio!.loading}
         className={btnBase}
         aria-label="Version history"
         title="View version history (revisions)"
       >
         <History className="h-4 w-4" />
       </button>
+        </>
+      )}
 
+      {showGitToolbar && (
+        <div className="h-4 w-px bg-slate-200 dark:bg-slate-600" aria-hidden />
+      )}
+      <button
+        type="button"
+        onClick={() => setCanvasSettingsDialogOpen(true)}
+        className={btnPrimary}
+        aria-label="Canvas settings"
+        title="Configure canvas (background, controls, minimap, viewport)"
+      >
+        <Settings2 className="h-4 w-4" />
+        Canvas
+      </button>
+
+      {showGitToolbar && (
+        <>
       <CommitMessageDialog
         open={commitDialogOpen}
         onOpenChange={setCommitDialogOpen}
         onCommit={handleCommitWithMessage}
-        loading={studio.loading}
+        loading={studio!.loading}
       />
       <PushTargetDialog
         open={pushDialogOpen}
         onOpenChange={(open) => {
           setPushDialogOpen(open);
-          if (!open) studio.clearPushConflict409();
+          if (!open && studio) studio.clearPushConflict409();
         }}
         tenantId={tenantId}
         projectId={projectId}
@@ -359,10 +382,10 @@ export default function StudioToolbar() {
         onPush={handlePushToTarget}
         onPull={handlePull}
         onMerge={handleMergeFromPush}
-        loading={studio.loading}
-        pushConflict409={studio.pushConflict409}
-        pushError={studio.error}
-        clearPushConflict409={studio.clearPushConflict409}
+        loading={studio!.loading}
+        pushConflict409={studio!.pushConflict409}
+        pushError={studio!.error}
+        clearPushConflict409={studio!.clearPushConflict409}
       />
       <MergeDialog
         open={mergeDialogOpen}
@@ -382,8 +405,8 @@ export default function StudioToolbar() {
         options={options}
         tenantId={tenantId || undefined}
         projectId={projectId || undefined}
-        onLoadRevision={studio ? handleLoadRevision : undefined}
-        onRollbackSuccess={studio ? performPull : undefined}
+        onLoadRevision={handleLoadRevision}
+        onRollbackSuccess={performPull}
         onBranchSuccess={(newVersion) => {
           if (tenantId && projectId) {
             router.push(
@@ -392,6 +415,12 @@ export default function StudioToolbar() {
           }
         }}
         onDeleteSuccess={() => router.push('/dashboard/versions')}
+      />
+        </>
+      )}
+      <CanvasSettingsDialog
+        open={canvasSettingsDialogOpen}
+        onOpenChange={setCanvasSettingsDialogOpen}
       />
     </div>
   );
