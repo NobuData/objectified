@@ -581,7 +581,9 @@ def push_version(
     rev_by_id = {str(r["version_id"]): r["max_revision"] for r in rev_rows}
     source_rev = rev_by_id.get(version_id)
     target_rev = rev_by_id.get(target_version_id)
-    if source_rev is not None and target_rev is not None and target_rev > source_rev:
+    # Reject if target has snapshots and either source has none (target is clearly newer)
+    # or target's max revision exceeds source's.
+    if target_rev is not None and (source_rev is None or target_rev > source_rev):
         raise HTTPException(
             status_code=409,
             detail="Target version has newer changes on the server; pull then merge first.",

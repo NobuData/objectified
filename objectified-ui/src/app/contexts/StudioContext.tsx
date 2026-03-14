@@ -357,6 +357,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       }
       setLoading(true);
       setError(null);
+      setPushConflict409(false);
       try {
         const payload = stateToCommitPayload(current, {
           message: commitOpts?.message ?? null,

@@ -4789,6 +4789,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Target version has newer changes on server; pull then merge first"
           }
         }
       }
