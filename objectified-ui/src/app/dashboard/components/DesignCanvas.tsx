@@ -88,7 +88,16 @@ export default function DesignCanvas() {
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      onNodesChange(changes as Parameters<typeof onNodesChange>[0]);
+      // In read-only mode, only allow selection-type changes through so the user
+      // can still click/select nodes.  Destructive changes (remove) and
+      // position changes (drag) are discarded before they can mutate local state.
+      const allowedChanges = isReadOnly
+        ? changes.filter((c) => c.type === 'select' || c.type === 'dimensions')
+        : changes;
+
+      if (allowedChanges.length > 0) {
+        onNodesChange(allowedChanges as Parameters<typeof onNodesChange>[0]);
+      }
       if (isReadOnly || !studio?.applyChange) return;
 
       const positionUpdates: { nodeId: string; position: { x: number; y: number } }[] = [];
