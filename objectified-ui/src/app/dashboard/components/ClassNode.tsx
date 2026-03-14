@@ -1,6 +1,7 @@
 'use client';
 
 import { memo, useCallback } from 'react';
+import type { ComponentType, CSSProperties } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import * as ScrollArea from '@radix-ui/react-scroll-area';
 import { ChevronDown, ChevronRight, Box, Circle, Square, Hexagon } from 'lucide-react';
@@ -16,7 +17,7 @@ export interface ClassNodeDataExtended extends ClassNodeData {
   onConfigChange?: (classId: string, config: ClassNodeConfig) => void;
 }
 
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+const ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
   box: Box,
   circle: Circle,
   square: Square,
@@ -55,7 +56,7 @@ function ClassNodeComponent({
     });
   }, [id, classNodeConfig, expanded, onConfigChange]);
 
-  const containerStyle: React.CSSProperties = {};
+  const containerStyle: CSSProperties = {};
   if (theme?.backgroundColor) containerStyle.backgroundColor = theme.backgroundColor;
   if (theme?.border) {
     containerStyle.borderWidth = '2px';
@@ -63,7 +64,7 @@ function ClassNodeComponent({
     containerStyle.borderColor = theme.border;
   }
 
-  const headerStyle: React.CSSProperties = {};
+  const headerStyle: CSSProperties = {};
   if (theme?.backgroundColor) headerStyle.backgroundColor = theme.backgroundColor;
 
   return (
