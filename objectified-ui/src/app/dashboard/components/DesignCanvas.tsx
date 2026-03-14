@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { MouseEvent } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -28,7 +29,7 @@ import {
   saveViewport,
 } from '@lib/studio/canvasLayout';
 import {
-  getClassNodeConfig,
+  getAllClassNodeConfigs,
   saveClassNodeConfig,
   type ClassNodeConfig,
 } from '@lib/studio/canvasClassNodeConfig';
@@ -65,6 +66,12 @@ export default function DesignCanvas() {
     },
     [versionId]
   );
+
+  // Reset per-node config overrides whenever the active version changes so that
+  // stale overrides from the previous version are not applied to nodes in the new one.
+  useEffect(() => {
+    setConfigOverrides({});
+  }, [versionId]);
 
   const [viewportState, setViewportState] = useState<Viewport | undefined>(
     () =>
@@ -187,12 +194,14 @@ export default function DesignCanvas() {
 
   const displayNodes = useMemo(() => {
     if (!versionId) return baseNodes;
+    // Load all configs once to avoid repeated JSON parses inside the map loop.
+    const allStoredConfigs = getAllClassNodeConfigs(versionId);
     return baseNodes.map((node: Node) => ({
       ...node,
       data: {
         ...node.data,
         classNodeConfig: {
-          ...getClassNodeConfig(versionId, node.id),
+          ...allStoredConfigs[node.id],
           ...configOverrides[node.id],
         },
         onConfigChange,
@@ -225,7 +234,7 @@ export default function DesignCanvas() {
   );
 
   const handleNodeDoubleClick = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+    (_event: MouseEvent, node: Node) => {
       editClassRequest?.requestEditClass(node.id);
     },
     [editClassRequest]

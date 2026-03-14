@@ -176,9 +176,11 @@ function ClassListPanel({
 
   // When canvas requests edit (e.g. double-click on node), open the class dialog. GitHub #80.
   useEffect(() => {
-    if (!editClassIdRequest || !onConsumeEditClassRequest || !canEdit) return;
-    const cls = classes.find((c) => getStableClassId(c) === editClassIdRequest);
-    if (cls) setEditingClass(cls);
+    if (!editClassIdRequest || !onConsumeEditClassRequest) return;
+    if (canEdit) {
+      const cls = classes.find((c) => getStableClassId(c) === editClassIdRequest);
+      if (cls) setEditingClass(cls);
+    }
     onConsumeEditClassRequest();
   }, [editClassIdRequest, onConsumeEditClassRequest, canEdit, classes]);
 
