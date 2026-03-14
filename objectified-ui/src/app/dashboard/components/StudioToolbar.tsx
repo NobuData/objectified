@@ -10,6 +10,7 @@ import {
   Upload,
   Download,
   GitMerge,
+  History,
   Loader2,
   Circle,
   Cloud,
@@ -23,6 +24,7 @@ import { useUndoKeyboard, getModifierLabel } from '@lib/studio/useUndoKeyboard';
 import CommitMessageDialog from '@/app/dashboard/components/CommitMessageDialog';
 import MergeDialog from '@/app/dashboard/components/MergeDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
+import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 
 const btnBase =
   'p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
@@ -41,6 +43,7 @@ export default function StudioToolbar() {
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeSourceVersionId, setMergeSourceVersionId] = useState<string | null>(null);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
@@ -251,6 +254,17 @@ export default function StudioToolbar() {
         <GitMerge className="h-4 w-4" />
       </button>
 
+      <button
+        type="button"
+        onClick={() => setHistoryDialogOpen(true)}
+        disabled={studio.loading}
+        className={btnBase}
+        aria-label="Version history"
+        title="View version history (revisions)"
+      >
+        <History className="h-4 w-4" />
+      </button>
+
       <CommitMessageDialog
         open={commitDialogOpen}
         onOpenChange={setCommitDialogOpen}
@@ -284,6 +298,13 @@ export default function StudioToolbar() {
         tenantId={tenantId}
         projectId={projectId}
         onApplied={() => setMergeDialogOpen(false)}
+      />
+      <VersionHistoryDialog
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+        versionId={versionId}
+        versionName={workspace?.version?.name}
+        options={options}
       />
     </div>
   );
