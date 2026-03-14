@@ -16,7 +16,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
-import { getCanvasSettings } from '@lib/studio/canvasSettings';
+import { getCanvasSettings, saveCanvasSettings } from '@lib/studio/canvasSettings';
 import type { CanvasSettings } from '@lib/studio/canvasSettings';
 
 const PREVIEW_NODES = [
@@ -35,7 +35,7 @@ export default function CanvasSettingsDialog({
 }: CanvasSettingsDialogProps) {
   const context = useCanvasSettingsOptional();
   const settings = context?.settings ?? getCanvasSettings();
-  const setSettings = context?.setSettings ?? (() => {});
+  const setSettings = context?.setSettings ?? ((s: CanvasSettings) => saveCanvasSettings(s));
   const [draft, setDraft] = useState<CanvasSettings>(settings);
 
   useEffect(() => {

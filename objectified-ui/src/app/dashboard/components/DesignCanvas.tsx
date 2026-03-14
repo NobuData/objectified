@@ -10,6 +10,7 @@ import {
   useNodesState,
   useEdgesState,
   type NodeChange,
+  type OnMoveEnd,
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -130,10 +131,20 @@ export default function DesignCanvas() {
 
   const displayNodes = classes.length > 0 ? nodes : initialNodesFromState;
 
+  // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
   const onViewportChange = useCallback(
     (viewport: Viewport) => {
       if (canvasSettings.viewportPersistence && versionId) {
         setViewportState(viewport);
+      }
+    },
+    [canvasSettings.viewportPersistence, versionId]
+  );
+
+  // Persist to localStorage only when a move/pan/zoom ends to avoid excessive writes.
+  const onMoveEnd: OnMoveEnd = useCallback(
+    (_event, viewport) => {
+      if (canvasSettings.viewportPersistence && versionId) {
         saveViewport(versionId, {
           x: viewport.x,
           y: viewport.y,
@@ -153,6 +164,7 @@ export default function DesignCanvas() {
         onEdgesChange={onEdgesChange}
         viewport={viewportState}
         onViewportChange={onViewportChange}
+        onMoveEnd={onMoveEnd}
         fitView={viewportState === undefined}
         className="bg-slate-50 dark:bg-slate-900/50"
       >
