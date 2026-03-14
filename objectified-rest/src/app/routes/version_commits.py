@@ -225,6 +225,7 @@ def _compute_pull_diff(
 def _upsert_class(
     version_id: str,
     cls_payload: dict[str, Any],
+    _conn: Any = None,
 ) -> str:
     """Find an existing class by name in the version (case-insensitive) or create one.
 
@@ -268,6 +269,7 @@ def _upsert_class(
             """,
             (description, json.dumps(schema_val), json.dumps(metadata), class_id),
             returning=False,
+            _conn=_conn,
         )
         return class_id
 
@@ -279,6 +281,7 @@ def _upsert_class(
         RETURNING id
         """,
         (version_id, name, description, json.dumps(schema_val), json.dumps(metadata)),
+        _conn=_conn,
     )
     if not row:
         raise HTTPException(status_code=500, detail=f"Failed to create class '{name}'")
@@ -289,6 +292,7 @@ def _upsert_class_properties(
     class_id: str,
     project_id: str,
     properties: list[dict[str, Any]],
+    _conn: Any = None,
 ) -> None:
     """Upsert class properties for a class.
 
@@ -338,6 +342,7 @@ def _upsert_class_properties(
                 RETURNING id
                 """,
                 (project_id, property_name, prop_description, json.dumps(prop_data)),
+                _conn=_conn,
             )
             if not prop_row:
                 raise HTTPException(
@@ -366,6 +371,7 @@ def _upsert_class_properties(
                 """,
                 (prop_description, json.dumps(prop_data), str(cp_rows[0]["id"])),
                 returning=False,
+                _conn=_conn,
             )
         else:
             db.execute_mutation(
@@ -376,6 +382,7 @@ def _upsert_class_properties(
                 RETURNING id
                 """,
                 (class_id, property_id, prop_name, prop_description, json.dumps(prop_data)),
+                _conn=_conn,
             )
 
 
@@ -415,6 +422,7 @@ def _create_snapshot(
     committed_by: Optional[str],
     label: Optional[str],
     description: Optional[str],
+    _conn: Any = None,
 ) -> dict[str, Any]:
     """Capture and persist a version snapshot (classes + canvas_metadata), returning the snapshot row."""
     snapshot_data = _capture_version_state(version_id)
@@ -461,6 +469,7 @@ def _create_snapshot(
             description,
             json.dumps(snapshot_data, default=str),
         ),
+        _conn=_conn,
     )
     if not row:
         raise HTTPException(status_code=500, detail="Failed to create version snapshot")
@@ -627,6 +636,7 @@ def _apply_snapshot_state(
     version_id: str,
     project_id: str,
     state: dict[str, Any],
+    _conn: Any = None,
 ) -> None:
     """Set version state to match a snapshot (for rollback). Soft-deletes classes not in
     snapshot, upserts classes and properties from snapshot, removes extra class_property
@@ -656,11 +666,12 @@ def _apply_snapshot_state(
                 """,
                 (str(row["id"]), version_id),
                 returning=False,
+                _conn=_conn,
             )
 
     # Upsert each class from snapshot and sync properties to match exactly.
     for cls in snapshot_classes:
-        class_id = _upsert_class(version_id, cls)
+        class_id = _upsert_class(version_id, cls, _conn=_conn)
         props = cls.get("properties") or []
         prop_names_lower = sorted({
             (p.get("name") or p.get("property_name") or "").strip().lower()
@@ -678,6 +689,7 @@ def _apply_snapshot_state(
                 """,
                 (class_id, *prop_names_lower),
                 returning=False,
+                _conn=_conn,
             )
         else:
             db.execute_mutation(
@@ -687,8 +699,9 @@ def _apply_snapshot_state(
                 """,
                 (class_id,),
                 returning=False,
+                _conn=_conn,
             )
-        _upsert_class_properties(class_id, project_id, props)
+        _upsert_class_properties(class_id, project_id, props, _conn=_conn)
 
     if state.get("canvas_metadata") is not None:
         db.execute_mutation(
@@ -704,6 +717,19 @@ def _apply_snapshot_state(
             """,
             (json.dumps(state["canvas_metadata"]), version_id),
             returning=False,
+            _conn=_conn,
+        )
+    else:
+        db.execute_mutation(
+            """
+            UPDATE objectified.version
+            SET metadata = metadata - 'canvas_metadata',
+            updated_at = timezone('utc', clock_timestamp())
+            WHERE id = %s
+            """,
+            (version_id,),
+            returning=False,
+            _conn=_conn,
         )
 
 
@@ -718,6 +744,7 @@ def _apply_snapshot_state(
     ),
     responses={
         201: {"description": "Rollback successful — new snapshot created"},
+        403: {"description": "Rollback requires user authentication (JWT token)"},
         404: {"description": "Version or snapshot revision not found"},
     },
 )
@@ -756,24 +783,27 @@ def rollback_version(
     ) is not None:
         state["canvas_metadata"] = None
 
-    _apply_snapshot_state(version_id, project_id, state)
+    with db.transaction() as conn:
+        _apply_snapshot_state(version_id, project_id, state, _conn=conn)
 
-    snapshot_row = _create_snapshot(
-        version_id=version_id,
-        project_id=project_id,
-        committed_by=user_id,
-        label="rollback",
-        description=f"Rollback to revision {payload.revision}",
-    )
+        snapshot_row = _create_snapshot(
+            version_id=version_id,
+            project_id=project_id,
+            committed_by=user_id,
+            label="rollback",
+            description=f"Rollback to revision {payload.revision}",
+            _conn=conn,
+        )
 
-    _record_history(
-        version_id=version_id,
-        project_id=project_id,
-        changed_by=user_id,
-        operation="ROLLBACK",
-        old_data=None,
-        new_data=snapshot_row.get("snapshot"),
-    )
+        _record_history(
+            version_id=version_id,
+            project_id=project_id,
+            changed_by=user_id,
+            operation="ROLLBACK",
+            old_data=None,
+            new_data=snapshot_row.get("snapshot"),
+            _conn=conn,
+        )
 
     return VersionCommitResponse(
         revision=snapshot_row["revision"],

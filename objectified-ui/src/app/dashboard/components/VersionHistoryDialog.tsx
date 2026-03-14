@@ -99,13 +99,13 @@ export default function VersionHistoryDialog({
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Rollback failed');
       } finally {
-          setRollbackSubmitting(false);
+        setRollbackSubmitting(false);
       }
     },
     [versionId, options, onRollbackSuccess, onOpenChange, confirm, fetchSnapshots]
   );
 
-  const showActions = onLoadRevision || onRollbackSuccess;
+  const showActions = Boolean(onLoadRevision || onRollbackSuccess);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -206,7 +206,8 @@ export default function VersionHistoryDialog({
                                       onLoadRevision(snap.revision, true);
                                       onOpenChange(false);
                                     }}
-                                    className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                    disabled={rollbackSubmitting}
+                                    className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50"
                                     title="View this revision (read-only)"
                                     aria-label={`View revision ${snap.revision} read-only`}
                                   >
@@ -218,7 +219,8 @@ export default function VersionHistoryDialog({
                                       onLoadRevision(snap.revision, false);
                                       onOpenChange(false);
                                     }}
-                                    className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                    disabled={rollbackSubmitting}
+                                    className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50"
                                     title="Load this revision to edit"
                                     aria-label={`Load revision ${snap.revision} to edit`}
                                   >
