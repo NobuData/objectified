@@ -20,6 +20,7 @@ jest.mock('@lib/api/rest-client', () => ({
   pushVersion: (...args: unknown[]) => mockPushVersion(...args),
   mergeVersion: (...args: unknown[]) => mockMergeVersion(...args),
   getRestClientOptions: () => ({}),
+  isConflictError: () => false,
 }));
 
 // ─── localStorage mock ──────────────────────────────────────────────────────
@@ -87,7 +88,7 @@ function TestConsumer() {
       </button>
       <button
         type="button"
-        onClick={() => studio.push('v2', {})}
+        onClick={() => void studio.push('v2', {}).catch(() => {})}
         data-testid="push"
       >
         Push

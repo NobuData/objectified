@@ -80,6 +80,10 @@ export function isForbiddenError(e: unknown): e is RestApiError {
   return isRestApiError(e) && e.statusCode === 403;
 }
 
+export function isConflictError(e: unknown): e is RestApiError {
+  return isRestApiError(e) && e.statusCode === 409;
+}
+
 async function request<T>(
   method: string,
   path: string,
