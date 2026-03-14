@@ -158,6 +158,16 @@ function ClassListPanel({
     prop: StudioClassProperty;
   } | null>(null);
 
+  // Close all edit dialogs when the canvas transitions to read-only.
+  useEffect(() => {
+    if (!canEdit) {
+      setAddClassOpen(false);
+      setEditingClass(null);
+      setAddPropClassId(null);
+      setEditingProp(null);
+    }
+  }, [canEdit]);
+
   const filtered = useMemo(
     () =>
       classes.filter((cls) =>
@@ -502,6 +512,8 @@ export default function DesignCanvasSidebar() {
 
   const noVersion = !versionId;
   const noProject = !tenantId || !projectId;
+  const isReadOnly =
+    studio?.state?.readOnly === true || workspace?.version?.published === true;
 
   const useStudioData = Boolean(studio?.state);
   const classesLoading = useStudioData ? (studio?.loading ?? false) : loadingClasses;
@@ -692,7 +704,7 @@ export default function DesignCanvasSidebar() {
             <ClassListPanel
               classes={studioClasses}
               availableProperties={studioProperties}
-              canEdit={true}
+              canEdit={!isReadOnly}
               loading={classesLoading}
               onAddClass={handleAddClass}
               onUpdateClass={handleUpdateClass}

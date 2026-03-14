@@ -487,4 +487,126 @@ describe('StudioToolbar', () => {
       screen.getByRole('button', { name: /merge from another version/i })
     ).toBeDisabled();
   });
+
+  // ── Published read-only tests ────────────────────────────────────────────
+
+  describe('published read-only mode (workspace.version.published === true)', () => {
+    const { useWorkspaceOptional } = require('@/app/contexts/WorkspaceContext') as {
+      useWorkspaceOptional: jest.Mock;
+    };
+
+    beforeEach(() => {
+      useWorkspaceOptional.mockReturnValue({
+        tenant: { id: 't1' },
+        project: { id: 'p1' },
+        version: { id: 'v1', published: true },
+      });
+      useStudioOptional.mockReturnValue({
+        ...defaultStudioWithState,
+        canUndo: true,
+        canRedo: true,
+      });
+    });
+
+    it('shows "Published (read-only)" indicator when version is published', () => {
+      render(<StudioToolbar />);
+      expect(screen.getByText(/published \(read-only\)/i)).toBeInTheDocument();
+    });
+
+    it('does not show "Published (read-only)" indicator when not published', () => {
+      useWorkspaceOptional.mockReturnValue({
+        tenant: { id: 't1' },
+        project: { id: 'p1' },
+        version: { id: 'v1', published: false },
+      });
+      useStudioOptional.mockReturnValue(defaultStudioWithState);
+      render(<StudioToolbar />);
+      expect(screen.queryByText(/published \(read-only\)/i)).not.toBeInTheDocument();
+    });
+
+    it('disables Undo button when version is published', () => {
+      render(<StudioToolbar />);
+      expect(screen.getByRole('button', { name: /undo/i })).toBeDisabled();
+    });
+
+    it('disables Redo button when version is published', () => {
+      render(<StudioToolbar />);
+      expect(screen.getByRole('button', { name: /redo/i })).toBeDisabled();
+    });
+
+    it('disables Commit button when version is published', () => {
+      render(<StudioToolbar />);
+      expect(
+        screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+      ).toBeDisabled();
+    });
+
+    it('disables Reset button when version is published', () => {
+      render(<StudioToolbar />);
+      expect(
+        screen.getByRole('button', { name: /reset to last committed state/i })
+      ).toBeDisabled();
+    });
+
+    it('disables Push button when version is published', () => {
+      render(<StudioToolbar />);
+      expect(
+        screen.getByRole('button', { name: /push to another version/i })
+      ).toBeDisabled();
+    });
+
+    it('disables Merge button when version is published', () => {
+      render(<StudioToolbar />);
+      expect(
+        screen.getByRole('button', { name: /merge from another version/i })
+      ).toBeDisabled();
+    });
+
+    it('Ctrl+Z keyboard shortcut does not trigger undo when version is published', () => {
+      render(<StudioToolbar />);
+      fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+      expect(mockUndo).not.toHaveBeenCalled();
+    });
+
+    it('Ctrl+Shift+Z keyboard shortcut does not trigger redo when version is published', () => {
+      render(<StudioToolbar />);
+      fireEvent.keyDown(document, { key: 'z', ctrlKey: true, shiftKey: true });
+      expect(mockRedo).not.toHaveBeenCalled();
+    });
+
+    it('Ctrl+Y keyboard shortcut does not trigger redo when version is published', () => {
+      render(<StudioToolbar />);
+      fireEvent.keyDown(document, { key: 'y', ctrlKey: true });
+      expect(mockRedo).not.toHaveBeenCalled();
+    });
+
+    it('auto-closes commit dialog when version becomes published', async () => {
+      const { useWorkspaceOptional: uwo } = require('@/app/contexts/WorkspaceContext') as {
+        useWorkspaceOptional: jest.Mock;
+      };
+      // Start with non-published version so commit button is enabled
+      uwo.mockReturnValue({
+        tenant: { id: 't1' },
+        project: { id: 'p1' },
+        version: { id: 'v1', published: false },
+      });
+      useStudioOptional.mockReturnValue(defaultStudioWithState);
+      const { rerender } = render(<StudioToolbar />);
+      // Open the commit dialog
+      await userEvent.click(
+        screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+      );
+      expect(screen.getByRole('dialog', { name: /commit/i })).toBeInTheDocument();
+      // Simulate version becoming published
+      uwo.mockReturnValue({
+        tenant: { id: 't1' },
+        project: { id: 'p1' },
+        version: { id: 'v1', published: true },
+      });
+      rerender(<StudioToolbar />);
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', { name: /commit/i })).not.toBeInTheDocument();
+      });
+    });
+  });
 });
