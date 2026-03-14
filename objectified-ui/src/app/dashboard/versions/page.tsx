@@ -813,6 +813,11 @@ export default function VersionsPage() {
         versionId={historyDialogVersion?.id ?? ''}
         versionName={historyDialogVersion?.name}
         options={opts}
+        onDeleteSuccess={async () => {
+          setHistoryDialogVersion(null);
+          await fetchVersions();
+          await alertDialog({ message: 'Version deleted.', variant: 'success' });
+        }}
       />
     </div>
   );

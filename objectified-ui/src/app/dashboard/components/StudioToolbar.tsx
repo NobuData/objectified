@@ -391,6 +391,7 @@ export default function StudioToolbar() {
             );
           }
         }}
+        onDeleteSuccess={() => router.push('/dashboard/versions')}
       />
     </div>
   );
