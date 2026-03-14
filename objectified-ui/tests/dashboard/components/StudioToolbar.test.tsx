@@ -26,6 +26,7 @@ const mockClearPushConflict409 = jest.fn();
 
 jest.mock('@/app/contexts/StudioContext', () => ({
   useStudioOptional: jest.fn(),
+  useStudio: jest.fn(),
 }));
 
 jest.mock('@/app/contexts/WorkspaceContext', () => ({
@@ -44,8 +45,11 @@ jest.mock('@/app/components/providers/DialogProvider', () => ({
   })),
 }));
 
-const useStudioOptional =
-  require('@/app/contexts/StudioContext').useStudioOptional as jest.Mock;
+const { useStudioOptional, useStudio } =
+  require('@/app/contexts/StudioContext') as {
+    useStudioOptional: jest.Mock;
+    useStudio: jest.Mock;
+  };
 
 const studioState = {
   versionId: 'v1',
@@ -61,6 +65,7 @@ describe('StudioToolbar', () => {
     jest.clearAllMocks();
     mockConfirm.mockResolvedValue(true);
     useStudioOptional.mockReturnValue(null);
+    useStudio.mockImplementation(() => useStudioOptional());
   });
 
   it('renders nothing when studio context is null', () => {
@@ -128,7 +133,7 @@ describe('StudioToolbar', () => {
       screen.getByRole('button', { name: /pull from server/i })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /merge server changes/i })
+      screen.getByRole('button', { name: /merge from another version/i })
     ).toBeInTheDocument();
   });
 

@@ -21,6 +21,7 @@ import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import { useUndoKeyboard, getModifierLabel } from '@lib/studio/useUndoKeyboard';
 import CommitMessageDialog from '@/app/dashboard/components/CommitMessageDialog';
+import MergeDialog from '@/app/dashboard/components/MergeDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 
 const btnBase =
@@ -38,6 +39,8 @@ export default function StudioToolbar() {
   const { confirm } = useDialog();
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeSourceVersionId, setMergeSourceVersionId] = useState<string | null>(null);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
@@ -97,10 +100,17 @@ export default function StudioToolbar() {
     [studio, options]
   );
 
-  const handleMerge = useCallback(() => {
-    if (!studio) return;
-    void studio.merge(options);
-  }, [studio, options]);
+  const openMergeDialog = useCallback((sourceVersionId?: string | null) => {
+    setMergeSourceVersionId(sourceVersionId ?? null);
+    setMergeDialogOpen(true);
+  }, []);
+
+  const handleMergeFromPush = useCallback(
+    (sourceVersionId: string) => {
+      openMergeDialog(sourceVersionId);
+    },
+    [openMergeDialog]
+  );
 
   const modLabel = useMemo(() => getModifierLabel(), []);
 
@@ -232,11 +242,11 @@ export default function StudioToolbar() {
 
       <button
         type="button"
-        onClick={handleMerge}
-        disabled={studio.loading || !studio.serverHasNewChanges}
+        onClick={() => openMergeDialog(null)}
+        disabled={studio.loading}
         className={btnBase}
-        aria-label="Merge server changes"
-        title="Merge (enabled when server has new changes)"
+        aria-label="Merge from another version"
+        title="Merge changes from another version"
       >
         <GitMerge className="h-4 w-4" />
       </button>
@@ -259,11 +269,21 @@ export default function StudioToolbar() {
         options={options}
         onPush={handlePushToTarget}
         onPull={handlePull}
-        onMerge={handleMerge}
+        onMerge={handleMergeFromPush}
         loading={studio.loading}
         pushConflict409={studio.pushConflict409}
         pushError={studio.error}
         clearPushConflict409={studio.clearPushConflict409}
+      />
+      <MergeDialog
+        open={mergeDialogOpen}
+        onOpenChange={setMergeDialogOpen}
+        versionId={versionId}
+        initialSourceVersionId={mergeSourceVersionId}
+        options={options}
+        tenantId={tenantId}
+        projectId={projectId}
+        onApplied={() => setMergeDialogOpen(false)}
       />
     </div>
   );

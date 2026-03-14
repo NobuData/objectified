@@ -98,13 +98,19 @@ describe('PushTargetDialog', () => {
   });
 
   it('shows conflict suggestion when pushConflict409 is true with onPull handler', async () => {
+    const user = userEvent.setup();
     render(<PushTargetDialog {...baseProps} pushConflict409={true} onPull={jest.fn()} />);
+    await waitFor(() => screen.getByRole('option', { name: 'Version 2' }));
+    await user.selectOptions(screen.getByRole('combobox'), 'v2');
     expect(screen.getByText('Server has newer changes')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /pull/i })).toBeInTheDocument();
   });
 
   it('shows conflict suggestion when pushConflict409 is true with onMerge handler', async () => {
+    const user = userEvent.setup();
     render(<PushTargetDialog {...baseProps} pushConflict409={true} onMerge={jest.fn()} />);
+    await waitFor(() => screen.getByRole('option', { name: 'Version 2' }));
+    await user.selectOptions(screen.getByRole('combobox'), 'v2');
     expect(screen.getByText('Server has newer changes')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /merge/i })).toBeInTheDocument();
   });
@@ -123,13 +129,15 @@ describe('PushTargetDialog', () => {
         clearPushConflict409={clearPushConflict409}
       />
     );
+    await waitFor(() => screen.getByRole('option', { name: 'Version 2' }));
+    await user.selectOptions(screen.getByRole('combobox'), 'v2');
     await user.click(screen.getByRole('button', { name: /pull/i }));
     expect(onPull).toHaveBeenCalled();
     expect(clearPushConflict409).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it('calls onMerge and clearPushConflict409 and closes dialog when Merge is clicked', async () => {
+  it('calls onMerge with selected version id and clearPushConflict409 and closes dialog when Merge is clicked', async () => {
     const user = userEvent.setup();
     const onMerge = jest.fn();
     const clearPushConflict409 = jest.fn();
@@ -143,8 +151,10 @@ describe('PushTargetDialog', () => {
         clearPushConflict409={clearPushConflict409}
       />
     );
+    await waitFor(() => screen.getByRole('option', { name: 'Version 2' }));
+    await user.selectOptions(screen.getByRole('combobox'), 'v2');
     await user.click(screen.getByRole('button', { name: /merge/i }));
-    expect(onMerge).toHaveBeenCalled();
+    expect(onMerge).toHaveBeenCalledWith('v2');
     expect(clearPushConflict409).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

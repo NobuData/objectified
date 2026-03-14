@@ -16,7 +16,8 @@ export interface PushTargetDialogProps {
   options: RestClientOptions;
   onPush: (targetVersionId: string) => void | Promise<void>;
   onPull?: () => void;
-  onMerge?: () => void;
+  /** When push failed with 409, call with the selected target version id to open Merge UI. */
+  onMerge?: (sourceVersionId: string) => void;
   loading?: boolean;
   /** When true, push failed with 409 (target has newer changes); show Pull then Merge suggestion. */
   pushConflict409?: boolean;
@@ -44,7 +45,7 @@ export default function PushTargetDialog({
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [selectedId, setSelectedId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const showConflictSuggestion = pushConflict409 && Boolean(onPull || onMerge);
+  const showConflictSuggestion = pushConflict409 && Boolean(onPull || onMerge) && Boolean(selectedId);
   const displayError = pushError ?? error;
 
   useEffect(() => {
@@ -127,11 +128,11 @@ export default function PushTargetDialog({
                     Pull
                   </button>
                 )}
-                {onMerge && (
+                {onMerge && selectedId && (
                   <button
                     type="button"
                     onClick={() => {
-                      onMerge();
+                      onMerge(selectedId);
                       clearPushConflict409?.();
                       onOpenChange(false);
                     }}
