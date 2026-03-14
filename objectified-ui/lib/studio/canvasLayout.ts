@@ -60,3 +60,53 @@ export function getDefaultCanvasLayout(versionId: string): ClassPositionEntry[] 
   }
 }
 
+// ─── Viewport persistence (GitHub #77) ────────────────────────────────────────
+
+const CANVAS_VIEWPORT_KEY_PREFIX = 'objectified:canvas:viewport:';
+
+export interface ViewportState {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+function viewportStorageKey(versionId: string): string {
+  return `${CANVAS_VIEWPORT_KEY_PREFIX}${versionId}`;
+}
+
+interface ViewportStorage {
+  viewport: ViewportState;
+  savedAt: string;
+}
+
+/**
+ * Save viewport (pan/zoom) for a version so it can be restored on load.
+ */
+export function saveViewport(versionId: string, viewport: ViewportState): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const data: ViewportStorage = {
+      viewport: { x: viewport.x, y: viewport.y, zoom: viewport.zoom },
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(viewportStorageKey(versionId), JSON.stringify(data));
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+/**
+ * Load saved viewport for a version. Returns null if none saved or on error.
+ */
+export function getViewport(versionId: string): ViewportState | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(viewportStorageKey(versionId));
+    if (!raw) return null;
+    const data = JSON.parse(raw) as ViewportStorage;
+    return data.viewport ?? null;
+  } catch {
+    return null;
+  }
+}
+

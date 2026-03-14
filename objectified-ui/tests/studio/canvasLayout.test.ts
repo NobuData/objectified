@@ -7,7 +7,10 @@ import {
   saveDefaultCanvasLayout,
   getDefaultCanvasLayout,
   canvasLayoutStorageKey,
+  saveViewport,
+  getViewport,
   type ClassPositionEntry,
+  type ViewportState,
 } from '@lib/studio/canvasLayout';
 
 const VERSION_ID = 'version-abc-123';
@@ -126,6 +129,40 @@ describe('getDefaultCanvasLayout', () => {
 
     expect(getDefaultCanvasLayout('v1')).toEqual(v1Positions);
     expect(getDefaultCanvasLayout('v2')).toEqual(v2Positions);
+  });
+});
+
+describe('viewport persistence (GitHub #77)', () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.clearAllMocks();
+  });
+
+  it('saveViewport persists viewport for versionId', () => {
+    const viewport: ViewportState = { x: 10, y: 20, zoom: 1.5 };
+    saveViewport(VERSION_ID, viewport);
+    expect(localStorageMock.setItem).toHaveBeenCalledTimes(1);
+    const [, value] = localStorageMock.setItem.mock.calls[0];
+    const parsed = JSON.parse(value);
+    expect(parsed.viewport).toEqual(viewport);
+    expect(typeof parsed.savedAt).toBe('string');
+  });
+
+  it('getViewport returns null when nothing saved', () => {
+    expect(getViewport(VERSION_ID)).toBeNull();
+  });
+
+  it('getViewport returns saved viewport', () => {
+    const viewport: ViewportState = { x: -5, y: 10, zoom: 2 };
+    saveViewport(VERSION_ID, viewport);
+    expect(getViewport(VERSION_ID)).toEqual(viewport);
+  });
+
+  it('viewport is stored per versionId', () => {
+    saveViewport('v1', { x: 1, y: 2, zoom: 1 });
+    saveViewport('v2', { x: 3, y: 4, zoom: 2 });
+    expect(getViewport('v1')).toEqual({ x: 1, y: 2, zoom: 1 });
+    expect(getViewport('v2')).toEqual({ x: 3, y: 4, zoom: 2 });
   });
 });
 

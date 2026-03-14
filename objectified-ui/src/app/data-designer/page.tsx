@@ -9,13 +9,15 @@ import StudioToolbar from '@/app/dashboard/components/StudioToolbar';
 import StudioUrlLoader from '@/app/dashboard/components/StudioUrlLoader';
 import { WorkspaceProvider } from '@/app/contexts/WorkspaceContext';
 import { StudioProvider } from '@/app/contexts/StudioContext';
+import { CanvasSettingsProvider } from '@/app/contexts/CanvasSettingsContext';
 
 export default function DataDesignerPage() {
   return (
     <WorkspaceProvider>
       <StudioProvider>
-        <StudioVersionSync />
-        <StudioUrlLoader />
+        <CanvasSettingsProvider>
+          <StudioVersionSync />
+          <StudioUrlLoader />
         <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
           <TopHeader />
           <div className="flex items-center justify-between shrink-0">
@@ -29,6 +31,7 @@ export default function DataDesignerPage() {
             </main>
           </div>
         </div>
+        </CanvasSettingsProvider>
       </StudioProvider>
     </WorkspaceProvider>
   );

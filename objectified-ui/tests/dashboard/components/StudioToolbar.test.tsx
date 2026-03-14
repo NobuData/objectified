@@ -74,12 +74,13 @@ describe('StudioToolbar', () => {
     useStudio.mockImplementation(() => useStudioOptional());
   });
 
-  it('renders nothing when studio context is null', () => {
-    const { container } = render(<StudioToolbar />);
-    expect(container.firstChild).toBeNull();
+  it('renders only Canvas button when studio context is null', () => {
+    const { getByRole, queryByRole } = render(<StudioToolbar />);
+    expect(getByRole('button', { name: /canvas settings/i })).toBeInTheDocument();
+    expect(queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
   });
 
-  it('renders nothing when studio has no state', () => {
+  it('renders only Canvas button when studio has no state', () => {
     useStudioOptional.mockReturnValue({
       state: null,
       loading: false,
@@ -99,8 +100,9 @@ describe('StudioToolbar', () => {
       pushConflict409: false,
       clearPushConflict409: mockClearPushConflict409,
     });
-    const { container } = render(<StudioToolbar />);
-    expect(container.firstChild).toBeNull();
+    const { getByRole, queryByRole } = render(<StudioToolbar />);
+    expect(getByRole('button', { name: /canvas settings/i })).toBeInTheDocument();
+    expect(queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
   });
 
   it('renders Undo, Redo, Commit, Reset, Push, Pull, Merge when studio has state', () => {

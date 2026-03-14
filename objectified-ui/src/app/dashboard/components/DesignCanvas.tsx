@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -10,21 +10,50 @@ import {
   useNodesState,
   useEdgesState,
   type NodeChange,
+  type OnMoveEnd,
+  type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
+import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
+import { getCanvasSettings } from '@lib/studio/canvasSettings';
 import { getStableClassId } from '@lib/studio/types';
 import {
   saveDefaultCanvasLayout,
   getDefaultCanvasLayout,
+  getViewport,
+  saveViewport,
 } from '@lib/studio/canvasLayout';
 
 const defaultPosition = { x: 0, y: 0 };
+
+function useResolvedCanvasSettings() {
+  const context = useCanvasSettingsOptional();
+  if (context) return context.settings;
+  return getCanvasSettings();
+}
 
 export default function DesignCanvas() {
   const studio = useStudioOptional();
   const versionId = studio?.state?.versionId ?? null;
   const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
+  const canvasSettings = useResolvedCanvasSettings();
+
+  const [viewportState, setViewportState] = useState<Viewport | undefined>(
+    () =>
+      canvasSettings.viewportPersistence && versionId
+        ? getViewport(versionId) ?? undefined
+        : undefined
+  );
+
+  useEffect(() => {
+    if (!canvasSettings.viewportPersistence || !versionId) {
+      setViewportState(undefined);
+      return;
+    }
+    const saved = getViewport(versionId);
+    setViewportState(saved ?? undefined);
+  }, [versionId, canvasSettings.viewportPersistence]);
 
   const initialNodesFromState = useMemo(() => {
     // Merge server positions with any locally-saved canvas layout
@@ -102,6 +131,30 @@ export default function DesignCanvas() {
 
   const displayNodes = classes.length > 0 ? nodes : initialNodesFromState;
 
+  // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
+  const onViewportChange = useCallback(
+    (viewport: Viewport) => {
+      if (canvasSettings.viewportPersistence && versionId) {
+        setViewportState(viewport);
+      }
+    },
+    [canvasSettings.viewportPersistence, versionId]
+  );
+
+  // Persist to localStorage only when a move/pan/zoom ends to avoid excessive writes.
+  const onMoveEnd: OnMoveEnd = useCallback(
+    (_event, viewport) => {
+      if (canvasSettings.viewportPersistence && versionId) {
+        saveViewport(versionId, {
+          x: viewport.x,
+          y: viewport.y,
+          zoom: viewport.zoom,
+        });
+      }
+    },
+    [canvasSettings.viewportPersistence, versionId]
+  );
+
   return (
     <div className="w-full h-full bg-slate-100 dark:bg-slate-950">
       <ReactFlow
@@ -109,15 +162,27 @@ export default function DesignCanvas() {
         edges={edges}
         onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
-        fitView
+        viewport={viewportState}
+        onViewportChange={onViewportChange}
+        onMoveEnd={onMoveEnd}
+        fitView={viewportState === undefined}
         className="bg-slate-50 dark:bg-slate-900/50"
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-        <Controls position="bottom-left" className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700" />
-        <MiniMap
-          position="bottom-right"
-          className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700 !bg-white dark:!bg-slate-900"
-        />
+        {canvasSettings.showBackground && (
+          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+        )}
+        {canvasSettings.showControls && (
+          <Controls
+            position="bottom-left"
+            className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700"
+          />
+        )}
+        {canvasSettings.showMiniMap && (
+          <MiniMap
+            position="bottom-right"
+            className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700 !bg-white dark:!bg-slate-900"
+          />
+        )}
       </ReactFlow>
     </div>
   );
