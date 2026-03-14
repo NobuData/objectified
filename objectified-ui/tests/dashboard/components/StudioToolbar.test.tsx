@@ -206,6 +206,15 @@ describe('StudioToolbar', () => {
     expect(screen.getByText(/revision 1 \(read-only\)/i)).toBeInTheDocument();
   });
 
+  it('shows ? as fallback in read-only indicator when revision is null', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      state: { ...studioState, revision: null, readOnly: true },
+    });
+    render(<StudioToolbar />);
+    expect(screen.getByText(/revision \? \(read-only\)/i)).toBeInTheDocument();
+  });
+
   const defaultStudioWithState = {
     state: studioState,
     loading: false,
