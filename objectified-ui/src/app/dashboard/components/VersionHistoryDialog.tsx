@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { History, Loader2 } from 'lucide-react';
+import { History, Loader2, Pencil, Eye } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   listVersionSnapshotsMetadata,
@@ -15,6 +15,8 @@ export interface VersionHistoryDialogProps {
   versionId: string;
   versionName?: string;
   options: RestClientOptions;
+  /** Called when user chooses to load a revision. If not provided, Load/View actions are hidden. */
+  onLoadRevision?: (revision: number, readOnly: boolean) => void;
 }
 
 function formatDateTime(dateString: string): string {
@@ -39,6 +41,7 @@ export default function VersionHistoryDialog({
   versionId,
   versionName,
   options,
+  onLoadRevision,
 }: VersionHistoryDialogProps) {
   const [snapshots, setSnapshots] = useState<VersionSnapshotMetadataSchema[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,6 +133,11 @@ export default function VersionHistoryDialog({
                       <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                         ID
                       </th>
+                      {onLoadRevision && (
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
@@ -150,6 +158,36 @@ export default function VersionHistoryDialog({
                         <td className="px-4 py-2.5 font-mono text-xs text-slate-400 dark:text-slate-500">
                           {snap.id.slice(0, 8)}…
                         </td>
+                        {onLoadRevision && (
+                          <td className="px-4 py-2.5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onLoadRevision(snap.revision, true);
+                                  onOpenChange(false);
+                                }}
+                                className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                title="View this revision (read-only)"
+                                aria-label={`View revision ${snap.revision} read-only`}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onLoadRevision(snap.revision, false);
+                                  onOpenChange(false);
+                                }}
+                                className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                title="Load this revision to edit"
+                                aria-label={`Load revision ${snap.revision} to edit`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

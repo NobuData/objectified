@@ -94,6 +94,8 @@ export interface LocalVersionState {
   canvas_metadata: Record<string, unknown> | null;
   /** Optional groups (e.g. for canvas grouping). */
   groups: StudioGroup[];
+  /** When true, state is a loaded revision for viewing only; edits and commit are disabled. */
+  readOnly?: boolean;
 }
 
 /** Action kinds for the undo stack (optional: could store full state snapshots only). */

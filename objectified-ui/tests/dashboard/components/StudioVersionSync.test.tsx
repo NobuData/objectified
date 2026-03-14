@@ -78,7 +78,7 @@ describe('StudioVersionSync', () => {
 
     await waitFor(
       () => {
-        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object));
+        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined);
       },
       { timeout: 2000 }
     );

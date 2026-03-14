@@ -52,6 +52,7 @@ function TestConsumer() {
       <span data-testid="error">{studio.error ?? ''}</span>
       <span data-testid="loading">{studio.loading ? 'yes' : 'no'}</span>
       <span data-testid="version-id">{studio.state?.versionId ?? ''}</span>
+      <span data-testid="read-only">{studio.state?.readOnly ? 'yes' : 'no'}</span>
       <button type="button" onClick={studio.undo} data-testid="undo">
         Undo
       </button>
@@ -157,6 +158,40 @@ describe('StudioContext', () => {
     });
     expect(screen.getByTestId('class-count').textContent).toBe('1');
     expect(screen.getByTestId('can-undo').textContent).toBe('no');
+  });
+
+  it('loadFromServer with revision calls pullVersion with revision and sets readOnly when requested', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 2,
+      classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadRevisionConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {}, { revision: 2, readOnly: true });
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadRevisionConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+    expect(mockPullVersion).toHaveBeenCalledWith('v1', {}, 2);
+    expect(screen.getByTestId('read-only').textContent).toBe('yes');
+    await act(async () => {
+      screen.getByTestId('add-class').click();
+    });
+    expect(screen.getByTestId('class-count').textContent).toBe('1');
   });
 
   it('applyChange updates state and enables undo', async () => {
@@ -971,6 +1006,41 @@ describe('StudioContext', () => {
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'objectified:studio:backup:v1',
       expect.stringContaining('"versionId":"v1"')
+    );
+  });
+
+  it('loadFromServer does not save backup when loading a read-only revision', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 3,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadReadOnlyConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {}, { revision: 3, readOnly: true });
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadReadOnlyConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+    expect(screen.getByTestId('read-only').textContent).toBe('yes');
+
+    // Backup must NOT be written for read-only revision views
+    expect(localStorageMock.setItem).not.toHaveBeenCalledWith(
+      'objectified:studio:backup:v1',
+      expect.anything()
     );
   });
 
