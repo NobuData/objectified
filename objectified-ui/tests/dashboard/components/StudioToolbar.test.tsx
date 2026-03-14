@@ -11,10 +11,10 @@ jest.mock('next-auth/react', () => ({
   useSession: () => ({ data: { accessToken: 'token' } }),
 }));
 
-const mockListVersionSnapshots = jest.fn(() => Promise.resolve([]));
+const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve([]));
 jest.mock('@lib/api/rest-client', () => ({
   getRestClientOptions: () => ({}),
-  listVersionSnapshots: (...args: unknown[]) => mockListVersionSnapshots(...args),
+  listVersionSnapshotsMetadata: (...args: unknown[]) => mockListVersionSnapshotsMetadata(...args),
 }));
 
 const mockUndo = jest.fn();
@@ -144,7 +144,7 @@ describe('StudioToolbar', () => {
 
   it('opens version history dialog when History is clicked', async () => {
     useStudioOptional.mockReturnValue(defaultStudioWithState);
-    mockListVersionSnapshots.mockResolvedValueOnce([
+    mockListVersionSnapshotsMetadata.mockResolvedValueOnce([
       {
         id: 'snap-1',
         version_id: 'v1',
@@ -153,7 +153,6 @@ describe('StudioToolbar', () => {
         label: 'Initial',
         description: null,
         created_at: '2026-03-01T12:00:00Z',
-        snapshot: {},
       },
     ]);
     render(<StudioToolbar />);
@@ -163,7 +162,7 @@ describe('StudioToolbar', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /version history/i })).toBeInTheDocument();
     });
-    expect(mockListVersionSnapshots).toHaveBeenCalledWith('v1', {});
+    expect(mockListVersionSnapshotsMetadata).toHaveBeenCalledWith('v1', {});
   });
 
   const defaultStudioWithState = {

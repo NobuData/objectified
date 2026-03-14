@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { History, Loader2 } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
-  listVersionSnapshots,
-  type VersionSnapshotSchema,
+  listVersionSnapshotsMetadata,
+  type VersionSnapshotMetadataSchema,
   type RestClientOptions,
 } from '@lib/api/rest-client';
 
@@ -27,7 +27,7 @@ function formatDateTime(dateString: string): string {
   });
 }
 
-function formatMessage(snap: VersionSnapshotSchema): string {
+function formatMessage(snap: VersionSnapshotMetadataSchema): string {
   if (snap.label?.trim()) return snap.label.trim();
   if (snap.description?.trim()) return snap.description.trim();
   return '—';
@@ -40,7 +40,7 @@ export default function VersionHistoryDialog({
   versionName,
   options,
 }: VersionHistoryDialogProps) {
-  const [snapshots, setSnapshots] = useState<VersionSnapshotSchema[]>([]);
+  const [snapshots, setSnapshots] = useState<VersionSnapshotMetadataSchema[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +49,7 @@ export default function VersionHistoryDialog({
     setLoading(true);
     setError(null);
     try {
-      const list = await listVersionSnapshots(versionId, options);
+      const list = await listVersionSnapshotsMetadata(versionId, options);
       setSnapshots(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load version history');
