@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { History, Loader2, Pencil, Eye, RotateCcw, GitBranch } from 'lucide-react';
+import { History, Loader2, Pencil, Eye, RotateCcw, GitBranch, Trash2 } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Label from '@radix-ui/react-label';
 import {
   listVersionSnapshotsMetadata,
   rollbackVersion,
   createVersionFromRevision,
+  deleteVersion,
   type VersionSnapshotMetadataSchema,
   type VersionSchema,
   type RestClientOptions,
@@ -33,6 +34,8 @@ export interface VersionHistoryDialogProps {
   onRollbackSuccess?: () => void;
   /** Called after successfully creating a version from a revision (branch). If provided, Branch button is shown. */
   onBranchSuccess?: (newVersion: VersionSchema) => void;
+  /** Called after successfully deleting the version. If provided, Delete version button is shown. Caller should redirect to versions list or refresh list. */
+  onDeleteSuccess?: () => void | Promise<void>;
 }
 
 function formatDateTime(dateString: string): string {
@@ -62,11 +65,13 @@ export default function VersionHistoryDialog({
   onLoadRevision,
   onRollbackSuccess,
   onBranchSuccess,
+  onDeleteSuccess,
 }: VersionHistoryDialogProps) {
   const { confirm } = useDialog();
   const [snapshots, setSnapshots] = useState<VersionSnapshotMetadataSchema[]>([]);
   const [loading, setLoading] = useState(false);
   const [rollbackSubmitting, setRollbackSubmitting] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
@@ -188,6 +193,30 @@ export default function VersionHistoryDialog({
     options,
     onOpenChange,
   ]);
+
+  const handleDeleteVersion = useCallback(async () => {
+    if (!versionId || !onDeleteSuccess) return;
+    const displayName = versionName?.trim() || 'this version';
+    const ok = await confirm({
+      title: 'Delete Version',
+      message: `Delete version "${displayName}"? This action cannot be undone.`,
+      variant: 'danger',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+    });
+    if (!ok) return;
+    setDeleteSubmitting(true);
+    setError(null);
+    try {
+      await deleteVersion(versionId, options);
+      onOpenChange(false);
+      await onDeleteSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete version.');
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  }, [versionId, versionName, options, onDeleteSuccess, onOpenChange, confirm]);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -355,7 +384,25 @@ export default function VersionHistoryDialog({
             )}
           </div>
 
-          <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+          <div className="p-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+            <div>
+              {onDeleteSuccess && (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteVersion()}
+                  disabled={deleteSubmitting || rollbackSubmitting || branchSubmitting}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                  aria-label="Delete this version"
+                >
+                  {deleteSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Delete version
+                </button>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => onOpenChange(false)}
