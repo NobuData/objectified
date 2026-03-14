@@ -168,8 +168,17 @@ export default function StudioToolbar() {
     onRedo: () => {
       if (studio?.canRedo && !studio?.loading) studio.redo();
     },
-    disabled: !studio?.state || studio?.loading,
+    disabled: !studio?.state || studio?.loading || isReadOnly,
   });
+
+  // Auto-close mutating dialogs when entering read-only mode.
+  useEffect(() => {
+    if (isReadOnly) {
+      setCommitDialogOpen(false);
+      setPushDialogOpen(false);
+      setMergeDialogOpen(false);
+    }
+  }, [isReadOnly]);
 
   const showGitToolbar = Boolean(studio && studio.state);
 

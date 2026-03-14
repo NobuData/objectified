@@ -158,6 +158,16 @@ function ClassListPanel({
     prop: StudioClassProperty;
   } | null>(null);
 
+  // Close all edit dialogs when the canvas transitions to read-only.
+  useEffect(() => {
+    if (!canEdit) {
+      setAddClassOpen(false);
+      setEditingClass(null);
+      setAddPropClassId(null);
+      setEditingProp(null);
+    }
+  }, [canEdit]);
+
   const filtered = useMemo(
     () =>
       classes.filter((cls) =>
