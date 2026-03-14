@@ -210,6 +210,14 @@ export interface VersionCreate {
   source_version_id?: string | null;
 }
 
+export interface VersionCreateFromRevision {
+  source_version_id: string;
+  source_revision: number;
+  name: string;
+  description?: string;
+  change_log?: string | null;
+}
+
 export interface VersionMetadataUpdate {
   description?: string | null;
   change_log?: string | null;
@@ -894,6 +902,20 @@ export async function createVersion(
   return request<VersionSchema>(
     'POST',
     `/tenants/${tenantId}/projects/${projectId}/versions`,
+    body,
+    options
+  );
+}
+
+export async function createVersionFromRevision(
+  tenantId: string,
+  projectId: string,
+  body: VersionCreateFromRevision,
+  options: RestClientOptions = {}
+): Promise<VersionSchema> {
+  return request<VersionSchema>(
+    'POST',
+    `/tenants/${tenantId}/projects/${projectId}/versions/from-revision`,
     body,
     options
   );

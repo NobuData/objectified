@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import {
   Undo2,
   Redo2,
@@ -33,6 +34,7 @@ const btnPrimary =
   'flex items-center gap-2 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium';
 
 export default function StudioToolbar() {
+  const router = useRouter();
   const studio = useStudioOptional();
   const workspace = useWorkspaceOptional();
   const { data: session } = useSession();
@@ -378,8 +380,17 @@ export default function StudioToolbar() {
         versionId={versionId}
         versionName={workspace?.version?.name}
         options={options}
+        tenantId={tenantId || undefined}
+        projectId={projectId || undefined}
         onLoadRevision={studio ? handleLoadRevision : undefined}
         onRollbackSuccess={studio ? performPull : undefined}
+        onBranchSuccess={(newVersion) => {
+          if (tenantId && projectId) {
+            router.push(
+              `/data-designer?tenantId=${encodeURIComponent(tenantId)}&projectId=${encodeURIComponent(projectId)}&versionId=${encodeURIComponent(newVersion.id)}`
+            );
+          }
+        }}
       />
     </div>
   );

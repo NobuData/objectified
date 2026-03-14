@@ -51,6 +51,16 @@ class VersionCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class VersionCreateFromRevision(BaseModel):
+    """Create a new version from a source version's snapshot revision (branch from history)."""
+
+    source_version_id: str = Field(..., description="Version whose snapshot to branch from.")
+    source_revision: int = Field(..., description="Snapshot revision number to use as initial state.")
+    name: str = Field(..., description="Name for the new version.")
+    description: str = ""
+    change_log: Optional[str] = None
+
+
 class VersionMetadataUpdate(BaseModel):
     """Metadata update payload for objectified.version."""
 
