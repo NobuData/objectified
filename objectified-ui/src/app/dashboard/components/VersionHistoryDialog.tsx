@@ -35,7 +35,7 @@ export interface VersionHistoryDialogProps {
   /** Called after successfully creating a version from a revision (branch). If provided, Branch button is shown. */
   onBranchSuccess?: (newVersion: VersionSchema) => void;
   /** Called after successfully deleting the version. If provided, Delete version button is shown. Caller should redirect to versions list or refresh list. */
-  onDeleteSuccess?: () => void;
+  onDeleteSuccess?: () => void | Promise<void>;
 }
 
 function formatDateTime(dateString: string): string {
@@ -210,7 +210,7 @@ export default function VersionHistoryDialog({
     try {
       await deleteVersion(versionId, options);
       onOpenChange(false);
-      onDeleteSuccess();
+      await onDeleteSuccess();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to delete version.');
     } finally {
