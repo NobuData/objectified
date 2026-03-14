@@ -18,6 +18,7 @@ import {
 import { getRestClientOptions } from '@lib/api/rest-client';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
+import { useDialog } from '@/app/components/providers/DialogProvider';
 import { useUndoKeyboard, getModifierLabel } from '@lib/studio/useUndoKeyboard';
 import CommitMessageDialog from '@/app/dashboard/components/CommitMessageDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
@@ -34,6 +35,7 @@ export default function StudioToolbar() {
   const options = getRestClientOptions(
     (session as { accessToken?: string } | null) ?? null
   );
+  const { confirm } = useDialog();
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
 
@@ -46,7 +48,7 @@ export default function StudioToolbar() {
     void studio.checkServerForUpdates(options);
   }, [studio?.state?.versionId, studio?.state?.revision, options.jwt, options.apiKey]);
 
-  const handlePull = useCallback(() => {
+  const performPull = useCallback(() => {
     if (!versionId || !studio) return;
     void studio.loadFromServer(versionId, options, {
       tenantId: tenantId || undefined,
@@ -54,9 +56,25 @@ export default function StudioToolbar() {
     });
   }, [studio, versionId, options, tenantId, projectId]);
 
+  const handlePull = useCallback(async () => {
+    if (!studio) return;
+    if (studio.isDirty) {
+      const ok = await confirm({
+        title: 'Discard local changes?',
+        message:
+          'You have uncommitted changes. Discarding will replace your local state with the server version. Continue?',
+        variant: 'warning',
+        confirmLabel: 'Discard and pull',
+        cancelLabel: 'Cancel',
+      });
+      if (!ok) return;
+    }
+    performPull();
+  }, [studio, confirm, performPull]);
+
   const handleReset = useCallback(() => {
-    handlePull();
-  }, [handlePull]);
+    performPull();
+  }, [performPull]);
 
   const handleCommitWithMessage = useCallback(
     (message: string | null) => {

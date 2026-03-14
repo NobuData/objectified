@@ -36,6 +36,14 @@ jest.mock('@/app/contexts/WorkspaceContext', () => ({
   })),
 }));
 
+const mockConfirm = jest.fn(() => Promise.resolve(true));
+jest.mock('@/app/components/providers/DialogProvider', () => ({
+  useDialog: jest.fn(() => ({
+    confirm: mockConfirm,
+    alert: jest.fn(() => Promise.resolve()),
+  })),
+}));
+
 const useStudioOptional =
   require('@/app/contexts/StudioContext').useStudioOptional as jest.Mock;
 
@@ -51,6 +59,7 @@ const studioState = {
 describe('StudioToolbar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockConfirm.mockResolvedValue(true);
     useStudioOptional.mockReturnValue(null);
   });
 
@@ -70,6 +79,7 @@ describe('StudioToolbar', () => {
       canUndo: false,
       canRedo: false,
       isDirty: false,
+      hasUnpushedCommits: false,
       serverHasNewChanges: false,
       checkServerForUpdates: mockCheckServerForUpdates,
       loadFromServer: mockLoadFromServer,
@@ -93,6 +103,7 @@ describe('StudioToolbar', () => {
       canUndo: false,
       canRedo: false,
       isDirty: false,
+      hasUnpushedCommits: false,
       serverHasNewChanges: false,
       checkServerForUpdates: mockCheckServerForUpdates,
       loadFromServer: mockLoadFromServer,
@@ -131,6 +142,7 @@ describe('StudioToolbar', () => {
     canUndo: false,
     canRedo: false,
     isDirty: false,
+    hasUnpushedCommits: false,
     serverHasNewChanges: false,
     checkServerForUpdates: mockCheckServerForUpdates,
     loadFromServer: mockLoadFromServer,
@@ -241,6 +253,55 @@ describe('StudioToolbar', () => {
     });
     render(<StudioToolbar />);
     expect(screen.getByText('Server has new changes')).toBeInTheDocument();
+  });
+
+  it('shows Unpushed commits indicator when hasUnpushedCommits is true', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      hasUnpushedCommits: true,
+    });
+    render(<StudioToolbar />);
+    expect(screen.getByText('Unpushed commits')).toBeInTheDocument();
+  });
+
+  it('Pull when not dirty calls loadFromServer without confirm', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    await userEvent.click(screen.getByRole('button', { name: /pull from server/i }));
+    expect(mockConfirm).not.toHaveBeenCalled();
+    expect(mockLoadFromServer).toHaveBeenCalledTimes(1);
+  });
+
+  it('Pull when dirty opens confirm dialog; confirming calls loadFromServer', async () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      isDirty: true,
+    });
+    mockConfirm.mockResolvedValueOnce(true);
+    render(<StudioToolbar />);
+    await userEvent.click(screen.getByRole('button', { name: /pull from server/i }));
+    expect(mockConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Discard local changes?',
+        confirmLabel: 'Discard and pull',
+        variant: 'warning',
+      })
+    );
+    await Promise.resolve();
+    expect(mockLoadFromServer).toHaveBeenCalledTimes(1);
+  });
+
+  it('Pull when dirty and user cancels confirm does not call loadFromServer', async () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      isDirty: true,
+    });
+    mockConfirm.mockResolvedValueOnce(false);
+    render(<StudioToolbar />);
+    await userEvent.click(screen.getByRole('button', { name: /pull from server/i }));
+    expect(mockConfirm).toHaveBeenCalled();
+    await Promise.resolve();
+    expect(mockLoadFromServer).not.toHaveBeenCalled();
   });
 
   it('Undo button tooltip includes keyboard shortcut hint', () => {
