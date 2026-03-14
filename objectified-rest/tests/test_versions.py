@@ -292,6 +292,46 @@ def test_list_version_snapshots_empty(client):
     assert r.json() == []
 
 
+_SNAPSHOT_METADATA_ROW: dict[str, Any] = {
+    "id": _SNAPSHOT_ID,
+    "version_id": _VERSION_ID,
+    "project_id": _PROJECT_ID,
+    "committed_by": _ACCOUNT_ID,
+    "revision": 1,
+    "label": "initial-commit",
+    "description": "First snapshot",
+    "created_at": _NOW,
+}
+
+
+def test_list_version_snapshots_metadata_returns_list(client):
+    """GET /v1/versions/{id}/snapshots/metadata returns metadata without snapshot payload."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [_SNAPSHOT_METADATA_ROW],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata")
+    assert r.status_code == 200
+    assert len(r.json()) == 1
+    body = r.json()[0]
+    assert body["revision"] == 1
+    assert body["version_id"] == _VERSION_ID
+    assert "snapshot" not in body
+
+
+def test_list_version_snapshots_metadata_empty(client):
+    """GET /v1/versions/{id}/snapshots/metadata returns empty list when no snapshots."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
 def test_get_version_snapshot_by_revision_returns_snapshot(client):
     """GET /v1/versions/{id}/snapshots/{revision} returns snapshot."""
     with mock_db_all() as mock_db:

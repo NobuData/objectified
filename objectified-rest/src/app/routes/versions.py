@@ -16,6 +16,7 @@ from app.schemas.version import (
     VersionPublishRequest,
     VersionSchema,
     VersionSnapshotCreate,
+    VersionSnapshotMetadataSchema,
     VersionSnapshotSchema,
 )
 
@@ -543,6 +544,9 @@ _SNAPSHOT_COLUMNS = (
     "id, version_id, project_id, committed_by, revision, label, description, snapshot, created_at"
 )
 
+_SNAPSHOT_METADATA_COLUMNS = (
+    "id, version_id, project_id, committed_by, revision, label, description, created_at"
+)
 
 def _capture_version_state(version_id: str) -> dict[str, Any]:
     """Capture the current state of all active classes and their properties for a version.
@@ -703,6 +707,34 @@ def list_version_snapshots(
         (version_id,),
     )
     return [VersionSnapshotSchema(**dict(r)) for r in rows]
+
+
+@router.get(
+    "/versions/{version_id}/snapshots/metadata",
+    response_model=List[VersionSnapshotMetadataSchema],
+    summary="List version snapshot metadata",
+    description=(
+        "Return metadata (revision, date, label, description) for all committed snapshots "
+        "for a version, newest revision first. The snapshot payload is excluded for efficiency."
+    ),
+)
+def list_version_snapshots_metadata(
+    version_id: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> List[VersionSnapshotMetadataSchema]:
+    """List metadata for all snapshots for a version, without the snapshot payload."""
+    _assert_version_exists(version_id, include_deleted=True)
+
+    rows = db.execute_query(
+        f"""
+        SELECT {_SNAPSHOT_METADATA_COLUMNS}
+        FROM objectified.version_snapshot
+        WHERE version_id = %s
+        ORDER BY revision DESC
+        """,
+        (version_id,),
+    )
+    return [VersionSnapshotMetadataSchema(**dict(r)) for r in rows]
 
 
 @router.get(

@@ -103,6 +103,21 @@ class VersionSnapshotSchema(BaseModel):
     created_at: datetime
 
 
+class VersionSnapshotMetadataSchema(BaseModel):
+    """Metadata-only response schema for objectified.version_snapshot (excludes snapshot payload)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    version_id: str
+    project_id: str
+    committed_by: Optional[str] = None
+    revision: int
+    label: Optional[str] = None
+    description: Optional[str] = None
+    created_at: datetime
+
+
 # ---------------------------------------------------------------------------
 # Version Commit / Push / Pull / Merge schemas
 # ---------------------------------------------------------------------------

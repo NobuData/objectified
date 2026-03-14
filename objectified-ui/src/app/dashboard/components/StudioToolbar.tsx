@@ -35,8 +35,9 @@ export default function StudioToolbar() {
   const studio = useStudioOptional();
   const workspace = useWorkspaceOptional();
   const { data: session } = useSession();
-  const options = getRestClientOptions(
-    (session as { accessToken?: string } | null) ?? null
+  const options = useMemo(
+    () => getRestClientOptions((session as { accessToken?: string } | null) ?? null),
+    [(session as { accessToken?: string } | null)?.accessToken]
   );
   const { confirm } = useDialog();
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
