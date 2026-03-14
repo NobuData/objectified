@@ -165,6 +165,47 @@ describe('StudioToolbar', () => {
     expect(mockListVersionSnapshotsMetadata).toHaveBeenCalledWith('v1', {});
   });
 
+  it('version history Load to edit calls loadFromServer with revision and readOnly false', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    mockListVersionSnapshotsMetadata.mockResolvedValueOnce([
+      {
+        id: 'snap-1',
+        version_id: 'v1',
+        project_id: 'p1',
+        revision: 1,
+        label: 'Initial',
+        description: null,
+        created_at: '2026-03-01T12:00:00Z',
+      },
+    ]);
+    render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /version history/i })
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /version history/i })).toBeInTheDocument();
+    });
+    await userEvent.click(
+      screen.getByRole('button', { name: /load revision 1 to edit/i })
+    );
+    expect(mockLoadFromServer).toHaveBeenCalledWith('v1', {}, {
+      revision: 1,
+      readOnly: false,
+      tenantId: 't1',
+      projectId: 'p1',
+    });
+  });
+
+  it('shows Load latest and read-only indicator when state.readOnly is true', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      state: { ...studioState, readOnly: true },
+    });
+    render(<StudioToolbar />);
+    expect(screen.getByRole('button', { name: /load latest/i })).toBeInTheDocument();
+    expect(screen.getByText(/revision 1 \(read-only\)/i)).toBeInTheDocument();
+  });
+
   const defaultStudioWithState = {
     state: studioState,
     loading: false,

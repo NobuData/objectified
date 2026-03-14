@@ -19,10 +19,15 @@ import type {
 } from './types';
 import { generateLocalId } from './types';
 
+export interface PullResponseToStateOptions {
+  readOnly?: boolean;
+}
+
 /** Build LocalVersionState from pull response and optional project properties. */
 export function pullResponseToState(
   pull: VersionPullResponse,
-  projectProperties: PropertySchema[] = []
+  projectProperties: PropertySchema[] = [],
+  opts?: PullResponseToStateOptions
 ): LocalVersionState {
   const classesRaw = pull.classes ?? [];
   const classes: StudioClass[] = classesRaw.map((c) => {
@@ -85,6 +90,7 @@ export function pullResponseToState(
     properties,
     canvas_metadata: pull.canvas_metadata ?? null,
     groups: [],
+    readOnly: opts?.readOnly ?? false,
   };
 }
 

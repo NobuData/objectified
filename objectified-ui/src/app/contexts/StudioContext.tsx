@@ -83,7 +83,14 @@ export interface StudioContextValue {
   loadFromServer: (
     versionId: string,
     options: RestClientOptions,
-    opts?: { tenantId?: string; projectId?: string }
+    opts?: {
+      tenantId?: string;
+      projectId?: string;
+      /** Load a specific revision; when omitted, loads latest. */
+      revision?: number;
+      /** When true and revision is set, loaded state is read-only (no commit/edit). */
+      readOnly?: boolean;
+    }
   ) => Promise<void>;
   /** Apply a mutation to state; pushes current state to undo stack and clears redo. */
   applyChange: (updater: (draft: LocalVersionState) => void) => void;
@@ -167,21 +174,29 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     async (
       versionId: string,
       options: RestClientOptions,
-      opts?: { tenantId?: string; projectId?: string }
+      opts?: {
+        tenantId?: string;
+        projectId?: string;
+        revision?: number;
+        readOnly?: boolean;
+      }
     ) => {
       const requestId = (loadRequestIdRef.current += 1);
       setLoading(true);
       setError(null);
       setStack(initialStack);
       try {
+        const revision = opts?.revision;
         const [pullRes, propertiesList] = await Promise.all([
-          pullVersion(versionId, options),
+          pullVersion(versionId, options, revision ?? undefined),
           opts?.tenantId && opts?.projectId
             ? listProperties(opts.tenantId, opts.projectId, options)
             : Promise.resolve([]),
         ]);
         if (requestId !== loadRequestIdRef.current) return;
-        const newState = pullResponseToState(pullRes, propertiesList);
+        const newState = pullResponseToState(pullRes, propertiesList, {
+          readOnly: revision != null ? (opts?.readOnly ?? false) : false,
+        });
         if (newState.versionId !== versionId) return;
         setStack({
           state: newState,
@@ -228,7 +243,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const applyChange = useCallback((updater: (draft: LocalVersionState) => void) => {
     setStack((prev) => {
-      if (!prev.state) return prev;
+      if (!prev.state || prev.state.readOnly) return prev;
       const draft = deepClone(prev.state);
       updater(draft);
       const undoStack = [...prev.undoStack, deepClone(prev.state)];
@@ -278,6 +293,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const current = state;
       if (!current) {
         setError('No version state to save');
+        return;
+      }
+      if (current.readOnly) {
+        setError('Cannot save: viewing a past revision (read-only). Load latest to edit.');
         return;
       }
       setLoading(true);
@@ -355,6 +374,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setError('No version state to push');
         return;
       }
+      if (current.readOnly) {
+        setError('Cannot push: viewing a past revision (read-only). Load latest to edit.');
+        return;
+      }
       setLoading(true);
       setError(null);
       setPushConflict409(false);
@@ -392,6 +415,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const current = state;
       if (!current) {
         setError('No version state to merge');
+        return;
+      }
+      if (current.readOnly) {
+        setError('Cannot merge: viewing a past revision (read-only). Load latest to edit.');
         return;
       }
       setLoading(true);

@@ -104,6 +104,30 @@ describe('pullResponseToState', () => {
     expect(state.properties).toHaveLength(1);
     expect(state.properties[0].name).toBe('title');
   });
+
+  it('sets readOnly when opts.readOnly is true', () => {
+    const pull = {
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    };
+    const state = pullResponseToState(pull, [], { readOnly: true });
+    expect(state.readOnly).toBe(true);
+  });
+
+  it('sets readOnly false when opts not provided or readOnly false', () => {
+    const pull = {
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    };
+    expect(pullResponseToState(pull).readOnly).toBe(false);
+    expect(pullResponseToState(pull, [], {}).readOnly).toBe(false);
+  });
 });
 
 describe('stateToCommitPayload', () => {

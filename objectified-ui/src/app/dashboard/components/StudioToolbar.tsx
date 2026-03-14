@@ -15,6 +15,7 @@ import {
   Circle,
   Cloud,
   GitBranchPlus,
+  Eye,
 } from 'lucide-react';
 import { getRestClientOptions } from '@lib/api/rest-client';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
@@ -82,6 +83,41 @@ export default function StudioToolbar() {
   const handleReset = useCallback(() => {
     performPull();
   }, [performPull]);
+
+  const handleLoadRevision = useCallback(
+    async (revision: number, readOnly: boolean) => {
+      if (!studio || !versionId) return;
+      if (studio.isDirty && !readOnly) {
+        const ok = await confirm({
+          title: 'Discard local changes?',
+          message:
+            'You have uncommitted changes. Loading this revision will replace your local state. Continue?',
+          variant: 'warning',
+          confirmLabel: 'Discard and load',
+          cancelLabel: 'Cancel',
+        });
+        if (!ok) return;
+      }
+      if (studio.isDirty && readOnly) {
+        const ok = await confirm({
+          title: 'Discard local changes?',
+          message:
+            'You have uncommitted changes. Viewing this revision will replace your local state. Continue?',
+          variant: 'warning',
+          confirmLabel: 'Discard and view',
+          cancelLabel: 'Cancel',
+        });
+        if (!ok) return;
+      }
+      await studio.loadFromServer(versionId, options, {
+        revision,
+        readOnly,
+        tenantId: tenantId || undefined,
+        projectId: projectId || undefined,
+      });
+    },
+    [studio, versionId, options, tenantId, projectId, confirm]
+  );
 
   const handleCommitWithMessage = useCallback(
     (message: string | null) => {
@@ -171,13 +207,45 @@ export default function StudioToolbar() {
           Server has new changes
         </span>
       )}
+      {studio.state.readOnly && (
+        <span
+          className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs font-medium"
+          title={`Viewing revision ${studio.state.revision ?? '?'} (read-only)`}
+        >
+          <Eye className="h-3.5 w-3.5" />
+          Revision {studio.state.revision} (read-only)
+        </span>
+      )}
 
       <div className="h-4 w-px bg-slate-200 dark:bg-slate-600" aria-hidden />
+
+      {studio.state.readOnly && (
+        <button
+          type="button"
+          onClick={() => {
+            void studio.loadFromServer(versionId, options, {
+              tenantId: tenantId || undefined,
+              projectId: projectId || undefined,
+            });
+          }}
+          disabled={studio.loading}
+          className={btnPrimary}
+          aria-label="Load latest revision to edit"
+          title="Load latest revision to edit"
+        >
+          {studio.loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          Load latest
+        </button>
+      )}
 
       <button
         type="button"
         onClick={studio.undo}
-        disabled={!studio.canUndo || studio.loading}
+        disabled={!studio.canUndo || studio.loading || studio.state.readOnly}
         className={btnBase}
         aria-label="Undo"
         title={`Undo (${modLabel}+Z)`}
@@ -187,7 +255,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={studio.redo}
-        disabled={!studio.canRedo || studio.loading}
+        disabled={!studio.canRedo || studio.loading || studio.state.readOnly}
         className={btnBase}
         aria-label="Redo"
         title={`Redo (${modLabel}+Shift+Z)`}
@@ -198,10 +266,14 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => setCommitDialogOpen(true)}
-        disabled={studio.loading}
+        disabled={studio.loading || studio.state.readOnly}
         className={btnPrimary}
         aria-label="Commit (snapshot to server)"
-        title="Commit local state to server (optional message)"
+        title={
+          studio.state.readOnly
+            ? 'Cannot commit while viewing a past revision (read-only)'
+            : 'Commit local state to server (optional message)'
+        }
       >
         {studio.loading ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -214,7 +286,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={handleReset}
-        disabled={studio.loading}
+        disabled={studio.loading || studio.state.readOnly}
         className={btnBase}
         aria-label="Reset to last committed state"
         title="Discard local changes and reload from server"
@@ -225,7 +297,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => setPushDialogOpen(true)}
-        disabled={studio.loading || !tenantId || !projectId}
+        disabled={studio.loading || studio.state.readOnly || !tenantId || !projectId}
         className={btnBase}
         aria-label="Push to another version"
         title="Push current state to another version"
@@ -247,7 +319,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => openMergeDialog(null)}
-        disabled={studio.loading || !tenantId || !projectId}
+        disabled={studio.loading || studio.state.readOnly || !tenantId || !projectId}
         className={btnBase}
         aria-label="Merge from another version"
         title="Merge changes from another version"
@@ -306,6 +378,7 @@ export default function StudioToolbar() {
         versionId={versionId}
         versionName={workspace?.version?.name}
         options={options}
+        onLoadRevision={studio ? handleLoadRevision : undefined}
       />
     </div>
   );
