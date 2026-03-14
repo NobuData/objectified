@@ -11,6 +11,10 @@ jest.mock('next-auth/react', () => ({
   useSession: () => ({ data: { accessToken: 'token' } }),
 }));
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve([]));
 jest.mock('@lib/api/rest-client', () => ({
   getRestClientOptions: () => ({}),

@@ -19,11 +19,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_authenticated
 from app.database import db
+from app.routes.helpers import _assert_project_exists, _assert_tenant_exists
 from app.routes.merge_utils import merge_classes, merge_classes_three_way
 from app.routes.versions import (
     _SNAPSHOT_COLUMNS,
     _assert_version_exists,
     _capture_version_state,
+    _insert_version_row,
     _record_history,
 )
 from app.schema_validation import validate_json_schema_object
@@ -31,6 +33,7 @@ from app.schemas.version import (
     MergeConflict,
     VersionCommitPayload,
     VersionCommitResponse,
+    VersionCreateFromRevision,
     VersionMergePreviewResponse,
     VersionMergeRequest,
     VersionMergeResolveRequest,
@@ -40,6 +43,7 @@ from app.schemas.version import (
     VersionPullModifiedClass,
     VersionPullResponse,
     VersionRollbackRequest,
+    VersionSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -479,6 +483,116 @@ def _create_snapshot(
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/tenants/{tenant_id}/projects/{project_id}/versions/from-revision",
+    response_model=VersionSchema,
+    status_code=201,
+    summary="Create version from source revision",
+    description=(
+        "Create a new version in the project whose initial state is a copy of a "
+        "given snapshot revision of a source version (branch from history). "
+        "Requires user authentication (JWT token)."
+    ),
+    responses={
+        201: {"description": "Version created and initial snapshot recorded"},
+        403: {"description": "Requires user authentication (JWT token)"},
+        404: {"description": "Tenant, project, source version or snapshot revision not found"},
+    },
+)
+def create_version_from_revision(
+    tenant_id: str,
+    project_id: str,
+    payload: VersionCreateFromRevision,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> VersionSchema:
+    """Create a new version branching from a source version's snapshot revision."""
+    _assert_tenant_exists(tenant_id)
+    _assert_project_exists(project_id, tenant_id)
+
+    if not payload.name or not payload.name.strip():
+        raise HTTPException(status_code=400, detail="Version name is required")
+
+    user_id = caller.get("user_id") if caller else None
+    if not user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Create version from revision requires user authentication (JWT token)",
+        )
+
+    source_version = _assert_version_exists(
+        payload.source_version_id,
+        include_deleted=False,
+    )
+    if str(source_version["project_id"]) != str(project_id):
+        raise HTTPException(
+            status_code=400,
+            detail="source_version_id must belong to the same project",
+        )
+
+    snapshot_rows = db.execute_query(
+        f"""
+        SELECT {_SNAPSHOT_COLUMNS}
+        FROM objectified.version_snapshot
+        WHERE version_id = %s AND revision = %s
+        LIMIT 1
+        """,
+        (payload.source_version_id, payload.source_revision),
+    )
+    if not snapshot_rows:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Version snapshot not found: {payload.source_version_id} "
+                f"@ revision {payload.source_revision}"
+            ),
+        )
+    state = (snapshot_rows[0].get("snapshot") or {}).copy()
+    if not isinstance(state.get("canvas_metadata"), dict) and state.get("canvas_metadata") is not None:
+        state["canvas_metadata"] = None
+
+    with db.transaction() as conn:
+        row = _insert_version_row(
+            project_id=project_id,
+            creator_id=user_id,
+            name=payload.name.strip(),
+            description=payload.description or "",
+            change_log=payload.change_log,
+            enabled=True,
+            published=False,
+            visibility=None,
+            metadata=None,
+            source_version_id=payload.source_version_id,
+            _conn=conn,
+        )
+        if not row:
+            raise HTTPException(status_code=500, detail="Failed to create version")
+
+        new_version_id = str(row["id"])
+
+        _record_history(
+            version_id=new_version_id,
+            project_id=project_id,
+            changed_by=user_id,
+            operation="INSERT",
+            old_data=None,
+            new_data=dict(row),
+            _conn=conn,
+        )
+
+        _apply_snapshot_state(new_version_id, project_id, state, _conn=conn)
+
+        _create_snapshot(
+            version_id=new_version_id,
+            project_id=project_id,
+            committed_by=user_id,
+            label="branch",
+            description=f"Branch from {payload.source_version_id} @ revision {payload.source_revision}",
+            _conn=conn,
+        )
+
+    return VersionSchema(**dict(row))
 
 
 @router.post(

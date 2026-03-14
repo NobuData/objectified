@@ -578,6 +578,115 @@ class TestRollbackVersion:
 
 
 # ---------------------------------------------------------------------------
+# POST /tenants/{tid}/projects/{pid}/versions/from-revision
+# ---------------------------------------------------------------------------
+
+_NEW_VERSION_ID = "00000000-0000-0000-0000-0000000000a1"
+
+_NEW_VERSION_ROW: dict[str, Any] = {
+    **_VERSION_ROW,
+    "id": _NEW_VERSION_ID,
+    "source_version_id": _SOURCE_VERSION_ID,
+    "name": "v1-branch",
+    "description": "Branch from revision 1",
+}
+
+
+class TestCreateVersionFromRevision:
+    """Tests for POST /v1/tenants/{tid}/projects/{pid}/versions/from-revision."""
+
+    def test_create_version_from_revision_returns_201(self, client):
+        """Create version from source revision returns 201 and new version."""
+        snapshot_at_1 = {
+            **_SNAPSHOT_ROW,
+            "version_id": _SOURCE_VERSION_ID,
+            "revision": 1,
+            "snapshot": {"classes": [], "canvas_metadata": None},
+        }
+        new_snapshot_row = {
+            **_SNAPSHOT_ROW,
+            "id": "00000000-0000-0000-0000-0000000000a2",
+            "version_id": _NEW_VERSION_ID,
+            "revision": 1,
+            "label": "branch",
+            "description": f"Branch from {_SOURCE_VERSION_ID} @ revision 1",
+            "snapshot": {"classes": [], "canvas_metadata": None},
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [{"id": _TENANT_ID}],  # _assert_tenant_exists
+                [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],  # _assert_project_exists
+                [_version_lookup_row(_SOURCE_VERSION_ROW)],  # _assert_version_exists
+                [snapshot_at_1],  # get snapshot by version + revision
+                [],  # _apply_snapshot_state: current classes (none)
+                [],  # _create_snapshot / _capture_version_state: classes (none)
+                [{"metadata": {}}],  # _create_snapshot: version metadata
+            ]
+            mock_db.execute_mutation.side_effect = [
+                _NEW_VERSION_ROW,  # _insert_version_row
+                None,  # _record_history
+                None,  # _apply_snapshot_state: UPDATE version canvas_metadata (or no-op)
+                new_snapshot_row,  # _create_snapshot
+            ]
+            r = client.post(
+                f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/versions/from-revision",
+                json={
+                    "source_version_id": _SOURCE_VERSION_ID,
+                    "source_revision": 1,
+                    "name": "v1-branch",
+                    "description": "Branch from revision 1",
+                },
+            )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["id"] == _NEW_VERSION_ID
+        assert body["name"] == "v1-branch"
+        assert body["project_id"] == _PROJECT_ID
+        assert body["source_version_id"] == _SOURCE_VERSION_ID
+
+    def test_create_version_from_revision_requires_auth(self):
+        """Create version from revision returns 403 when not authenticated with JWT."""
+        app.dependency_overrides[require_authenticated] = lambda: None
+        try:
+            with mock_db_all() as mock_db:
+                mock_db.execute_query.side_effect = [
+                    [{"id": _TENANT_ID}],
+                    [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+                ]
+                r = TestClient(app).post(
+                    f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/versions/from-revision",
+                    json={
+                        "source_version_id": _SOURCE_VERSION_ID,
+                        "source_revision": 1,
+                        "name": "v1-branch",
+                    },
+                )
+        finally:
+            app.dependency_overrides.clear()
+        assert r.status_code == 403
+
+    def test_create_version_from_revision_snapshot_not_found_returns_404(self, client):
+        """Create version from revision returns 404 when snapshot revision does not exist."""
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [{"id": _TENANT_ID}],
+                [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+                [_version_lookup_row(_SOURCE_VERSION_ROW)],
+                [],  # no snapshot at revision 99
+            ]
+            r = client.post(
+                f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/versions/from-revision",
+                json={
+                    "source_version_id": _SOURCE_VERSION_ID,
+                    "source_revision": 99,
+                    "name": "v1-branch",
+                },
+            )
+        assert r.status_code == 404
+        assert "revision" in r.json()["detail"].lower() or "snapshot" in r.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
 # POST /versions/{version_id}/merge
 # ---------------------------------------------------------------------------
 

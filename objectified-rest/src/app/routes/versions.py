@@ -69,6 +69,46 @@ def _assert_version_exists(
     return version
 
 
+def _insert_version_row(
+    *,
+    project_id: str,
+    creator_id: str,
+    name: str,
+    description: str = "",
+    change_log: Optional[str] = None,
+    enabled: bool = True,
+    published: bool = False,
+    visibility: Optional[Any] = None,
+    metadata: Optional[dict[str, Any]] = None,
+    source_version_id: Optional[str] = None,
+    _conn: Any = None,
+) -> Optional[dict[str, Any]]:
+    """Insert a version row and return it. Used by create_version and create_version_from_revision."""
+    visibility_value = visibility.value if hasattr(visibility, "value") else visibility
+    row = db.execute_mutation(
+        f"""
+        INSERT INTO objectified.version
+            (project_id, creator_id, name, description, change_log, enabled, published, visibility, metadata, source_version_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+        RETURNING {_VERSION_COLUMNS}
+        """,
+        (
+            project_id,
+            creator_id,
+            name,
+            description,
+            change_log,
+            enabled,
+            published,
+            visibility_value,
+            json.dumps(metadata or {}),
+            source_version_id,
+        ),
+        _conn=_conn,
+    )
+    return dict(row) if row else None
+
+
 @router.get(
     "/tenants/{tenant_id}/projects/{project_id}/versions",
     response_model=List[VersionSchema],
@@ -145,25 +185,17 @@ def create_version(
                 detail="source_version_id must belong to the same project",
             )
 
-    row = db.execute_mutation(
-        f"""
-        INSERT INTO objectified.version
-            (project_id, creator_id, name, description, change_log, enabled, published, visibility, metadata, source_version_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
-        RETURNING {_VERSION_COLUMNS}
-        """,
-        (
-            project_id,
-            creator_id,
-            payload.name.strip(),
-            payload.description,
-            payload.change_log,
-            payload.enabled,
-            payload.published,
-            payload.visibility.value if payload.visibility else None,
-            json.dumps(payload.metadata),
-            payload.source_version_id,
-        ),
+    row = _insert_version_row(
+        project_id=project_id,
+        creator_id=creator_id,
+        name=payload.name.strip(),
+        description=payload.description,
+        change_log=payload.change_log,
+        enabled=payload.enabled,
+        published=payload.published,
+        visibility=payload.visibility,
+        metadata=payload.metadata,
+        source_version_id=payload.source_version_id,
     )
     if not row:
         raise HTTPException(status_code=500, detail="Failed to create version")
