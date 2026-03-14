@@ -19,11 +19,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_authenticated
 from app.database import db
+from app.routes.helpers import _assert_project_exists, _assert_tenant_exists
 from app.routes.merge_utils import merge_classes, merge_classes_three_way
 from app.routes.versions import (
     _SNAPSHOT_COLUMNS,
-    _assert_project_exists,
-    _assert_tenant_exists,
     _assert_version_exists,
     _capture_version_state,
     _insert_version_row,
