@@ -1204,6 +1204,19 @@ export async function pullVersion(
   );
 }
 
+export async function rollbackVersion(
+  versionId: string,
+  body: { revision: number },
+  options: RestClientOptions = {}
+): Promise<VersionCommitResponse> {
+  return request<VersionCommitResponse>(
+    'POST',
+    `/versions/${versionId}/rollback`,
+    body,
+    options
+  );
+}
+
 export async function mergeVersion(
   versionId: string,
   body: VersionMergeRequest,

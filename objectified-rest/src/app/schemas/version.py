@@ -173,6 +173,12 @@ class VersionCommitResponse(BaseModel):
     committed_at: datetime
 
 
+class VersionRollbackRequest(BaseModel):
+    """Request body for POST /versions/{id}/rollback."""
+
+    revision: int = Field(..., description="Snapshot revision to restore version state to.")
+
+
 class VersionPullResponse(BaseModel):
     """Response from GET /versions/{id}/pull — full version state."""
 

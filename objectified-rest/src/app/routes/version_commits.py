@@ -39,6 +39,7 @@ from app.schemas.version import (
     VersionPullDiff,
     VersionPullModifiedClass,
     VersionPullResponse,
+    VersionRollbackRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -618,6 +619,166 @@ def push_version(
         revision=snapshot_row["revision"],
         snapshot_id=str(snapshot_row["id"]),
         version_id=target_version_id,
+        committed_at=snapshot_row["created_at"],
+    )
+
+
+def _apply_snapshot_state(
+    version_id: str,
+    project_id: str,
+    state: dict[str, Any],
+) -> None:
+    """Set version state to match a snapshot (for rollback). Soft-deletes classes not in
+    snapshot, upserts classes and properties from snapshot, removes extra class_property
+    rows so state matches exactly.
+    """
+    snapshot_classes = state.get("classes") or []
+    snapshot_class_names_lower = {
+        (c.get("name") or "").strip().lower() for c in snapshot_classes
+    }
+
+    # Soft-delete classes that exist in version but are not in the snapshot.
+    current_rows = db.execute_query(
+        """
+        SELECT id, name FROM objectified.class
+        WHERE version_id = %s AND deleted_at IS NULL
+        """,
+        (version_id,),
+    )
+    for row in current_rows:
+        name_lower = (row.get("name") or "").strip().lower()
+        if name_lower not in snapshot_class_names_lower:
+            db.execute_mutation(
+                """
+                UPDATE objectified.class
+                SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
+                WHERE id = %s AND version_id = %s AND deleted_at IS NULL
+                """,
+                (str(row["id"]), version_id),
+                returning=False,
+            )
+
+    # Upsert each class from snapshot and sync properties to match exactly.
+    for cls in snapshot_classes:
+        class_id = _upsert_class(version_id, cls)
+        props = cls.get("properties") or []
+        prop_names_lower = sorted({
+            (p.get("name") or p.get("property_name") or "").strip().lower()
+            for p in props
+        })
+        if prop_names_lower:
+            placeholders = ", ".join(
+                ["LOWER(TRIM(%s))"] * len(prop_names_lower)
+            )
+            db.execute_mutation(
+                f"""
+                DELETE FROM objectified.class_property
+                WHERE class_id = %s
+                  AND LOWER(TRIM(name)) NOT IN ({placeholders})
+                """,
+                (class_id, *prop_names_lower),
+                returning=False,
+            )
+        else:
+            db.execute_mutation(
+                """
+                DELETE FROM objectified.class_property
+                WHERE class_id = %s
+                """,
+                (class_id,),
+                returning=False,
+            )
+        _upsert_class_properties(class_id, project_id, props)
+
+    if state.get("canvas_metadata") is not None:
+        db.execute_mutation(
+            """
+            UPDATE objectified.version
+            SET metadata = jsonb_set(
+                COALESCE(metadata, '{}'::jsonb),
+                '{canvas_metadata}',
+                %s::jsonb
+            ),
+            updated_at = timezone('utc', clock_timestamp())
+            WHERE id = %s
+            """,
+            (json.dumps(state["canvas_metadata"]), version_id),
+            returning=False,
+        )
+
+
+@router.post(
+    "/versions/{version_id}/rollback",
+    response_model=VersionCommitResponse,
+    status_code=201,
+    summary="Rollback version to a revision",
+    description=(
+        "Set version state to the chosen snapshot revision, then create a new snapshot "
+        "so the change is appended to history. Requires user authentication (JWT token)."
+    ),
+    responses={
+        201: {"description": "Rollback successful — new snapshot created"},
+        404: {"description": "Version or snapshot revision not found"},
+    },
+)
+def rollback_version(
+    version_id: str,
+    payload: VersionRollbackRequest,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> VersionCommitResponse:
+    """Rollback version state to a snapshot revision and append a new snapshot to history."""
+    version = _assert_version_exists(version_id, include_deleted=False)
+    project_id = str(version["project_id"])
+    user_id = caller.get("user_id") if caller else None
+    if not user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Rollback requires user authentication (JWT token)",
+        )
+
+    snapshot_rows = db.execute_query(
+        f"""
+        SELECT {_SNAPSHOT_COLUMNS}
+        FROM objectified.version_snapshot
+        WHERE version_id = %s AND revision = %s
+        LIMIT 1
+        """,
+        (version_id, payload.revision),
+    )
+    if not snapshot_rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Version snapshot not found: {version_id} @ revision {payload.revision}",
+        )
+    state = (snapshot_rows[0].get("snapshot") or {}).copy()
+    if not isinstance(state.get("canvas_metadata"), dict) and state.get(
+        "canvas_metadata"
+    ) is not None:
+        state["canvas_metadata"] = None
+
+    _apply_snapshot_state(version_id, project_id, state)
+
+    snapshot_row = _create_snapshot(
+        version_id=version_id,
+        project_id=project_id,
+        committed_by=user_id,
+        label="rollback",
+        description=f"Rollback to revision {payload.revision}",
+    )
+
+    _record_history(
+        version_id=version_id,
+        project_id=project_id,
+        changed_by=user_id,
+        operation="ROLLBACK",
+        old_data=None,
+        new_data=snapshot_row.get("snapshot"),
+    )
+
+    return VersionCommitResponse(
+        revision=snapshot_row["revision"],
+        snapshot_id=str(snapshot_row["id"]),
+        version_id=version_id,
         committed_at=snapshot_row["created_at"],
     )
 

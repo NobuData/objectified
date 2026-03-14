@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.6"
+    "version": "1.0.7"
   },
   "paths": {
     "/v1/auth/login": {
@@ -4957,6 +4957,94 @@
         }
       }
     },
+    "/v1/versions/{version_id}/rollback": {
+      "post": {
+        "tags": [
+          "Version Commits"
+        ],
+        "summary": "Rollback version to a revision",
+        "description": "Set version state to the chosen snapshot revision, then create a new snapshot so the change is appended to history. Requires user authentication (JWT token).",
+        "operationId": "rollback_version_v1_versions__version_id__rollback_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionRollbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Rollback successful \u2014 new snapshot created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionCommitResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Version or snapshot revision not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/versions/{version_id}/pull": {
       "get": {
         "tags": [
@@ -9456,6 +9544,21 @@
         ],
         "title": "VersionPullResponse",
         "description": "Response from GET /versions/{id}/pull \u2014 full version state."
+      },
+      "VersionRollbackRequest": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "title": "Revision",
+            "description": "Snapshot revision to restore version state to."
+          }
+        },
+        "type": "object",
+        "required": [
+          "revision"
+        ],
+        "title": "VersionRollbackRequest",
+        "description": "Request body for POST /versions/{id}/rollback."
       },
       "VersionSchema": {
         "properties": {

@@ -379,6 +379,7 @@ export default function StudioToolbar() {
         versionName={workspace?.version?.name}
         options={options}
         onLoadRevision={studio ? handleLoadRevision : undefined}
+        onRollbackSuccess={studio ? performPull : undefined}
       />
     </div>
   );
