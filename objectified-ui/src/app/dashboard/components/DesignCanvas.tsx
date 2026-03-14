@@ -15,6 +15,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
+import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
 import { getStableClassId } from '@lib/studio/types';
@@ -35,9 +36,12 @@ function useResolvedCanvasSettings() {
 
 export default function DesignCanvas() {
   const studio = useStudioOptional();
+  const workspace = useWorkspaceOptional();
   const versionId = studio?.state?.versionId ?? null;
   const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
   const canvasSettings = useResolvedCanvasSettings();
+  const isReadOnly =
+    studio?.state?.readOnly === true || workspace?.version?.published === true;
 
   const [viewportState, setViewportState] = useState<Viewport | undefined>(
     () =>
@@ -85,7 +89,7 @@ export default function DesignCanvas() {
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       onNodesChange(changes as Parameters<typeof onNodesChange>[0]);
-      if (!studio?.applyChange) return;
+      if (isReadOnly || !studio?.applyChange) return;
 
       const positionUpdates: { nodeId: string; position: { x: number; y: number } }[] = [];
       for (const change of changes) {
@@ -126,7 +130,7 @@ export default function DesignCanvas() {
         saveDefaultCanvasLayout(versionId, allPositions);
       }
     },
-    [onNodesChange, studio, classes, versionId]
+    [onNodesChange, studio, classes, versionId, isReadOnly]
   );
 
   const displayNodes = classes.length > 0 ? nodes : initialNodesFromState;
@@ -166,6 +170,9 @@ export default function DesignCanvas() {
         onViewportChange={onViewportChange}
         onMoveEnd={onMoveEnd}
         fitView={viewportState === undefined}
+        nodesDraggable={!isReadOnly}
+        nodesConnectable={!isReadOnly}
+        elementsSelectable={true}
         className="bg-slate-50 dark:bg-slate-900/50"
       >
         {canvasSettings.showBackground && (

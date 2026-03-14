@@ -55,6 +55,8 @@ export default function StudioToolbar() {
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
   const projectId = workspace?.project?.id ?? '';
+  const isReadOnly =
+    studio?.state?.readOnly === true || workspace?.version?.published === true;
 
   useEffect(() => {
     if (!studio?.state?.versionId || (!options.jwt && !options.apiKey)) return;
@@ -220,6 +222,15 @@ export default function StudioToolbar() {
           Revision {studio!.state?.revision ?? '?'} (read-only)
         </span>
       )}
+      {showGitToolbar && isReadOnly && !studio!.state?.readOnly && (
+        <span
+          className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs font-medium"
+          title="Published version (read-only)"
+        >
+          <Eye className="h-3.5 w-3.5" />
+          Published (read-only)
+        </span>
+      )}
 
       {showGitToolbar && (
         <div className="h-4 w-px bg-slate-200 dark:bg-slate-600" aria-hidden />
@@ -252,7 +263,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={studio!.undo}
-        disabled={!studio!.canUndo || studio!.loading || studio!.state?.readOnly}
+        disabled={!studio!.canUndo || studio!.loading || isReadOnly}
         className={btnBase}
         aria-label="Undo"
         title={`Undo (${modLabel}+Z)`}
@@ -262,7 +273,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={studio!.redo}
-        disabled={!studio!.canRedo || studio!.loading || studio!.state?.readOnly}
+        disabled={!studio!.canRedo || studio!.loading || isReadOnly}
         className={btnBase}
         aria-label="Redo"
         title={`Redo (${modLabel}+Shift+Z)`}
@@ -273,12 +284,12 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => setCommitDialogOpen(true)}
-        disabled={studio!.loading || studio!.state?.readOnly}
+        disabled={studio!.loading || isReadOnly}
         className={btnPrimary}
         aria-label="Commit (snapshot to server)"
         title={
-          studio!.state?.readOnly
-            ? 'Cannot commit while viewing a past revision (read-only)'
+          isReadOnly
+            ? 'Cannot commit (read-only)'
             : 'Commit local state to server (optional message)'
         }
       >
@@ -293,7 +304,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={handleReset}
-        disabled={studio!.loading || studio!.state?.readOnly}
+        disabled={studio!.loading || isReadOnly}
         className={btnBase}
         aria-label="Reset to last committed state"
         title="Discard local changes and reload from server"
@@ -304,7 +315,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => setPushDialogOpen(true)}
-        disabled={studio!.loading || studio!.state?.readOnly || !tenantId || !projectId}
+        disabled={studio!.loading || isReadOnly || !tenantId || !projectId}
         className={btnBase}
         aria-label="Push to another version"
         title="Push current state to another version"
@@ -326,7 +337,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => openMergeDialog(null)}
-        disabled={studio!.loading || studio!.state?.readOnly || !tenantId || !projectId}
+        disabled={studio!.loading || isReadOnly || !tenantId || !projectId}
         className={btnBase}
         aria-label="Merge from another version"
         title="Merge changes from another version"
