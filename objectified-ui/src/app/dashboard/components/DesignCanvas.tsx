@@ -25,8 +25,11 @@ import {
   getViewport,
   saveViewport,
 } from '@lib/studio/canvasLayout';
+import ClassNode from './ClassNode';
 
 const defaultPosition = { x: 0, y: 0 };
+
+const nodeTypes = { class: ClassNode };
 
 function useResolvedCanvasSettings() {
   const context = useCanvasSettingsOptional();
@@ -60,20 +63,38 @@ export default function DesignCanvas() {
   }, [versionId, canvasSettings.viewportPersistence]);
 
   const initialNodesFromState = useMemo(() => {
-    // Merge server positions with any locally-saved canvas layout
+    // Merge server positions with any locally-saved canvas layout; render from local state
     const saved = versionId ? getDefaultCanvasLayout(versionId) : [];
     const savedMap = new Map(saved.map((e) => [e.classId, e.position]));
 
     return classes.map((cls) => {
       const id = getStableClassId(cls);
       const serverPos = cls.canvas_metadata?.position ?? defaultPosition;
-      // Prefer locally-saved position (updated on drag before commit) over server position
       const savedPos = savedMap.get(id);
       const pos = savedPos ?? serverPos;
+      const meta = cls.canvas_metadata;
+      const dimensions = meta?.dimensions;
+      const style = (meta?.style as Record<string, string | number> | undefined) ?? {};
       return {
         id,
+        type: 'class' as const,
         position: { x: pos.x ?? 0, y: pos.y ?? 0 },
-        data: { label: cls.name },
+        data: {
+          name: cls.name,
+          properties: cls.properties ?? [],
+          canvas_metadata: meta,
+        },
+        ...(dimensions?.width != null || dimensions?.height != null
+          ? {
+              style: {
+                ...style,
+                width: dimensions.width,
+                height: dimensions.height,
+              },
+            }
+          : Object.keys(style).length > 0
+            ? { style }
+            : {}),
       };
     });
   }, [classes, versionId]);
@@ -182,6 +203,7 @@ export default function DesignCanvas() {
         nodesDraggable={!isReadOnly}
         nodesConnectable={!isReadOnly}
         elementsSelectable={true}
+        nodeTypes={nodeTypes}
         className="bg-slate-50 dark:bg-slate-900/50"
       >
         {canvasSettings.showBackground && (

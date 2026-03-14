@@ -98,6 +98,19 @@ export interface LocalVersionState {
   readOnly?: boolean;
 }
 
+/**
+ * Data shape for the class node on the react-flow canvas (GitHub #79).
+ * Rendered from local state; position, dimensions, style come from canvas_metadata on the node.
+ */
+export interface ClassNodeData {
+  /** Class name shown in the node header. */
+  name: string;
+  /** Properties assigned to the class, shown as members. */
+  properties: StudioClassProperty[];
+  /** Optional canvas metadata for dimensions and style (applied by the canvas). */
+  canvas_metadata?: ClassCanvasMetadata;
+}
+
 /** Action kinds for the undo stack (optional: could store full state snapshots only). */
 export type StudioActionKind =
   | 'replace_state'
