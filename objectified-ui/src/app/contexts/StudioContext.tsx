@@ -203,7 +203,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           undoStack: [],
           redoStack: [],
         });
-        saveStateBackup(newState);
+        // Do not persist read-only revision views to the backup; the backup
+        // represents the user's editable working copy, and restoring a
+        // read-only state on a failed server load would lock the user out.
+        if (!newState.readOnly) {
+          saveStateBackup(newState);
+        }
         setServerHasNewChanges(false);
         setPushConflict409(false);
         // Restore persisted commit info only when the persisted revision matches

@@ -1009,6 +1009,41 @@ describe('StudioContext', () => {
     );
   });
 
+  it('loadFromServer does not save backup when loading a read-only revision', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 3,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadReadOnlyConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {}, { revision: 3, readOnly: true });
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadReadOnlyConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+    expect(screen.getByTestId('read-only').textContent).toBe('yes');
+
+    // Backup must NOT be written for read-only revision views
+    expect(localStorageMock.setItem).not.toHaveBeenCalledWith(
+      'objectified:studio:backup:v1',
+      expect.anything()
+    );
+  });
+
   it('applyChange updates the localStorage backup', async () => {
     mockPullVersion.mockResolvedValueOnce({
       version_id: 'v1',

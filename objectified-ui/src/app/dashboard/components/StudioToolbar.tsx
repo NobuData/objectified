@@ -213,7 +213,7 @@ export default function StudioToolbar() {
           title={`Viewing revision ${studio.state.revision ?? '?'} (read-only)`}
         >
           <Eye className="h-3.5 w-3.5" />
-          Revision {studio.state.revision} (read-only)
+          Revision {studio.state.revision ?? '?'} (read-only)
         </span>
       )}
 
