@@ -19,9 +19,8 @@ export interface CanvasSettingsContextValue {
   setSettings: (settings: CanvasSettings) => void;
 }
 
-const CanvasSettingsContext = createContext<CanvasSettingsContextValue | null>(
-  null
-);
+export const CanvasSettingsContext =
+  createContext<CanvasSettingsContextValue | null>(null);
 
 export function CanvasSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettingsState] = useState<CanvasSettings>(getCanvasSettings);

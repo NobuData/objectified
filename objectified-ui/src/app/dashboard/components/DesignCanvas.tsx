@@ -777,6 +777,11 @@ export default function DesignCanvas() {
         selectionOnDrag={false}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        snapToGrid={canvasSettings.snapToGrid}
+        snapGrid={[canvasSettings.gridSize, canvasSettings.gridSize]}
+        defaultEdgeOptions={{
+          animated: canvasSettings.edgeAnimated,
+        }}
         className="bg-slate-50 dark:bg-slate-900/50"
       >
         <PaneContextMenuRegistration />
@@ -805,7 +810,17 @@ export default function DesignCanvas() {
           />
         )}
         {canvasSettings.showBackground && (
-          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+          <Background
+            variant={
+              canvasSettings.gridStyle === 'dots'
+                ? BackgroundVariant.Dots
+                : canvasSettings.gridStyle === 'lines'
+                  ? BackgroundVariant.Lines
+                  : BackgroundVariant.Cross
+            }
+            gap={canvasSettings.gridSize}
+            size={1}
+          />
         )}
         {canvasSettings.showControls && (
           <Controls

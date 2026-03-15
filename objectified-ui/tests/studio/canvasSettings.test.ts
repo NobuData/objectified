@@ -7,6 +7,7 @@ import {
   getCanvasSettings,
   saveCanvasSettings,
   DEFAULT_CANVAS_SETTINGS,
+  gridStyleToBackgroundVariant,
   type CanvasSettings,
 } from '@lib/studio/canvasSettings';
 
@@ -48,6 +49,12 @@ describe('DEFAULT_CANVAS_SETTINGS', () => {
     expect(DEFAULT_CANVAS_SETTINGS.showLayoutHints).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.showDependencyOverlay).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.showSchemaMetricsPanel).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.gridSize).toBe(16);
+    expect(DEFAULT_CANVAS_SETTINGS.gridStyle).toBe('dots');
+    expect(DEFAULT_CANVAS_SETTINGS.snapToGrid).toBe(true);
+    expect(DEFAULT_CANVAS_SETTINGS.edgePathType).toBe('smoothstep');
+    expect(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor).toBe('');
+    expect(DEFAULT_CANVAS_SETTINGS.edgeAnimated).toBe(false);
   });
 });
 
@@ -64,6 +71,7 @@ describe('getCanvasSettings', () => {
 
   it('returns stored settings merged with defaults', () => {
     const stored: CanvasSettings = {
+      ...DEFAULT_CANVAS_SETTINGS,
       showBackground: false,
       showControls: false,
       showMiniMap: true,
@@ -131,6 +139,7 @@ describe('saveCanvasSettings', () => {
 
   it('persists settings to localStorage', () => {
     const settings: CanvasSettings = {
+      ...DEFAULT_CANVAS_SETTINGS,
       showBackground: false,
       showControls: true,
       showMiniMap: false,
@@ -150,6 +159,7 @@ describe('saveCanvasSettings', () => {
 
   it('round-trips save and get', () => {
     const settings: CanvasSettings = {
+      ...DEFAULT_CANVAS_SETTINGS,
       showBackground: false,
       showControls: false,
       showMiniMap: false,
@@ -177,5 +187,17 @@ describe('saveCanvasSettings', () => {
     saveCanvasSettings(first);
     saveCanvasSettings(second);
     expect(getCanvasSettings()).toEqual(second);
+  });
+});
+
+describe('gridStyleToBackgroundVariant', () => {
+  it('maps dots to dots', () => {
+    expect(gridStyleToBackgroundVariant('dots')).toBe('dots');
+  });
+  it('maps lines to lines', () => {
+    expect(gridStyleToBackgroundVariant('lines')).toBe('lines');
+  });
+  it('maps cross to cross', () => {
+    expect(gridStyleToBackgroundVariant('cross')).toBe('cross');
   });
 });
