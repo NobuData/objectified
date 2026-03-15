@@ -46,12 +46,16 @@ function remapRefsInValue(
   for (const [k, v] of Object.entries(obj)) {
     if (k === '$ref' && typeof v === 'string') {
       const ref = v;
-      const match = ref.match(/#\/(?:components\/schemas|\$defs)\/(.+)$/);
-      const rawName = match ? match[1].trim() : ref.split('/').pop()?.trim();
+      const schemasMatch = ref.match(/^(#\/components\/schemas\/)(.+)$/);
+      const defsMatch = ref.match(/^(#\/\$defs\/)(.+)$/);
+      const match = schemasMatch ?? defsMatch;
+      const rawName = match ? match[2].trim() : ref.split('/').pop()?.trim();
       const normalized = rawName ? rawName.toLowerCase() : '';
       const newName = normalized ? normalizedOldNameToNewName.get(normalized) : undefined;
       if (newName !== undefined) {
-        out[k] = match ? `#/components/schemas/${newName}` : newName;
+        // Preserve the original ref prefix so $defs refs stay as $defs and components/schemas refs stay as components/schemas
+        const prefix = match ? match[1] : '';
+        out[k] = prefix ? `${prefix}${newName}` : newName;
       } else {
         out[k] = v;
       }
