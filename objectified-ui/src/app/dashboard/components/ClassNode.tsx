@@ -2,7 +2,13 @@
 
 import { memo, useCallback } from 'react';
 import type { ComponentType, CSSProperties } from 'react';
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import {
+  Handle,
+  Position,
+  NodeResizer,
+  type Node,
+  type NodeProps,
+} from '@xyflow/react';
 import * as ScrollArea from '@radix-ui/react-scroll-area';
 import { ChevronDown, ChevronRight, Box, Circle, Square, Hexagon } from 'lucide-react';
 import type { ClassNodeData } from '@lib/studio/types';
@@ -11,10 +17,12 @@ import type { ClassNodeConfig } from '@lib/studio/canvasClassNodeConfig';
 /** Node type for react-flow; data satisfies Record<string, unknown>. */
 export type ClassNodeType = Node<ClassNodeData & Record<string, unknown>, 'class'>;
 
-/** Extended data passed from DesignCanvas: config and callback for persistence (GitHub #80). */
+/** Extended data passed from DesignCanvas: config, resize, callback (GitHub #80, #82). */
 export interface ClassNodeDataExtended extends ClassNodeData {
   classNodeConfig?: ClassNodeConfig;
   onConfigChange?: (classId: string, config: ClassNodeConfig) => void;
+  /** When true, node can be resized via NodeResizer (GitHub #82). */
+  allowResize?: boolean;
 }
 
 const ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
@@ -27,7 +35,8 @@ const ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
 /**
  * Custom react-flow node for a class: header with class name, body with property members.
  * Supports expand/collapse, theme (backgroundColor, border, icon), and double-click to open class form.
- * Configuration is stored in localStorage. Reference: GitHub #79, #80.
+ * Configuration is stored in localStorage. Resize when allowResize and selected (GitHub #82).
+ * Reference: GitHub #79, #80.
  */
 function ClassNodeComponent({
   id,
@@ -39,6 +48,7 @@ function ClassNodeComponent({
     properties,
     classNodeConfig,
     onConfigChange,
+    allowResize,
   } = data as ClassNodeDataExtended;
 
   const hasProperties = properties.length > 0;
@@ -67,8 +77,21 @@ function ClassNodeComponent({
   const headerStyle: CSSProperties = {};
   if (theme?.backgroundColor) headerStyle.backgroundColor = theme.backgroundColor;
 
+  const showResizer = allowResize === true && selected;
+
   return (
     <>
+      {showResizer && (
+        <NodeResizer
+          minWidth={180}
+          minHeight={48}
+          maxWidth={400}
+          maxHeight={400}
+          isVisible={true}
+          lineClassName="!border-indigo-500 dark:!border-indigo-400"
+          handleClassName="!w-2 !h-2 !border-2 !border-indigo-500 dark:!border-indigo-400 !bg-white dark:!bg-slate-800"
+        />
+      )}
       <Handle
         type="target"
         position={Position.Top}
@@ -76,7 +99,8 @@ function ClassNodeComponent({
       />
       <div
         className={[
-          'rounded-lg border-2 shadow-md min-w-[180px] max-w-[280px] overflow-hidden',
+          'rounded-lg border-2 shadow-md min-w-[180px]',
+          allowResize ? 'w-full h-full overflow-auto' : 'max-w-[280px] overflow-hidden',
           !theme?.backgroundColor && 'bg-white dark:bg-slate-900',
           !theme?.border &&
             'border-slate-200 dark:border-slate-700',

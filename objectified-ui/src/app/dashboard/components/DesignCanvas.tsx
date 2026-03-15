@@ -1,3 +1,7 @@
+/**
+ * Design canvas: react-flow with class nodes, drag/resize, selection, pan/zoom.
+ * Reference: GitHub #82 — Add interactivity to nodes (useNodesState, onNodesChange).
+ */
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -157,9 +161,10 @@ export default function DesignCanvas() {
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // In read-only mode, only allow selection-type changes through so the user
-      // can still click/select nodes.  Destructive changes (remove) and
-      // position changes (drag) are discarded before they can mutate local state.
+      // In read-only mode, only allow selection and dimensions changes through so
+      // the user can still click/select nodes and react-flow can measure intrinsic
+      // node sizes. Destructive changes (remove) and position changes (drag) are
+      // discarded before mutating local state.
       const allowedChanges = isReadOnly
         ? changes.filter((c) => c.type === 'select' || c.type === 'dimensions')
         : changes;
@@ -170,6 +175,11 @@ export default function DesignCanvas() {
       if (isReadOnly || !studio?.applyChange) return;
 
       const positionUpdates: { nodeId: string; position: { x: number; y: number } }[] = [];
+      const dimensionUpdates: {
+        nodeId: string;
+        dimensions: { width: number; height: number };
+      }[] = [];
+
       for (const change of changes) {
         if (
           change.type === 'position' &&
@@ -178,34 +188,58 @@ export default function DesignCanvas() {
         ) {
           positionUpdates.push({ nodeId: change.id, position: change.position });
         }
-      }
-      if (positionUpdates.length === 0) return;
-
-      studio.applyChange((draft) => {
-        for (const { nodeId, position } of positionUpdates) {
-          const idx = draft.classes.findIndex((c) => getStableClassId(c) === nodeId);
-          if (idx >= 0) {
-            const target = draft.classes[idx];
-            target.canvas_metadata = {
-              ...target.canvas_metadata,
-              position: { x: position.x, y: position.y },
-            };
+        if (
+          change.type === 'dimensions' &&
+          change.resizing === false &&
+          change.dimensions != null
+        ) {
+          const { width, height } = change.dimensions;
+          if (typeof width === 'number' && typeof height === 'number') {
+            dimensionUpdates.push({ nodeId: change.id, dimensions: { width, height } });
           }
         }
-      });
+      }
 
-      // Persist positions to localStorage outside of state updater to avoid side effects
-      if (versionId) {
-        const updatedMap = new Map(positionUpdates.map((u) => [u.nodeId, u.position]));
-        const allPositions = classes.map((c) => {
-          const id = getStableClassId(c);
-          const updatedPos = updatedMap.get(id);
-          return {
-            classId: id,
-            position: updatedPos ?? c.canvas_metadata?.position ?? defaultPosition,
-          };
+      if (positionUpdates.length > 0) {
+        studio.applyChange((draft) => {
+          for (const { nodeId, position } of positionUpdates) {
+            const idx = draft.classes.findIndex((c) => getStableClassId(c) === nodeId);
+            if (idx >= 0) {
+              const target = draft.classes[idx];
+              target.canvas_metadata = {
+                ...target.canvas_metadata,
+                position: { x: position.x, y: position.y },
+              };
+            }
+          }
         });
-        saveDefaultCanvasLayout(versionId, allPositions);
+        if (versionId) {
+          const updatedMap = new Map(positionUpdates.map((u) => [u.nodeId, u.position]));
+          const allPositions = classes.map((c) => {
+            const id = getStableClassId(c);
+            const updatedPos = updatedMap.get(id);
+            return {
+              classId: id,
+              position: updatedPos ?? c.canvas_metadata?.position ?? defaultPosition,
+            };
+          });
+          saveDefaultCanvasLayout(versionId, allPositions);
+        }
+      }
+
+      if (dimensionUpdates.length > 0) {
+        studio.applyChange((draft) => {
+          for (const { nodeId, dimensions } of dimensionUpdates) {
+            const idx = draft.classes.findIndex((c) => getStableClassId(c) === nodeId);
+            if (idx >= 0) {
+              const target = draft.classes[idx];
+              target.canvas_metadata = {
+                ...target.canvas_metadata,
+                dimensions: { width: dimensions.width, height: dimensions.height },
+              };
+            }
+          }
+        });
       }
     },
     [onNodesChange, studio, classes, versionId, isReadOnly]
@@ -226,9 +260,10 @@ export default function DesignCanvas() {
           ...configOverrides[node.id],
         },
         onConfigChange,
+        allowResize: !isReadOnly,
       },
     }));
-  }, [baseNodes, versionId, configOverrides, onConfigChange]);
+  }, [baseNodes, versionId, configOverrides, onConfigChange, isReadOnly]);
 
   // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
   const onViewportChange = useCallback(
@@ -276,6 +311,11 @@ export default function DesignCanvas() {
         nodesDraggable={!isReadOnly}
         nodesConnectable={!isReadOnly}
         elementsSelectable={true}
+        panOnDrag={true}
+        zoomOnScroll={true}
+        zoomOnPinch={true}
+        zoomOnDoubleClick={true}
+        selectionOnDrag={false}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         className="bg-slate-50 dark:bg-slate-900/50"
