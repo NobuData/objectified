@@ -44,6 +44,12 @@ describe('getCircularDependencyEdgeIds', () => {
     ];
     expect(getCircularDependencyEdgeIds(edges)).toEqual(new Set(['1', '2']));
   });
+
+  it('does not mark tail edge as circular when tail leads into a cycle (a→b, b→c, c→b)', () => {
+    // a→b is a tail edge; b→c→b is the cycle
+    const edges = [e('1', 'a', 'b'), e('2', 'b', 'c'), e('3', 'c', 'b')];
+    expect(getCircularDependencyEdgeIds(edges)).toEqual(new Set(['2', '3']));
+  });
 });
 
 describe('getUpstreamNodeIds', () => {
