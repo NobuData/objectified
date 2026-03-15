@@ -502,6 +502,11 @@ export default function DesignCanvas() {
     [displayNodes]
   );
 
+  const validClassIds = useMemo(
+    () => new Set(classes.map((c) => getStableClassId(c))),
+    [classes]
+  );
+
   const selectedNodeId = selectedClassNodeIds[0] ?? null;
   const selectedNodeId2 = selectedClassNodeIds[1] ?? null;
   const circularEdgeIds = useMemo(
@@ -704,22 +709,26 @@ export default function DesignCanvas() {
   const handleDeleteClassesFromCanvas = useCallback(
     async (classIds: string[]) => {
       if (classIds.length === 0 || !studio?.applyChange) return;
+      const validIds = classIds.filter((id) =>
+        classes.some((c) => getStableClassId(c) === id)
+      );
+      if (validIds.length === 0) return;
       if (!dialog?.confirm) return;
       const message =
-        classIds.length === 1
+        validIds.length === 1
           ? (() => {
-              const cls = classes.find((c) => getStableClassId(c) === classIds[0]);
-              return `Delete class "${cls?.name ?? classIds[0]}"? This action will be reflected when you next save.`;
+              const cls = classes.find((c) => getStableClassId(c) === validIds[0]);
+              return `Delete class "${cls?.name ?? validIds[0]}"? This action will be reflected when you next save.`;
             })()
-          : `Delete ${classIds.length} classes? This action will be reflected when you next save.`;
+          : `Delete ${validIds.length} classes? This action will be reflected when you next save.`;
       const ok = await dialog.confirm({
-        title: 'Delete Class' + (classIds.length > 1 ? 'es' : ''),
+        title: 'Delete Class' + (validIds.length > 1 ? 'es' : ''),
         message,
         variant: 'danger',
         confirmLabel: 'Delete',
       });
       if (!ok) return;
-      const idSet = new Set(classIds);
+      const idSet = new Set(validIds);
       studio.applyChange((draft) => {
         draft.classes = draft.classes.filter((c) => !idSet.has(getStableClassId(c)));
       });
@@ -962,17 +971,18 @@ export default function DesignCanvas() {
                 >
                   Focus on this node
                 </button>
-                {!isReadOnly && (
-                  <button
-                    type="button"
-                    className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    onClick={() => {
-                      void handleDeleteClassesFromCanvas([nodeContextMenu.node.id]);
-                    }}
-                  >
-                    Delete
-                  </button>
-                )}
+                {!isReadOnly &&
+                  validClassIds.has(nodeContextMenu.node.id) && (
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={() => {
+                        void handleDeleteClassesFromCanvas([nodeContextMenu.node.id]);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 {(nodeContextMenu.node.data as { canvas_metadata?: { group?: string } }).canvas_metadata?.group ? (
                   <button
                     type="button"
