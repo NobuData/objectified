@@ -46,6 +46,7 @@ describe('DEFAULT_CANVAS_SETTINGS', () => {
     expect(DEFAULT_CANVAS_SETTINGS.showMiniMap).toBe(true);
     expect(DEFAULT_CANVAS_SETTINGS.viewportPersistence).toBe(true);
     expect(DEFAULT_CANVAS_SETTINGS.showLayoutHints).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.showDependencyOverlay).toBe(false);
   });
 });
 
@@ -67,6 +68,7 @@ describe('getCanvasSettings', () => {
       showMiniMap: true,
       viewportPersistence: false,
       showLayoutHints: true,
+      showDependencyOverlay: false,
     };
     localStorageMock.setItem('objectified:canvas:settings', JSON.stringify({ settings: stored, savedAt: new Date().toISOString() }));
     const result = getCanvasSettings();
@@ -85,6 +87,7 @@ describe('getCanvasSettings', () => {
     expect(result.showMiniMap).toBe(DEFAULT_CANVAS_SETTINGS.showMiniMap);
     expect(result.viewportPersistence).toBe(DEFAULT_CANVAS_SETTINGS.viewportPersistence);
     expect(result.showLayoutHints).toBe(DEFAULT_CANVAS_SETTINGS.showLayoutHints);
+    expect(result.showDependencyOverlay).toBe(DEFAULT_CANVAS_SETTINGS.showDependencyOverlay);
   });
 
   it('returns defaults when stored value is invalid JSON', () => {
@@ -130,6 +133,7 @@ describe('saveCanvasSettings', () => {
       showMiniMap: false,
       viewportPersistence: true,
       showLayoutHints: false,
+      showDependencyOverlay: false,
     };
     saveCanvasSettings(settings);
     expect(localStorageMock.setItem).toHaveBeenCalledTimes(1);
@@ -147,6 +151,7 @@ describe('saveCanvasSettings', () => {
       showMiniMap: false,
       viewportPersistence: false,
       showLayoutHints: true,
+      showDependencyOverlay: true,
     };
     saveCanvasSettings(settings);
     expect(getCanvasSettings()).toEqual(settings);

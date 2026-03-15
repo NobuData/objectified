@@ -57,11 +57,19 @@ import {
 } from '@lib/studio/canvasClassNodeConfig';
 import { buildClassRefEdges } from '@lib/studio/canvasClassRefEdges';
 import { getLayoutQuality, type LayoutQualityResult } from '@lib/studio/layoutQuality';
+import {
+  getCircularDependencyEdgeIds,
+  getUpstreamNodeIds,
+  getDownstreamNodeIds,
+  getPathNodeIds,
+  type DependencyEdge,
+} from '@lib/studio/schemaMetrics';
 import ClassNode from './ClassNode';
 import ClassRefEdge from './ClassRefEdge';
 import GroupNode from './GroupNode';
 import LayoutPreviewDialog from './LayoutPreviewDialog';
 import LayoutHintsOverlay from './LayoutHintsOverlay';
+import DependencyOverlay from './DependencyOverlay';
 import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 
 const defaultPosition = { x: 0, y: 0 };
@@ -469,6 +477,63 @@ export default function DesignCanvas() {
     return () => clearTimeout(id);
   }, [canvasSettings.showLayoutHints, displayNodes, focusFilteredEdges]);
 
+  // Dependency overlay: selected class nodes, circular edges, upstream/downstream/path (GitHub #90).
+  const dependencyEdges: DependencyEdge[] = useMemo(
+    () =>
+      focusFilteredEdges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+      })),
+    [focusFilteredEdges]
+  );
+  const selectedClassNodeIds = useMemo(
+    () =>
+      displayNodes
+        .filter((n) => n.type === 'class' && n.selected)
+        .map((n) => n.id),
+    [displayNodes]
+  );
+  const selectedNodeId = selectedClassNodeIds[0] ?? null;
+  const selectedNodeId2 = selectedClassNodeIds[1] ?? null;
+  const circularEdgeIds = useMemo(
+    () => getCircularDependencyEdgeIds(dependencyEdges),
+    [dependencyEdges]
+  );
+  const upstreamCount = useMemo(
+    () =>
+      selectedNodeId !== null
+        ? getUpstreamNodeIds(dependencyEdges, selectedNodeId).size
+        : 0,
+    [dependencyEdges, selectedNodeId]
+  );
+  const downstreamCount = useMemo(
+    () =>
+      selectedNodeId !== null
+        ? getDownstreamNodeIds(dependencyEdges, selectedNodeId).size
+        : 0,
+    [dependencyEdges, selectedNodeId]
+  );
+  const pathFromSelectedToSecond = useMemo(
+    () =>
+      selectedNodeId !== null && selectedNodeId2 !== null
+        ? getPathNodeIds(dependencyEdges, selectedNodeId, selectedNodeId2)
+        : null,
+    [dependencyEdges, selectedNodeId, selectedNodeId2]
+  );
+  const pathLength =
+    pathFromSelectedToSecond !== null ? pathFromSelectedToSecond.length - 1 : null;
+  const selectedNodeName = useMemo(() => {
+    if (!selectedNodeId) return undefined;
+    const cls = classes.find((c) => getStableClassId(c) === selectedNodeId);
+    return cls?.name;
+  }, [classes, selectedNodeId]);
+  const selectedNodeName2 = useMemo(() => {
+    if (!selectedNodeId2) return undefined;
+    const cls = classes.find((c) => getStableClassId(c) === selectedNodeId2);
+    return cls?.name;
+  }, [classes, selectedNodeId2]);
+
   // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
   const onViewportChange = useCallback(
     (viewport: Viewport) => {
@@ -696,6 +761,18 @@ export default function DesignCanvas() {
         <PaneContextMenuRegistration />
         {layoutQuality && (
           <LayoutHintsOverlay quality={layoutQuality} />
+        )}
+        {canvasSettings.showDependencyOverlay && (
+          <DependencyOverlay
+            selectedNodeId={selectedNodeId}
+            selectedNodeId2={selectedNodeId2}
+            upstreamCount={upstreamCount}
+            downstreamCount={downstreamCount}
+            pathLength={pathLength}
+            circularEdgeCount={circularEdgeIds.size}
+            selectedNodeName={selectedNodeName}
+            selectedNodeName2={selectedNodeName2}
+          />
         )}
         {canvasSettings.showBackground && (
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
