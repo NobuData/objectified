@@ -2,6 +2,7 @@
  * Design canvas: react-flow with class nodes, group nodes, drag/resize, selection, pan/zoom.
  * Reference: GitHub #82, #83 — Add interactivity to nodes; add groups (GroupNode, parentId).
  * Reference: GitHub #96 — Delete classes from canvas (single/multi-select, confirm).
+ * Reference: GitHub #97 — Copy/paste/duplicate for classes (and optional refs) in local state.
  */
 'use client';
 
@@ -44,7 +45,11 @@ import {
   getFocusedGroupIds,
 } from '@lib/studio/canvasFocusMode';
 import { getStableClassId } from '@lib/studio/types';
-import type { StudioGroup } from '@lib/studio/types';
+import type { StudioClass, StudioGroup } from '@lib/studio/types';
+import {
+  cloneClassesForPaste,
+  PASTE_OFFSET,
+} from '@lib/studio/canvasClipboard';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
 import {
   saveDefaultCanvasLayout,
@@ -107,6 +112,10 @@ export default function DesignCanvas() {
   const [configOverrides, setConfigOverrides] = useState<
     Record<string, ClassNodeConfig>
   >({});
+
+  const [canvasClipboard, setCanvasClipboard] = useState<StudioClass[] | null>(
+    null
+  );
 
   const onConfigChange = useCallback(
     (classId: string, config: ClassNodeConfig) => {
@@ -737,6 +746,87 @@ export default function DesignCanvas() {
     [studio, classes, dialog]
   );
 
+  /** Copy selected classes to clipboard (GitHub #97). */
+  const handleCopyClasses = useCallback(
+    (classIds: string[]) => {
+      if (classIds.length === 0) return;
+      const toCopy = classIds
+        .map((id) => classes.find((c) => getStableClassId(c) === id))
+        .filter((c): c is StudioClass => c != null);
+      if (toCopy.length === 0) return;
+      setCanvasClipboard(
+        toCopy.map((cls) => ({
+          ...cls,
+          properties: (cls.properties ?? []).map((p) => ({
+            ...p,
+            data: p.data ? JSON.parse(JSON.stringify(p.data)) : undefined,
+            property_data: p.property_data
+              ? JSON.parse(JSON.stringify(p.property_data))
+              : undefined,
+          })),
+          schema: cls.schema ? JSON.parse(JSON.stringify(cls.schema)) : undefined,
+          canvas_metadata: cls.canvas_metadata
+            ? { ...cls.canvas_metadata }
+            : undefined,
+        }))
+      );
+      setNodeContextMenu(null);
+    },
+    [classes]
+  );
+
+  /** Paste classes from clipboard (GitHub #97). */
+  const handlePasteClasses = useCallback(() => {
+    if (!canvasClipboard?.length || !studio?.applyChange || isReadOnly) return;
+    const existingNames = classes.map((c) => c.name ?? '');
+    const newClasses = cloneClassesForPaste(
+      canvasClipboard,
+      existingNames,
+      PASTE_OFFSET
+    );
+    studio.applyChange((draft) => {
+      for (const c of newClasses) draft.classes.push(c);
+    });
+    if (versionId) {
+      const allPositions = (studio.state?.classes ?? []).map((c) => ({
+        classId: getStableClassId(c),
+        position: c.canvas_metadata?.position ?? defaultPosition,
+      }));
+      saveDefaultCanvasLayout(versionId, allPositions);
+    }
+    setNodeContextMenu(null);
+  }, [canvasClipboard, studio, isReadOnly, classes, versionId]);
+
+  /** Duplicate selected classes (copy then paste) (GitHub #97). */
+  const handleDuplicateClasses = useCallback(
+    (classIds: string[]) => {
+      if (classIds.length === 0 || !studio?.applyChange || isReadOnly) return;
+      const toCopy = classIds
+        .map((id) => classes.find((c) => getStableClassId(c) === id))
+        .filter((c): c is StudioClass => c != null);
+      if (toCopy.length === 0) return;
+      const existingNames = classes.map((c) => c.name ?? '');
+      const newClasses = cloneClassesForPaste(
+        toCopy,
+        existingNames,
+        PASTE_OFFSET
+      );
+      studio.applyChange((draft) => {
+        for (const c of newClasses) draft.classes.push(c);
+      });
+      if (versionId) {
+        const allPositions = (studio.state?.classes ?? []).map((c) => ({
+          classId: getStableClassId(c),
+          position: c.canvas_metadata?.position ?? defaultPosition,
+        }));
+        saveDefaultCanvasLayout(versionId, allPositions);
+      }
+      setCanvasClipboard(toCopy);
+      setNodeContextMenu(null);
+    },
+    [studio, classes, isReadOnly, versionId]
+  );
+
   // Delete/Backspace: delete selected class nodes from canvas (GitHub #96).
   useEffect(() => {
     if (isReadOnly) return;
@@ -768,6 +858,45 @@ export default function DesignCanvas() {
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [isReadOnly, selectedClassNodeIds, handleDeleteClassesFromCanvas]);
+
+  // Ctrl+C / Ctrl+V / Ctrl+D: copy, paste, duplicate (GitHub #97).
+  useEffect(() => {
+    if (isReadOnly) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCopy = e.key === 'c' && (e.metaKey || e.ctrlKey);
+      const isPaste = e.key === 'v' && (e.metaKey || e.ctrlKey);
+      const isDuplicate = e.key === 'd' && (e.metaKey || e.ctrlKey);
+      if (!isCopy && !isPaste && !isDuplicate) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (!target?.closest('.react-flow')) return;
+      e.preventDefault();
+      if (isCopy) {
+        if (selectedClassNodeIds.length > 0) handleCopyClasses(selectedClassNodeIds);
+      } else if (isPaste) {
+        handlePasteClasses();
+      } else if (isDuplicate) {
+        if (selectedClassNodeIds.length > 0)
+          handleDuplicateClasses(selectedClassNodeIds);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [
+    isReadOnly,
+    selectedClassNodeIds,
+    handleCopyClasses,
+    handlePasteClasses,
+    handleDuplicateClasses,
+  ]);
 
   const handleLayoutApply = useCallback(
     (layoutedNodes: Node[]) => {
@@ -970,6 +1099,41 @@ export default function DesignCanvas() {
             )}
             {nodeContextMenu.node.type === 'class' && (
               <>
+                {!isReadOnly && (
+                  <>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={() => {
+                        handleCopyClasses(selectedClassNodeIds.length > 0 ? selectedClassNodeIds : [nodeContextMenu.node.id]);
+                        setNodeContextMenu(null);
+                      }}
+                    >
+                      Copy
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!canvasClipboard?.length}
+                      onClick={() => {
+                        handlePasteClasses();
+                        setNodeContextMenu(null);
+                      }}
+                    >
+                      Paste
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={() => {
+                        handleDuplicateClasses(selectedClassNodeIds.length > 0 ? selectedClassNodeIds : [nodeContextMenu.node.id]);
+                        setNodeContextMenu(null);
+                      }}
+                    >
+                      Duplicate
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
