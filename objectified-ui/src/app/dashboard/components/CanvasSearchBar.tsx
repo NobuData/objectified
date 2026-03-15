@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import * as Select from '@radix-ui/react-select';
 import * as Label from '@radix-ui/react-label';
 import * as Switch from '@radix-ui/react-switch';
-import { Search, ChevronDown } from 'lucide-react';
+import { Search, ChevronDown, X, Trash2, Clock } from 'lucide-react';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
+import { useSearchHistory } from '@/app/hooks/useSearchHistory';
 import type { SearchFilterType } from '@lib/studio/canvasSearch';
 
 const triggerClass =
@@ -20,6 +21,52 @@ export default function CanvasSearchBar() {
   const search = useCanvasSearchOptional();
   const studio = useStudioOptional();
   const groups = useMemo(() => studio?.state?.groups ?? [], [studio?.state?.groups]);
+  const { entries, addEntry, removeEntry, clearAll } = useSearchHistory();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  /** Save the current query to history when closing / blurring. */
+  const handleBlur = useCallback(() => {
+    // Small delay so click events on the dropdown register first
+    setTimeout(() => {
+      if (
+        dropdownRef.current &&
+        dropdownRef.current.contains(document.activeElement)
+      ) {
+        return;
+      }
+      setHistoryOpen(false);
+      if (search?.state.canvasSearchQuery.trim()) {
+        addEntry(search.state.canvasSearchQuery);
+      }
+    }, 150);
+  }, [search?.state.canvasSearchQuery, addEntry]);
+
+  const handleSelectHistoryEntry = useCallback(
+    (query: string) => {
+      search?.setQuery(query);
+      setHistoryOpen(false);
+      inputRef.current?.focus();
+    },
+    [search]
+  );
+
+  const handleRemoveHistoryEntry = useCallback(
+    (e: React.MouseEvent, query: string) => {
+      e.stopPropagation();
+      removeEntry(query);
+    },
+    [removeEntry]
+  );
+
+  const handleClearAll = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      clearAll();
+    },
+    [clearAll]
+  );
 
   if (!search) return null;
 
@@ -30,13 +77,61 @@ export default function CanvasSearchBar() {
       <div className="relative flex-1 min-w-[120px] max-w-[200px]">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" aria-hidden />
         <input
+          ref={inputRef}
           type="search"
           placeholder="Search canvas..."
           value={state.canvasSearchQuery}
           onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => setHistoryOpen(true)}
+          onBlur={handleBlur}
           className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           aria-label="Canvas search query"
         />
+
+        {/* Search history dropdown */}
+        {historyOpen && entries.length > 0 && (
+          <div
+            ref={dropdownRef}
+            className="absolute left-0 top-full mt-1 w-[280px] max-h-[240px] overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg z-[10002]"
+            role="listbox"
+            aria-label="Search history"
+          >
+            <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Recent searches</span>
+              <button
+                type="button"
+                onMouseDown={(e) => handleClearAll(e)}
+                className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-1"
+                aria-label="Clear all search history"
+              >
+                <Trash2 className="h-3 w-3" />
+                Clear all
+              </button>
+            </div>
+            {entries.map((entry) => (
+              <div
+                key={entry.query}
+                role="option"
+                aria-selected={false}
+                onMouseDown={() => handleSelectHistoryEntry(entry.query)}
+                className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span className="truncate">{entry.query}</span>
+                </div>
+                <button
+                  type="button"
+                  onMouseDown={(e) => handleRemoveHistoryEntry(e, entry.query)}
+                  className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0"
+                  aria-label={`Remove "${entry.query}" from search history`}
+                >
+                  <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
