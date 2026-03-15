@@ -10,12 +10,13 @@ import {
   type LayoutDirection,
 } from '@lib/studio/canvasAutoLayout';
 
-function node(id: string, position: { x: number; y: number }, type: 'class' | 'group' = 'class'): Node {
+function node(id: string, position: { x: number; y: number }, type: 'class' | 'group' = 'class', parentId?: string): Node {
   return {
     id,
     type,
     position: { x: position.x, y: position.y },
     data: { name: id, label: id },
+    ...(parentId ? { parentId, extent: 'parent' as const } : {}),
   };
 }
 
@@ -78,6 +79,20 @@ describe('getLayoutedNodes', () => {
     expect(g?.position).toEqual({ x: 200, y: 200 });
   });
 
+  it('excludes grouped class nodes from dagre layout but still returns them unchanged', () => {
+    const nodes: Node[] = [
+      node('a', { x: 0, y: 0 }),
+      node('b', { x: 50, y: 50 }),
+      node('c', { x: 10, y: 10 }, 'class', 'g1'), // grouped — should not be repositioned
+      node('g1', { x: 200, y: 200 }, 'group'),
+    ];
+    const edges: Edge[] = [edge('a', 'b')];
+    const result = getLayoutedNodes(nodes, edges);
+    expect(result).toHaveLength(4);
+    const grouped = result.find((n) => n.id === 'c');
+    expect(grouped?.position).toEqual({ x: 10, y: 10 }); // unchanged
+  });
+
   it('uses LR direction when specified', () => {
     const nodes: Node[] = [
       node('a', { x: 0, y: 0 }),
@@ -118,6 +133,20 @@ describe('layoutPreviewNodes', () => {
     const map = layoutPreviewNodes(nodes, edges);
     expect(map.size).toBe(1);
     expect(map.has('a')).toBe(true);
+    expect(map.has('g1')).toBe(false);
+  });
+
+  it('excludes grouped class nodes from map', () => {
+    const nodes: Node[] = [
+      node('a', { x: 0, y: 0 }),
+      node('c', { x: 10, y: 10 }, 'class', 'g1'), // inside a group
+      node('g1', { x: 200, y: 200 }, 'group'),
+    ];
+    const edges: Edge[] = [];
+    const map = layoutPreviewNodes(nodes, edges);
+    expect(map.size).toBe(1);
+    expect(map.has('a')).toBe(true);
+    expect(map.has('c')).toBe(false); // grouped class excluded
     expect(map.has('g1')).toBe(false);
   });
 });

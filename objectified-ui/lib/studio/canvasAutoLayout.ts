@@ -39,8 +39,9 @@ export function getLayoutedNodes(
   edges: Edge[],
   direction: LayoutDirection = 'TB'
 ): Node[] {
-  const isHorizontal = direction === 'LR';
-  const classNodes = nodes.filter((n) => n.type === 'class');
+  // Only layout top-level (ungrouped) class nodes; grouped nodes use parent-relative positions
+  const classNodes = nodes.filter((n) => n.type === 'class' && !n.parentId);
+  const groupedClassNodes = nodes.filter((n) => n.type === 'class' && !!n.parentId);
   const groupNodes = nodes.filter((n) => n.type === 'group');
   const classIds = new Set(classNodes.map((n) => n.id));
   const classEdges = edges.filter(
@@ -77,7 +78,7 @@ export function getLayoutedNodes(
     };
   });
 
-  return [...layoutedClassNodes, ...groupNodes];
+  return [...layoutedClassNodes, ...groupedClassNodes, ...groupNodes];
 }
 
 /**
@@ -92,7 +93,7 @@ export function layoutPreviewNodes(
   const layouted = getLayoutedNodes(nodes, edges, direction);
   const map = new Map<string, { x: number; y: number }>();
   for (const node of layouted) {
-    if (node.type === 'class' && node.position) {
+    if (node.type === 'class' && !node.parentId && node.position) {
       map.set(node.id, { x: node.position.x, y: node.position.y });
     }
   }
