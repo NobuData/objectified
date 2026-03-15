@@ -47,6 +47,11 @@ jest.mock('@/app/dashboard/components/PaneContextMenuRegistration', () => ({
   default: () => null,
 }));
 
+jest.mock('@/app/dashboard/components/CanvasExportRegistration', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
 function renderWithProviders(ui: React.ReactElement) {
   return render(<DialogProvider>{ui}</DialogProvider>);
 }

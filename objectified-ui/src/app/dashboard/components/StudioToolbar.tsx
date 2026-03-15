@@ -20,6 +20,7 @@ import {
   Settings2,
   Group,
   Network,
+  FileDown,
 } from 'lucide-react';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
@@ -33,6 +34,7 @@ import CanvasSettingsDialog from '@/app/dashboard/components/CanvasSettingsDialo
 import MergeDialog from '@/app/dashboard/components/MergeDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
+import ExportDialog from '@/app/dashboard/components/ExportDialog';
 
 const btnBase =
   'p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
@@ -57,6 +59,7 @@ export default function StudioToolbar() {
   const [mergeSourceVersionId, setMergeSourceVersionId] = useState<string | null>(null);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [canvasSettingsDialogOpen, setCanvasSettingsDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
@@ -406,6 +409,15 @@ export default function StudioToolbar() {
         <Settings2 className="h-4 w-4" />
         Canvas
       </button>
+      <button
+        type="button"
+        onClick={() => setExportDialogOpen(true)}
+        className={btnBase}
+        aria-label="Export canvas"
+        title="Export canvas as image (PNG, SVG, JPEG, PDF) or data (Mermaid, PlantUML, DOT, GraphML, JSON)"
+      >
+        <FileDown className="h-4 w-4" />
+      </button>
 
       {showGitToolbar && (
         <>
@@ -467,6 +479,10 @@ export default function StudioToolbar() {
       <CanvasSettingsDialog
         open={canvasSettingsDialogOpen}
         onOpenChange={setCanvasSettingsDialogOpen}
+      />
+      <ExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
       />
     </div>
   );

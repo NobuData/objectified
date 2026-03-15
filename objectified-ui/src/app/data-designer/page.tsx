@@ -14,6 +14,7 @@ import { CanvasGroupProvider } from '@/app/contexts/CanvasGroupContext';
 import { CanvasLayoutProvider } from '@/app/contexts/CanvasLayoutContext';
 import { CanvasSearchProvider } from '@/app/contexts/CanvasSearchContext';
 import { CanvasFocusModeProvider } from '@/app/contexts/CanvasFocusModeContext';
+import { CanvasExportProvider } from '@/app/contexts/CanvasExportContext';
 import { EditClassRequestProvider } from '@/app/contexts/EditClassRequestContext';
 import CanvasSearchBar from '@/app/dashboard/components/CanvasSearchBar';
 
@@ -22,35 +23,37 @@ export default function DataDesignerPage() {
     <WorkspaceProvider>
       <StudioProvider>
         <CanvasSettingsProvider>
-          <CanvasGroupProvider>
-            <CanvasLayoutProvider>
-              <CanvasSearchProvider>
-                <CanvasFocusModeProvider>
-                  <EditClassRequestProvider>
-                    <StudioVersionSync />
-                    <StudioUrlLoader />
+          <CanvasExportProvider>
+            <CanvasGroupProvider>
+              <CanvasLayoutProvider>
+                <CanvasSearchProvider>
+                  <CanvasFocusModeProvider>
+                    <EditClassRequestProvider>
+                      <StudioVersionSync />
+                      <StudioUrlLoader />
 
-                    <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-                      <TopHeader />
-                      <div className="flex items-center justify-between shrink-0">
-                        <ProjectVersionBar />
-                        <StudioToolbar />
+                      <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+                        <TopHeader />
+                        <div className="flex items-center justify-between shrink-0">
+                          <ProjectVersionBar />
+                          <StudioToolbar />
+                        </div>
+                        <div className="flex flex-1 min-h-0 overflow-hidden">
+                          <DesignCanvasSidebar />
+                          <main className="flex-1 min-w-0 min-h-0 relative flex flex-col">
+                            <CanvasSearchBar />
+                            <div className="flex-1 min-h-0">
+                              <DesignCanvas />
+                            </div>
+                          </main>
+                        </div>
                       </div>
-                      <div className="flex flex-1 min-h-0 overflow-hidden">
-                        <DesignCanvasSidebar />
-                        <main className="flex-1 min-w-0 min-h-0 relative flex flex-col">
-                          <CanvasSearchBar />
-                          <div className="flex-1 min-h-0">
-                            <DesignCanvas />
-                          </div>
-                        </main>
-                      </div>
-                    </div>
-                  </EditClassRequestProvider>
-                </CanvasFocusModeProvider>
-              </CanvasSearchProvider>
-            </CanvasLayoutProvider>
-          </CanvasGroupProvider>
+                    </EditClassRequestProvider>
+                  </CanvasFocusModeProvider>
+                </CanvasSearchProvider>
+              </CanvasLayoutProvider>
+            </CanvasGroupProvider>
+          </CanvasExportProvider>
         </CanvasSettingsProvider>
       </StudioProvider>
     </WorkspaceProvider>
