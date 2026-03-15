@@ -32,6 +32,7 @@ import { getCanvasSettings } from '@lib/studio/canvasSettings';
 import {
   getVisibleClassIds,
   getVisibleGroupIds,
+  isSearchActive,
 } from '@lib/studio/canvasSearch';
 import { getStableClassId } from '@lib/studio/types';
 import type { StudioGroup } from '@lib/studio/types';
@@ -333,20 +334,22 @@ export default function DesignCanvas() {
 
   const filteredNodes = useMemo(() => {
     if (visibleClassIds === null && visibleGroupIds === null) return baseNodes;
+    if (searchState && !isSearchActive(searchState)) return baseNodes;
     const visibleC = visibleClassIds ?? new Set<string>();
     const visibleG = visibleGroupIds ?? new Set<string>();
     return baseNodes.filter((node: Node) => {
       if (node.type === 'group') return visibleG.has(node.id);
       return visibleC.has(node.id);
     });
-  }, [baseNodes, visibleClassIds, visibleGroupIds]);
+  }, [baseNodes, visibleClassIds, visibleGroupIds, searchState]);
 
   const filteredEdges = useMemo(() => {
     if (visibleClassIds === null) return edges;
+    if (searchState && !isSearchActive(searchState)) return edges;
     return edges.filter(
       (e) => visibleClassIds.has(e.source) && visibleClassIds.has(e.target)
     );
-  }, [edges, visibleClassIds]);
+  }, [edges, visibleClassIds, searchState]);
 
   const displayNodes = useMemo(() => {
     const allStoredConfigs = versionId ? getAllClassNodeConfigs(versionId) : {};
