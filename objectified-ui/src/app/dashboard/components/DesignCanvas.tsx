@@ -752,6 +752,15 @@ export default function DesignCanvas() {
       ) {
         return;
       }
+      // Scope deletion hotkey to the React Flow canvas container to avoid
+      // deleting classes while interacting with other UI elements.
+      if (!target) {
+        return;
+      }
+      const isInsideReactFlow = !!target.closest('.react-flow');
+      if (!isInsideReactFlow) {
+        return;
+      }
       if (selectedClassNodeIds.length === 0) return;
       e.preventDefault();
       void handleDeleteClassesFromCanvas(selectedClassNodeIds);
