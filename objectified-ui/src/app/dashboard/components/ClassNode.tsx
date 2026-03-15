@@ -99,7 +99,8 @@ function ClassNodeComponent({
       />
       <div
         className={[
-          'rounded-lg border-2 shadow-md min-w-[180px] max-w-[280px] overflow-hidden',
+          'rounded-lg border-2 shadow-md min-w-[180px]',
+          allowResize ? 'w-full h-full overflow-auto' : 'max-w-[280px] overflow-hidden',
           !theme?.backgroundColor && 'bg-white dark:bg-slate-900',
           !theme?.border &&
             'border-slate-200 dark:border-slate-700',
