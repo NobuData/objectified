@@ -111,4 +111,53 @@ describe('cloneClassesForPaste', () => {
       $ref: '#/components/schemas/ExternalClass',
     });
   });
+
+  it('preserves #/$defs/ prefix when remapping $ref in property data', () => {
+    const clipboard: StudioClass[] = [
+      { localId: 'c1', name: 'Address', properties: [], canvas_metadata: { position: { x: 0, y: 0 } } },
+      {
+        localId: 'c2',
+        name: 'Person',
+        properties: [
+          {
+            name: 'home',
+            data: { $ref: '#/$defs/Address' },
+          },
+        ],
+        canvas_metadata: { position: { x: 100, y: 0 } },
+      },
+    ];
+    const result = cloneClassesForPaste(clipboard, ['Address'], PASTE_OFFSET);
+    expect(result).toHaveLength(2);
+    const personCopy = result.find((c) => c.name === 'Person');
+    expect(personCopy).toBeDefined();
+    // The $defs prefix must be preserved, not rewritten to #/components/schemas/
+    expect(personCopy!.properties[0].data).toEqual({
+      $ref: '#/$defs/Address (copy)',
+    });
+  });
+
+  it('preserves #/components/schemas/ prefix when remapping $ref in property data', () => {
+    const clipboard: StudioClass[] = [
+      { localId: 'c1', name: 'Item', properties: [], canvas_metadata: { position: { x: 0, y: 0 } } },
+      {
+        localId: 'c2',
+        name: 'Cart',
+        properties: [
+          {
+            name: 'product',
+            data: { $ref: '#/components/schemas/Item' },
+          },
+        ],
+        canvas_metadata: { position: { x: 100, y: 0 } },
+      },
+    ];
+    const result = cloneClassesForPaste(clipboard, ['Item'], PASTE_OFFSET);
+    expect(result).toHaveLength(2);
+    const cartCopy = result.find((c) => c.name === 'Cart');
+    expect(cartCopy).toBeDefined();
+    expect(cartCopy!.properties[0].data).toEqual({
+      $ref: '#/components/schemas/Item (copy)',
+    });
+  });
 });

@@ -788,11 +788,15 @@ export default function DesignCanvas() {
       for (const c of newClasses) draft.classes.push(c);
     });
     if (versionId) {
-      const allPositions = (studio.state?.classes ?? []).map((c) => ({
+      const existingPositions = classes.map((c) => ({
         classId: getStableClassId(c),
         position: c.canvas_metadata?.position ?? defaultPosition,
       }));
-      saveDefaultCanvasLayout(versionId, allPositions);
+      const newPositions = newClasses.map((c) => ({
+        classId: getStableClassId(c),
+        position: c.canvas_metadata?.position ?? defaultPosition,
+      }));
+      saveDefaultCanvasLayout(versionId, [...existingPositions, ...newPositions]);
     }
     setNodeContextMenu(null);
   }, [canvasClipboard, studio, isReadOnly, classes, versionId]);
@@ -815,11 +819,15 @@ export default function DesignCanvas() {
         for (const c of newClasses) draft.classes.push(c);
       });
       if (versionId) {
-        const allPositions = (studio.state?.classes ?? []).map((c) => ({
+        const existingPositions = classes.map((c) => ({
           classId: getStableClassId(c),
           position: c.canvas_metadata?.position ?? defaultPosition,
         }));
-        saveDefaultCanvasLayout(versionId, allPositions);
+        const newPositions = newClasses.map((c) => ({
+          classId: getStableClassId(c),
+          position: c.canvas_metadata?.position ?? defaultPosition,
+        }));
+        saveDefaultCanvasLayout(versionId, [...existingPositions, ...newPositions]);
       }
       setCanvasClipboard(toCopy);
       setNodeContextMenu(null);
@@ -863,9 +871,9 @@ export default function DesignCanvas() {
   useEffect(() => {
     if (isReadOnly) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isCopy = e.key === 'c' && (e.metaKey || e.ctrlKey);
-      const isPaste = e.key === 'v' && (e.metaKey || e.ctrlKey);
-      const isDuplicate = e.key === 'd' && (e.metaKey || e.ctrlKey);
+      const isCopy = e.key.toLowerCase() === 'c' && (e.metaKey || e.ctrlKey);
+      const isPaste = e.key.toLowerCase() === 'v' && (e.metaKey || e.ctrlKey);
+      const isDuplicate = e.key.toLowerCase() === 'd' && (e.metaKey || e.ctrlKey);
       if (!isCopy && !isPaste && !isDuplicate) return;
       const target = e.target as HTMLElement | null;
       if (
