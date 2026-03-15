@@ -386,8 +386,12 @@ export default function DesignCanvas() {
 
   const focusedGroupIds = useMemo(() => {
     if (!focusedClassIds) return null;
-    return getFocusedGroupIds(groups, focusedClassIds, classToGroup);
-  }, [focusedClassIds, groups, classToGroup]);
+    const ids = getFocusedGroupIds(groups, focusedClassIds, classToGroup);
+    // Always include the focused group itself, even when it has no member classes,
+    // so the group node remains visible rather than the canvas going blank.
+    if (focusState?.focusGroupId) ids.add(focusState.focusGroupId);
+    return ids;
+  }, [focusedClassIds, groups, classToGroup, focusState?.focusGroupId]);
 
   const focusFilteredNodes = useMemo(() => {
     if (!focusedClassIds || !focusedGroupIds) return filteredNodes;
