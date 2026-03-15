@@ -5,6 +5,9 @@
 
 import type { Node, Edge } from '@xyflow/react';
 
+/** ReactFlow augments nodes with positionAbsolute during rendering. */
+type NodeWithAbsolutePosition = Node & { positionAbsolute?: { x: number; y: number } };
+
 const DEFAULT_NODE_WIDTH = 220;
 const DEFAULT_NODE_HEIGHT = 120;
 
@@ -37,7 +40,10 @@ export interface Bounds {
 }
 
 export function getNodeBounds(node: Node): Bounds | null {
-  const pos = node.position;
+  // Prefer positionAbsolute (set by ReactFlow) so that grouped nodes, which
+  // store position relative to their parent, are placed correctly in world-space.
+  const posAbs = (node as NodeWithAbsolutePosition).positionAbsolute;
+  const pos = (posAbs && typeof posAbs.x === 'number' && typeof posAbs.y === 'number') ? posAbs : node.position;
   if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') return null;
   const { width, height } = getNodeDimensions(node);
   const left = pos.x;
