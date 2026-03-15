@@ -53,7 +53,7 @@ export function useCanvasGroupOptional(): CanvasGroupContextValue | null {
 
 export function CanvasGroupProvider({ children }: { children: ReactNode }) {
   const studio = useStudioOptional();
-  const { confirm } = useDialog();
+  const { confirm, alert } = useDialog();
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
   const [paneContextMenuHandler, setPaneContextMenuHandler] = useState<PaneContextMenuHandler | null>(null);
 
@@ -104,9 +104,17 @@ export function CanvasGroupProvider({ children }: { children: ReactNode }) {
     [editGroupId, studio]
   );
 
-  /** Delete group and all classes in it; show confirm first. Returns true if deleted, false if cancelled. */
+  /** Delete group and all classes in it; show confirm first. Returns true if deleted, false if cancelled or read-only. */
   const handleDeleteAllClassesInGroup = useCallback(
     async (groupId: string, groupName: string): Promise<boolean> => {
+      if (studio?.state?.readOnly) {
+        await alert({
+          title: 'Read-only',
+          message: 'Cannot delete groups while viewing a read-only version.',
+          variant: 'warning',
+        });
+        return false;
+      }
       const ok = await confirm({
         title: 'Delete group',
         message: `Delete all classes in group "${groupName}"? This cannot be undone.`,
@@ -121,7 +129,7 @@ export function CanvasGroupProvider({ children }: { children: ReactNode }) {
       if (editGroupId === groupId) setEditGroupId(null);
       return true;
     },
-    [studio, editGroupId, confirm]
+    [studio, editGroupId, confirm, alert]
   );
 
   const handleGroupDeleteFromDialog = useCallback(async (): Promise<boolean> => {
