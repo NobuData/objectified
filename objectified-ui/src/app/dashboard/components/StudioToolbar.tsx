@@ -18,7 +18,9 @@ import {
   GitBranchPlus,
   Eye,
   Settings2,
+  Group,
 } from 'lucide-react';
+import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { getRestClientOptions } from '@lib/api/rest-client';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
@@ -39,6 +41,7 @@ export default function StudioToolbar() {
   const router = useRouter();
   const studio = useStudioOptional();
   const workspace = useWorkspaceOptional();
+  const canvasGroup = useCanvasGroupOptional();
   const { data: session } = useSession();
   const options = useMemo(
     () => getRestClientOptions((session as { accessToken?: string } | null) ?? null),
@@ -370,6 +373,16 @@ export default function StudioToolbar() {
       {showGitToolbar && (
         <div className="h-4 w-px bg-slate-200 dark:bg-slate-600" aria-hidden />
       )}
+      <button
+        type="button"
+        onClick={() => canvasGroup?.createGroupAtPosition({ x: 150, y: 150 })}
+        disabled={!showGitToolbar || isReadOnly}
+        className={btnBase}
+        aria-label="Create group"
+        title="Create a new group on the canvas"
+      >
+        <Group className="h-4 w-4" />
+      </button>
       <button
         type="button"
         onClick={() => setCanvasSettingsDialogOpen(true)}

@@ -40,6 +40,11 @@ export function generateLocalId(): string {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+/** Generate a stable client-side id for a new group (GitHub #83). */
+export function generateGroupId(): string {
+  return `group-${generateLocalId()}`;
+}
+
 /** Return a stable key for a class: server id when present, otherwise client localId. */
 export function getStableClassId(cls: { id?: string; localId?: string }): string {
   return cls.id ?? cls.localId ?? '';
