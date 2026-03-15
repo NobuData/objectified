@@ -56,6 +56,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
         />
       )}
       <div
+        data-nodetype="group"
         className={[
           'w-full h-full rounded-lg border-2 shadow-sm min-w-[120px] min-h-[80px]',
           'bg-slate-50/95 dark:bg-slate-800/95 border-slate-300 dark:border-slate-600',

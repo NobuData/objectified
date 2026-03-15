@@ -2,18 +2,26 @@
 
 /**
  * Registers canvas image export API with CanvasExportContext. Must be rendered inside ReactFlow.
- * Uses html-to-image to capture the flow viewport. Reference: GitHub #92.
+ * Uses html-to-image to capture the flow viewport. Reference: GitHub #92, #93 — export wizard.
  */
 
 import { useCallback, useEffect, useRef } from 'react';
 import { toPng, toSvg, toJpeg } from 'html-to-image';
-import { useCanvasExportOptional } from '@/app/contexts/CanvasExportContext';
+import {
+  useCanvasExportOptional,
+  type ImageExportOptions,
+} from '@/app/contexts/CanvasExportContext';
 
 function downloadDataUrl(dataUrl: string, filename: string): void {
   const a = document.createElement('a');
   a.href = dataUrl;
   a.download = filename;
   a.click();
+}
+
+function buildFilter(includeGroups: boolean): ((node: HTMLElement) => boolean) | undefined {
+  if (includeGroups) return undefined;
+  return (node: HTMLElement) => node.getAttribute?.('data-nodetype') !== 'group';
 }
 
 export default function CanvasExportRegistration() {
@@ -29,14 +37,17 @@ export default function CanvasExportRegistration() {
   useEffect(() => {
     if (!setImageExportApi) return;
 
-    const exportAsPng = async (): Promise<void> => {
+    const exportAsPng = async (options?: ImageExportOptions): Promise<void> => {
       const el = getFlowElement();
       if (!el) return;
+      const bg = options?.backgroundColor ?? 'white';
+      const filter = buildFilter(options?.includeGroups ?? true);
       try {
         const dataUrl = await toPng(el, {
-          backgroundColor: 'white',
+          backgroundColor: bg,
           pixelRatio: 2,
           cacheBust: true,
+          filter,
         });
         downloadDataUrl(dataUrl, 'canvas-export.png');
       } catch (err) {
@@ -44,13 +55,16 @@ export default function CanvasExportRegistration() {
       }
     };
 
-    const exportAsSvg = async (): Promise<void> => {
+    const exportAsSvg = async (options?: ImageExportOptions): Promise<void> => {
       const el = getFlowElement();
       if (!el) return;
+      const bg = options?.backgroundColor ?? 'white';
+      const filter = buildFilter(options?.includeGroups ?? true);
       try {
         const dataUrl = await toSvg(el, {
-          backgroundColor: 'white',
+          backgroundColor: bg,
           cacheBust: true,
+          filter,
         });
         downloadDataUrl(dataUrl, 'canvas-export.svg');
       } catch (err) {
@@ -58,15 +72,18 @@ export default function CanvasExportRegistration() {
       }
     };
 
-    const exportAsJpeg = async (): Promise<void> => {
+    const exportAsJpeg = async (options?: ImageExportOptions): Promise<void> => {
       const el = getFlowElement();
       if (!el) return;
+      const bg = options?.backgroundColor ?? 'white';
+      const filter = buildFilter(options?.includeGroups ?? true);
       try {
         const dataUrl = await toJpeg(el, {
-          backgroundColor: 'white',
+          backgroundColor: bg,
           quality: 0.95,
           pixelRatio: 2,
           cacheBust: true,
+          filter,
         });
         downloadDataUrl(dataUrl, 'canvas-export.jpg');
       } catch (err) {
@@ -74,14 +91,17 @@ export default function CanvasExportRegistration() {
       }
     };
 
-    const exportAsPdf = async (): Promise<void> => {
+    const exportAsPdf = async (options?: ImageExportOptions): Promise<void> => {
       const el = getFlowElement();
       if (!el) return;
+      const bg = options?.backgroundColor ?? 'white';
+      const filter = buildFilter(options?.includeGroups ?? true);
       try {
         const dataUrl = await toPng(el, {
-          backgroundColor: 'white',
+          backgroundColor: bg,
           pixelRatio: 2,
           cacheBust: true,
+          filter,
         });
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
@@ -92,7 +112,7 @@ export default function CanvasExportRegistration() {
           <!DOCTYPE html>
           <html>
             <head><title>Canvas Export</title></head>
-            <body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;">
+            <body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:${bg};">
               <img src="${dataUrl}" alt="Canvas export" style="max-width:100%;height:auto;" />
             </body>
           </html>
