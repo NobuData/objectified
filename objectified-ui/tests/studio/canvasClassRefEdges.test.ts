@@ -2,7 +2,7 @@
  * Unit tests for class ref edge building (GitHub #81).
  */
 
-import { buildClassRefEdges } from '@lib/studio/canvasClassRefEdges';
+import { buildClassRefEdges, parseClassNameFromRef } from '@lib/studio/canvasClassRefEdges';
 import type { StudioClass } from '@lib/studio/types';
 
 describe('buildClassRefEdges', () => {
@@ -279,5 +279,35 @@ describe('buildClassRefEdges', () => {
     expect(direct?.markerStart).toBeUndefined();
     expect(bidir?.markerEnd).toBeDefined();
     expect(bidir?.markerStart).toBeDefined();
+  });
+});
+
+describe('parseClassNameFromRef', () => {
+  it('returns class name for #/components/schemas/ refs', () => {
+    expect(parseClassNameFromRef('#/components/schemas/User')).toBe('User');
+    expect(parseClassNameFromRef('#/components/schemas/OrderItem')).toBe('OrderItem');
+  });
+
+  it('returns class name for #/$defs/ refs', () => {
+    expect(parseClassNameFromRef('#/$defs/Product')).toBe('Product');
+  });
+
+  it('returns undefined for non-standard ref formats (no fallback)', () => {
+    expect(parseClassNameFromRef('https://example.com/schemas/User')).toBeUndefined();
+    expect(parseClassNameFromRef('SomeName')).toBeUndefined();
+    expect(parseClassNameFromRef('path/to/SomeName')).toBeUndefined();
+  });
+
+  it('returns undefined for empty or non-string values', () => {
+    expect(parseClassNameFromRef('')).toBeUndefined();
+    expect(parseClassNameFromRef('   ')).toBeUndefined();
+    // @ts-expect-error testing invalid input
+    expect(parseClassNameFromRef(null)).toBeUndefined();
+    // @ts-expect-error testing invalid input
+    expect(parseClassNameFromRef(undefined)).toBeUndefined();
+  });
+
+  it('trims whitespace from parsed class name', () => {
+    expect(parseClassNameFromRef('#/components/schemas/  MyClass  ')).toBe('MyClass');
   });
 });

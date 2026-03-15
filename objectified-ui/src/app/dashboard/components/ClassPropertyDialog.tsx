@@ -40,7 +40,7 @@ interface ClassPropertyDialogProps {
 }
 
 /** Sentinel value for "no property linked" in the Radix Select (empty string not allowed). */
-const NO_PROPERTY_VALUE = '__none__';
+const NO_PROPERTY_VALUE = '__no_property__';
 
 /**
  * Dialog for adding or editing a class-property.
@@ -55,7 +55,7 @@ interface FormState {
   error: string;
 }
 
-const NO_REFERENCE_VALUE = '__none__';
+const NO_REFERENCE_VALUE = '__no_reference__';
 
 const REF_TYPE_LABELS: Record<ClassRefType, string> = {
   direct: 'Direct',
