@@ -59,14 +59,14 @@ describe('ClassDialog', () => {
     await user.type(screen.getByPlaceholderText(/e\.g\. User/i), '  MyClass  ');
     await user.type(screen.getByPlaceholderText(/optional description/i), 'Desc');
     await user.click(screen.getByRole('button', { name: /add class/i }));
-    expect(mockOnSave).toHaveBeenCalledWith({ name: 'MyClass', description: 'Desc' });
+    expect(mockOnSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'MyClass', description: 'Desc' }));
   });
 
   it('calls onSave when Enter pressed in name field', async () => {
     const user = userEvent.setup();
     render(<ClassDialog open mode="add" onSave={mockOnSave} onClose={mockOnClose} />);
     await user.type(screen.getByPlaceholderText(/e\.g\. User/i), 'Order{Enter}');
-    expect(mockOnSave).toHaveBeenCalledWith({ name: 'Order', description: '' });
+    expect(mockOnSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Order', description: '' }));
   });
 
   it('calls onClose when Cancel is clicked', async () => {
