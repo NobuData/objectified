@@ -56,7 +56,7 @@ import {
   type ClassNodeConfig,
 } from '@lib/studio/canvasClassNodeConfig';
 import { buildClassRefEdges } from '@lib/studio/canvasClassRefEdges';
-import { getLayoutQuality } from '@lib/studio/layoutQuality';
+import { getLayoutQuality, type LayoutQualityResult } from '@lib/studio/layoutQuality';
 import ClassNode from './ClassNode';
 import ClassRefEdge from './ClassRefEdge';
 import GroupNode from './GroupNode';
@@ -455,9 +455,18 @@ export default function DesignCanvas() {
     });
   }, [focusFilteredNodes, versionId, configOverrides, onConfigChange, isReadOnly, canvasGroup]);
 
-  const layoutQuality = useMemo(() => {
-    if (!canvasSettings.showLayoutHints) return null;
-    return getLayoutQuality(displayNodes, focusFilteredEdges);
+  // Debounce layout quality computation to avoid running an O(E²+N²) algorithm
+  // on every node/edge change (e.g., during drag/resize).
+  const [layoutQuality, setLayoutQuality] = useState<LayoutQualityResult | null>(null);
+  useEffect(() => {
+    if (!canvasSettings.showLayoutHints) {
+      setLayoutQuality(null);
+      return;
+    }
+    const id = setTimeout(() => {
+      setLayoutQuality(getLayoutQuality(displayNodes, focusFilteredEdges));
+    }, 300);
+    return () => clearTimeout(id);
   }, [canvasSettings.showLayoutHints, displayNodes, focusFilteredEdges]);
 
   // Update controlled viewport state on every change (needed to keep ReactFlow in sync).

@@ -70,12 +70,14 @@ describe('countEdgeCrossings', () => {
   });
 
   it('returns 0 when two edges do not cross', () => {
-    // a above b, c left of d — edges a-b and c-d don't cross
+    // Explicitly set 100x50 dimensions to make the geometry unambiguous.
+    // a-b: vertical (centers at (50,25) → (50,225))
+    // c-d: vertical (centers at (250,25) → (250,225)) — parallel, never cross
     const nodes: Node[] = [
-      node('a', { x: 0, y: 0 }),
-      node('b', { x: 0, y: 150 }),
-      node('c', { x: 0, y: 75 }),
-      node('d', { x: 200, y: 75 }),
+      node('a', { x: 0, y: 0 }, 'class', undefined, { width: 100, height: 50 }),
+      node('b', { x: 0, y: 200 }, 'class', undefined, { width: 100, height: 50 }),
+      node('c', { x: 200, y: 0 }, 'class', undefined, { width: 100, height: 50 }),
+      node('d', { x: 200, y: 200 }, 'class', undefined, { width: 100, height: 50 }),
     ];
     const edges: Edge[] = [edge('a', 'b'), edge('c', 'd')];
     expect(countEdgeCrossings(nodes, edges)).toBe(0);
@@ -103,13 +105,17 @@ describe('countEdgeCrossings', () => {
     expect(countEdgeCrossings(nodes, edges)).toBe(0);
   });
 
-  it('ignores group nodes', () => {
+  it('ignores group nodes in edge crossing detection', () => {
+    // Edge c-g would geometrically cross edge a-b, but g is a group node
+    // and should be excluded from the nodeMap so the edge is filtered out.
     const nodes: Node[] = [
-      node('a', { x: 0, y: 0 }),
-      node('b', { x: 100, y: 100 }),
-      node('g', { x: 50, y: 50 }, 'group'),
+      node('a', { x: 50, y: 0 }, 'class', undefined, { width: 20, height: 20 }),
+      node('b', { x: 50, y: 100 }, 'class', undefined, { width: 20, height: 20 }),
+      node('c', { x: 0, y: 50 }, 'class', undefined, { width: 20, height: 20 }),
+      node('g', { x: 100, y: 50 }, 'group'),
     ];
-    const edges: Edge[] = [edge('a', 'b')];
+    // c-g would cross a-b if g were treated as a class node, but it is a group
+    const edges: Edge[] = [edge('a', 'b'), edge('c', 'g')];
     expect(countEdgeCrossings(nodes, edges)).toBe(0);
   });
 });
