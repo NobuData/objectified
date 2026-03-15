@@ -46,7 +46,7 @@ export default function DependencyOverlay({
     >
       <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
         <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span>Dependencies</span>
+        <span>{selectedNodeName ? selectedNodeName : 'Dependencies'}</span>
       </div>
       {hasSelection ? (
         <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
@@ -73,8 +73,7 @@ export default function DependencyOverlay({
         <div className="flex items-start gap-1.5 mt-0.5 p-1.5 rounded border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
           <span>
-            Circular reference: {circularEdgeCount} edge{circularEdgeCount !== 1 ? 's' : ''} in cycle
-            {circularEdgeCount !== 1 ? 's' : ''}.
+            Circular reference: {circularEdgeCount} edge{circularEdgeCount !== 1 ? 's' : ''} participating in a cycle.
           </span>
         </div>
       )}

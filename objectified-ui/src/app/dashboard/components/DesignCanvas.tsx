@@ -497,42 +497,47 @@ export default function DesignCanvas() {
   const selectedNodeId = selectedClassNodeIds[0] ?? null;
   const selectedNodeId2 = selectedClassNodeIds[1] ?? null;
   const circularEdgeIds = useMemo(
-    () => getCircularDependencyEdgeIds(dependencyEdges),
-    [dependencyEdges]
+    () =>
+      canvasSettings.showDependencyOverlay
+        ? getCircularDependencyEdgeIds(dependencyEdges)
+        : new Set<string>(),
+    [dependencyEdges, canvasSettings.showDependencyOverlay]
   );
   const upstreamCount = useMemo(
     () =>
-      selectedNodeId !== null
+      canvasSettings.showDependencyOverlay && selectedNodeId !== null
         ? getUpstreamNodeIds(dependencyEdges, selectedNodeId).size
         : 0,
-    [dependencyEdges, selectedNodeId]
+    [dependencyEdges, selectedNodeId, canvasSettings.showDependencyOverlay]
   );
   const downstreamCount = useMemo(
     () =>
-      selectedNodeId !== null
+      canvasSettings.showDependencyOverlay && selectedNodeId !== null
         ? getDownstreamNodeIds(dependencyEdges, selectedNodeId).size
         : 0,
-    [dependencyEdges, selectedNodeId]
+    [dependencyEdges, selectedNodeId, canvasSettings.showDependencyOverlay]
   );
   const pathFromSelectedToSecond = useMemo(
     () =>
-      selectedNodeId !== null && selectedNodeId2 !== null
+      canvasSettings.showDependencyOverlay &&
+      selectedNodeId !== null &&
+      selectedNodeId2 !== null
         ? getPathNodeIds(dependencyEdges, selectedNodeId, selectedNodeId2)
         : null,
-    [dependencyEdges, selectedNodeId, selectedNodeId2]
+    [dependencyEdges, selectedNodeId, selectedNodeId2, canvasSettings.showDependencyOverlay]
   );
   const pathLength =
     pathFromSelectedToSecond !== null ? pathFromSelectedToSecond.length - 1 : null;
   const selectedNodeName = useMemo(() => {
-    if (!selectedNodeId) return undefined;
+    if (!canvasSettings.showDependencyOverlay || !selectedNodeId) return undefined;
     const cls = classes.find((c) => getStableClassId(c) === selectedNodeId);
     return cls?.name;
-  }, [classes, selectedNodeId]);
+  }, [classes, selectedNodeId, canvasSettings.showDependencyOverlay]);
   const selectedNodeName2 = useMemo(() => {
-    if (!selectedNodeId2) return undefined;
+    if (!canvasSettings.showDependencyOverlay || !selectedNodeId2) return undefined;
     const cls = classes.find((c) => getStableClassId(c) === selectedNodeId2);
     return cls?.name;
-  }, [classes, selectedNodeId2]);
+  }, [classes, selectedNodeId2, canvasSettings.showDependencyOverlay]);
 
   // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
   const onViewportChange = useCallback(

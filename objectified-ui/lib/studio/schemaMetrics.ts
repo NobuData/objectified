@@ -25,42 +25,41 @@ export function getCircularDependencyEdgeIds(
 
   const visited = new Set<string>();
   const inStack = new Set<string>();
-  /** Current DFS path: index 0 = root, last = current. Each entry is the edge we used to get there. */
-  const pathEdges: string[] = [];
-  /** Map from node id to its index in the current path (for cycle recovery). */
-  const pathIndex = new Map<string, number>();
+  /** Current DFS path as a stack of node ids (index 0 = root, last = current). */
+  const nodeStack: string[] = [];
+  /** Index of each node in the current nodeStack. */
+  const nodeStackIdx = new Map<string, number>();
+  /** Edge id used to first enter each node currently in the DFS stack. */
+  const parentEdge = new Map<string, string>();
 
   function visit(nodeId: string, incomingEdgeId: string | null): void {
     if (inStack.has(nodeId)) {
+      // Back-edge found: mark the back-edge and all edges on the cycle path.
+      // The cycle runs from nodeId (in the stack) up to the current top, plus this back-edge.
       if (incomingEdgeId) circularIds.add(incomingEdgeId);
-      const idx = pathIndex.get(nodeId);
-      const startIdx = idx !== undefined && idx >= 0 ? idx : 0;
-      for (let i = startIdx; i < pathEdges.length; i++) {
-        circularIds.add(pathEdges[i]);
+      const cycleStartIdx = nodeStackIdx.get(nodeId) ?? 0;
+      for (let i = cycleStartIdx + 1; i < nodeStack.length; i++) {
+        const edgeId = parentEdge.get(nodeStack[i]);
+        if (edgeId) circularIds.add(edgeId);
       }
       return;
     }
     if (visited.has(nodeId)) return;
     visited.add(nodeId);
     inStack.add(nodeId);
-    const pathLen = pathEdges.length;
-    if (incomingEdgeId) {
-      pathEdges.push(incomingEdgeId);
-      pathIndex.set(nodeId, pathEdges.length - 1);
-    }
+    nodeStackIdx.set(nodeId, nodeStack.length);
+    nodeStack.push(nodeId);
+    if (incomingEdgeId) parentEdge.set(nodeId, incomingEdgeId);
 
     const nexts = outEdges.get(nodeId) ?? [];
     for (const e of nexts) {
-      pathEdges.push(e.id);
       visit(e.target, e.id);
-      pathEdges.pop();
     }
 
+    nodeStack.pop();
+    nodeStackIdx.delete(nodeId);
+    parentEdge.delete(nodeId);
     inStack.delete(nodeId);
-    if (incomingEdgeId && pathEdges.length > pathLen) {
-      pathEdges.pop();
-      pathIndex.delete(nodeId);
-    }
   }
 
   const allNodes = new Set<string>();
@@ -91,8 +90,9 @@ export function getUpstreamNodeIds(
   const result = new Set<string>();
   const queue: string[] = [nodeId];
   const seen = new Set<string>([nodeId]);
-  while (queue.length > 0) {
-    const u = queue.shift()!;
+  let qi = 0;
+  while (qi < queue.length) {
+    const u = queue[qi++];
     const inNeighbors = revAdj.get(u);
     if (!inNeighbors) continue;
     for (const v of inNeighbors) {
@@ -121,8 +121,9 @@ export function getDownstreamNodeIds(
   const result = new Set<string>();
   const queue: string[] = [nodeId];
   const seen = new Set<string>([nodeId]);
-  while (queue.length > 0) {
-    const u = queue.shift()!;
+  let qi = 0;
+  while (qi < queue.length) {
+    const u = queue[qi++];
     const outNeighbors = adj.get(u);
     if (!outNeighbors) continue;
     for (const v of outNeighbors) {
@@ -151,8 +152,9 @@ export function getPathNodeIds(
   const prev = new Map<string, { nodeId: string; edgeId: string }>();
   const queue: string[] = [fromId];
   const seen = new Set<string>([fromId]);
-  while (queue.length > 0) {
-    const u = queue.shift()!;
+  let qi = 0;
+  while (qi < queue.length) {
+    const u = queue[qi++];
     if (u === toId) {
       const path: string[] = [];
       let cur: string | undefined = toId;
