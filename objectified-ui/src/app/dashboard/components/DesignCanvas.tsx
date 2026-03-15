@@ -608,6 +608,8 @@ export default function DesignCanvas() {
       }
       studio.applyChange((draft) => {
         for (const c of draft.classes) {
+          // Skip grouped classes — their positions are stored relative to the parent group
+          if ((c.canvas_metadata as { group?: string } | undefined)?.group) continue;
           const id = getStableClassId(c);
           const pos = positionMap.get(id);
           if (pos) {
@@ -618,18 +620,21 @@ export default function DesignCanvas() {
           }
         }
       });
-      const allPositions = classes.map((c) => {
-        const id = getStableClassId(c);
-        const pos =
-          positionMap.get(id) ??
-          c.canvas_metadata?.position ??
-          defaultPosition;
-        return { classId: id, position: pos };
-      });
+      const allPositions = classes
+        .filter((c) => !(c.canvas_metadata as { group?: string } | undefined)?.group)
+        .map((c) => {
+          const id = getStableClassId(c);
+          const pos =
+            positionMap.get(id) ??
+            c.canvas_metadata?.position ??
+            defaultPosition;
+          return { classId: id, position: pos };
+        });
       saveDefaultCanvasLayout(versionId, allPositions);
+      const layoutedMap = new Map(layoutedNodes.map((l) => [l.id, l]));
       setNodes((current) =>
         current.map((n) => {
-          const updated = layoutedNodes.find((l) => l.id === n.id);
+          const updated = layoutedMap.get(n.id);
           return updated ? { ...n, position: updated.position } : n;
         })
       );

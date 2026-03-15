@@ -23,34 +23,33 @@ export default function DataDesignerPage() {
       <StudioProvider>
         <CanvasSettingsProvider>
           <CanvasGroupProvider>
-          <CanvasLayoutProvider>
-          <CanvasSearchProvider>
-          <CanvasFocusModeProvider>
-          <EditClassRequestProvider>
-          <StudioVersionSync />
-          <StudioUrlLoader />
+            <CanvasLayoutProvider>
+              <CanvasSearchProvider>
+                <CanvasFocusModeProvider>
+                  <EditClassRequestProvider>
+                    <StudioVersionSync />
+                    <StudioUrlLoader />
 
-          <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-            <TopHeader />
-            <div className="flex items-center justify-between shrink-0">
-              <ProjectVersionBar />
-              <StudioToolbar />
-            </div>
-            <div className="flex flex-1 min-h-0 overflow-hidden">
-              <DesignCanvasSidebar />
-              <main className="flex-1 min-w-0 min-h-0 relative flex flex-col">
-                <CanvasSearchBar />
-                <div className="flex-1 min-h-0">
-                  <DesignCanvas />
-                </div>
-              </main>
-            </div>
-          </div>
-
-          </EditClassRequestProvider>
-          </CanvasFocusModeProvider>
-          </CanvasSearchProvider>
-          </CanvasLayoutProvider>
+                    <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+                      <TopHeader />
+                      <div className="flex items-center justify-between shrink-0">
+                        <ProjectVersionBar />
+                        <StudioToolbar />
+                      </div>
+                      <div className="flex flex-1 min-h-0 overflow-hidden">
+                        <DesignCanvasSidebar />
+                        <main className="flex-1 min-w-0 min-h-0 relative flex flex-col">
+                          <CanvasSearchBar />
+                          <div className="flex-1 min-h-0">
+                            <DesignCanvas />
+                          </div>
+                        </main>
+                      </div>
+                    </div>
+                  </EditClassRequestProvider>
+                </CanvasFocusModeProvider>
+              </CanvasSearchProvider>
+            </CanvasLayoutProvider>
           </CanvasGroupProvider>
         </CanvasSettingsProvider>
       </StudioProvider>
