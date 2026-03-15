@@ -23,14 +23,19 @@ describe('ClassPropertyDialog', () => {
   const mockOnSave = jest.fn();
   const mockOnClose = jest.fn();
 
+  const defaultProps = {
+    availableClassNamesForRef: [] as string[],
+    onSave: mockOnSave,
+    onClose: mockOnClose,
+  };
+
   it('renders nothing when closed', () => {
     render(
       <ClassPropertyDialog
         open={false}
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -42,8 +47,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.getByText('Add Property to Class')).toBeInTheDocument();
@@ -56,8 +60,7 @@ describe('ClassPropertyDialog', () => {
         mode="edit"
         availableProperties={[]}
         initial={{ name: 'email', description: '' }}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.getByText('Edit Class Property')).toBeInTheDocument();
@@ -70,8 +73,7 @@ describe('ClassPropertyDialog', () => {
         mode="edit"
         availableProperties={[]}
         initial={{ name: 'myProp', description: 'My prop desc' }}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.getByDisplayValue('myProp')).toBeInTheDocument();
@@ -85,8 +87,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     await user.click(screen.getByRole('button', { name: /add property/i }));
@@ -101,8 +102,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), '  myField  ');
@@ -112,6 +112,8 @@ describe('ClassPropertyDialog', () => {
       name: 'myField',
       description: 'A field',
       propertyId: undefined,
+      referenceClass: undefined,
+      refType: undefined,
     });
   });
 
@@ -122,8 +124,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     await user.click(screen.getByRole('button', { name: /cancel/i }));
@@ -136,8 +137,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={mockProperties}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.getByText('Link to Project Property')).toBeInTheDocument();
@@ -149,8 +149,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.queryByText('Link to Project Property')).toBeNull();

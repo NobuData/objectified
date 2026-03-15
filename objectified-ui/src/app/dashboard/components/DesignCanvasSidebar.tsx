@@ -34,7 +34,14 @@ import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useEditClassRequestOptional } from '@/app/contexts/EditClassRequestContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import ClassDialog, { type ClassFormData } from './ClassDialog';
-import ClassPropertyDialog from './ClassPropertyDialog';
+import ClassPropertyDialog, {
+  type ClassPropertySaveData,
+} from './ClassPropertyDialog';
+import {
+  refForClassName,
+  parseClassNameFromRef,
+  getRefTypeFromData,
+} from '@lib/studio/canvasClassRefEdges';
 
 // ─── Project-level property list (read-only, search-only) ────────────────────
 
@@ -120,14 +127,11 @@ interface ClassListPanelProps {
   onUpdateClass: (classId: string, data: ClassFormData) => void;
   onDeleteClass: (cls: StudioClass) => void;
   onReorderClass: (classId: string, direction: 'up' | 'down') => void;
-  onAddClassProperty: (
-    classId: string,
-    data: { name: string; description: string; propertyId?: string }
-  ) => void;
+  onAddClassProperty: (classId: string, data: ClassPropertySaveData) => void;
   onUpdateClassProperty: (
     classId: string,
     propIndex: number,
-    data: { name: string; description: string }
+    data: ClassPropertySaveData
   ) => void;
   onRemoveClassProperty: (classId: string, propName: string, propIndex: number) => void;
   onReorderClassProperty: (classId: string, propIndex: number, direction: 'up' | 'down') => void;
@@ -219,17 +223,39 @@ function ClassListPanel({
     setEditingClass(null);
   };
 
-  const handleAddProp = (data: { name: string; description: string; propertyId?: string }) => {
+  const handleAddProp = (data: ClassPropertySaveData) => {
     if (!addPropClassId) return;
     onAddClassProperty(addPropClassId, data);
     setAddPropClassId(null);
   };
 
-  const handleUpdateProp = (data: { name: string; description: string }) => {
+  const handleUpdateProp = (data: ClassPropertySaveData) => {
     if (!editingProp) return;
     onUpdateClassProperty(editingProp.classId, editingProp.propIndex, data);
     setEditingProp(null);
   };
+
+  const availableClassNamesForRefAdd = useMemo(
+    () =>
+      addPropClassId != null
+        ? classes
+            .filter((c) => getStableClassId(c) !== addPropClassId)
+            .map((c) => c.name)
+            .sort()
+        : [],
+    [classes, addPropClassId]
+  );
+
+  const availableClassNamesForRefEdit = useMemo(
+    () =>
+      editingProp != null
+        ? classes
+            .filter((c) => getStableClassId(c) !== editingProp.classId)
+            .map((c) => c.name)
+            .sort()
+        : [],
+    [classes, editingProp]
+  );
 
   // Memoize the initial form values so the ClassDialog useEffect dependency on initial.schema
   // doesn't fire on every render when editingClass hasn't actually changed.
@@ -472,6 +498,7 @@ function ClassListPanel({
         open={addPropClassId !== null}
         mode="add"
         availableProperties={availableProperties}
+        availableClassNamesForRef={availableClassNamesForRefAdd}
         onSave={handleAddProp}
         onClose={() => setAddPropClassId(null)}
       />
@@ -479,13 +506,35 @@ function ClassListPanel({
         open={editingProp !== null}
         mode="edit"
         availableProperties={availableProperties}
+        availableClassNamesForRef={availableClassNamesForRefEdit}
         initial={
           editingProp
-            ? {
-                name: editingProp.prop.name,
-                description: editingProp.prop.description ?? '',
-                propertyId: editingProp.prop.property_id,
-              }
+            ? (() => {
+                const refStr = (editingProp.prop.data ?? editingProp.prop.property_data)
+                  ?.$ref as string | undefined;
+                const parsed =
+                  refStr != null ? parseClassNameFromRef(refStr) : undefined;
+                const referenceClass =
+                  parsed &&
+                  availableClassNamesForRefEdit.some(
+                    (c) => c.toLowerCase() === parsed.toLowerCase()
+                  )
+                    ? availableClassNamesForRefEdit.find(
+                        (c) => c.toLowerCase() === parsed.toLowerCase()
+                      )
+                    : undefined;
+                return {
+                  name: editingProp.prop.name,
+                  description: editingProp.prop.description ?? '',
+                  propertyId: editingProp.prop.property_id,
+                  referenceClass,
+                  refType: getRefTypeFromData(
+                    (editingProp.prop.data ?? editingProp.prop.property_data) as
+                      | Record<string, unknown>
+                      | undefined
+                  ),
+                };
+              })()
             : undefined
         }
         onSave={handleUpdateProp}
@@ -653,13 +702,19 @@ export default function DesignCanvasSidebar() {
   // ─── Class-property mutation handlers ────────────────────────────────────
 
   const handleAddClassProperty = useCallback(
-    (classId: string, data: { name: string; description: string; propertyId?: string }) => {
+    (classId: string, data: ClassPropertySaveData) => {
       const linked = data.propertyId
         ? studioProperties.find((p) => p.id === data.propertyId)
         : null;
       studio?.applyChange((draft) => {
         const idx = draft.classes.findIndex((c) => getStableClassId(c) === classId);
         if (idx >= 0) {
+          const propData = data.referenceClass
+            ? {
+                $ref: refForClassName(data.referenceClass),
+                refType: data.refType ?? 'direct',
+              }
+            : undefined;
           draft.classes[idx].properties.push({
             localId: generateLocalId(),
             name: data.name,
@@ -667,6 +722,7 @@ export default function DesignCanvasSidebar() {
             property_id: data.propertyId,
             property_name: linked?.name,
             property_data: linked?.data,
+            data: propData,
           });
         }
       });
@@ -675,12 +731,25 @@ export default function DesignCanvasSidebar() {
   );
 
   const handleUpdateClassProperty = useCallback(
-    (classId: string, propIndex: number, data: { name: string; description: string }) => {
+    (classId: string, propIndex: number, data: ClassPropertySaveData) => {
       studio?.applyChange((draft) => {
         const classIdx = draft.classes.findIndex((c) => getStableClassId(c) === classId);
-        if (classIdx >= 0 && draft.classes[classIdx].properties[propIndex]) {
-          draft.classes[classIdx].properties[propIndex].name = data.name;
-          draft.classes[classIdx].properties[propIndex].description = data.description;
+        if (classIdx < 0 || !draft.classes[classIdx].properties[propIndex]) return;
+        const prop = draft.classes[classIdx].properties[propIndex];
+        prop.name = data.name;
+        prop.description = data.description;
+        const existingData = (prop.data ?? prop.property_data) as Record<string, unknown> | undefined;
+        if (data.referenceClass?.trim()) {
+          prop.data = {
+            ...(existingData ?? {}),
+            $ref: refForClassName(data.referenceClass),
+            refType: data.refType ?? 'direct',
+          };
+        } else {
+          const next: Record<string, unknown> = { ...(existingData ?? {}) };
+          delete next.$ref;
+          delete next.refType;
+          prop.data = Object.keys(next).length > 0 ? next : undefined;
         }
       });
     },
