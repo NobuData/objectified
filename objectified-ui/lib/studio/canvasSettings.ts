@@ -12,6 +12,8 @@ export interface CanvasSettings {
   showControls: boolean;
   showMiniMap: boolean;
   viewportPersistence: boolean;
+  /** Show optional layout hints (edge crossings, spacing). Reference: GitHub #89. */
+  showLayoutHints: boolean;
 }
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
@@ -19,6 +21,7 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   showControls: true,
   showMiniMap: true,
   viewportPersistence: true,
+  showLayoutHints: false,
 };
 
 interface StoredCanvasSettings {

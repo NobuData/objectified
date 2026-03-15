@@ -56,10 +56,12 @@ import {
   type ClassNodeConfig,
 } from '@lib/studio/canvasClassNodeConfig';
 import { buildClassRefEdges } from '@lib/studio/canvasClassRefEdges';
+import { getLayoutQuality } from '@lib/studio/layoutQuality';
 import ClassNode from './ClassNode';
 import ClassRefEdge from './ClassRefEdge';
 import GroupNode from './GroupNode';
 import LayoutPreviewDialog from './LayoutPreviewDialog';
+import LayoutHintsOverlay from './LayoutHintsOverlay';
 import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 
 const defaultPosition = { x: 0, y: 0 };
@@ -453,6 +455,11 @@ export default function DesignCanvas() {
     });
   }, [focusFilteredNodes, versionId, configOverrides, onConfigChange, isReadOnly, canvasGroup]);
 
+  const layoutQuality = useMemo(() => {
+    if (!canvasSettings.showLayoutHints) return null;
+    return getLayoutQuality(displayNodes, focusFilteredEdges);
+  }, [canvasSettings.showLayoutHints, displayNodes, focusFilteredEdges]);
+
   // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
   const onViewportChange = useCallback(
     (viewport: Viewport) => {
@@ -678,6 +685,9 @@ export default function DesignCanvas() {
         className="bg-slate-50 dark:bg-slate-900/50"
       >
         <PaneContextMenuRegistration />
+        {layoutQuality && (
+          <LayoutHintsOverlay quality={layoutQuality} />
+        )}
         {canvasSettings.showBackground && (
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         )}
