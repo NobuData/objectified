@@ -137,6 +137,70 @@ export function getDownstreamNodeIds(
 }
 
 /**
+ * Returns the maximum path length (number of edges) from the given node following edges forward (downstream).
+ * Uses a visited set per path so cycles do not cause infinite recursion; cycle back-edges contribute 0.
+ */
+export function getMaxDepthFromNode(
+  edges: DependencyEdge[],
+  nodeId: string
+): number {
+  const adj = new Map<string, string[]>();
+  for (const e of edges) {
+    if (!adj.has(e.source)) adj.set(e.source, []);
+    adj.get(e.source)!.push(e.target);
+  }
+  function depth(n: string, path: Set<string>): number {
+    if (path.has(n)) return -1; // back-edge: do not count this edge
+    const nexts = adj.get(n) ?? [];
+    if (nexts.length === 0) return 0;
+    const nextPath = new Set(path).add(n);
+    let max = 0;
+    for (const v of nexts) {
+      const childDepth = depth(v, nextPath);
+      const d = childDepth < 0 ? 0 : 1 + childDepth;
+      if (d > max) max = d;
+    }
+    return max;
+  }
+  return depth(nodeId, new Set());
+}
+
+/**
+ * Returns the maximum dependency depth over all nodes (longest path in the graph).
+ */
+export function getSchemaMaxDepth(edges: DependencyEdge[]): number {
+  const allNodes = new Set<string>();
+  for (const e of edges) {
+    allNodes.add(e.source);
+    allNodes.add(e.target);
+  }
+  if (allNodes.size === 0) return 0;
+  let max = 0;
+  for (const n of allNodes) {
+    const d = getMaxDepthFromNode(edges, n);
+    if (d > max) max = d;
+  }
+  return max;
+}
+
+/**
+ * Returns the set of node ids that are incident to at least one circular dependency edge.
+ */
+export function getNodesInCircularDependency(
+  edges: DependencyEdge[]
+): Set<string> {
+  const circularIds = getCircularDependencyEdgeIds(edges);
+  const nodes = new Set<string>();
+  for (const e of edges) {
+    if (circularIds.has(e.id)) {
+      nodes.add(e.source);
+      nodes.add(e.target);
+    }
+  }
+  return nodes;
+}
+
+/**
  * Returns a shortest path of node ids from fromId to toId, or null if no path exists.
  */
 export function getPathNodeIds(

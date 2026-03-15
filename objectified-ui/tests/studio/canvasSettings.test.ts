@@ -47,6 +47,7 @@ describe('DEFAULT_CANVAS_SETTINGS', () => {
     expect(DEFAULT_CANVAS_SETTINGS.viewportPersistence).toBe(true);
     expect(DEFAULT_CANVAS_SETTINGS.showLayoutHints).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.showDependencyOverlay).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.showSchemaMetricsPanel).toBe(false);
   });
 });
 
@@ -69,6 +70,7 @@ describe('getCanvasSettings', () => {
       viewportPersistence: false,
       showLayoutHints: true,
       showDependencyOverlay: false,
+      showSchemaMetricsPanel: false,
     };
     localStorageMock.setItem('objectified:canvas:settings', JSON.stringify({ settings: stored, savedAt: new Date().toISOString() }));
     const result = getCanvasSettings();
@@ -88,6 +90,7 @@ describe('getCanvasSettings', () => {
     expect(result.viewportPersistence).toBe(DEFAULT_CANVAS_SETTINGS.viewportPersistence);
     expect(result.showLayoutHints).toBe(DEFAULT_CANVAS_SETTINGS.showLayoutHints);
     expect(result.showDependencyOverlay).toBe(DEFAULT_CANVAS_SETTINGS.showDependencyOverlay);
+    expect(result.showSchemaMetricsPanel).toBe(DEFAULT_CANVAS_SETTINGS.showSchemaMetricsPanel);
   });
 
   it('returns defaults when stored value is invalid JSON', () => {
@@ -134,6 +137,7 @@ describe('saveCanvasSettings', () => {
       viewportPersistence: true,
       showLayoutHints: false,
       showDependencyOverlay: false,
+      showSchemaMetricsPanel: false,
     };
     saveCanvasSettings(settings);
     expect(localStorageMock.setItem).toHaveBeenCalledTimes(1);
@@ -152,6 +156,7 @@ describe('saveCanvasSettings', () => {
       viewportPersistence: false,
       showLayoutHints: true,
       showDependencyOverlay: true,
+      showSchemaMetricsPanel: true,
     };
     saveCanvasSettings(settings);
     expect(getCanvasSettings()).toEqual(settings);

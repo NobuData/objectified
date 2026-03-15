@@ -16,6 +16,8 @@ export interface CanvasSettings {
   showLayoutHints: boolean;
   /** Show dependency overlay (upstream/downstream/path from selected node, circular ref warning). Reference: GitHub #90. */
   showDependencyOverlay: boolean;
+  /** Show schema metrics panel (depth, circular, affected count). Reference: GitHub #91. */
+  showSchemaMetricsPanel: boolean;
 }
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
@@ -25,6 +27,7 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   viewportPersistence: true,
   showLayoutHints: false,
   showDependencyOverlay: false,
+  showSchemaMetricsPanel: false,
 };
 
 interface StoredCanvasSettings {
