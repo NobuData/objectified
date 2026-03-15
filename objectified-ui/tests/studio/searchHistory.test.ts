@@ -45,6 +45,23 @@ describe('searchHistory', () => {
       );
       expect(getSearchHistory()).toEqual(entries);
     });
+
+    it('filters out entries with non-string query or savedAt fields', () => {
+      const raw = JSON.stringify({
+        entries: [
+          { query: 'valid', savedAt: '2026-01-01T00:00:00.000Z' },
+          { query: 123, savedAt: '2026-01-01T00:01:00.000Z' },
+          { query: 'also-valid', savedAt: '2026-01-01T00:02:00.000Z' },
+          { query: null, savedAt: '2026-01-01T00:03:00.000Z' },
+          { savedAt: '2026-01-01T00:04:00.000Z' },
+        ],
+      });
+      localStorage.setItem('objectified:canvas:searchHistory', raw);
+      const result = getSearchHistory();
+      expect(result).toHaveLength(2);
+      expect(result[0].query).toBe('valid');
+      expect(result[1].query).toBe('also-valid');
+    });
   });
 
   describe('addSearchHistoryEntry', () => {

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
 import * as Select from '@radix-ui/react-select';
 import * as Label from '@radix-ui/react-label';
 import * as Switch from '@radix-ui/react-switch';
@@ -25,11 +26,26 @@ export default function CanvasSearchBar() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Clears the pending blur timer on unmount to prevent state updates after unmount. */
+  useEffect(() => {
+    return () => {
+      if (blurTimerRef.current !== null) {
+        clearTimeout(blurTimerRef.current);
+      }
+    };
+  }, []);
 
   /** Save the current query to history when closing / blurring. */
   const handleBlur = useCallback(() => {
+    // Clear any previous pending timer before scheduling a new one
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current);
+    }
     // Small delay so click events on the dropdown register first
-    setTimeout(() => {
+    blurTimerRef.current = setTimeout(() => {
+      blurTimerRef.current = null;
       if (
         dropdownRef.current &&
         dropdownRef.current.contains(document.activeElement)
@@ -53,7 +69,7 @@ export default function CanvasSearchBar() {
   );
 
   const handleRemoveHistoryEntry = useCallback(
-    (e: React.MouseEvent, query: string) => {
+    (e: MouseEvent, query: string) => {
       e.stopPropagation();
       removeEntry(query);
     },
@@ -61,7 +77,7 @@ export default function CanvasSearchBar() {
   );
 
   const handleClearAll = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent) => {
       e.stopPropagation();
       clearAll();
     },
@@ -93,8 +109,6 @@ export default function CanvasSearchBar() {
           <div
             ref={dropdownRef}
             className="absolute left-0 top-full mt-1 w-[280px] max-h-[240px] overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg z-[10002]"
-            role="listbox"
-            aria-label="Search history"
           >
             <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700">
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Recent searches</span>
@@ -108,28 +122,28 @@ export default function CanvasSearchBar() {
                 Clear all
               </button>
             </div>
-            {entries.map((entry) => (
-              <div
-                key={entry.query}
-                role="option"
-                aria-selected={false}
-                onMouseDown={() => handleSelectHistoryEntry(entry.query)}
-                className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                  <span className="truncate">{entry.query}</span>
-                </div>
-                <button
-                  type="button"
-                  onMouseDown={(e) => handleRemoveHistoryEntry(e, entry.query)}
-                  className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0"
-                  aria-label={`Remove "${entry.query}" from search history`}
-                >
-                  <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" />
-                </button>
-              </div>
-            ))}
+            <ul aria-label="Recent search queries">
+              {entries.map((entry) => (
+                <li key={entry.query} className="flex items-center">
+                  <button
+                    type="button"
+                    onMouseDown={() => handleSelectHistoryEntry(entry.query)}
+                    className="flex flex-1 items-center gap-2 min-w-0 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 text-left"
+                  >
+                    <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">{entry.query}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => handleRemoveHistoryEntry(e, entry.query)}
+                    className="p-0.5 mr-3 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0"
+                    aria-label={`Remove "${entry.query}" from search history`}
+                  >
+                    <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" />
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
