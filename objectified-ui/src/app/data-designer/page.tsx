@@ -10,12 +10,14 @@ import StudioUrlLoader from '@/app/dashboard/components/StudioUrlLoader';
 import { WorkspaceProvider } from '@/app/contexts/WorkspaceContext';
 import { StudioProvider } from '@/app/contexts/StudioContext';
 import { CanvasSettingsProvider } from '@/app/contexts/CanvasSettingsContext';
+import { EditClassRequestProvider } from '@/app/contexts/EditClassRequestContext';
 
 export default function DataDesignerPage() {
   return (
     <WorkspaceProvider>
       <StudioProvider>
         <CanvasSettingsProvider>
+          <EditClassRequestProvider>
           <StudioVersionSync />
           <StudioUrlLoader />
         <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
@@ -31,6 +33,7 @@ export default function DataDesignerPage() {
             </main>
           </div>
         </div>
+          </EditClassRequestProvider>
         </CanvasSettingsProvider>
       </StudioProvider>
     </WorkspaceProvider>

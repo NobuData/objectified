@@ -15,6 +15,13 @@ jest.mock('@xyflow/react', () => ({
   Position: { Top: 'top', Bottom: 'bottom' },
 }));
 
+jest.mock('@radix-ui/react-scroll-area', () => ({
+  Root: ({ children }: { children: React.ReactNode }) => <div data-testid="scroll-area">{children}</div>,
+  Viewport: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Scrollbar: () => null,
+  Thumb: () => null,
+}));
+
 function makeProps(overrides: Partial<ClassNodeType['data']> = {}, selected = false): Parameters<typeof ClassNode>[0] {
   return {
     id: 'node-1',
@@ -92,5 +99,37 @@ describe('ClassNode', () => {
     render(<ClassNode {...makeProps()} />);
     expect(screen.getByTestId('handle-target')).toBeInTheDocument();
     expect(screen.getByTestId('handle-source')).toBeInTheDocument();
+  });
+
+  it('collapses properties section when classNodeConfig.propertiesExpanded is false (GitHub #80)', () => {
+    render(
+      <ClassNode
+        {...makeProps({
+          name: 'Collapsed',
+          properties: [{ id: 'p1', name: 'hiddenProp' }],
+          classNodeConfig: { propertiesExpanded: false },
+        })}
+      />,
+    );
+    expect(screen.getByText('Collapsed')).toBeInTheDocument();
+    expect(screen.queryByText('hiddenProp')).not.toBeInTheDocument();
+  });
+
+  it('applies theme backgroundColor and border when classNodeConfig.theme is set (GitHub #80)', () => {
+    const { container } = render(
+      <ClassNode
+        {...makeProps({
+          name: 'Themed',
+          classNodeConfig: {
+            theme: { backgroundColor: '#f0f0f0', border: '#333' },
+          },
+        })}
+      />,
+    );
+    const wrapper = container.querySelector('div.rounded-lg') as HTMLElement;
+    expect(wrapper).toBeInTheDocument();
+    // Browser may normalize hex to rgb()
+    expect(wrapper.style.backgroundColor).toMatch(/rgb\(240,\s*240,\s*240\)|#f0f0f0/i);
+    expect(wrapper.style.borderColor).toMatch(/#333|rgb\(51,/i);
   });
 });

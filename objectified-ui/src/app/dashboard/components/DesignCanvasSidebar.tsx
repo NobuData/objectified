@@ -30,6 +30,7 @@ import {
 } from '@lib/studio/types';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
+import { useEditClassRequestOptional } from '@/app/contexts/EditClassRequestContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import ClassDialog from './ClassDialog';
 import ClassPropertyDialog from './ClassPropertyDialog';
@@ -129,6 +130,9 @@ interface ClassListPanelProps {
   ) => void;
   onRemoveClassProperty: (classId: string, propName: string, propIndex: number) => void;
   onReorderClassProperty: (classId: string, propIndex: number, direction: 'up' | 'down') => void;
+  /** When set (e.g. from canvas node double-click), open edit dialog for this class. GitHub #80. */
+  editClassIdRequest?: string | null;
+  onConsumeEditClassRequest?: () => void;
 }
 
 function ClassListPanel({
@@ -144,6 +148,8 @@ function ClassListPanel({
   onUpdateClassProperty,
   onRemoveClassProperty,
   onReorderClassProperty,
+  editClassIdRequest,
+  onConsumeEditClassRequest,
 }: ClassListPanelProps) {
   const [query, setQuery] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -167,6 +173,16 @@ function ClassListPanel({
       setEditingProp(null);
     }
   }, [canEdit]);
+
+  // When canvas requests edit (e.g. double-click on node), open the class dialog. GitHub #80.
+  useEffect(() => {
+    if (!editClassIdRequest || !onConsumeEditClassRequest) return;
+    if (canEdit) {
+      const cls = classes.find((c) => getStableClassId(c) === editClassIdRequest);
+      if (cls) setEditingClass(cls);
+    }
+    onConsumeEditClassRequest();
+  }, [editClassIdRequest, onConsumeEditClassRequest, canEdit, classes]);
 
   const filtered = useMemo(
     () =>
@@ -456,6 +472,7 @@ export default function DesignCanvasSidebar() {
   );
   const workspace = useWorkspaceOptional();
   const studio = useStudioOptional();
+  const editClassRequest = useEditClassRequestOptional();
   const { confirm } = useDialog();
   const [classNames, setClassNames] = useState<string[]>([]);
   const [propertyNames, setPropertyNames] = useState<string[]>([]);
@@ -714,6 +731,8 @@ export default function DesignCanvasSidebar() {
               onUpdateClassProperty={handleUpdateClassProperty}
               onRemoveClassProperty={handleRemoveClassProperty}
               onReorderClassProperty={handleReorderClassProperty}
+              editClassIdRequest={editClassRequest?.requestEditClassId ?? null}
+              onConsumeEditClassRequest={editClassRequest?.clearRequest}
             />
           ) : (
             <SearchableList
