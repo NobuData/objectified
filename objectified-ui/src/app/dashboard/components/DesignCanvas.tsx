@@ -546,8 +546,8 @@ export default function DesignCanvas() {
                 <button
                   type="button"
                   className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  onClick={() => {
-                    canvasGroup?.deleteGroup(nodeContextMenu.node.id);
+                  onClick={async () => {
+                    await canvasGroup?.deleteGroup(nodeContextMenu.node.id);
                     setNodeContextMenu(null);
                   }}
                 >

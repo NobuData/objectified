@@ -14,7 +14,8 @@ export interface GroupDialogProps {
   open: boolean;
   group: StudioGroup | null;
   onSave: (name: string, style: Record<string, string | number>) => void;
-  onDelete?: () => void;
+  /** Called when user clicks Delete group. Return true if group was deleted (dialog should close). */
+  onDelete?: () => void | Promise<boolean>;
   onClose: () => void;
 }
 
@@ -166,9 +167,9 @@ export default function GroupDialog({
               {onDelete && (
                 <button
                   type="button"
-                  onClick={() => {
-                    onDelete();
-                    onClose();
+                  onClick={async () => {
+                    const deleted = await onDelete();
+                    if (deleted) onClose();
                   }}
                   className="px-4 py-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm font-medium"
                 >
