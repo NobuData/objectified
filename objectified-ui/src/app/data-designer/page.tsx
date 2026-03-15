@@ -10,6 +10,7 @@ import StudioUrlLoader from '@/app/dashboard/components/StudioUrlLoader';
 import { WorkspaceProvider } from '@/app/contexts/WorkspaceContext';
 import { StudioProvider } from '@/app/contexts/StudioContext';
 import { CanvasSettingsProvider } from '@/app/contexts/CanvasSettingsContext';
+import { CanvasGroupProvider } from '@/app/contexts/CanvasGroupContext';
 import { EditClassRequestProvider } from '@/app/contexts/EditClassRequestContext';
 
 export default function DataDesignerPage() {
@@ -17,6 +18,7 @@ export default function DataDesignerPage() {
     <WorkspaceProvider>
       <StudioProvider>
         <CanvasSettingsProvider>
+          <CanvasGroupProvider>
           <EditClassRequestProvider>
           <StudioVersionSync />
           <StudioUrlLoader />
@@ -34,6 +36,7 @@ export default function DataDesignerPage() {
           </div>
         </div>
           </EditClassRequestProvider>
+          </CanvasGroupProvider>
         </CanvasSettingsProvider>
       </StudioProvider>
     </WorkspaceProvider>

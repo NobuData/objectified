@@ -28,6 +28,7 @@ import {
   loadStateBackup,
   clearStateBackup,
 } from '@lib/studio/stateBackup';
+import { getCanvasGroups, saveCanvasGroups } from '@lib/studio/canvasGroupStorage';
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 
@@ -198,6 +199,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           readOnly: revision != null ? (opts?.readOnly ?? false) : false,
         });
         if (newState.versionId !== versionId) return;
+        // Hydrate groups from localStorage (not yet returned by API)
+        const storedGroups = getCanvasGroups(versionId);
+        if (storedGroups.length > 0) newState.groups = storedGroups;
         setStack({
           state: newState,
           undoStack: [],
@@ -254,6 +258,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const undoStack = [...prev.undoStack, deepClone(prev.state)];
       if (undoStack.length > MAX_UNDO) undoStack.shift();
       saveStateBackup(draft);
+      saveCanvasGroups(draft.versionId, draft.groups);
       return {
         state: draft,
         undoStack,
@@ -267,7 +272,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       if (prev.undoStack.length === 0) return prev;
       const nextState = prev.undoStack[prev.undoStack.length - 1];
       const redoStack = prev.state ? [...prev.redoStack, prev.state] : prev.redoStack;
-      if (nextState) saveStateBackup(nextState);
+      if (nextState) {
+        saveStateBackup(nextState);
+        saveCanvasGroups(nextState.versionId, nextState.groups);
+      }
       return {
         state: nextState,
         undoStack: prev.undoStack.slice(0, -1),
@@ -281,7 +289,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       if (prev.redoStack.length === 0) return prev;
       const nextState = prev.redoStack[prev.redoStack.length - 1];
       const undoStack = prev.state ? [...prev.undoStack, prev.state] : prev.undoStack;
-      if (nextState) saveStateBackup(nextState);
+      if (nextState) {
+        saveStateBackup(nextState);
+        saveCanvasGroups(nextState.versionId, nextState.groups);
+      }
       return {
         state: nextState,
         undoStack,

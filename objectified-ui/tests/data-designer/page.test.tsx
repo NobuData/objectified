@@ -37,6 +37,14 @@ jest.mock('@xyflow/react', () => ({
   MarkerType: { ArrowClosed: 'arrowclosed', Arrow: 'arrow' },
   useNodesState: () => [[], jest.fn(), jest.fn()],
   useEdgesState: () => [[], jest.fn(), jest.fn()],
+  useReactFlow: () => ({
+    screenToFlowPosition: (p: { x: number; y: number }) => p,
+  }),
+}));
+
+jest.mock('@/app/dashboard/components/PaneContextMenuRegistration', () => ({
+  __esModule: true,
+  default: () => null,
 }));
 
 function renderWithProviders(ui: React.ReactElement) {

@@ -771,9 +771,9 @@ describe('StudioContext', () => {
   });
 
   it('hasUnpushedCommits is restored from localStorage on loadFromServer', async () => {
-    // Pre-populate localStorage with a persisted commit info
+    // Pre-populate localStorage with a persisted commit info (key-aware: loadFromServer also calls getCanvasGroups)
     const storageKey = 'objectified:studio:v1:lastCommit';
-    localStorageMock.getItem.mockImplementationOnce((key: string) =>
+    localStorageMock.getItem.mockImplementation((key: string) =>
       key === storageKey
         ? JSON.stringify({ revision: 1, lastCommittedAt: new Date().toISOString(), hasUnpushedCommits: true })
         : null
@@ -804,9 +804,9 @@ describe('StudioContext', () => {
   });
 
   it('hasUnpushedCommits is not restored when persisted revision does not match loaded revision', async () => {
-    // Pre-populate localStorage with a persisted commit info for a different revision
+    // Pre-populate localStorage with a persisted commit info for a different revision (key-aware: loadFromServer also calls getCanvasGroups)
     const storageKey = 'objectified:studio:v1:lastCommit';
-    localStorageMock.getItem.mockImplementationOnce((key: string) =>
+    localStorageMock.getItem.mockImplementation((key: string) =>
       key === storageKey
         ? JSON.stringify({ revision: 5, lastCommittedAt: new Date().toISOString(), hasUnpushedCommits: true })
         : null
