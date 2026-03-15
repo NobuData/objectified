@@ -32,7 +32,13 @@ export function getSearchHistory(): SearchHistoryEntry[] {
     const raw = localStorage.getItem(SEARCH_HISTORY_KEY);
     if (!raw) return [];
     const data = JSON.parse(raw) as StoredSearchHistory;
-    return Array.isArray(data.entries) ? data.entries : [];
+    if (!Array.isArray(data.entries)) return [];
+    // Sanitize: discard any entry whose required fields are not strings (e.g.
+    // corrupted or legacy localStorage data) to prevent downstream .toLowerCase()
+    // calls from throwing.
+    return data.entries.filter(
+      (e) => typeof e?.query === 'string' && typeof e?.savedAt === 'string'
+    );
   } catch {
     return [];
   }
