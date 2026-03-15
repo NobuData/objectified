@@ -22,7 +22,8 @@ export function refForClassName(name: string): string {
 export function parseClassNameFromRef(ref: string): string | undefined {
   if (typeof ref !== 'string' || !ref.trim()) return undefined;
   const match = ref.match(/#\/(?:components\/schemas|\$defs)\/(.+)$/);
-  const raw = match ? match[1].trim() : ref.split('/').pop()?.trim();
+  if (!match) return undefined;
+  const raw = match[1].trim();
   return raw || undefined;
 }
 

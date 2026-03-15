@@ -140,6 +140,29 @@ interface ClassListPanelProps {
   onConsumeEditClassRequest?: () => void;
 }
 
+/**
+ * Returns unique (non-duplicated), non-empty class names from `classes`, excluding the class
+ * with `excludeId`, de-duped by normalized (trim+lowercase) key so only unambiguous targets
+ * are offered in the reference dropdown.
+ */
+function getUniqueClassNamesExcluding(classes: StudioClass[], excludeId: string): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  const names: string[] = [];
+  for (const c of classes) {
+    if (getStableClassId(c) === excludeId) continue;
+    const key = (c.name ?? '').trim().toLowerCase();
+    if (!key) continue;
+    if (seen.has(key)) {
+      duplicates.add(key);
+    } else {
+      seen.add(key);
+      names.push((c.name ?? '').trim());
+    }
+  }
+  return names.filter((n) => !duplicates.has(n.toLowerCase())).sort();
+}
+
 function ClassListPanel({
   classes,
   availableProperties,
@@ -236,24 +259,12 @@ function ClassListPanel({
   };
 
   const availableClassNamesForRefAdd = useMemo(
-    () =>
-      addPropClassId != null
-        ? classes
-            .filter((c) => getStableClassId(c) !== addPropClassId)
-            .map((c) => c.name)
-            .sort()
-        : [],
+    () => addPropClassId != null ? getUniqueClassNamesExcluding(classes, addPropClassId) : [],
     [classes, addPropClassId]
   );
 
   const availableClassNamesForRefEdit = useMemo(
-    () =>
-      editingProp != null
-        ? classes
-            .filter((c) => getStableClassId(c) !== editingProp.classId)
-            .map((c) => c.name)
-            .sort()
-        : [],
+    () => editingProp != null ? getUniqueClassNamesExcluding(classes, editingProp.classId) : [],
     [classes, editingProp]
   );
 
@@ -738,7 +749,7 @@ export default function DesignCanvasSidebar() {
         const prop = draft.classes[classIdx].properties[propIndex];
         prop.name = data.name;
         prop.description = data.description;
-        const existingData = (prop.data ?? prop.property_data) as Record<string, unknown> | undefined;
+        const existingData = prop.data as Record<string, unknown> | undefined;
         if (data.referenceClass?.trim()) {
           prop.data = {
             ...(existingData ?? {}),
