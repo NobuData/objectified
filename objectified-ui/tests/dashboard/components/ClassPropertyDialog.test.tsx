@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ClassPropertyDialog from '@/app/dashboard/components/ClassPropertyDialog';
 import type { StudioProperty } from '@lib/studio/types';
@@ -23,14 +23,19 @@ describe('ClassPropertyDialog', () => {
   const mockOnSave = jest.fn();
   const mockOnClose = jest.fn();
 
+  const defaultProps = {
+    availableClassNamesForRef: [] as string[],
+    onSave: mockOnSave,
+    onClose: mockOnClose,
+  };
+
   it('renders nothing when closed', () => {
     render(
       <ClassPropertyDialog
         open={false}
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -42,8 +47,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.getByText('Add Property to Class')).toBeInTheDocument();
@@ -56,8 +60,7 @@ describe('ClassPropertyDialog', () => {
         mode="edit"
         availableProperties={[]}
         initial={{ name: 'email', description: '' }}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.getByText('Edit Class Property')).toBeInTheDocument();
@@ -70,8 +73,7 @@ describe('ClassPropertyDialog', () => {
         mode="edit"
         availableProperties={[]}
         initial={{ name: 'myProp', description: 'My prop desc' }}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.getByDisplayValue('myProp')).toBeInTheDocument();
@@ -85,8 +87,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     await user.click(screen.getByRole('button', { name: /add property/i }));
@@ -101,8 +102,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), '  myField  ');
@@ -112,6 +112,8 @@ describe('ClassPropertyDialog', () => {
       name: 'myField',
       description: 'A field',
       propertyId: undefined,
+      referenceClass: undefined,
+      refType: undefined,
     });
   });
 
@@ -122,8 +124,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     await user.click(screen.getByRole('button', { name: /cancel/i }));
@@ -136,8 +137,7 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={mockProperties}
-        onSave={mockOnSave}
-        onClose={mockOnClose}
+        {...defaultProps}
       />
     );
     expect(screen.getByText('Link to Project Property')).toBeInTheDocument();
@@ -149,11 +149,161 @@ describe('ClassPropertyDialog', () => {
         open
         mode="add"
         availableProperties={[]}
+        {...defaultProps}
+      />
+    );
+    expect(screen.queryByText('Link to Project Property')).toBeNull();
+  });
+
+  // Reference class tests — GitHub #98
+
+  it('shows reference to class section when availableClassNamesForRef is non-empty', () => {
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        availableClassNamesForRef={['Order', 'Product']}
         onSave={mockOnSave}
         onClose={mockOnClose}
       />
     );
-    expect(screen.queryByText('Link to Project Property')).toBeNull();
+    expect(screen.getByText('Reference to class')).toBeInTheDocument();
+  });
+
+  it('does not show reference section when availableClassNamesForRef is empty', () => {
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        availableClassNamesForRef={[]}
+        onSave={mockOnSave}
+        onClose={mockOnClose}
+      />
+    );
+    expect(screen.queryByText('Reference to class')).toBeNull();
+  });
+
+  it('includes referenceClass and refType in onSave when initial values are set', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClassPropertyDialog
+        open
+        mode="edit"
+        availableProperties={[]}
+        availableClassNamesForRef={['Order', 'Product']}
+        initial={{ name: 'customer', description: '', referenceClass: 'Order', refType: 'optional' }}
+        onSave={mockOnSave}
+        onClose={mockOnClose}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(mockOnSave).toHaveBeenCalledWith({
+      name: 'customer',
+      description: '',
+      propertyId: undefined,
+      referenceClass: 'Order',
+      refType: 'optional',
+    });
+  });
+
+  it('includes referenceClass with default direct refType in onSave when refType is not set', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClassPropertyDialog
+        open
+        mode="edit"
+        availableProperties={[]}
+        availableClassNamesForRef={['Order', 'Product']}
+        initial={{ name: 'product', description: '', referenceClass: 'Product' }}
+        onSave={mockOnSave}
+        onClose={mockOnClose}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(mockOnSave).toHaveBeenCalledWith({
+      name: 'product',
+      description: '',
+      propertyId: undefined,
+      referenceClass: 'Product',
+      refType: 'direct',
+    });
+  });
+
+  it('includes bidirectional refType in onSave when initial refType is bidirectional', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClassPropertyDialog
+        open
+        mode="edit"
+        availableProperties={[]}
+        availableClassNamesForRef={['Order', 'Product']}
+        initial={{ name: 'link', description: '', referenceClass: 'Order', refType: 'bidirectional' }}
+        onSave={mockOnSave}
+        onClose={mockOnClose}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(mockOnSave).toHaveBeenCalledWith({
+      name: 'link',
+      description: '',
+      propertyId: undefined,
+      referenceClass: 'Order',
+      refType: 'bidirectional',
+    });
+  });
+
+  it('omits referenceClass and refType in onSave when no reference class is selected', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        availableClassNamesForRef={['Order', 'Product']}
+        onSave={mockOnSave}
+        onClose={mockOnClose}
+      />
+    );
+    await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'myField');
+    await user.click(screen.getByRole('button', { name: /add property/i }));
+    expect(mockOnSave).toHaveBeenCalledWith({
+      name: 'myField',
+      description: '',
+      propertyId: undefined,
+      referenceClass: undefined,
+      refType: undefined,
+    });
+  });
+
+  it('shows reference type selector only when a reference class is selected', () => {
+    render(
+      <ClassPropertyDialog
+        open
+        mode="edit"
+        availableProperties={[]}
+        availableClassNamesForRef={['Order', 'Product']}
+        initial={{ name: 'customer', description: '', referenceClass: 'Order', refType: 'direct' }}
+        onSave={mockOnSave}
+        onClose={mockOnClose}
+      />
+    );
+    expect(screen.getByText('Reference type')).toBeInTheDocument();
+  });
+
+  it('does not show reference type selector when no reference class is selected', () => {
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        availableClassNamesForRef={['Order', 'Product']}
+        onSave={mockOnSave}
+        onClose={mockOnClose}
+      />
+    );
+    expect(screen.queryByText('Reference type')).toBeNull();
   });
 });
 

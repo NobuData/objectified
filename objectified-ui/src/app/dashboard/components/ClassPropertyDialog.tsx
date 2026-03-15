@@ -3,8 +3,18 @@
 import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Select from '@radix-ui/react-select';
-import { ChevronDown, Check, X } from 'lucide-react';
+import { ChevronDown, Check, Link2, X } from 'lucide-react';
 import type { StudioProperty } from '@lib/studio/types';
+import type { ClassRefType } from '@lib/studio/canvasClassRefEdges';
+
+export interface ClassPropertySaveData {
+  name: string;
+  description: string;
+  propertyId?: string;
+  /** When set, property references this class ($ref + refType in data). When empty, clears reference. */
+  referenceClass?: string;
+  refType?: ClassRefType;
+}
 
 interface ClassPropertyDialogProps {
   /** Whether the dialog is open. */
@@ -13,16 +23,24 @@ interface ClassPropertyDialogProps {
   mode: 'add' | 'edit';
   /** Available project-level properties for linking. Empty array if none available. */
   availableProperties: StudioProperty[];
+  /** Other class names (excluding current class) for "reference to class" dropdown. */
+  availableClassNamesForRef: string[];
   /** Initial values for edit mode. */
-  initial?: { name: string; description: string; propertyId?: string };
+  initial?: {
+    name: string;
+    description: string;
+    propertyId?: string;
+    referenceClass?: string;
+    refType?: ClassRefType;
+  };
   /** Called with the form data when the user saves. */
-  onSave: (data: { name: string; description: string; propertyId?: string }) => void;
+  onSave: (data: ClassPropertySaveData) => void;
   /** Called when the dialog is closed without saving. */
   onClose: () => void;
 }
 
 /** Sentinel value for "no property linked" in the Radix Select (empty string not allowed). */
-const NO_PROPERTY_VALUE = '__none__';
+const NO_PROPERTY_VALUE = '__no_property__';
 
 /**
  * Dialog for adding or editing a class-property.
@@ -32,13 +50,25 @@ interface FormState {
   selectedPropertyId: string;
   name: string;
   description: string;
+  referenceClass: string;
+  refType: ClassRefType;
   error: string;
 }
+
+const NO_REFERENCE_VALUE = '__no_reference__';
+
+const REF_TYPE_LABELS: Record<ClassRefType, string> = {
+  direct: 'Direct',
+  optional: 'Optional',
+  weak: 'Weak',
+  bidirectional: 'Bidirectional',
+};
 
 export default function ClassPropertyDialog({
   open,
   mode,
   availableProperties,
+  availableClassNamesForRef,
   initial,
   onSave,
   onClose,
@@ -47,6 +77,8 @@ export default function ClassPropertyDialog({
     selectedPropertyId: initial?.propertyId ?? NO_PROPERTY_VALUE,
     name: initial?.name ?? '',
     description: initial?.description ?? '',
+    referenceClass: initial?.referenceClass ?? NO_REFERENCE_VALUE,
+    refType: initial?.refType ?? 'direct',
     error: '',
   });
 
@@ -57,12 +89,21 @@ export default function ClassPropertyDialog({
         selectedPropertyId: initial?.propertyId ?? NO_PROPERTY_VALUE,
         name: initial?.name ?? '',
         description: initial?.description ?? '',
+        referenceClass: initial?.referenceClass ?? NO_REFERENCE_VALUE,
+        refType: initial?.refType ?? 'direct',
         error: '',
       });
     }
-  }, [open, initial?.propertyId, initial?.name, initial?.description]);
+  }, [
+    open,
+    initial?.propertyId,
+    initial?.name,
+    initial?.description,
+    initial?.referenceClass,
+    initial?.refType,
+  ]);
 
-  const { selectedPropertyId, name, description, error } = form;
+  const { selectedPropertyId, name, description, referenceClass, refType, error } = form;
 
   // When a property is selected from the dropdown, auto-fill the name
   const handlePropertySelect = (propId: string) => {
@@ -88,10 +129,16 @@ export default function ClassPropertyDialog({
       selectedPropertyId && selectedPropertyId !== NO_PROPERTY_VALUE
         ? selectedPropertyId
         : undefined;
+    const refClass =
+      referenceClass && referenceClass !== NO_REFERENCE_VALUE
+        ? referenceClass.trim()
+        : undefined;
     onSave({
       name: trimmed,
       description: description.trim(),
       propertyId: realPropertyId,
+      referenceClass: refClass,
+      refType: refClass ? refType : undefined,
     });
   };
 
@@ -226,6 +273,125 @@ export default function ClassPropertyDialog({
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
               />
             </div>
+
+            {/* Reference to class (creates edge on canvas). GitHub #98 */}
+            {availableClassNamesForRef.length > 0 && (
+              <div className="space-y-2">
+                <label
+                  htmlFor="property-reference"
+                  className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300"
+                >
+                  <Link2 className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                  Reference to class
+                </label>
+                <Select.Root
+                  value={referenceClass}
+                  onValueChange={(v) =>
+                    setForm((f) => ({ ...f, referenceClass: v }))
+                  }
+                >
+                  <Select.Trigger
+                    id="property-reference"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    aria-label="Reference to class"
+                  >
+                    <Select.Value placeholder="None" />
+                    <Select.Icon>
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    </Select.Icon>
+                  </Select.Trigger>
+                  <Select.Portal>
+                    <Select.Content
+                      className="z-[10003] w-full bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden"
+                      position="popper"
+                      sideOffset={4}
+                    >
+                      <Select.ScrollUpButton />
+                      <Select.Viewport className="p-1 max-h-48">
+                        <Select.Item
+                          value={NO_REFERENCE_VALUE}
+                          className="flex items-center px-3 py-2 rounded text-sm text-slate-500 dark:text-slate-400 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                        >
+                          <Select.ItemText>None</Select.ItemText>
+                          <Select.ItemIndicator className="ml-auto">
+                            <Check className="h-4 w-4" />
+                          </Select.ItemIndicator>
+                        </Select.Item>
+                        {availableClassNamesForRef.map((className) => (
+                          <Select.Item
+                            key={className}
+                            value={className}
+                            className="flex items-center px-3 py-2 rounded text-sm text-slate-900 dark:text-slate-100 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                          >
+                            <Select.ItemText>{className}</Select.ItemText>
+                            <Select.ItemIndicator className="ml-auto">
+                              <Check className="h-4 w-4" />
+                            </Select.ItemIndicator>
+                          </Select.Item>
+                        ))}
+                      </Select.Viewport>
+                      <Select.ScrollDownButton />
+                    </Select.Content>
+                  </Select.Portal>
+                </Select.Root>
+                {referenceClass !== NO_REFERENCE_VALUE && (
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="property-ref-type"
+                      className="block text-xs font-medium text-slate-600 dark:text-slate-400"
+                    >
+                      Reference type
+                    </label>
+                    <Select.Root
+                      value={refType}
+                      onValueChange={(v) =>
+                        setForm((f) => ({
+                          ...f,
+                          refType: v as ClassRefType,
+                        }))
+                      }
+                    >
+                      <Select.Trigger
+                        id="property-ref-type"
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        aria-label="Reference type"
+                      >
+                        <Select.Value />
+                        <Select.Icon>
+                          <ChevronDown className="h-4 w-4 text-slate-400" />
+                        </Select.Icon>
+                      </Select.Trigger>
+                      <Select.Portal>
+                        <Select.Content
+                          className="z-[10003] w-full bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden"
+                          position="popper"
+                          sideOffset={4}
+                        >
+                          <Select.Viewport className="p-1">
+                            {(['direct', 'optional', 'weak', 'bidirectional'] as const).map(
+                              (t) => (
+                                <Select.Item
+                                  key={t}
+                                  value={t}
+                                  className="flex items-center px-3 py-2 rounded text-sm text-slate-900 dark:text-slate-100 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                                >
+                                  <Select.ItemText>
+                                    {REF_TYPE_LABELS[t]}
+                                  </Select.ItemText>
+                                  <Select.ItemIndicator className="ml-auto">
+                                    <Check className="h-4 w-4" />
+                                  </Select.ItemIndicator>
+                                </Select.Item>
+                              )
+                            )}
+                          </Select.Viewport>
+                        </Select.Content>
+                      </Select.Portal>
+                    </Select.Root>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Footer */}

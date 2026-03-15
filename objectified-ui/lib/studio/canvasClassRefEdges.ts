@@ -10,6 +10,23 @@ import { getStableClassId } from './types';
 /** Ref type for edge styling (direct = solid, optional = dashed, weak = dotted, bidirectional = two-way). */
 export type ClassRefType = 'direct' | 'optional' | 'weak' | 'bidirectional';
 
+/** Prefix for $ref to a class schema (OpenAPI 3 / JSON Schema). */
+export const REF_PREFIX = '#/components/schemas/';
+
+/** Build $ref string for a class name (e.g. "User" → "#/components/schemas/User"). */
+export function refForClassName(name: string): string {
+  return `${REF_PREFIX}${(name ?? '').trim()}`;
+}
+
+/** Parse class name from a $ref string; returns undefined if not a recognized ref format. */
+export function parseClassNameFromRef(ref: string): string | undefined {
+  if (typeof ref !== 'string' || !ref.trim()) return undefined;
+  const match = ref.match(/#\/(?:components\/schemas|\$defs)\/(.+)$/);
+  if (!match) return undefined;
+  const raw = match[1].trim();
+  return raw || undefined;
+}
+
 export interface ClassRefEdgeData extends Record<string, unknown> {
   refType: ClassRefType;
   /** Property name that defines the ref (for tooltip/label). */
@@ -50,7 +67,8 @@ function extractRefs(obj: unknown, classNames: Set<string>): Set<string> {
 
 const REF_TYPE_KEYS = ['refType', 'ref_type', 'linkType', 'link_type'] as const;
 
-function getRefTypeFromData(data: Record<string, unknown> | undefined): ClassRefType {
+/** Read ref type from property data (for initial form value). */
+export function getRefTypeFromData(data: Record<string, unknown> | undefined): ClassRefType {
   if (!data || typeof data !== 'object') return 'direct';
   for (const key of REF_TYPE_KEYS) {
     const v = data[key];
