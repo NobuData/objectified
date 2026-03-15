@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Label from '@radix-ui/react-label';
 import * as Switch from '@radix-ui/react-switch';
-import { X } from 'lucide-react';
+import { X, Clock, Trash2 } from 'lucide-react';
 import {
   ReactFlow,
   Controls,
@@ -18,6 +18,7 @@ import '@xyflow/react/dist/style.css';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
 import { getCanvasSettings, saveCanvasSettings } from '@lib/studio/canvasSettings';
 import type { CanvasSettings } from '@lib/studio/canvasSettings';
+import { useSearchHistory } from '@/app/hooks/useSearchHistory';
 
 const PREVIEW_NODES = [
   { id: 'a', position: { x: 20, y: 20 }, data: { label: 'Class A' } },
@@ -37,6 +38,7 @@ export default function CanvasSettingsDialog({
   const settings = context?.settings ?? getCanvasSettings();
   const setSettings = context?.setSettings ?? ((s: CanvasSettings) => saveCanvasSettings(s));
   const [draft, setDraft] = useState<CanvasSettings>(settings);
+  const { entries: historyEntries, removeEntry, clearAll } = useSearchHistory();
 
   useEffect(() => {
     if (open) setDraft(settings);
@@ -160,6 +162,51 @@ export default function CanvasSettingsDialog({
                 >
                   <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
                 </Switch.Root>
+              </div>
+
+              {/* Search history management — GitHub #86 */}
+              <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Clock className="h-4 w-4" />
+                    Search history
+                  </span>
+                  {historyEntries.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => clearAll()}
+                      className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-1"
+                      aria-label="Clear all search history"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Clear all
+                    </button>
+                  )}
+                </div>
+                {historyEntries.length === 0 ? (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 italic">
+                    No search history yet.
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-1 max-h-[120px] overflow-y-auto" aria-label="Search history entries">
+                    {historyEntries.map((entry) => (
+                      <li
+                        key={entry.query}
+                        className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-700/50"
+                      >
+                        <span className="truncate">{entry.query}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeEntry(entry.query)}
+                          className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-600 shrink-0"
+                          aria-label={`Remove "${entry.query}" from search history`}
+                        >
+                          <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
 
