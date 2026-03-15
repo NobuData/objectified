@@ -62,6 +62,8 @@ import {
   getUpstreamNodeIds,
   getDownstreamNodeIds,
   getPathNodeIds,
+  getSchemaMaxDepth,
+  getNodesInCircularDependency,
   type DependencyEdge,
 } from '@lib/studio/schemaMetrics';
 import ClassNode from './ClassNode';
@@ -70,6 +72,7 @@ import GroupNode from './GroupNode';
 import LayoutPreviewDialog from './LayoutPreviewDialog';
 import LayoutHintsOverlay from './LayoutHintsOverlay';
 import DependencyOverlay from './DependencyOverlay';
+import SchemaMetricsPanel from './SchemaMetricsPanel';
 import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 
 const defaultPosition = { x: 0, y: 0 };
@@ -539,6 +542,18 @@ export default function DesignCanvas() {
     return cls?.name;
   }, [classes, selectedNodeId2, canvasSettings.showDependencyOverlay]);
 
+  // Schema metrics panel: depth, circular edge count, affected node count (GitHub #91).
+  const schemaMetrics = useMemo(() => {
+    if (!canvasSettings.showSchemaMetricsPanel) return null;
+    const circularIds = getCircularDependencyEdgeIds(dependencyEdges);
+    const affectedNodes = getNodesInCircularDependency(dependencyEdges, circularIds);
+    return {
+      depth: getSchemaMaxDepth(dependencyEdges),
+      circularEdgeCount: circularIds.size,
+      affectedCount: affectedNodes.size,
+    };
+  }, [dependencyEdges, canvasSettings.showSchemaMetricsPanel]);
+
   // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
   const onViewportChange = useCallback(
     (viewport: Viewport) => {
@@ -777,6 +792,14 @@ export default function DesignCanvas() {
             circularEdgeCount={circularEdgeIds.size}
             selectedNodeName={selectedNodeName}
             selectedNodeName2={selectedNodeName2}
+          />
+        )}
+        {schemaMetrics && (
+          <SchemaMetricsPanel
+            depth={schemaMetrics.depth}
+            circularEdgeCount={schemaMetrics.circularEdgeCount}
+            affectedCount={schemaMetrics.affectedCount}
+            controlsVisible={canvasSettings.showControls}
           />
         )}
         {canvasSettings.showBackground && (

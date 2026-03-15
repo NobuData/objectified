@@ -137,6 +137,86 @@ export function getDownstreamNodeIds(
 }
 
 /**
+ * Returns the maximum path length (number of edges) from the given node following edges forward (downstream).
+ * Uses a visited set per path so cycles do not cause infinite recursion; cycle back-edges contribute 0.
+ * Note: returns the longest *simple* downstream path (back-edges in cycles are treated as contributing 0).
+ */
+export function getMaxDepthFromNode(
+  edges: DependencyEdge[],
+  nodeId: string
+): number {
+  const adj = new Map<string, string[]>();
+  for (const e of edges) {
+    if (!adj.has(e.source)) adj.set(e.source, []);
+    adj.get(e.source)!.push(e.target);
+  }
+  return _maxDepthFromAdj(adj, nodeId, new Set());
+}
+
+/**
+ * Internal helper: DFS longest simple downstream path using a pre-built adjacency map.
+ */
+function _maxDepthFromAdj(
+  adj: Map<string, string[]>,
+  n: string,
+  path: Set<string>
+): number {
+  if (path.has(n)) return -1; // back-edge: do not count this edge
+  const nexts = adj.get(n) ?? [];
+  if (nexts.length === 0) return 0;
+  const nextPath = new Set(path).add(n);
+  let max = 0;
+  for (const v of nexts) {
+    const childDepth = _maxDepthFromAdj(adj, v, nextPath);
+    const d = childDepth < 0 ? 0 : 1 + childDepth;
+    if (d > max) max = d;
+  }
+  return max;
+}
+
+/**
+ * Returns the maximum dependency depth over all nodes — the longest simple downstream path
+ * from any node in the graph (back-edges caused by cycles are ignored).
+ * Builds the adjacency map once and reuses it for all per-node DFS traversals.
+ */
+export function getSchemaMaxDepth(edges: DependencyEdge[]): number {
+  const adj = new Map<string, string[]>();
+  const allNodes = new Set<string>();
+  for (const e of edges) {
+    if (!adj.has(e.source)) adj.set(e.source, []);
+    adj.get(e.source)!.push(e.target);
+    allNodes.add(e.source);
+    allNodes.add(e.target);
+  }
+  if (allNodes.size === 0) return 0;
+  let max = 0;
+  for (const n of allNodes) {
+    const d = _maxDepthFromAdj(adj, n, new Set());
+    if (d > max) max = d;
+  }
+  return max;
+}
+
+/**
+ * Returns the set of node ids that are incident to at least one circular dependency edge.
+ * Accepts an optional precomputed circularIds set to avoid redundant graph traversal.
+ */
+export function getNodesInCircularDependency(
+  edges: DependencyEdge[],
+  precomputedCircularIds?: Set<string>
+): Set<string> {
+  const circularIds = precomputedCircularIds ?? getCircularDependencyEdgeIds(edges);
+  const nodes = new Set<string>();
+  for (const e of edges) {
+    if (circularIds.has(e.id)) {
+      nodes.add(e.source);
+      nodes.add(e.target);
+    }
+  }
+  return nodes;
+}
+
+/**
  * Returns a shortest path of node ids from fromId to toId, or null if no path exists.
  */
 export function getPathNodeIds(
