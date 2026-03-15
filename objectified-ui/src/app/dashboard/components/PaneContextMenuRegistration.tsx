@@ -16,7 +16,8 @@ export default function PaneContextMenuRegistration() {
 
   useEffect(() => {
     if (!canvasGroup?.registerPaneContextMenuHandler) return;
-    const handler = (event: { clientX: number; clientY: number; preventDefault?: () => void }) => {
+    const handler = (event: { clientX: number; clientY: number; preventDefault?: () => void } | null) => {
+      if (event == null) return;
       event.preventDefault?.();
       const position = screenToFlowPosition({
         x: event.clientX,
