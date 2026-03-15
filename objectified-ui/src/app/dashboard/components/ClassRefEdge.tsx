@@ -27,7 +27,7 @@ const REF_TYPE_STYLE: Record<
 };
 
 /** Default edge color (theme-aware via class). */
-const STROKE_COLOR = 'var(--class-ref-edge-stroke, rgb(100 116 139))'; // slate-400
+const STROKE_COLOR = 'var(--class-ref-edge-stroke, rgb(100 116 139))'; // slate-500
 
 /**
  * Custom edge for class-to-class refs; styled by ref type (direct/optional/weak/bidirectional).
