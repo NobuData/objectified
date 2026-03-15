@@ -10,7 +10,7 @@ import { getStableClassId } from './types';
 export type SearchFilterType = 'all' | 'class' | 'allOf' | 'oneOf' | 'anyOf';
 
 export interface CanvasSearchState {
-  /** Text query; matched against class name (and optionally group name). */
+  /** Text query; matched against class name. */
   canvasSearchQuery: string;
   /** When true, canvasSearchQuery is interpreted as a regex. */
   useRegex: boolean;
@@ -33,17 +33,39 @@ export const defaultCanvasSearchState: CanvasSearchState = {
   propertyNameFilter: '',
 };
 
-function matchesQuery(text: string, query: string, useRegex: boolean): boolean {
+/**
+ * Returns true when at least one filter or query is active (i.e., the state differs from the
+ * default). When false, no filtering should be applied to the canvas.
+ */
+export function isSearchActive(state: CanvasSearchState): boolean {
+  return (
+    state.canvasSearchQuery.trim().length > 0 ||
+    state.searchFilterType !== 'all' ||
+    state.searchFilterGroup !== null ||
+    state.hasProperties !== null ||
+    state.propertyNameFilter.trim().length > 0
+  );
+}
+
+/**
+ * Compile a search query into a RegExp (when useRegex=true and query is non-empty),
+ * falling back to null (substring matching used instead). Compile once and reuse across matches.
+ */
+function buildCompiledRegex(query: string, useRegex: boolean): RegExp | null {
   const q = query.trim();
-  if (!q) return true;
-  if (useRegex) {
-    try {
-      const re = new RegExp(q);
-      return re.test(text);
-    } catch {
-      return text.toLowerCase().includes(q.toLowerCase());
-    }
+  if (!q || !useRegex) return null;
+  try {
+    return new RegExp(q);
+  } catch (err) {
+    console.warn(`[canvasSearch] Invalid regex pattern "${q}":`, err);
+    return null;
   }
+}
+
+/** Apply a pre-compiled query to text; falls back to case-insensitive substring when re is null. */
+function matchesCompiledQuery(text: string, q: string, re: RegExp | null): boolean {
+  if (!q) return true;
+  if (re) return re.test(text);
   return text.toLowerCase().includes(q.toLowerCase());
 }
 
@@ -68,14 +90,10 @@ function matchesHasProperties(cls: StudioClass, hasProperties: boolean | null): 
   return hasProperties ? count > 0 : count === 0;
 }
 
-function matchesPropertyNameFilter(cls: StudioClass, propertyNameFilter: string, useRegex: boolean): boolean {
-  const q = propertyNameFilter.trim();
-  if (!q) return true;
+function matchesPropertyNameFilter(cls: StudioClass, propertyNameQ: string, re: RegExp | null): boolean {
+  if (!propertyNameQ) return true;
   const props = cls.properties ?? [];
-  return props.some((p) => {
-    const name = (p.name ?? '').trim();
-    return matchesQuery(name, q, useRegex);
-  });
+  return props.some((p) => matchesCompiledQuery((p.name ?? '').trim(), propertyNameQ, re));
 }
 
 /**
@@ -85,18 +103,20 @@ export function classMatchesSearch(
   cls: StudioClass,
   state: CanvasSearchState
 ): boolean {
-  if (!matchesQuery(cls.name ?? '', state.canvasSearchQuery, state.useRegex)) {
-    return false;
-  }
+  // Compile regexes once per call and reuse across all sub-checks.
+  const queryStr = state.canvasSearchQuery.trim();
+  const queryRegex = buildCompiledRegex(state.canvasSearchQuery, state.useRegex);
+  const propFilterStr = state.propertyNameFilter.trim();
+  const propFilterRegex = buildCompiledRegex(state.propertyNameFilter, state.useRegex);
+
+  if (!matchesCompiledQuery(cls.name ?? '', queryStr, queryRegex)) return false;
   if (!matchesSchemaType(cls, state.searchFilterType)) return false;
   if (state.searchFilterGroup != null) {
     const groupId = (cls.canvas_metadata as { group?: string } | undefined)?.group;
     if (groupId !== state.searchFilterGroup) return false;
   }
   if (!matchesHasProperties(cls, state.hasProperties)) return false;
-  if (!matchesPropertyNameFilter(cls, state.propertyNameFilter, state.useRegex)) {
-    return false;
-  }
+  if (!matchesPropertyNameFilter(cls, propFilterStr, propFilterRegex)) return false;
   return true;
 }
 
@@ -117,9 +137,10 @@ export function getVisibleClassIds(
 }
 
 /**
- * Returns the set of group ids that should be shown: either all groups (when no group filter),
- * or only the selected group; when group filter is set we also require that the group contains
- * at least one visible class (handled by caller by intersecting with visible class parent groups).
+ * Returns the set of group ids that should be shown:
+ * - When no search is active: all groups (including empty ones with no classes).
+ * - When search is active with no group filter: only groups containing at least one visible class.
+ * - When a specific group filter is set: only that group (if it contains a visible child class).
  */
 export function getVisibleGroupIds(
   groups: StudioGroup[],
@@ -127,6 +148,9 @@ export function getVisibleGroupIds(
   visibleClassIds: Set<string>,
   classToGroup: Map<string, string>
 ): Set<string> {
+  if (!isSearchActive(state)) {
+    return new Set(groups.map((g) => g.id));
+  }
   if (state.searchFilterGroup != null) {
     const gid = state.searchFilterGroup;
     const hasVisibleChild = Array.from(visibleClassIds).some(

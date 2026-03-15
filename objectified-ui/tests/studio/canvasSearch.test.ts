@@ -5,6 +5,7 @@
 import type { StudioClass, StudioGroup } from '@lib/studio/types';
 import {
   defaultCanvasSearchState,
+  isSearchActive,
   classMatchesSearch,
   getVisibleClassIds,
   getVisibleGroupIds,
@@ -30,6 +31,37 @@ describe('canvasSearch', () => {
       expect(defaultCanvasSearchState.searchFilterGroup).toBeNull();
       expect(defaultCanvasSearchState.hasProperties).toBeNull();
       expect(defaultCanvasSearchState.propertyNameFilter).toBe('');
+    });
+  });
+
+  describe('isSearchActive', () => {
+    it('returns false for default state', () => {
+      expect(isSearchActive(defaultCanvasSearchState)).toBe(false);
+    });
+
+    it('returns true when canvasSearchQuery is set', () => {
+      expect(isSearchActive({ ...defaultCanvasSearchState, canvasSearchQuery: 'foo' })).toBe(true);
+    });
+
+    it('returns true when searchFilterType is not all', () => {
+      expect(isSearchActive({ ...defaultCanvasSearchState, searchFilterType: 'class' })).toBe(true);
+    });
+
+    it('returns true when searchFilterGroup is set', () => {
+      expect(isSearchActive({ ...defaultCanvasSearchState, searchFilterGroup: 'g1' })).toBe(true);
+    });
+
+    it('returns true when hasProperties is set', () => {
+      expect(isSearchActive({ ...defaultCanvasSearchState, hasProperties: true })).toBe(true);
+      expect(isSearchActive({ ...defaultCanvasSearchState, hasProperties: false })).toBe(true);
+    });
+
+    it('returns true when propertyNameFilter is set', () => {
+      expect(isSearchActive({ ...defaultCanvasSearchState, propertyNameFilter: 'id' })).toBe(true);
+    });
+
+    it('returns false when canvasSearchQuery is only whitespace', () => {
+      expect(isSearchActive({ ...defaultCanvasSearchState, canvasSearchQuery: '   ' })).toBe(false);
     });
   });
 
@@ -142,14 +174,27 @@ describe('canvasSearch', () => {
       ['c3', 'g2'],
     ]);
 
-    it('returns groups that contain at least one visible class when no group filter', () => {
+    it('returns all group ids (including empty groups) when search state is default', () => {
+      const groupsWithEmpty: StudioGroup[] = [
+        ...groups,
+        { id: 'g3', name: 'EmptyGroup' },
+      ];
       const visibleClassIds = new Set(['c1', 'c3']);
       const visible = getVisibleGroupIds(
-        groups,
+        groupsWithEmpty,
         defaultCanvasSearchState,
         visibleClassIds,
         classToGroup
       );
+      expect(visible.has('g1')).toBe(true);
+      expect(visible.has('g2')).toBe(true);
+      expect(visible.has('g3')).toBe(true); // empty group must still be visible
+    });
+
+    it('returns only groups with at least one visible class when search is active', () => {
+      const visibleClassIds = new Set(['c1', 'c3']);
+      const state: CanvasSearchState = { ...defaultCanvasSearchState, canvasSearchQuery: 'Order' };
+      const visible = getVisibleGroupIds(groups, state, visibleClassIds, classToGroup);
       expect(visible.has('g1')).toBe(true);
       expect(visible.has('g2')).toBe(true);
     });
