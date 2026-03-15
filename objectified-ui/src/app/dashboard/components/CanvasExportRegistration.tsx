@@ -19,6 +19,7 @@ function downloadDataUrl(dataUrl: string, filename: string): void {
 export default function CanvasExportRegistration() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const exportContext = useCanvasExportOptional();
+  const setImageExportApi = exportContext?.setImageExportApi;
 
   const getFlowElement = useCallback((): HTMLElement | null => {
     const el = containerRef.current?.closest('.react-flow');
@@ -26,7 +27,7 @@ export default function CanvasExportRegistration() {
   }, []);
 
   useEffect(() => {
-    if (!exportContext?.setImageExportApi) return;
+    if (!setImageExportApi) return;
 
     const exportAsPng = async (): Promise<void> => {
       const el = getFlowElement();
@@ -110,7 +111,7 @@ export default function CanvasExportRegistration() {
       }
     };
 
-    exportContext.setImageExportApi({
+    setImageExportApi({
       exportAsPng,
       exportAsSvg,
       exportAsJpeg,
@@ -118,9 +119,9 @@ export default function CanvasExportRegistration() {
     });
 
     return () => {
-      exportContext.setImageExportApi(null);
+      setImageExportApi(null);
     };
-  }, [exportContext, getFlowElement]);
+  }, [setImageExportApi, getFlowElement]);
 
   return (
     <div
