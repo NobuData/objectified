@@ -7,7 +7,6 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { toPng, toSvg, toJpeg } from 'html-to-image';
-import { jsPDF } from 'jspdf';
 import { useCanvasExportOptional } from '@/app/contexts/CanvasExportContext';
 
 function downloadDataUrl(dataUrl: string, filename: string): void {
@@ -83,19 +82,29 @@ export default function CanvasExportRegistration() {
           pixelRatio: 2,
           cacheBust: true,
         });
-        const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = reject;
-          img.src = dataUrl;
-        });
-        const doc = new jsPDF({
-          orientation: img.width > img.height ? 'landscape' : 'portrait',
-          unit: 'px',
-          format: [img.width, img.height],
-        });
-        doc.addImage(dataUrl, 'PNG', 0, 0, img.width, img.height);
-        doc.save('canvas-export.pdf');
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          console.warn('Export as PDF: popup blocked; allow popups to print/save as PDF.');
+          return;
+        }
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head><title>Canvas Export</title></head>
+            <body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;">
+              <img src="${dataUrl}" alt="Canvas export" style="max-width:100%;height:auto;" />
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.onafterprint = () => printWindow.close();
+        const doPrint = () => setTimeout(() => printWindow.print(), 100);
+        if (printWindow.document.readyState === 'complete') {
+          doPrint();
+        } else {
+          printWindow.addEventListener('load', doPrint, { once: true });
+        }
       } catch (err) {
         console.error('Export as PDF failed:', err);
       }
