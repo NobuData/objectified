@@ -19,8 +19,10 @@ import {
   Eye,
   Settings2,
   Group,
+  Network,
 } from 'lucide-react';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
+import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
 import { getRestClientOptions } from '@lib/api/rest-client';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
@@ -42,6 +44,7 @@ export default function StudioToolbar() {
   const studio = useStudioOptional();
   const workspace = useWorkspaceOptional();
   const canvasGroup = useCanvasGroupOptional();
+  const canvasLayout = useCanvasLayoutOptional();
   const { data: session } = useSession();
   const options = useMemo(
     () => getRestClientOptions((session as { accessToken?: string } | null) ?? null),
@@ -382,6 +385,16 @@ export default function StudioToolbar() {
         title="Create a new group on the canvas"
       >
         <Group className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => canvasLayout?.openLayoutPreview()}
+        disabled={!showGitToolbar || isReadOnly}
+        className={btnBase}
+        aria-label="Auto layout"
+        title="Preview and apply auto layout (dagre) to class nodes"
+      >
+        <Network className="h-4 w-4" />
       </button>
       <button
         type="button"

@@ -3315,6 +3315,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/dagre@npm:^0.7.54":
+  version: 0.7.54
+  resolution: "@types/dagre@npm:0.7.54"
+  checksum: 10c0/96301c493b01872e7a999fd4eaa3d93d07d973a71e8abbeb098900c7a35d2ed8644112cda7ed7e6a90d3bf4e5c5e52fe5b8328fdacca66640b40fb009f5d9cbf
+  languageName: node
+  linkType: hard
+
 "@types/estree@npm:^1.0.6":
   version: 1.0.8
   resolution: "@types/estree@npm:1.0.8"
@@ -4589,6 +4596,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"dagre@npm:^0.8.5":
+  version: 0.8.5
+  resolution: "dagre@npm:0.8.5"
+  dependencies:
+    graphlib: "npm:^2.1.8"
+    lodash: "npm:^4.17.15"
+  checksum: 10c0/1c021b66961aa9a700bb6ec51747bcc214720a661ad6cb1878eab7316ecb550a759664a6754081a315b37d0355e3c19ff162813b36f20cbeb2e37f7440364d62
+  languageName: node
+  linkType: hard
+
 "damerau-levenshtein@npm:^1.0.8":
   version: 1.0.8
   resolution: "damerau-levenshtein@npm:1.0.8"
@@ -5759,6 +5776,15 @@ __metadata:
   version: 4.2.11
   resolution: "graceful-fs@npm:4.2.11"
   checksum: 10c0/386d011a553e02bc594ac2ca0bd6d9e4c22d7fa8cfbfc448a6d148c59ea881b092db9dbe3547ae4b88e55f1b01f7c4a2ecc53b310c042793e63aa44cf6c257f2
+  languageName: node
+  linkType: hard
+
+"graphlib@npm:^2.1.8":
+  version: 2.1.8
+  resolution: "graphlib@npm:2.1.8"
+  dependencies:
+    lodash: "npm:^4.17.15"
+  checksum: 10c0/41c525e4d91a6d8b4e8da1883bf4e85689a547e908557ccc53f64db9141bdfb351b9162a79f13cae81c5b3a410027f59e4fc1edc1ea442234ec08e629859b188
   languageName: node
   linkType: hard
 
@@ -7188,6 +7214,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"lodash@npm:^4.17.15":
+  version: 4.17.23
+  resolution: "lodash@npm:4.17.23"
+  checksum: 10c0/1264a90469f5bb95d4739c43eb6277d15b6d9e186df4ac68c3620443160fc669e2f14c11e7d8b2ccf078b81d06147c01a8ccced9aab9f9f63d50dcf8cace6bf6
+  languageName: node
+  linkType: hard
+
 "loose-envify@npm:^1.4.0":
   version: 1.4.0
   resolution: "loose-envify@npm:1.4.0"
@@ -7831,6 +7864,7 @@ __metadata:
     "@testing-library/react": "npm:^16.3.2"
     "@testing-library/user-event": "npm:^14.6.1"
     "@types/bcryptjs": "npm:^3.0.0"
+    "@types/dagre": "npm:^0.7.54"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^25.3.3"
     "@types/pg": "npm:^8.18.0"
@@ -7839,6 +7873,7 @@ __metadata:
     "@xyflow/react": "npm:^12.10.1"
     bcryptjs: "npm:^3.0.3"
     clsx: "npm:^2.1.1"
+    dagre: "npm:^0.8.5"
     eslint: "npm:^9.29.0"
     eslint-config-next: "npm:^16.1.6"
     jest: "npm:^30.2.0"

@@ -27,6 +27,7 @@ import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
 import { useEditClassRequestOptional } from '@/app/contexts/EditClassRequestContext';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
+import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
@@ -58,6 +59,7 @@ import { buildClassRefEdges } from '@lib/studio/canvasClassRefEdges';
 import ClassNode from './ClassNode';
 import ClassRefEdge from './ClassRefEdge';
 import GroupNode from './GroupNode';
+import LayoutPreviewDialog from './LayoutPreviewDialog';
 import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 
 const defaultPosition = { x: 0, y: 0 };
@@ -76,6 +78,7 @@ export default function DesignCanvas() {
   const workspace = useWorkspaceOptional();
   const editClassRequest = useEditClassRequestOptional();
   const canvasGroup = useCanvasGroupOptional();
+  const canvasLayout = useCanvasLayoutOptional();
   const focusMode = useCanvasFocusModeOptional();
   const versionId = studio?.state?.versionId ?? null;
   const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
@@ -485,12 +488,19 @@ export default function DesignCanvas() {
     [editClassRequest, canvasGroup]
   );
 
+  const [layoutPreviewOpen, setLayoutPreviewOpen] = useState(false);
   const [nodeContextMenu, setNodeContextMenu] = useState<{
     node: Node;
     clientX: number;
     clientY: number;
   } | null>(null);
   const nodeContextMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!canvasLayout?.registerOpenLayoutPreview) return;
+    canvasLayout.registerOpenLayoutPreview(() => setLayoutPreviewOpen(true));
+    return () => canvasLayout.registerOpenLayoutPreview(null);
+  }, [canvasLayout]);
 
   useEffect(() => {
     if (!nodeContextMenu) return;
@@ -582,6 +592,49 @@ export default function DesignCanvas() {
       setNodeContextMenu({ node, clientX: e.clientX, clientY: e.clientY });
     },
     []
+  );
+
+  const handleLayoutApply = useCallback(
+    (layoutedNodes: Node[]) => {
+      if (!studio?.applyChange || !versionId) return;
+      const positionMap = new Map<string, { x: number; y: number }>();
+      for (const node of layoutedNodes) {
+        if (node.type === 'class' && node.position) {
+          positionMap.set(node.id, {
+            x: node.position.x,
+            y: node.position.y,
+          });
+        }
+      }
+      studio.applyChange((draft) => {
+        for (const c of draft.classes) {
+          const id = getStableClassId(c);
+          const pos = positionMap.get(id);
+          if (pos) {
+            c.canvas_metadata = {
+              ...c.canvas_metadata,
+              position: { x: pos.x, y: pos.y },
+            };
+          }
+        }
+      });
+      const allPositions = classes.map((c) => {
+        const id = getStableClassId(c);
+        const pos =
+          positionMap.get(id) ??
+          c.canvas_metadata?.position ??
+          defaultPosition;
+        return { classId: id, position: pos };
+      });
+      saveDefaultCanvasLayout(versionId, allPositions);
+      setNodes((current) =>
+        current.map((n) => {
+          const updated = layoutedNodes.find((l) => l.id === n.id);
+          return updated ? { ...n, position: updated.position } : n;
+        })
+      );
+    },
+    [studio, versionId, classes, setNodes]
   );
 
   return (
@@ -747,6 +800,13 @@ export default function DesignCanvas() {
           </div>,
           document.body
         )}
+      <LayoutPreviewDialog
+        open={layoutPreviewOpen}
+        onOpenChange={setLayoutPreviewOpen}
+        nodes={baseNodes}
+        edges={edges}
+        onApply={handleLayoutApply}
+      />
     </div>
   );
 }

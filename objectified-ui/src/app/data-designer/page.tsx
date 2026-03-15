@@ -11,6 +11,7 @@ import { WorkspaceProvider } from '@/app/contexts/WorkspaceContext';
 import { StudioProvider } from '@/app/contexts/StudioContext';
 import { CanvasSettingsProvider } from '@/app/contexts/CanvasSettingsContext';
 import { CanvasGroupProvider } from '@/app/contexts/CanvasGroupContext';
+import { CanvasLayoutProvider } from '@/app/contexts/CanvasLayoutContext';
 import { CanvasSearchProvider } from '@/app/contexts/CanvasSearchContext';
 import { CanvasFocusModeProvider } from '@/app/contexts/CanvasFocusModeContext';
 import { EditClassRequestProvider } from '@/app/contexts/EditClassRequestContext';
@@ -22,6 +23,7 @@ export default function DataDesignerPage() {
       <StudioProvider>
         <CanvasSettingsProvider>
           <CanvasGroupProvider>
+          <CanvasLayoutProvider>
           <CanvasSearchProvider>
           <CanvasFocusModeProvider>
           <EditClassRequestProvider>
@@ -48,6 +50,7 @@ export default function DataDesignerPage() {
           </EditClassRequestProvider>
           </CanvasFocusModeProvider>
           </CanvasSearchProvider>
+          </CanvasLayoutProvider>
           </CanvasGroupProvider>
         </CanvasSettingsProvider>
       </StudioProvider>
