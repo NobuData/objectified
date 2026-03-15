@@ -73,7 +73,7 @@ export default function CanvasSettingsDialog({
                 id="canvas-settings-description"
                 className="text-sm text-slate-500 dark:text-slate-400 mt-1"
               >
-                Configure background, controls, minimap and viewport persistence.
+                Configure background, controls, minimap, viewport persistence and layout hints.
                 Changes below are reflected in the preview; save to apply to the
                 design canvas.
               </Dialog.Description>
@@ -157,6 +157,24 @@ export default function CanvasSettingsDialog({
                   checked={draft.viewportPersistence}
                   onCheckedChange={(checked) =>
                     updateDraft({ viewportPersistence: checked })
+                  }
+                  className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                >
+                  <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                </Switch.Root>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <Label.Root
+                  htmlFor="canvas-settings-layout-hints"
+                  className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                >
+                  Layout hints
+                </Label.Root>
+                <Switch.Root
+                  id="canvas-settings-layout-hints"
+                  checked={draft.showLayoutHints}
+                  onCheckedChange={(checked) =>
+                    updateDraft({ showLayoutHints: checked })
                   }
                   className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
                 >

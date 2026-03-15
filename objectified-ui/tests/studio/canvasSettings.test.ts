@@ -40,11 +40,12 @@ afterAll(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('DEFAULT_CANVAS_SETTINGS', () => {
-  it('has all expected fields set to true', () => {
+  it('has all expected fields', () => {
     expect(DEFAULT_CANVAS_SETTINGS.showBackground).toBe(true);
     expect(DEFAULT_CANVAS_SETTINGS.showControls).toBe(true);
     expect(DEFAULT_CANVAS_SETTINGS.showMiniMap).toBe(true);
     expect(DEFAULT_CANVAS_SETTINGS.viewportPersistence).toBe(true);
+    expect(DEFAULT_CANVAS_SETTINGS.showLayoutHints).toBe(false);
   });
 });
 
@@ -65,6 +66,7 @@ describe('getCanvasSettings', () => {
       showControls: false,
       showMiniMap: true,
       viewportPersistence: false,
+      showLayoutHints: true,
     };
     localStorageMock.setItem('objectified:canvas:settings', JSON.stringify({ settings: stored, savedAt: new Date().toISOString() }));
     const result = getCanvasSettings();
@@ -82,6 +84,7 @@ describe('getCanvasSettings', () => {
     expect(result.showControls).toBe(DEFAULT_CANVAS_SETTINGS.showControls);
     expect(result.showMiniMap).toBe(DEFAULT_CANVAS_SETTINGS.showMiniMap);
     expect(result.viewportPersistence).toBe(DEFAULT_CANVAS_SETTINGS.viewportPersistence);
+    expect(result.showLayoutHints).toBe(DEFAULT_CANVAS_SETTINGS.showLayoutHints);
   });
 
   it('returns defaults when stored value is invalid JSON', () => {
@@ -126,6 +129,7 @@ describe('saveCanvasSettings', () => {
       showControls: true,
       showMiniMap: false,
       viewportPersistence: true,
+      showLayoutHints: false,
     };
     saveCanvasSettings(settings);
     expect(localStorageMock.setItem).toHaveBeenCalledTimes(1);
@@ -142,6 +146,7 @@ describe('saveCanvasSettings', () => {
       showControls: false,
       showMiniMap: false,
       viewportPersistence: false,
+      showLayoutHints: true,
     };
     saveCanvasSettings(settings);
     expect(getCanvasSettings()).toEqual(settings);
