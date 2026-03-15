@@ -44,14 +44,15 @@ function escapeLabel(s: string): string {
 /** Export as Mermaid classDiagram. */
 export function exportAsMermaid(classes: StudioClass[]): string {
   const { nodes, edges } = buildExportGraph(classes);
+  const nameById = new Map<string, string>(nodes.map((n) => [n.id, n.name]));
   const lines = ['classDiagram'];
   for (const n of nodes) {
     if (!n.name) continue;
     lines.push(`  class ${escapeLabel(n.name)}`);
   }
   for (const e of edges) {
-    const src = nodes.find((x) => x.id === e.sourceId)?.name ?? e.sourceId;
-    const tgt = nodes.find((x) => x.id === e.targetId)?.name ?? e.targetId;
+    const src = nameById.get(e.sourceId) ?? e.sourceId;
+    const tgt = nameById.get(e.targetId) ?? e.targetId;
     const label = e.label ? ` : ${escapeLabel(e.label)}` : '';
     lines.push(`  ${escapeLabel(src)} --> ${escapeLabel(tgt)}${label}`);
   }

@@ -45,8 +45,12 @@ export function CanvasExportProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useCanvasExport(): CanvasExportContextValue | null {
-  return useContext(CanvasExportContext);
+export function useCanvasExport(): CanvasExportContextValue {
+  const ctx = useContext(CanvasExportContext);
+  if (!ctx) {
+    throw new Error('useCanvasExport must be used within CanvasExportProvider');
+  }
+  return ctx;
 }
 
 export function useCanvasExportOptional(): CanvasExportContextValue | null {
