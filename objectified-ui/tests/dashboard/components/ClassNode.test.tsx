@@ -13,6 +13,16 @@ jest.mock('@xyflow/react', () => ({
     <div data-testid={`handle-${type}`} data-position={position} className={className} />
   ),
   Position: { Top: 'top', Bottom: 'bottom' },
+  NodeResizer: ({ isVisible, minWidth, minHeight, maxWidth, maxHeight }: {
+    isVisible?: boolean;
+    minWidth?: number;
+    minHeight?: number;
+    maxWidth?: number;
+    maxHeight?: number;
+  }) =>
+    isVisible ? (
+      <div data-testid="node-resizer" data-min-width={minWidth} data-max-width={maxWidth} />
+    ) : null,
 }));
 
 jest.mock('@radix-ui/react-scroll-area', () => ({
@@ -131,5 +141,36 @@ describe('ClassNode', () => {
     // Browser may normalize hex to rgb()
     expect(wrapper.style.backgroundColor).toMatch(/rgb\(240,\s*240,\s*240\)|#f0f0f0/i);
     expect(wrapper.style.borderColor).toMatch(/#333|rgb\(51,/i);
+  });
+
+  it('does not render NodeResizer when allowResize is not set (GitHub #82)', () => {
+    render(<ClassNode {...makeProps({}, true)} />);
+    expect(screen.queryByTestId('node-resizer')).not.toBeInTheDocument();
+  });
+
+  it('does not render NodeResizer when allowResize is true but node is not selected (GitHub #82)', () => {
+    render(<ClassNode {...makeProps({ allowResize: true } as unknown as ClassNodeType['data'], false)} />);
+    expect(screen.queryByTestId('node-resizer')).not.toBeInTheDocument();
+  });
+
+  it('renders NodeResizer when allowResize is true and node is selected (GitHub #82)', () => {
+    render(<ClassNode {...makeProps({ allowResize: true } as unknown as ClassNodeType['data'], true)} />);
+    expect(screen.getByTestId('node-resizer')).toBeInTheDocument();
+  });
+
+  it('removes max-w-[280px] constraint from container when allowResize is true (GitHub #82)', () => {
+    const { container } = render(
+      <ClassNode {...makeProps({ allowResize: true } as unknown as ClassNodeType['data'], false)} />,
+    );
+    const wrapper = container.querySelector('div.rounded-lg');
+    expect(wrapper?.className).not.toContain('max-w-[280px]');
+    expect(wrapper?.className).not.toContain('overflow-hidden');
+  });
+
+  it('applies max-w-[280px] and overflow-hidden when allowResize is false (GitHub #82)', () => {
+    const { container } = render(<ClassNode {...makeProps({}, false)} />);
+    const wrapper = container.querySelector('div.rounded-lg');
+    expect(wrapper?.className).toContain('max-w-[280px]');
+    expect(wrapper?.className).toContain('overflow-hidden');
   });
 });

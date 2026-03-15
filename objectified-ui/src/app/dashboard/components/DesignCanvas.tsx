@@ -161,9 +161,10 @@ export default function DesignCanvas() {
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // In read-only mode, only allow selection-type changes through so the user
-      // can still click/select nodes. Destructive changes (remove), position
-      // (drag), and dimensions (resize) are discarded before mutating local state.
+      // In read-only mode, only allow selection and dimensions changes through so
+      // the user can still click/select nodes and react-flow can measure intrinsic
+      // node sizes. Destructive changes (remove) and position changes (drag) are
+      // discarded before mutating local state.
       const allowedChanges = isReadOnly
         ? changes.filter((c) => c.type === 'select' || c.type === 'dimensions')
         : changes;
