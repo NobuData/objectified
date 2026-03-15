@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import * as Tabs from '@radix-ui/react-tabs';
+import * as ContextMenu from '@radix-ui/react-context-menu';
 import {
   Search,
   Plus,
@@ -32,7 +33,7 @@ import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useEditClassRequestOptional } from '@/app/contexts/EditClassRequestContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
-import ClassDialog from './ClassDialog';
+import ClassDialog, { type ClassFormData } from './ClassDialog';
 import ClassPropertyDialog from './ClassPropertyDialog';
 
 // ─── Project-level property list (read-only, search-only) ────────────────────
@@ -115,8 +116,8 @@ interface ClassListPanelProps {
   availableProperties: { id: string; name: string; data?: Record<string, unknown> }[];
   canEdit: boolean;
   loading: boolean;
-  onAddClass: (data: { name: string; description: string }) => void;
-  onUpdateClass: (classId: string, data: { name: string; description: string }) => void;
+  onAddClass: (data: ClassFormData) => void;
+  onUpdateClass: (classId: string, data: ClassFormData) => void;
   onDeleteClass: (cls: StudioClass) => void;
   onReorderClass: (classId: string, direction: 'up' | 'down') => void;
   onAddClassProperty: (
@@ -207,12 +208,12 @@ function ClassListPanel({
     });
   };
 
-  const handleAddClass = (data: { name: string; description: string }) => {
+  const handleAddClass = (data: ClassFormData) => {
     onAddClass(data);
     setAddClassOpen(false);
   };
 
-  const handleUpdateClass = (data: { name: string; description: string }) => {
+  const handleUpdateClass = (data: ClassFormData) => {
     if (!editingClass) return;
     onUpdateClass(getStableClassId(editingClass), data);
     setEditingClass(null);
@@ -229,6 +230,20 @@ function ClassListPanel({
     onUpdateClassProperty(editingProp.classId, editingProp.propIndex, data);
     setEditingProp(null);
   };
+
+  // Memoize the initial form values so the ClassDialog useEffect dependency on initial.schema
+  // doesn't fire on every render when editingClass hasn't actually changed.
+  const editClassInitial = useMemo(
+    () =>
+      editingClass
+        ? {
+            name: editingClass.name,
+            description: editingClass.description ?? '',
+            schema: editingClass.schema,
+          }
+        : undefined,
+    [editingClass]
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -247,18 +262,20 @@ function ClassListPanel({
         </div>
       </div>
 
-      {/* Class list */}
-      <div className="flex-1 overflow-auto min-h-0">
-        {loading ? (
-          <div className="flex items-center justify-center p-6">
-            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
-            {query.trim() ? 'No classes match your search.' : 'No classes yet.'}
-          </p>
-        ) : (
-          <ul className="p-2 space-y-0.5">
+      {/* Class list with context menu (New class). GitHub #95 */}
+      <ContextMenu.Root>
+        <ContextMenu.Trigger asChild>
+          <div className="flex-1 overflow-auto min-h-0">
+            {loading ? (
+              <div className="flex items-center justify-center p-6">
+                <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
+                {query.trim() ? 'No classes match your search.' : 'No classes yet.'}
+              </p>
+            ) : (
+              <ul className="p-2 space-y-0.5">
             {filtered.map((cls) => {
               const classId = getStableClassId(cls);
               const isExpanded = expandedIds.has(classId);
@@ -401,9 +418,26 @@ function ClassListPanel({
                 </li>
               );
             })}
-          </ul>
-        )}
-      </div>
+              </ul>
+            )}
+          </div>
+        </ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <ContextMenu.Content
+            className="min-w-[160px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg py-1 z-[10010]"
+            onCloseAutoFocus={(e) => e.preventDefault()}
+          >
+            <ContextMenu.Item
+              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 outline-none cursor-default"
+              onSelect={() => canEdit && setAddClassOpen(true)}
+              disabled={!canEdit}
+            >
+              <Plus className="h-4 w-4" />
+              New class
+            </ContextMenu.Item>
+          </ContextMenu.Content>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
 
       {/* Add class button */}
       <div className="p-2 border-t border-slate-200 dark:border-slate-700 shrink-0">
@@ -422,17 +456,15 @@ function ClassListPanel({
       <ClassDialog
         open={addClassOpen}
         mode="add"
+        existingClassNames={classes.map((c) => c.name)}
         onSave={handleAddClass}
         onClose={() => setAddClassOpen(false)}
       />
       <ClassDialog
         open={editingClass !== null}
         mode="edit"
-        initial={
-          editingClass
-            ? { name: editingClass.name, description: editingClass.description ?? '' }
-            : undefined
-        }
+        initial={editClassInitial}
+        existingClassNames={classes.map((c) => c.name)}
         onSave={handleUpdateClass}
         onClose={() => setEditingClass(null)}
       />
@@ -545,13 +577,20 @@ export default function DesignCanvasSidebar() {
   // ─── Class mutation handlers ──────────────────────────────────────────────
 
   const handleAddClass = useCallback(
-    (data: { name: string; description: string }) => {
+    (data: ClassFormData) => {
       studio?.applyChange((draft) => {
+        const count = draft.classes.length;
+        const position = data.canvas_metadata?.position ?? {
+          x: 80 * (count % 6),
+          y: 100 * Math.floor(count / 6),
+        };
         draft.classes.push({
           localId: generateLocalId(),
           name: data.name,
           description: data.description,
+          schema: data.schema,
           properties: [],
+          canvas_metadata: { position },
         });
       });
     },
@@ -559,12 +598,13 @@ export default function DesignCanvasSidebar() {
   );
 
   const handleUpdateClass = useCallback(
-    (classId: string, data: { name: string; description: string }) => {
+    (classId: string, data: ClassFormData) => {
       studio?.applyChange((draft) => {
         const idx = draft.classes.findIndex((c) => getStableClassId(c) === classId);
         if (idx >= 0) {
           draft.classes[idx].name = data.name;
           draft.classes[idx].description = data.description;
+          if (data.schema !== undefined) draft.classes[idx].schema = data.schema;
         }
       });
     },
