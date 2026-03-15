@@ -74,6 +74,7 @@ import LayoutHintsOverlay from './LayoutHintsOverlay';
 import DependencyOverlay from './DependencyOverlay';
 import SchemaMetricsPanel from './SchemaMetricsPanel';
 import PaneContextMenuRegistration from './PaneContextMenuRegistration';
+import CanvasExportRegistration from './CanvasExportRegistration';
 
 const defaultPosition = { x: 0, y: 0 };
 
@@ -779,6 +780,7 @@ export default function DesignCanvas() {
         className="bg-slate-50 dark:bg-slate-900/50"
       >
         <PaneContextMenuRegistration />
+        <CanvasExportRegistration />
         {layoutQuality && (
           <LayoutHintsOverlay quality={layoutQuality} />
         )}
