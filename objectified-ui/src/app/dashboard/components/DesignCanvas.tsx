@@ -1,6 +1,7 @@
 /**
  * Design canvas: react-flow with class nodes, group nodes, drag/resize, selection, pan/zoom.
  * Reference: GitHub #82, #83 — Add interactivity to nodes; add groups (GroupNode, parentId).
+ * Reference: GitHub #96 — Delete classes from canvas (single/multi-select, confirm).
  */
 'use client';
 
@@ -21,6 +22,7 @@ import {
   type Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { useDialogOptional } from '@/app/components/providers/DialogProvider';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
@@ -88,6 +90,7 @@ function useResolvedCanvasSettings() {
 }
 
 export default function DesignCanvas() {
+  const dialog = useDialogOptional();
   const studio = useStudioOptional();
   const workspace = useWorkspaceOptional();
   const editClassRequest = useEditClassRequestOptional();
@@ -498,6 +501,7 @@ export default function DesignCanvas() {
         .map((n) => n.id),
     [displayNodes]
   );
+
   const selectedNodeId = selectedClassNodeIds[0] ?? null;
   const selectedNodeId2 = selectedClassNodeIds[1] ?? null;
   const circularEdgeIds = useMemo(
@@ -695,6 +699,57 @@ export default function DesignCanvas() {
     },
     []
   );
+
+  /** Delete selected class(es) from canvas: confirm then remove from studio state (GitHub #96). */
+  const handleDeleteClassesFromCanvas = useCallback(
+    async (classIds: string[]) => {
+      if (classIds.length === 0 || !studio?.applyChange) return;
+      if (!dialog?.confirm) return;
+      const message =
+        classIds.length === 1
+          ? (() => {
+              const cls = classes.find((c) => getStableClassId(c) === classIds[0]);
+              return `Delete class "${cls?.name ?? classIds[0]}"? This action will be reflected when you next save.`;
+            })()
+          : `Delete ${classIds.length} classes? This action will be reflected when you next save.`;
+      const ok = await dialog.confirm({
+        title: 'Delete Class' + (classIds.length > 1 ? 'es' : ''),
+        message,
+        variant: 'danger',
+        confirmLabel: 'Delete',
+      });
+      if (!ok) return;
+      const idSet = new Set(classIds);
+      studio.applyChange((draft) => {
+        draft.classes = draft.classes.filter((c) => !idSet.has(getStableClassId(c)));
+      });
+      setNodeContextMenu(null);
+    },
+    [studio, classes, dialog]
+  );
+
+  // Delete/Backspace: delete selected class nodes from canvas (GitHub #96).
+  useEffect(() => {
+    if (isReadOnly) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (selectedClassNodeIds.length === 0) return;
+      e.preventDefault();
+      void handleDeleteClassesFromCanvas(selectedClassNodeIds);
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [isReadOnly, selectedClassNodeIds, handleDeleteClassesFromCanvas]);
 
   const handleLayoutApply = useCallback(
     (layoutedNodes: Node[]) => {
@@ -907,6 +962,17 @@ export default function DesignCanvas() {
                 >
                   Focus on this node
                 </button>
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => {
+                      void handleDeleteClassesFromCanvas([nodeContextMenu.node.id]);
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
                 {(nodeContextMenu.node.data as { canvas_metadata?: { group?: string } }).canvas_metadata?.group ? (
                   <button
                     type="button"

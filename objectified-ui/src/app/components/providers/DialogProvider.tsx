@@ -121,3 +121,8 @@ export const useDialog = (): DialogContextType => {
   return context;
 };
 
+/** Returns dialog API or null when outside DialogProvider (e.g. in tests). */
+export const useDialogOptional = (): DialogContextType | null => {
+  return useContext(DialogContext) ?? null;
+};
+
