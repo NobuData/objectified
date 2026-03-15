@@ -533,26 +533,30 @@ export default function DesignCanvas() {
           >
             {nodeContextMenu.node.type === 'group' && (
               <>
-                <button
-                  type="button"
-                  className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  onClick={() => {
-                    canvasGroup?.openGroupEditor(nodeContextMenu.node.id);
-                    setNodeContextMenu(null);
-                  }}
-                >
-                  Edit group
-                </button>
-                <button
-                  type="button"
-                  className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  onClick={() => {
-                    canvasGroup?.deleteGroup(nodeContextMenu.node.id);
-                    setNodeContextMenu(null);
-                  }}
-                >
-                  Delete group
-                </button>
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => {
+                      canvasGroup?.openGroupEditor(nodeContextMenu.node.id);
+                      setNodeContextMenu(null);
+                    }}
+                  >
+                    Edit group
+                  </button>
+                )}
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    onClick={async () => {
+                      await canvasGroup?.deleteGroup(nodeContextMenu.node.id);
+                      setNodeContextMenu(null);
+                    }}
+                  >
+                    Delete group
+                  </button>
+                )}
               </>
             )}
             {nodeContextMenu.node.type === 'class' && (
