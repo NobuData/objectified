@@ -15,6 +15,7 @@ export interface ClassFormData {
   name: string;
   description: string;
   schema?: Record<string, unknown>;
+  canvas_metadata?: { position?: { x: number; y: number } };
 }
 
 interface ClassDialogProps {
@@ -151,8 +152,14 @@ export default function ClassDialog({
 
   const { name, description, error, schema } = form;
   const classNamesForRefs = useMemo(
-    () => (mode === 'edit' ? [name.trim(), ...existingClassNames].filter(Boolean) : existingClassNames),
-    [mode, name, existingClassNames]
+    () => {
+      if (mode === 'edit') {
+        const selfName = initial?.name?.trim();
+        return existingClassNames.filter((n) => !selfName || n !== selfName);
+      }
+      return existingClassNames;
+    },
+    [mode, initial?.name, existingClassNames]
   );
 
   const handleSave = () => {

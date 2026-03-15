@@ -231,6 +231,20 @@ function ClassListPanel({
     setEditingProp(null);
   };
 
+  // Memoize the initial form values so the ClassDialog useEffect dependency on initial.schema
+  // doesn't fire on every render when editingClass hasn't actually changed.
+  const editClassInitial = useMemo(
+    () =>
+      editingClass
+        ? {
+            name: editingClass.name,
+            description: editingClass.description ?? '',
+            schema: editingClass.schema,
+          }
+        : undefined,
+    [editingClass]
+  );
+
   return (
     <div className="flex flex-col h-full">
       {/* Search */}
@@ -449,15 +463,7 @@ function ClassListPanel({
       <ClassDialog
         open={editingClass !== null}
         mode="edit"
-        initial={
-          editingClass
-            ? {
-                name: editingClass.name,
-                description: editingClass.description ?? '',
-                schema: editingClass.schema,
-              }
-            : undefined
-        }
+        initial={editClassInitial}
         existingClassNames={classes.map((c) => c.name)}
         onSave={handleUpdateClass}
         onClose={() => setEditingClass(null)}
@@ -571,12 +577,7 @@ export default function DesignCanvasSidebar() {
   // ─── Class mutation handlers ──────────────────────────────────────────────
 
   const handleAddClass = useCallback(
-    (data: {
-      name: string;
-      description: string;
-      schema?: Record<string, unknown>;
-      canvas_metadata?: { position?: { x: number; y: number } };
-    }) => {
+    (data: ClassFormData) => {
       studio?.applyChange((draft) => {
         const count = draft.classes.length;
         const position = data.canvas_metadata?.position ?? {
