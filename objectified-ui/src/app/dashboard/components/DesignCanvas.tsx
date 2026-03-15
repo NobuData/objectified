@@ -546,7 +546,7 @@ export default function DesignCanvas() {
   const schemaMetrics = useMemo(() => {
     if (!canvasSettings.showSchemaMetricsPanel) return null;
     const circularIds = getCircularDependencyEdgeIds(dependencyEdges);
-    const affectedNodes = getNodesInCircularDependency(dependencyEdges);
+    const affectedNodes = getNodesInCircularDependency(dependencyEdges, circularIds);
     return {
       depth: getSchemaMaxDepth(dependencyEdges),
       circularEdgeCount: circularIds.size,
@@ -799,6 +799,7 @@ export default function DesignCanvas() {
             depth={schemaMetrics.depth}
             circularEdgeCount={schemaMetrics.circularEdgeCount}
             affectedCount={schemaMetrics.affectedCount}
+            controlsVisible={canvasSettings.showControls}
           />
         )}
         {canvasSettings.showBackground && (
