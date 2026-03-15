@@ -11,7 +11,6 @@ import {
   Controls,
   MiniMap,
   Background,
-  BackgroundVariant,
   MarkerType,
   useNodesState,
   useEdgesState,
@@ -28,6 +27,7 @@ import {
   type CanvasGridStyle,
   type CanvasEdgePathType,
 } from '@lib/studio/canvasSettings';
+import { gridStyleToBackgroundVariant } from '@/app/dashboard/utils/canvasStyleUtils';
 import { useSearchHistory } from '@/app/hooks/useSearchHistory';
 import ClassRefEdge from './ClassRefEdge';
 
@@ -157,7 +157,9 @@ export default function CanvasSettingsDialog({
                   </Switch.Root>
                 </div>
                 <div className="space-y-1.5">
-                  <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label.Root
+                    htmlFor="canvas-settings-grid-size"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300">
                     Size
                   </Label.Root>
                   <Select.Root
@@ -177,21 +179,25 @@ export default function CanvasSettingsDialog({
                     </Select.Trigger>
                     <Select.Portal>
                       <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
-                        {GRID_SIZE_OPTIONS.map((size) => (
-                          <Select.Item
-                            key={size}
-                            value={String(size)}
-                            className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
-                          >
-                            {size}px
-                          </Select.Item>
-                        ))}
+                        <Select.Viewport>
+                          {GRID_SIZE_OPTIONS.map((size) => (
+                            <Select.Item
+                              key={size}
+                              value={String(size)}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{size}px</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
                       </Select.Content>
                     </Select.Portal>
                   </Select.Root>
                 </div>
                 <div className="space-y-1.5">
-                  <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label.Root
+                    htmlFor="canvas-settings-grid-style"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300">
                     Style
                   </Label.Root>
                   <Select.Root
@@ -211,15 +217,17 @@ export default function CanvasSettingsDialog({
                     </Select.Trigger>
                     <Select.Portal>
                       <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
-                        {GRID_STYLE_OPTIONS.map((opt) => (
-                          <Select.Item
-                            key={opt.value}
-                            value={opt.value}
-                            className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
-                          >
-                            {opt.label}
-                          </Select.Item>
-                        ))}
+                        <Select.Viewport>
+                          {GRID_STYLE_OPTIONS.map((opt) => (
+                            <Select.Item
+                              key={opt.value}
+                              value={opt.value}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{opt.label}</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
                       </Select.Content>
                     </Select.Portal>
                   </Select.Root>
@@ -359,7 +367,9 @@ export default function CanvasSettingsDialog({
                   Edges
                 </span>
                 <div className="space-y-1.5">
-                  <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label.Root
+                    htmlFor="canvas-settings-edge-path"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300">
                     Path type
                   </Label.Root>
                   <Select.Root
@@ -379,15 +389,17 @@ export default function CanvasSettingsDialog({
                     </Select.Trigger>
                     <Select.Portal>
                       <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
-                        {EDGE_PATH_OPTIONS.map((opt) => (
-                          <Select.Item
-                            key={opt.value}
-                            value={opt.value}
-                            className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
-                          >
-                            {opt.label}
-                          </Select.Item>
-                        ))}
+                        <Select.Viewport>
+                          {EDGE_PATH_OPTIONS.map((opt) => (
+                            <Select.Item
+                              key={opt.value}
+                              value={opt.value}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{opt.label}</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
                       </Select.Content>
                     </Select.Portal>
                   </Select.Root>
@@ -495,13 +507,7 @@ export default function CanvasSettingsDialog({
                   >
                     {draft.showBackground && (
                       <Background
-                        variant={
-                          draft.gridStyle === 'dots'
-                            ? BackgroundVariant.Dots
-                            : draft.gridStyle === 'lines'
-                              ? BackgroundVariant.Lines
-                              : BackgroundVariant.Cross
-                        }
+                        variant={gridStyleToBackgroundVariant(draft.gridStyle)}
                         gap={draft.gridSize}
                         size={1}
                       />

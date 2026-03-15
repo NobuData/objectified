@@ -7,7 +7,6 @@ import {
   getCanvasSettings,
   saveCanvasSettings,
   DEFAULT_CANVAS_SETTINGS,
-  gridStyleToBackgroundVariant,
   type CanvasSettings,
 } from '@lib/studio/canvasSettings';
 
@@ -70,8 +69,10 @@ describe('getCanvasSettings', () => {
   });
 
   it('returns stored settings merged with defaults', () => {
-    const stored: CanvasSettings = {
-      ...DEFAULT_CANVAS_SETTINGS,
+    // Intentionally omit the new fields (gridSize, gridStyle, snapToGrid,
+    // edgePathType, edgeStrokeColor, edgeAnimated) to validate that
+    // getCanvasSettings() correctly back-fills them from DEFAULT_CANVAS_SETTINGS.
+    const stored = {
       showBackground: false,
       showControls: false,
       showMiniMap: true,
@@ -82,7 +83,20 @@ describe('getCanvasSettings', () => {
     };
     localStorageMock.setItem('objectified:canvas:settings', JSON.stringify({ settings: stored, savedAt: new Date().toISOString() }));
     const result = getCanvasSettings();
-    expect(result).toEqual(stored);
+    expect(result.showBackground).toBe(false);
+    expect(result.showControls).toBe(false);
+    expect(result.showMiniMap).toBe(true);
+    expect(result.viewportPersistence).toBe(false);
+    expect(result.showLayoutHints).toBe(true);
+    expect(result.showDependencyOverlay).toBe(false);
+    expect(result.showSchemaMetricsPanel).toBe(false);
+    // New fields should be filled from DEFAULT_CANVAS_SETTINGS
+    expect(result.gridSize).toBe(DEFAULT_CANVAS_SETTINGS.gridSize);
+    expect(result.gridStyle).toBe(DEFAULT_CANVAS_SETTINGS.gridStyle);
+    expect(result.snapToGrid).toBe(DEFAULT_CANVAS_SETTINGS.snapToGrid);
+    expect(result.edgePathType).toBe(DEFAULT_CANVAS_SETTINGS.edgePathType);
+    expect(result.edgeStrokeColor).toBe(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor);
+    expect(result.edgeAnimated).toBe(DEFAULT_CANVAS_SETTINGS.edgeAnimated);
   });
 
   it('merges partial stored settings with defaults', () => {
@@ -190,14 +204,4 @@ describe('saveCanvasSettings', () => {
   });
 });
 
-describe('gridStyleToBackgroundVariant', () => {
-  it('maps dots to dots', () => {
-    expect(gridStyleToBackgroundVariant('dots')).toBe('dots');
-  });
-  it('maps lines to lines', () => {
-    expect(gridStyleToBackgroundVariant('lines')).toBe('lines');
-  });
-  it('maps cross to cross', () => {
-    expect(gridStyleToBackgroundVariant('cross')).toBe('cross');
-  });
-});
+

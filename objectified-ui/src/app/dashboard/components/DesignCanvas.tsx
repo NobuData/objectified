@@ -12,7 +12,6 @@ import {
   Controls,
   MiniMap,
   Background,
-  BackgroundVariant,
   useNodesState,
   useEdgesState,
   type NodeChange,
@@ -31,6 +30,7 @@ import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
+import { gridStyleToBackgroundVariant } from '@/app/dashboard/utils/canvasStyleUtils';
 import {
   getVisibleClassIds,
   getVisibleGroupIds,
@@ -811,13 +811,7 @@ export default function DesignCanvas() {
         )}
         {canvasSettings.showBackground && (
           <Background
-            variant={
-              canvasSettings.gridStyle === 'dots'
-                ? BackgroundVariant.Dots
-                : canvasSettings.gridStyle === 'lines'
-                  ? BackgroundVariant.Lines
-                  : BackgroundVariant.Cross
-            }
+            variant={gridStyleToBackgroundVariant(canvasSettings.gridStyle)}
             gap={canvasSettings.gridSize}
             size={1}
           />

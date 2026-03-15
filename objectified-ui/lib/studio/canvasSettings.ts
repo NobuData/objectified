@@ -94,10 +94,3 @@ export function saveCanvasSettings(settings: CanvasSettings): void {
     // Ignore localStorage errors
   }
 }
-
-/** Map CanvasGridStyle to React Flow BackgroundVariant string. */
-export function gridStyleToBackgroundVariant(
-  style: CanvasGridStyle
-): 'dots' | 'lines' | 'cross' {
-  return style;
-}
