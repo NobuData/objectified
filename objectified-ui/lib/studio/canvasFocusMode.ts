@@ -84,16 +84,19 @@ export function getFocusedNodeIds(
 /**
  * Returns the set of group ids that should remain visible when focus mode is active.
  * A group is visible if any of its member nodes are in the focused set.
+ * Only group ids that exist in the provided `groups` array are returned, preventing
+ * stale classToGroup mappings from producing non-existent group ids.
  */
 export function getFocusedGroupIds(
   groups: StudioGroup[],
   focusedNodeIds: Set<string>,
   classToGroup: Map<string, string>
 ): Set<string> {
+  const knownGroupIds = new Set(groups.map((g) => g.id));
   const visibleGroupIds = new Set<string>();
   for (const nodeId of focusedNodeIds) {
     const gid = classToGroup.get(nodeId);
-    if (gid) visibleGroupIds.add(gid);
+    if (gid && knownGroupIds.has(gid)) visibleGroupIds.add(gid);
   }
   return visibleGroupIds;
 }

@@ -181,6 +181,24 @@ describe('canvasFocusMode', () => {
       const result = getFocusedGroupIds(groups, focusedNodeIds, new Map());
       expect(result.size).toBe(0);
     });
+
+    it('filters out stale group ids not present in groups array', () => {
+      // classToGroup references 'stale-group' which is not in the groups array.
+      const staleClassToGroup = new Map<string, string>([
+        ['A', 'g1'],
+        ['B', 'stale-group'],
+      ]);
+      const focusedNodeIds = new Set(['A', 'B']);
+      const result = getFocusedGroupIds(groups, focusedNodeIds, staleClassToGroup);
+      // Only 'g1' is valid; 'stale-group' is not in groups and must be excluded.
+      expect(result).toEqual(new Set(['g1']));
+    });
+
+    it('returns empty set when groups array is empty', () => {
+      const focusedNodeIds = new Set(['A', 'B', 'C']);
+      const result = getFocusedGroupIds([], focusedNodeIds, classToGroup);
+      expect(result.size).toBe(0);
+    });
   });
 });
 
