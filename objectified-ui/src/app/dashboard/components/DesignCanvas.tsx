@@ -12,7 +12,6 @@ import {
   Controls,
   MiniMap,
   Background,
-  BackgroundVariant,
   useNodesState,
   useEdgesState,
   type NodeChange,
@@ -31,6 +30,7 @@ import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
+import { gridStyleToBackgroundVariant } from '@/app/dashboard/utils/canvasStyleUtils';
 import {
   getVisibleClassIds,
   getVisibleGroupIds,
@@ -777,6 +777,11 @@ export default function DesignCanvas() {
         selectionOnDrag={false}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        snapToGrid={canvasSettings.snapToGrid}
+        snapGrid={[canvasSettings.gridSize, canvasSettings.gridSize]}
+        defaultEdgeOptions={{
+          animated: canvasSettings.edgeAnimated,
+        }}
         className="bg-slate-50 dark:bg-slate-900/50"
       >
         <PaneContextMenuRegistration />
@@ -805,7 +810,11 @@ export default function DesignCanvas() {
           />
         )}
         {canvasSettings.showBackground && (
-          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+          <Background
+            variant={gridStyleToBackgroundVariant(canvasSettings.gridStyle)}
+            gap={canvasSettings.gridSize}
+            size={1}
+          />
         )}
         {canvasSettings.showControls && (
           <Controls

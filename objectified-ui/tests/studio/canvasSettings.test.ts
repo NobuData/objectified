@@ -48,6 +48,12 @@ describe('DEFAULT_CANVAS_SETTINGS', () => {
     expect(DEFAULT_CANVAS_SETTINGS.showLayoutHints).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.showDependencyOverlay).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.showSchemaMetricsPanel).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.gridSize).toBe(16);
+    expect(DEFAULT_CANVAS_SETTINGS.gridStyle).toBe('dots');
+    expect(DEFAULT_CANVAS_SETTINGS.snapToGrid).toBe(true);
+    expect(DEFAULT_CANVAS_SETTINGS.edgePathType).toBe('smoothstep');
+    expect(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor).toBe('');
+    expect(DEFAULT_CANVAS_SETTINGS.edgeAnimated).toBe(false);
   });
 });
 
@@ -63,7 +69,10 @@ describe('getCanvasSettings', () => {
   });
 
   it('returns stored settings merged with defaults', () => {
-    const stored: CanvasSettings = {
+    // Intentionally omit the new fields (gridSize, gridStyle, snapToGrid,
+    // edgePathType, edgeStrokeColor, edgeAnimated) to validate that
+    // getCanvasSettings() correctly back-fills them from DEFAULT_CANVAS_SETTINGS.
+    const stored = {
       showBackground: false,
       showControls: false,
       showMiniMap: true,
@@ -74,7 +83,20 @@ describe('getCanvasSettings', () => {
     };
     localStorageMock.setItem('objectified:canvas:settings', JSON.stringify({ settings: stored, savedAt: new Date().toISOString() }));
     const result = getCanvasSettings();
-    expect(result).toEqual(stored);
+    expect(result.showBackground).toBe(false);
+    expect(result.showControls).toBe(false);
+    expect(result.showMiniMap).toBe(true);
+    expect(result.viewportPersistence).toBe(false);
+    expect(result.showLayoutHints).toBe(true);
+    expect(result.showDependencyOverlay).toBe(false);
+    expect(result.showSchemaMetricsPanel).toBe(false);
+    // New fields should be filled from DEFAULT_CANVAS_SETTINGS
+    expect(result.gridSize).toBe(DEFAULT_CANVAS_SETTINGS.gridSize);
+    expect(result.gridStyle).toBe(DEFAULT_CANVAS_SETTINGS.gridStyle);
+    expect(result.snapToGrid).toBe(DEFAULT_CANVAS_SETTINGS.snapToGrid);
+    expect(result.edgePathType).toBe(DEFAULT_CANVAS_SETTINGS.edgePathType);
+    expect(result.edgeStrokeColor).toBe(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor);
+    expect(result.edgeAnimated).toBe(DEFAULT_CANVAS_SETTINGS.edgeAnimated);
   });
 
   it('merges partial stored settings with defaults', () => {
@@ -131,6 +153,7 @@ describe('saveCanvasSettings', () => {
 
   it('persists settings to localStorage', () => {
     const settings: CanvasSettings = {
+      ...DEFAULT_CANVAS_SETTINGS,
       showBackground: false,
       showControls: true,
       showMiniMap: false,
@@ -150,6 +173,7 @@ describe('saveCanvasSettings', () => {
 
   it('round-trips save and get', () => {
     const settings: CanvasSettings = {
+      ...DEFAULT_CANVAS_SETTINGS,
       showBackground: false,
       showControls: false,
       showMiniMap: false,
@@ -179,3 +203,5 @@ describe('saveCanvasSettings', () => {
     expect(getCanvasSettings()).toEqual(second);
   });
 });
+
+

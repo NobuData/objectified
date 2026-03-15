@@ -3,12 +3,16 @@
 import { memo } from 'react';
 import {
   BaseEdge,
+  getStraightPath,
+  getBezierPath,
   getSmoothStepPath,
   Position,
   type Edge,
   type EdgeProps,
 } from '@xyflow/react';
 import type { ClassRefEdgeData, ClassRefType } from '@lib/studio/canvasClassRefEdges';
+import type { CanvasEdgePathType } from '@lib/studio/canvasSettings';
+import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
 
 /** Stroke style by ref type (GitHub #81). */
 const REF_TYPE_STYLE: Record<
@@ -27,11 +31,11 @@ const REF_TYPE_STYLE: Record<
 };
 
 /** Default edge color (theme-aware via class). */
-const STROKE_COLOR = 'var(--class-ref-edge-stroke, rgb(100 116 139))'; // slate-500
+const THEME_STROKE = 'var(--class-ref-edge-stroke, rgb(100 116 139))'; // slate-500
 
 /**
  * Custom edge for class-to-class refs; styled by ref type (direct/optional/weak/bidirectional).
- * Uses a wide invisible path for easier selection/hover. Reference: GitHub #81.
+ * Path type and stroke color from canvas settings (GitHub #94).
  */
 function ClassRefEdgeComponent({
   sourceX,
@@ -44,22 +48,60 @@ function ClassRefEdgeComponent({
   markerEnd,
   markerStart,
 }: EdgeProps<Edge<ClassRefEdgeData>>) {
+  const canvasSettings = useCanvasSettingsOptional();
+  const pathType: CanvasEdgePathType =
+    canvasSettings?.settings?.edgePathType ?? 'smoothstep';
+  const strokeColor =
+    canvasSettings?.settings?.edgeStrokeColor?.trim() || THEME_STROKE;
+
   const edgeData = data;
   const refType: ClassRefType = edgeData?.refType ?? 'direct';
   const styleConfig = REF_TYPE_STYLE[refType];
 
-  const [path] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition: sourcePosition ?? Position.Bottom,
-    targetPosition: targetPosition ?? Position.Top,
-    borderRadius: 8,
-  });
+  const srcPos = sourcePosition ?? Position.Bottom;
+  const tgtPos = targetPosition ?? Position.Top;
+
+  let path: string;
+  if (pathType === 'straight') {
+    [path] = getStraightPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+    });
+  } else if (pathType === 'bezier') {
+    [path] = getBezierPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      sourcePosition: srcPos,
+      targetPosition: tgtPos,
+    });
+  } else if (pathType === 'orthogonal') {
+    [path] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      sourcePosition: srcPos,
+      targetPosition: tgtPos,
+      borderRadius: 0,
+    });
+  } else {
+    [path] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      sourcePosition: srcPos,
+      targetPosition: tgtPos,
+      borderRadius: 8,
+    });
+  }
 
   const edgeStyle = {
-    stroke: STROKE_COLOR,
+    stroke: strokeColor,
     strokeWidth: styleConfig.strokeWidth,
     strokeDasharray: styleConfig.strokeDasharray,
     fill: 'none',

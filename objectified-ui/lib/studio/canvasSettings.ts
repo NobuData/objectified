@@ -3,9 +3,16 @@
  * Persisted to localStorage and applied to the design canvas.
  *
  * Reference: GitHub #77 — Configure react-flow canvas properly
+ * Reference: GitHub #94 — Add canvas settings form (grid, background, edge, routing, animation)
  */
 
 const CANVAS_SETTINGS_KEY = 'objectified:canvas:settings';
+
+/** Grid/background pattern style. Maps to React Flow BackgroundVariant. */
+export type CanvasGridStyle = 'dots' | 'lines' | 'cross';
+
+/** Edge path routing type. */
+export type CanvasEdgePathType = 'straight' | 'bezier' | 'orthogonal' | 'smoothstep';
 
 export interface CanvasSettings {
   showBackground: boolean;
@@ -18,6 +25,18 @@ export interface CanvasSettings {
   showDependencyOverlay: boolean;
   /** Show schema metrics panel (depth, circular, affected count). Reference: GitHub #91. */
   showSchemaMetricsPanel: boolean;
+  /** Grid: size in pixels (gap between dots/lines). */
+  gridSize: number;
+  /** Grid: pattern style (dots, lines, cross). */
+  gridStyle: CanvasGridStyle;
+  /** Grid: snap nodes to grid when dragging. */
+  snapToGrid: boolean;
+  /** Edge path routing: straight, bezier, orthogonal (step), smoothstep (smart). */
+  edgePathType: CanvasEdgePathType;
+  /** Edge stroke color; empty string = use theme (--class-ref-edge-stroke). */
+  edgeStrokeColor: string;
+  /** Animate edges. */
+  edgeAnimated: boolean;
 }
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
@@ -28,6 +47,12 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   showLayoutHints: false,
   showDependencyOverlay: false,
   showSchemaMetricsPanel: false,
+  gridSize: 16,
+  gridStyle: 'dots',
+  snapToGrid: true,
+  edgePathType: 'smoothstep',
+  edgeStrokeColor: '',
+  edgeAnimated: false,
 };
 
 interface StoredCanvasSettings {

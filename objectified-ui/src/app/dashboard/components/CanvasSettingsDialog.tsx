@@ -1,29 +1,66 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Label from '@radix-ui/react-label';
+import * as Select from '@radix-ui/react-select';
 import * as Switch from '@radix-ui/react-switch';
-import { X, Clock, Trash2 } from 'lucide-react';
+import { X, Clock, Trash2, ChevronDown } from 'lucide-react';
 import {
   ReactFlow,
   Controls,
   MiniMap,
   Background,
-  BackgroundVariant,
+  MarkerType,
   useNodesState,
   useEdgesState,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
-import { getCanvasSettings, saveCanvasSettings } from '@lib/studio/canvasSettings';
-import type { CanvasSettings } from '@lib/studio/canvasSettings';
+import {
+  useCanvasSettingsOptional,
+  CanvasSettingsContext,
+} from '@/app/contexts/CanvasSettingsContext';
+import {
+  getCanvasSettings,
+  saveCanvasSettings,
+  type CanvasSettings,
+  type CanvasGridStyle,
+  type CanvasEdgePathType,
+} from '@lib/studio/canvasSettings';
+import { gridStyleToBackgroundVariant } from '@/app/dashboard/utils/canvasStyleUtils';
 import { useSearchHistory } from '@/app/hooks/useSearchHistory';
+import ClassRefEdge from './ClassRefEdge';
 
 const PREVIEW_NODES = [
   { id: 'a', position: { x: 20, y: 20 }, data: { label: 'Class A' } },
   { id: 'b', position: { x: 220, y: 80 }, data: { label: 'Class B' } },
 ];
+
+const PREVIEW_EDGES = [
+  {
+    id: 'preview-e1',
+    source: 'a',
+    target: 'b',
+    type: 'classRef',
+    data: { refType: 'direct' as const },
+    markerEnd: { type: MarkerType.ArrowClosed },
+  },
+];
+
+const GRID_SIZE_OPTIONS = [8, 16, 24] as const;
+const GRID_STYLE_OPTIONS: { value: CanvasGridStyle; label: string }[] = [
+  { value: 'dots', label: 'Dots' },
+  { value: 'lines', label: 'Lines' },
+  { value: 'cross', label: 'Cross' },
+];
+const EDGE_PATH_OPTIONS: { value: CanvasEdgePathType; label: string }[] = [
+  { value: 'straight', label: 'Straight' },
+  { value: 'bezier', label: 'Bezier' },
+  { value: 'orthogonal', label: 'Orthogonal' },
+  { value: 'smoothstep', label: 'Smooth step' },
+];
+
+const edgeTypes = { classRef: ClassRefEdge };
 
 export interface CanvasSettingsDialogProps {
   open: boolean;
@@ -45,7 +82,12 @@ export default function CanvasSettingsDialog({
   }, [open, settings]);
 
   const [nodes] = useNodesState(PREVIEW_NODES);
-  const [edges] = useEdgesState([]);
+  const [edges] = useEdgesState(PREVIEW_EDGES);
+
+  const previewContextValue = useMemo(
+    () => ({ settings: draft, setSettings: () => {} }),
+    [draft]
+  );
 
   const handleSave = () => {
     setSettings(draft);
@@ -73,9 +115,9 @@ export default function CanvasSettingsDialog({
                 id="canvas-settings-description"
                 className="text-sm text-slate-500 dark:text-slate-400 mt-1"
               >
-                Configure background, controls, minimap, viewport persistence, layout hints, dependency overlay and schema metrics.
-                Changes below are reflected in the preview; save to apply to the
-                design canvas.
+                Configure grid, background, edges, routing, animation, controls,
+                minimap, and search history. Changes are reflected in the
+                preview; save to apply to the design canvas.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -91,24 +133,125 @@ export default function CanvasSettingsDialog({
 
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <div className="w-56 shrink-0 flex flex-col gap-4 p-4 border-r border-slate-200 dark:border-slate-700 overflow-y-auto">
-              <div className="flex items-center justify-between gap-3">
-                <Label.Root
-                  htmlFor="canvas-settings-background"
-                  className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                >
-                  Background
-                </Label.Root>
-                <Switch.Root
-                  id="canvas-settings-background"
-                  checked={draft.showBackground}
-                  onCheckedChange={(checked) =>
-                    updateDraft({ showBackground: checked })
-                  }
-                  className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
-                >
-                  <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
-                </Switch.Root>
+              {/* Grid — GitHub #94 */}
+              <div className="space-y-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Grid
+                </span>
+                <div className="flex items-center justify-between gap-3">
+                  <Label.Root
+                    htmlFor="canvas-settings-grid-visible"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Visible
+                  </Label.Root>
+                  <Switch.Root
+                    id="canvas-settings-grid-visible"
+                    checked={draft.showBackground}
+                    onCheckedChange={(checked) =>
+                      updateDraft({ showBackground: checked })
+                    }
+                    className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                  >
+                    <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                  </Switch.Root>
+                </div>
+                <div className="space-y-1.5">
+                  <Label.Root
+                    htmlFor="canvas-settings-grid-size"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Size
+                  </Label.Root>
+                  <Select.Root
+                    value={String(draft.gridSize)}
+                    onValueChange={(v) =>
+                      updateDraft({ gridSize: Number(v) })
+                    }
+                  >
+                    <Select.Trigger
+                      id="canvas-settings-grid-size"
+                      className="flex h-9 w-full items-center justify-between rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
+                    >
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="h-4 w-4" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
+                        <Select.Viewport>
+                          {GRID_SIZE_OPTIONS.map((size) => (
+                            <Select.Item
+                              key={size}
+                              value={String(size)}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{size}px</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
+                <div className="space-y-1.5">
+                  <Label.Root
+                    htmlFor="canvas-settings-grid-style"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Style
+                  </Label.Root>
+                  <Select.Root
+                    value={draft.gridStyle}
+                    onValueChange={(v) =>
+                      updateDraft({ gridStyle: v as CanvasGridStyle })
+                    }
+                  >
+                    <Select.Trigger
+                      id="canvas-settings-grid-style"
+                      className="flex h-9 w-full items-center justify-between rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
+                    >
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="h-4 w-4" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
+                        <Select.Viewport>
+                          {GRID_STYLE_OPTIONS.map((opt) => (
+                            <Select.Item
+                              key={opt.value}
+                              value={opt.value}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{opt.label}</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <Label.Root
+                    htmlFor="canvas-settings-snap"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Snap to grid
+                  </Label.Root>
+                  <Switch.Root
+                    id="canvas-settings-snap"
+                    checked={draft.snapToGrid}
+                    onCheckedChange={(checked) =>
+                      updateDraft({ snapToGrid: checked })
+                    }
+                    className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                  >
+                    <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                  </Switch.Root>
+                </div>
               </div>
+
               <div className="flex items-center justify-between gap-3">
                 <Label.Root
                   htmlFor="canvas-settings-controls"
@@ -218,6 +361,87 @@ export default function CanvasSettingsDialog({
                 </Switch.Root>
               </div>
 
+              {/* Edge styling & routing — GitHub #94 */}
+              <div className="space-y-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Edges
+                </span>
+                <div className="space-y-1.5">
+                  <Label.Root
+                    htmlFor="canvas-settings-edge-path"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Path type
+                  </Label.Root>
+                  <Select.Root
+                    value={draft.edgePathType}
+                    onValueChange={(v) =>
+                      updateDraft({ edgePathType: v as CanvasEdgePathType })
+                    }
+                  >
+                    <Select.Trigger
+                      id="canvas-settings-edge-path"
+                      className="flex h-9 w-full items-center justify-between rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
+                    >
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="h-4 w-4" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
+                        <Select.Viewport>
+                          {EDGE_PATH_OPTIONS.map((opt) => (
+                            <Select.Item
+                              key={opt.value}
+                              value={opt.value}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{opt.label}</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
+                <div className="space-y-1.5">
+                  <Label.Root
+                    htmlFor="canvas-settings-edge-color"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Color (empty = theme)
+                  </Label.Root>
+                  <input
+                    id="canvas-settings-edge-color"
+                    type="text"
+                    value={draft.edgeStrokeColor}
+                    onChange={(e) =>
+                      updateDraft({ edgeStrokeColor: e.target.value })
+                    }
+                    placeholder="e.g. #64748b"
+                    className="h-9 w-full rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm placeholder:text-slate-400"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <Label.Root
+                    htmlFor="canvas-settings-edge-animated"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Animated
+                  </Label.Root>
+                  <Switch.Root
+                    id="canvas-settings-edge-animated"
+                    checked={draft.edgeAnimated}
+                    onCheckedChange={(checked) =>
+                      updateDraft({ edgeAnimated: checked })
+                    }
+                    className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                  >
+                    <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                  </Switch.Root>
+                </div>
+              </div>
+
               {/* Search history management — GitHub #86 */}
               <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-2">
@@ -269,33 +493,39 @@ export default function CanvasSettingsDialog({
                 Preview
               </p>
               <div className="flex-1 min-h-[240px] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-950">
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  fitView
-                  className="bg-slate-50 dark:bg-slate-900/50"
-                  proOptions={{ hideAttribution: true }}
-                >
-                  {draft.showBackground && (
-                    <Background
-                      variant={BackgroundVariant.Dots}
-                      gap={16}
-                      size={1}
-                    />
-                  )}
-                  {draft.showControls && (
-                    <Controls
-                      position="bottom-left"
-                      className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700"
-                    />
-                  )}
-                  {draft.showMiniMap && (
-                    <MiniMap
-                      position="bottom-right"
-                      className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700 !bg-white dark:!bg-slate-900"
-                    />
-                  )}
-                </ReactFlow>
+                <CanvasSettingsContext.Provider value={previewContextValue}>
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    fitView
+                    snapToGrid={draft.snapToGrid}
+                    snapGrid={[draft.gridSize, draft.gridSize]}
+                    defaultEdgeOptions={{ animated: draft.edgeAnimated }}
+                    edgeTypes={edgeTypes}
+                    className="bg-slate-50 dark:bg-slate-900/50"
+                    proOptions={{ hideAttribution: true }}
+                  >
+                    {draft.showBackground && (
+                      <Background
+                        variant={gridStyleToBackgroundVariant(draft.gridStyle)}
+                        gap={draft.gridSize}
+                        size={1}
+                      />
+                    )}
+                    {draft.showControls && (
+                      <Controls
+                        position="bottom-left"
+                        className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700"
+                      />
+                    )}
+                    {draft.showMiniMap && (
+                      <MiniMap
+                        position="bottom-right"
+                        className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700 !bg-white dark:!bg-slate-900"
+                      />
+                    )}
+                  </ReactFlow>
+                </CanvasSettingsContext.Provider>
               </div>
             </div>
           </div>
