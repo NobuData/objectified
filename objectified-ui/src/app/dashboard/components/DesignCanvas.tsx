@@ -27,7 +27,12 @@ import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
 import { useEditClassRequestOptional } from '@/app/contexts/EditClassRequestContext';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
+import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
+import {
+  getVisibleClassIds,
+  getVisibleGroupIds,
+} from '@lib/studio/canvasSearch';
 import { getStableClassId } from '@lib/studio/types';
 import type { StudioGroup } from '@lib/studio/types';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
@@ -302,12 +307,50 @@ export default function DesignCanvas() {
     [onNodesChange, studio, classes, groups, versionId, isReadOnly]
   );
 
+  const canvasSearch = useCanvasSearchOptional();
+  const searchState = canvasSearch?.state ?? null;
+
+  const visibleClassIds = useMemo(
+    () =>
+      searchState ? getVisibleClassIds(classes, searchState) : null,
+    [classes, searchState]
+  );
+  const classToGroup = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const cls of classes) {
+      const gid = (cls.canvas_metadata as { group?: string } | undefined)?.group;
+      if (gid) m.set(getStableClassId(cls), gid);
+    }
+    return m;
+  }, [classes]);
+  const visibleGroupIds = useMemo(() => {
+    if (!searchState || !visibleClassIds) return null;
+    return getVisibleGroupIds(groups, searchState, visibleClassIds, classToGroup);
+  }, [groups, searchState, visibleClassIds, classToGroup]);
+
   const baseNodes =
     classes.length > 0 || groups.length > 0 ? nodes : initialNodesFromState;
 
+  const filteredNodes = useMemo(() => {
+    if (visibleClassIds === null && visibleGroupIds === null) return baseNodes;
+    const visibleC = visibleClassIds ?? new Set<string>();
+    const visibleG = visibleGroupIds ?? new Set<string>();
+    return baseNodes.filter((node: Node) => {
+      if (node.type === 'group') return visibleG.has(node.id);
+      return visibleC.has(node.id);
+    });
+  }, [baseNodes, visibleClassIds, visibleGroupIds]);
+
+  const filteredEdges = useMemo(() => {
+    if (visibleClassIds === null) return edges;
+    return edges.filter(
+      (e) => visibleClassIds.has(e.source) && visibleClassIds.has(e.target)
+    );
+  }, [edges, visibleClassIds]);
+
   const displayNodes = useMemo(() => {
     const allStoredConfigs = versionId ? getAllClassNodeConfigs(versionId) : {};
-    return baseNodes.map((node: Node) => {
+    return filteredNodes.map((node: Node) => {
       if (node.type === 'group') {
         return {
           ...node,
@@ -331,7 +374,7 @@ export default function DesignCanvas() {
         },
       };
     });
-  }, [baseNodes, versionId, configOverrides, onConfigChange, isReadOnly, canvasGroup]);
+  }, [filteredNodes, versionId, configOverrides, onConfigChange, isReadOnly, canvasGroup]);
 
   // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
   const onViewportChange = useCallback(
@@ -471,7 +514,7 @@ export default function DesignCanvas() {
     <div className="w-full h-full bg-slate-100 dark:bg-slate-950 [--class-ref-edge-stroke:rgb(100_116_139)] dark:[--class-ref-edge-stroke:rgb(148_163_184)]">
       <ReactFlow
         nodes={displayNodes}
-        edges={edges}
+        edges={filteredEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}

@@ -11,7 +11,9 @@ import { WorkspaceProvider } from '@/app/contexts/WorkspaceContext';
 import { StudioProvider } from '@/app/contexts/StudioContext';
 import { CanvasSettingsProvider } from '@/app/contexts/CanvasSettingsContext';
 import { CanvasGroupProvider } from '@/app/contexts/CanvasGroupContext';
+import { CanvasSearchProvider } from '@/app/contexts/CanvasSearchContext';
 import { EditClassRequestProvider } from '@/app/contexts/EditClassRequestContext';
+import CanvasSearchBar from '@/app/dashboard/components/CanvasSearchBar';
 
 export default function DataDesignerPage() {
   return (
@@ -19,6 +21,7 @@ export default function DataDesignerPage() {
       <StudioProvider>
         <CanvasSettingsProvider>
           <CanvasGroupProvider>
+          <CanvasSearchProvider>
           <EditClassRequestProvider>
           <StudioVersionSync />
           <StudioUrlLoader />
@@ -30,12 +33,16 @@ export default function DataDesignerPage() {
           </div>
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <DesignCanvasSidebar />
-            <main className="flex-1 min-w-0 min-h-0 relative">
-              <DesignCanvas />
+            <main className="flex-1 min-w-0 min-h-0 relative flex flex-col">
+              <CanvasSearchBar />
+              <div className="flex-1 min-h-0">
+                <DesignCanvas />
+              </div>
             </main>
           </div>
         </div>
           </EditClassRequestProvider>
+          </CanvasSearchProvider>
           </CanvasGroupProvider>
         </CanvasSettingsProvider>
       </StudioProvider>
