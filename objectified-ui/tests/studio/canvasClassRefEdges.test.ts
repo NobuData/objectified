@@ -71,23 +71,58 @@ describe('buildClassRefEdges', () => {
     expect(edges[0].data?.refType).toBe('optional');
   });
 
-  it('accepts linkType and ref_type as refType keys', () => {
-    const classes: StudioClass[] = [
+  it('accepts all ref_type alias keys (refType, ref_type, linkType, link_type)', () => {
+    // link_type
+    const withLinkType: StudioClass[] = [
       { id: 'c1', name: 'X', properties: [] },
       {
         id: 'c2',
         name: 'Y',
         properties: [
-          {
-            name: 'r',
-            data: { $ref: '#/components/schemas/X', link_type: 'weak' },
-          },
+          { name: 'r', data: { $ref: '#/components/schemas/X', link_type: 'weak' } },
         ],
       },
     ];
-    const edges = buildClassRefEdges(classes);
-    expect(edges).toHaveLength(1);
-    expect(edges[0].data?.refType).toBe('weak');
+    expect(buildClassRefEdges(withLinkType)[0].data?.refType).toBe('weak');
+
+    // refType
+    const withRefType: StudioClass[] = [
+      { id: 'c1', name: 'X', properties: [] },
+      {
+        id: 'c2',
+        name: 'Y',
+        properties: [
+          { name: 'r', data: { $ref: '#/components/schemas/X', refType: 'optional' } },
+        ],
+      },
+    ];
+    expect(buildClassRefEdges(withRefType)[0].data?.refType).toBe('optional');
+
+    // ref_type
+    const withRefTypeSnake: StudioClass[] = [
+      { id: 'c1', name: 'X', properties: [] },
+      {
+        id: 'c2',
+        name: 'Y',
+        properties: [
+          { name: 'r', data: { $ref: '#/components/schemas/X', ref_type: 'bidirectional' } },
+        ],
+      },
+    ];
+    expect(buildClassRefEdges(withRefTypeSnake)[0].data?.refType).toBe('bidirectional');
+
+    // linkType
+    const withLinkTypeCamel: StudioClass[] = [
+      { id: 'c1', name: 'X', properties: [] },
+      {
+        id: 'c2',
+        name: 'Y',
+        properties: [
+          { name: 'r', data: { $ref: '#/components/schemas/X', linkType: 'weak' } },
+        ],
+      },
+    ];
+    expect(buildClassRefEdges(withLinkTypeCamel)[0].data?.refType).toBe('weak');
   });
 
   it('builds multiple edges for multiple refs', () => {
@@ -143,5 +178,106 @@ describe('buildClassRefEdges', () => {
     ];
     const edges = buildClassRefEdges(classes);
     expect(edges).toEqual([]);
+  });
+
+  it('matches $ref case-insensitively against class names', () => {
+    const classes: StudioClass[] = [
+      { id: 'c1', name: 'User', properties: [] },
+      {
+        id: 'c2',
+        name: 'Order',
+        properties: [
+          { name: 'customer', data: { $ref: '#/components/schemas/user' } },
+        ],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].source).toBe('c2');
+    expect(edges[0].target).toBe('c1');
+  });
+
+  it('skips edges to duplicate normalized class names and warns', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const classes: StudioClass[] = [
+      { id: 'a1', name: 'Widget', properties: [] },
+      { id: 'a2', name: 'widget', properties: [] },
+      {
+        id: 'b1',
+        name: 'Page',
+        properties: [
+          { name: 'w', data: { $ref: '#/components/schemas/Widget' } },
+        ],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    expect(edges).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('widget')
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('generates deterministic edge ids from source, target, and property name', () => {
+    const classes: StudioClass[] = [
+      { id: 'src', name: 'A', properties: [] },
+      {
+        id: 'tgt',
+        name: 'B',
+        properties: [
+          { name: 'myProp', data: { $ref: '#/components/schemas/A' } },
+        ],
+      },
+    ];
+    const edges1 = buildClassRefEdges(classes);
+    const edges2 = buildClassRefEdges([...classes]);
+    expect(edges1[0].id).toBe('class-ref-tgt--src--myProp');
+    expect(edges1[0].id).toBe(edges2[0].id);
+  });
+
+  it('uses target class name as fallback in edge id when property has no name', () => {
+    const classes: StudioClass[] = [
+      { id: 'src', name: 'Target', properties: [] },
+      {
+        id: 'tgt',
+        name: 'Source',
+        properties: [
+          { name: '', data: { $ref: '#/components/schemas/Target' } },
+        ],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    expect(edges).toHaveLength(1);
+    // Fallback: normalized target name ('target') is used when property name is empty
+    expect(edges[0].id).toBe('class-ref-tgt--src--target');
+    // Should be stable across repeated calls
+    expect(buildClassRefEdges([...classes])[0].id).toBe(edges[0].id);
+  });
+
+  it('sets markerEnd on all edges and markerStart only for bidirectional', () => {
+    const classes: StudioClass[] = [
+      { id: 'c1', name: 'A', properties: [] },
+      {
+        id: 'c2',
+        name: 'B',
+        properties: [
+          { name: 'toA', data: { $ref: '#/components/schemas/A', refType: 'direct' } },
+        ],
+      },
+      {
+        id: 'c3',
+        name: 'C',
+        properties: [
+          { name: 'toA', data: { $ref: '#/components/schemas/A', refType: 'bidirectional' } },
+        ],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    const direct = edges.find((e) => e.source === 'c2');
+    const bidir = edges.find((e) => e.source === 'c3');
+    expect(direct?.markerEnd).toBeDefined();
+    expect(direct?.markerStart).toBeUndefined();
+    expect(bidir?.markerEnd).toBeDefined();
+    expect(bidir?.markerStart).toBeDefined();
   });
 });

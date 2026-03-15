@@ -11,6 +11,7 @@ import {
   useNodesState,
   useEdgesState,
   type NodeChange,
+  type EdgeChange,
   type OnMoveEnd,
   type Viewport,
   type Node,
@@ -142,6 +143,18 @@ export default function DesignCanvas() {
     setEdges(buildClassRefEdges(classes));
   }, [classes, setEdges]);
 
+  // Derived edges must not be mutated by user interaction; only selection changes are allowed
+  // so that keyboard-delete and other destructive actions cannot remove ref edges.
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      const allowedChanges = changes.filter((c) => c.type === 'select');
+      if (allowedChanges.length > 0) {
+        onEdgesChange(allowedChanges);
+      }
+    },
+    [onEdgesChange]
+  );
+
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       // In read-only mode, only allow selection-type changes through so the user
@@ -254,7 +267,7 @@ export default function DesignCanvas() {
         nodes={displayNodes}
         edges={edges}
         onNodesChange={handleNodesChange}
-        onEdgesChange={onEdgesChange}
+        onEdgesChange={handleEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
         viewport={viewportState}
         onViewportChange={onViewportChange}

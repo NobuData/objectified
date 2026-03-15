@@ -34,6 +34,7 @@ jest.mock('@xyflow/react', () => ({
   MiniMap: () => <div data-testid="react-flow-minimap">MiniMap</div>,
   Background: () => null,
   BackgroundVariant: { Dots: 'dots' },
+  MarkerType: { ArrowClosed: 'arrowclosed', Arrow: 'arrow' },
   useNodesState: () => [[], jest.fn(), jest.fn()],
   useEdgesState: () => [[], jest.fn(), jest.fn()],
 }));
