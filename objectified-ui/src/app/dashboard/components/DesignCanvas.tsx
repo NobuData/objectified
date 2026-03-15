@@ -28,12 +28,18 @@ import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext'
 import { useEditClassRequestOptional } from '@/app/contexts/EditClassRequestContext';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
+import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
 import {
   getVisibleClassIds,
   getVisibleGroupIds,
   isSearchActive,
 } from '@lib/studio/canvasSearch';
+import {
+  isFocusModeActive,
+  getFocusedNodeIds,
+  getFocusedGroupIds,
+} from '@lib/studio/canvasFocusMode';
 import { getStableClassId } from '@lib/studio/types';
 import type { StudioGroup } from '@lib/studio/types';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
@@ -70,6 +76,7 @@ export default function DesignCanvas() {
   const workspace = useWorkspaceOptional();
   const editClassRequest = useEditClassRequestOptional();
   const canvasGroup = useCanvasGroupOptional();
+  const focusMode = useCanvasFocusModeOptional();
   const versionId = studio?.state?.versionId ?? null;
   const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
   const groups = useMemo(() => studio?.state?.groups ?? [], [studio?.state]);
@@ -351,9 +358,73 @@ export default function DesignCanvas() {
     );
   }, [edges, visibleClassIds, searchState]);
 
+  // --- Focus mode filtering (second pass, narrows search results) ---
+  const focusState = focusMode?.state ?? null;
+
+  const focusStartNodeIds = useMemo(() => {
+    if (!focusState || !isFocusModeActive(focusState)) return null;
+    if (focusState.focusNodeId) return new Set([focusState.focusNodeId]);
+    if (focusState.focusGroupId) {
+      // Collect all class ids that belong to the focused group.
+      const ids = new Set<string>();
+      for (const [classId, groupId] of classToGroup) {
+        if (groupId === focusState.focusGroupId) ids.add(classId);
+      }
+      return ids;
+    }
+    return null;
+  }, [focusState, classToGroup]);
+
+  const focusedClassIds = useMemo(() => {
+    if (!focusStartNodeIds) return null;
+    return getFocusedNodeIds(
+      filteredEdges,
+      focusStartNodeIds,
+      focusState?.focusModeDegree ?? 1
+    );
+  }, [focusStartNodeIds, filteredEdges, focusState?.focusModeDegree]);
+
+  const focusedGroupIds = useMemo(() => {
+    if (!focusedClassIds) return null;
+    const ids = getFocusedGroupIds(groups, focusedClassIds, classToGroup);
+    // Always include the focused group itself, even when it has no member classes,
+    // so the group node remains visible rather than the canvas going blank.
+    if (focusState?.focusGroupId) ids.add(focusState.focusGroupId);
+    return ids;
+  }, [focusedClassIds, groups, classToGroup, focusState?.focusGroupId]);
+
+  const focusFilteredNodes = useMemo(() => {
+    if (!focusedClassIds || !focusedGroupIds) return filteredNodes;
+    return filteredNodes.filter((node: Node) => {
+      if (node.type === 'group') return focusedGroupIds.has(node.id);
+      return focusedClassIds.has(node.id);
+    });
+  }, [filteredNodes, focusedClassIds, focusedGroupIds]);
+
+  const focusFilteredEdges = useMemo(() => {
+    if (!focusedClassIds) return filteredEdges;
+    return filteredEdges.filter(
+      (e) => focusedClassIds.has(e.source) && focusedClassIds.has(e.target)
+    );
+  }, [filteredEdges, focusedClassIds]);
+
+  // Escape key handler to exit focus mode.
+  useEffect(() => {
+    if (!focusState || !isFocusModeActive(focusState)) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        focusMode?.exitFocusMode();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [focusState, focusMode]);
+
   const displayNodes = useMemo(() => {
     const allStoredConfigs = versionId ? getAllClassNodeConfigs(versionId) : {};
-    return filteredNodes.map((node: Node) => {
+    return focusFilteredNodes.map((node: Node) => {
       if (node.type === 'group') {
         return {
           ...node,
@@ -377,7 +448,7 @@ export default function DesignCanvas() {
         },
       };
     });
-  }, [filteredNodes, versionId, configOverrides, onConfigChange, isReadOnly, canvasGroup]);
+  }, [focusFilteredNodes, versionId, configOverrides, onConfigChange, isReadOnly, canvasGroup]);
 
   // Update controlled viewport state on every change (needed to keep ReactFlow in sync).
   const onViewportChange = useCallback(
@@ -517,7 +588,7 @@ export default function DesignCanvas() {
     <div className="w-full h-full bg-slate-100 dark:bg-slate-950 [--class-ref-edge-stroke:rgb(100_116_139)] dark:[--class-ref-edge-stroke:rgb(148_163_184)]">
       <ReactFlow
         nodes={displayNodes}
-        edges={filteredEdges}
+        edges={focusFilteredEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
@@ -565,6 +636,22 @@ export default function DesignCanvas() {
           />
         )}
       </ReactFlow>
+      {/* Focus mode indicator banner */}
+      {focusState && isFocusModeActive(focusState) && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[10002] flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-600 dark:bg-indigo-500 text-white text-sm shadow-lg">
+          <span>
+            Focus mode · {focusState.focusModeDegree}-degree
+            {focusState.focusGroupId ? ' · group' : ''}
+          </span>
+          <button
+            type="button"
+            className="ml-1 px-2 py-0.5 rounded bg-indigo-700 dark:bg-indigo-600 hover:bg-indigo-800 dark:hover:bg-indigo-700 text-xs"
+            onClick={() => focusMode?.exitFocusMode()}
+          >
+            Esc to exit
+          </button>
+        </div>
+      )}
       {nodeContextMenu &&
         typeof document !== 'undefined' &&
         createPortal(
@@ -591,6 +678,16 @@ export default function DesignCanvas() {
                     Edit group
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  onClick={() => {
+                    focusMode?.enterFocusOnGroup(nodeContextMenu.node.id);
+                    setNodeContextMenu(null);
+                  }}
+                >
+                  Focus on group
+                </button>
                 {!isReadOnly && (
                   <button
                     type="button"
@@ -607,6 +704,16 @@ export default function DesignCanvas() {
             )}
             {nodeContextMenu.node.type === 'class' && (
               <>
+                <button
+                  type="button"
+                  className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  onClick={() => {
+                    focusMode?.enterFocusOnNode(nodeContextMenu.node.id);
+                    setNodeContextMenu(null);
+                  }}
+                >
+                  Focus on this node
+                </button>
                 {(nodeContextMenu.node.data as { canvas_metadata?: { group?: string } }).canvas_metadata?.group ? (
                   <button
                     type="button"
