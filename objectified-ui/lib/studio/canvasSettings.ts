@@ -14,6 +14,8 @@ export interface CanvasSettings {
   viewportPersistence: boolean;
   /** Show optional layout hints (edge crossings, spacing). Reference: GitHub #89. */
   showLayoutHints: boolean;
+  /** Show dependency overlay (upstream/downstream/path from selected node, circular ref warning). Reference: GitHub #90. */
+  showDependencyOverlay: boolean;
 }
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
@@ -22,6 +24,7 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   showMiniMap: true,
   viewportPersistence: true,
   showLayoutHints: false,
+  showDependencyOverlay: false,
 };
 
 interface StoredCanvasSettings {
