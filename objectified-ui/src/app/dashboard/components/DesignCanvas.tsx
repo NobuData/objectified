@@ -11,6 +11,7 @@ import {
   useNodesState,
   useEdgesState,
   type NodeChange,
+  type EdgeChange,
   type OnMoveEnd,
   type Viewport,
   type Node,
@@ -33,11 +34,14 @@ import {
   saveClassNodeConfig,
   type ClassNodeConfig,
 } from '@lib/studio/canvasClassNodeConfig';
+import { buildClassRefEdges } from '@lib/studio/canvasClassRefEdges';
 import ClassNode from './ClassNode';
+import ClassRefEdge from './ClassRefEdge';
 
 const defaultPosition = { x: 0, y: 0 };
 
 const nodeTypes = { class: ClassNode };
+const edgeTypes = { classRef: ClassRefEdge };
 
 function useResolvedCanvasSettings() {
   const context = useCanvasSettingsOptional();
@@ -126,13 +130,30 @@ export default function DesignCanvas() {
     });
   }, [classes, versionId]);
 
+  const initialEdges = useMemo(() => buildClassRefEdges(classes), [classes]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodesFromState);
-  const [edges, , onEdgesChange] = useEdgesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   useEffect(() => {
     if (classes.length === 0) return;
     setNodes(initialNodesFromState);
   }, [initialNodesFromState, classes.length, setNodes]);
+
+  useEffect(() => {
+    setEdges(buildClassRefEdges(classes));
+  }, [classes, setEdges]);
+
+  // Derived edges must not be mutated by user interaction; only selection changes are allowed
+  // so that keyboard-delete and other destructive actions cannot remove ref edges.
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      const allowedChanges = changes.filter((c) => c.type === 'select');
+      if (allowedChanges.length > 0) {
+        onEdgesChange(allowedChanges);
+      }
+    },
+    [onEdgesChange]
+  );
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -241,12 +262,12 @@ export default function DesignCanvas() {
   );
 
   return (
-    <div className="w-full h-full bg-slate-100 dark:bg-slate-950">
+    <div className="w-full h-full bg-slate-100 dark:bg-slate-950 [--class-ref-edge-stroke:rgb(100_116_139)] dark:[--class-ref-edge-stroke:rgb(148_163_184)]">
       <ReactFlow
         nodes={displayNodes}
         edges={edges}
         onNodesChange={handleNodesChange}
-        onEdgesChange={onEdgesChange}
+        onEdgesChange={handleEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
         viewport={viewportState}
         onViewportChange={onViewportChange}
@@ -256,6 +277,7 @@ export default function DesignCanvas() {
         nodesConnectable={!isReadOnly}
         elementsSelectable={true}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         className="bg-slate-50 dark:bg-slate-900/50"
       >
         {canvasSettings.showBackground && (
