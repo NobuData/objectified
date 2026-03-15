@@ -15,11 +15,19 @@ import {
 import type { StudioClass } from '@lib/studio/types';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 
+/** Options for image export (GitHub #93 — export wizard). */
+export interface ImageExportOptions {
+  /** Background color (e.g. 'white', 'transparent', or hex). */
+  backgroundColor?: string;
+  /** When false, group nodes are excluded from the capture. */
+  includeGroups?: boolean;
+}
+
 export interface ImageExportApi {
-  exportAsPng: () => Promise<void>;
-  exportAsSvg: () => Promise<void>;
-  exportAsJpeg: () => Promise<void>;
-  exportAsPdf: () => Promise<void>;
+  exportAsPng: (options?: ImageExportOptions) => Promise<void>;
+  exportAsSvg: (options?: ImageExportOptions) => Promise<void>;
+  exportAsJpeg: (options?: ImageExportOptions) => Promise<void>;
+  exportAsPdf: (options?: ImageExportOptions) => Promise<void>;
 }
 
 export interface CanvasExportContextValue {

@@ -108,5 +108,19 @@ describe('canvasExportFormats', () => {
       expect(parsed.nodes).toEqual([]);
       expect(parsed.edges).toEqual([]);
     });
+
+    it('includes groupId on nodes when includeGroupInfo is true (GitHub #93)', () => {
+      const classesWithGroup: StudioClass[] = [
+        { id: 'c1', name: 'User', properties: [], canvas_metadata: { group: 'group-1' } },
+        { id: 'c2', name: 'Order', properties: [] },
+      ];
+      const out = exportAsJson(classesWithGroup, { includeGroupInfo: true });
+      const parsed = JSON.parse(out);
+      expect(parsed.nodes).toHaveLength(2);
+      const userNode = parsed.nodes.find((n: { id: string }) => n.id === 'c1');
+      const orderNode = parsed.nodes.find((n: { id: string }) => n.id === 'c2');
+      expect(userNode.groupId).toBe('group-1');
+      expect(orderNode.groupId).toBeUndefined();
+    });
   });
 });
