@@ -216,7 +216,7 @@ def get_tags_for_class(
     """Get tags for a class from metadata.tags."""
     _assert_version_exists(version_id, include_deleted=include_deleted)
     rows = db.execute_query(
-        f"""
+        """
         SELECT metadata FROM objectified.class c
         WHERE c.id = %s AND c.version_id = %s
           AND (c.deleted_at IS NULL OR %s)
@@ -248,7 +248,7 @@ def assign_tag_to_class(
     if not tag_name:
         raise HTTPException(status_code=400, detail="Tag name is required")
     rows = db.execute_query(
-        f"""
+        """
         SELECT id, metadata FROM objectified.class
         WHERE id = %s AND version_id = %s AND deleted_at IS NULL
         LIMIT 1
@@ -289,7 +289,7 @@ def remove_tag_from_class(
     """Remove a tag from a class."""
     _assert_version_exists(version_id, include_deleted=False)
     rows = db.execute_query(
-        f"""
+        """
         SELECT id, metadata FROM objectified.class
         WHERE id = %s AND version_id = %s AND deleted_at IS NULL
         LIMIT 1
@@ -519,7 +519,7 @@ def delete_class(
     """Soft-delete a class."""
     _assert_version_exists(version_id, include_deleted=False)
     rows = db.execute_query(
-        f"""
+        """
         SELECT id FROM objectified.class
         WHERE id = %s AND version_id = %s AND deleted_at IS NULL
         LIMIT 1
