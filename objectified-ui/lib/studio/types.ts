@@ -114,6 +114,10 @@ export interface ClassNodeData {
   properties: StudioClassProperty[];
   /** Optional canvas metadata for dimensions and style (applied by the canvas). */
   canvas_metadata?: ClassCanvasMetadata;
+  /** Tag names for pill display (GitHub #100). */
+  tags?: string[];
+  /** Tag name -> color for pill background. */
+  tagDefinitions?: Record<string, { color?: string }>;
 }
 
 /** Action kinds for the undo stack (optional: could store full state snapshots only). */

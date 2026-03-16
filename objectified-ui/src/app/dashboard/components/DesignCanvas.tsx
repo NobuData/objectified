@@ -148,6 +148,13 @@ export default function DesignCanvas() {
     setViewportState(saved ?? undefined);
   }, [versionId, canvasSettings.viewportPersistence]);
 
+  const tagDefinitions = useMemo(() => {
+    const meta = studio?.state?.canvas_metadata as
+      | { tag_definitions?: Record<string, { color?: string }> }
+      | undefined;
+    return meta?.tag_definitions ?? {};
+  }, [studio?.state?.canvas_metadata]);
+
   const initialNodesFromState = useMemo(() => {
     const saved = versionId ? getDefaultCanvasLayout(versionId) : [];
     const savedMap = new Map(saved.map((e) => [e.classId, e.position]));
@@ -187,6 +194,8 @@ export default function DesignCanvas() {
           name: cls.name,
           properties: cls.properties ?? [],
           canvas_metadata: meta,
+          tags: cls.tags,
+          tagDefinitions,
         },
         ...(parentId ? { parentId, extent: 'parent' as const } : {}),
         ...(dimensions?.width != null || dimensions?.height != null
@@ -205,7 +214,7 @@ export default function DesignCanvas() {
     });
 
     return [...groupNodes, ...classNodes];
-  }, [classes, groups, versionId]);
+  }, [classes, groups, versionId, tagDefinitions]);
 
   const initialEdges = useMemo(() => buildClassRefEdges(classes), [classes]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodesFromState);

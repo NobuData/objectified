@@ -49,9 +49,12 @@ function ClassNodeComponent({
     classNodeConfig,
     onConfigChange,
     allowResize,
+    tags = [],
+    tagDefinitions = {},
   } = data as ClassNodeDataExtended;
 
   const hasProperties = properties.length > 0;
+  const defaultTagColor = '#94a3b8';
   const expanded = classNodeConfig?.propertiesExpanded !== false;
   const theme = classNodeConfig?.theme;
   const IconComponent = theme?.icon
@@ -140,6 +143,22 @@ function ClassNodeComponent({
             {name || 'Unnamed class'}
           </span>
         </div>
+        {tags.length > 0 && (
+          <div className="px-3 py-1 border-b border-slate-200 dark:border-slate-700 flex flex-wrap gap-1">
+            {tags.map((tagName) => (
+              <span
+                key={tagName}
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white border border-white/20"
+                style={{
+                  backgroundColor:
+                    tagDefinitions[tagName]?.color ?? defaultTagColor,
+                }}
+              >
+                {tagName}
+              </span>
+            ))}
+          </div>
+        )}
         {expanded && (
           <ScrollArea.Root className="max-h-[240px]">
             <ScrollArea.Viewport className="w-full">

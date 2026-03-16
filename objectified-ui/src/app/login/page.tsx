@@ -140,16 +140,16 @@ function LoginPageContent() {
             className="login-modal-content"
             onPointerDownOutside={(e) => e.preventDefault()}
             onEscapeKeyDown={(e) => e.preventDefault()}
-            aria-describedby={'logging-in-message'}
+            aria-describedby={undefined}
           >
             <Loader2
               className="h-10 w-10 login-spinner"
               aria-hidden
             />
             <Dialog.Title className="sr-only">Logging in</Dialog.Title>
-            <p className="login-modal-text" id="logging-in-message">
+            <Dialog.Description className="login-modal-text">
               Logging in ...
-            </p>
+            </Dialog.Description>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
