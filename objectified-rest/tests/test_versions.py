@@ -116,6 +116,31 @@ def test_get_version_by_id_returns_version(client):
     assert r.json()["id"] == _VERSION_ID
 
 
+def test_list_tags_for_version_returns_aggregated_tags(client):
+    """GET /v1/versions/{id}/tags returns all tag names from classes (GitHub #103)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [
+                {"metadata": {"tags": ["tag-a", "tag-b"]}},
+                {"metadata": {"tags": ["tag-b", "tag-c"]}},
+                {"metadata": {}},
+            ],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/tags")
+    assert r.status_code == 200
+    assert r.json() == ["tag-a", "tag-b", "tag-c"]
+
+
+def test_list_tags_for_version_empty(client):
+    """GET .../tags returns [] when no classes have tags."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [[_version_lookup_row()], []]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/tags")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
 def test_update_version_metadata_returns_updated_version(client):
     """PUT /v1/versions/{id} updates description/change_log."""
     updated = {**_VERSION_ROW, "description": "Updated", "change_log": "Updated log"}

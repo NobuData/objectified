@@ -28,6 +28,10 @@ import {
   listVersions,
   listVersionSnapshots,
   listClassesWithPropertiesAndTags,
+  getTagsForClass,
+  assignTagToClass,
+  removeTagFromClass,
+  listTagsForVersion,
   listProperties,
   commitVersion,
   pullVersion,
@@ -579,6 +583,66 @@ describe('listClassesWithPropertiesAndTags', () => {
     await listClassesWithPropertiesAndTags('v1', {});
     const [url] = mockFetch.mock.calls[0];
     expect(url).toBe(`${baseUrl}/versions/v1/classes/with-properties-tags`);
+  });
+});
+
+describe('getTagsForClass', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('constructs correct URL and returns tags', async () => {
+    const baseUrl = getRestBaseUrl();
+    mockFetch.mockResolvedValue(makeFetchResponse({ tags: ['a', 'b'] }));
+    const result = await getTagsForClass('v1', 'c1', {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/versions/v1/classes/c1/tags`);
+    expect(result.tags).toEqual(['a', 'b']);
+  });
+});
+
+describe('assignTagToClass', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('POSTs to class tags endpoint with tag body', async () => {
+    const baseUrl = getRestBaseUrl();
+    mockFetch.mockResolvedValue(makeFetchResponse({ tags: ['x', 'y'] }));
+    await assignTagToClass('v1', 'c1', 'y', {});
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/versions/v1/classes/c1/tags`);
+    expect((init as RequestInit).method).toBe('POST');
+    expect((init as RequestInit).body).toBe(JSON.stringify({ tag: 'y' }));
+  });
+});
+
+describe('removeTagFromClass', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('DELETEs tag by name with encoded path', async () => {
+    const baseUrl = getRestBaseUrl();
+    mockFetch.mockResolvedValue(makeFetchResponse({ tags: [] }));
+    await removeTagFromClass('v1', 'c1', 'my-tag', {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/versions/v1/classes/c1/tags/my-tag`);
+  });
+});
+
+describe('listTagsForVersion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('constructs correct URL and returns string array', async () => {
+    const baseUrl = getRestBaseUrl();
+    mockFetch.mockResolvedValue(makeFetchResponse(['tag1', 'tag2']));
+    const result = await listTagsForVersion('v1', {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/versions/v1/tags`);
+    expect(result).toEqual(['tag1', 'tag2']);
   });
 });
 

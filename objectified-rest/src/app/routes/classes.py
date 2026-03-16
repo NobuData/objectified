@@ -11,7 +11,14 @@ from app.database import db
 from app.routes.helpers import _not_found
 from app.routes.versions import _assert_version_exists
 from app.schema_validation import validate_json_schema_object
-from app.schemas.class_model import ClassCreate, ClassSchema, ClassUpdate, ClassWithPropertiesAndTags
+from app.schemas.class_model import (
+    ClassAssignTagRequest,
+    ClassCreate,
+    ClassSchema,
+    ClassTagsResponse,
+    ClassUpdate,
+    ClassWithPropertiesAndTags,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +189,129 @@ def get_class_with_properties_and_tags(
         cls_dict["properties"].append(dict(prop))
 
     return cls_dict
+
+
+def _get_class_tags_list(metadata: Optional[dict]) -> list[str]:
+    """Return tags list from class metadata, normalised to list of strings."""
+    tags = (metadata or {}).get("tags", [])
+    if isinstance(tags, str):
+        return [tags] if tags else []
+    if isinstance(tags, list):
+        return [str(t) for t in tags if t is not None and str(t).strip()]
+    return []
+
+
+@router.get(
+    "/versions/{version_id}/classes/{class_id}/tags",
+    response_model=ClassTagsResponse,
+    summary="Get tags for class",
+    description="Return tag names assigned to the class (GitHub #103).",
+)
+def get_tags_for_class(
+    version_id: str,
+    class_id: str,
+    include_deleted: bool = Query(False, description="Include soft-deleted class"),
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> ClassTagsResponse:
+    """Get tags for a class from metadata.tags."""
+    _assert_version_exists(version_id, include_deleted=include_deleted)
+    rows = db.execute_query(
+        f"""
+        SELECT metadata FROM objectified.class c
+        WHERE c.id = %s AND c.version_id = %s
+          AND (c.deleted_at IS NULL OR %s)
+        LIMIT 1
+        """,
+        (class_id, version_id, include_deleted),
+    )
+    if not rows:
+        raise _not_found("Class", class_id)
+    tags = _get_class_tags_list(dict(rows[0]).get("metadata"))
+    return ClassTagsResponse(tags=tags)
+
+
+@router.post(
+    "/versions/{version_id}/classes/{class_id}/tags",
+    response_model=ClassTagsResponse,
+    summary="Assign tag to class",
+    description="Add a tag to the class's metadata.tags (GitHub #103). Idempotent if already present.",
+)
+def assign_tag_to_class(
+    version_id: str,
+    class_id: str,
+    payload: ClassAssignTagRequest,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> ClassTagsResponse:
+    """Assign a tag to a class by updating metadata.tags."""
+    _assert_version_exists(version_id, include_deleted=False)
+    tag_name = (payload.tag or "").strip()
+    if not tag_name:
+        raise HTTPException(status_code=400, detail="Tag name is required")
+    rows = db.execute_query(
+        f"""
+        SELECT id, metadata FROM objectified.class
+        WHERE id = %s AND version_id = %s AND deleted_at IS NULL
+        LIMIT 1
+        """,
+        (class_id, version_id),
+    )
+    if not rows:
+        raise _not_found("Class", class_id)
+    row = dict(rows[0])
+    metadata = dict(row.get("metadata") or {})
+    tags = _get_class_tags_list(metadata)
+    if tag_name not in tags:
+        tags.append(tag_name)
+    metadata["tags"] = tags
+    db.execute_mutation(
+        """
+        UPDATE objectified.class
+        SET metadata = %s::jsonb, updated_at = timezone('utc', clock_timestamp())
+        WHERE id = %s AND version_id = %s AND deleted_at IS NULL
+        """,
+        (json.dumps(metadata), class_id, version_id),
+    )
+    return ClassTagsResponse(tags=tags)
+
+
+@router.delete(
+    "/versions/{version_id}/classes/{class_id}/tags/{tag_name}",
+    response_model=ClassTagsResponse,
+    summary="Remove tag from class",
+    description="Remove a tag from the class's metadata.tags (GitHub #103).",
+)
+def remove_tag_from_class(
+    version_id: str,
+    class_id: str,
+    tag_name: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> ClassTagsResponse:
+    """Remove a tag from a class."""
+    _assert_version_exists(version_id, include_deleted=False)
+    rows = db.execute_query(
+        f"""
+        SELECT id, metadata FROM objectified.class
+        WHERE id = %s AND version_id = %s AND deleted_at IS NULL
+        LIMIT 1
+        """,
+        (class_id, version_id),
+    )
+    if not rows:
+        raise _not_found("Class", class_id)
+    row = dict(rows[0])
+    metadata = dict(row.get("metadata") or {})
+    tags = _get_class_tags_list(metadata)
+    tags = [t for t in tags if t != tag_name]
+    metadata["tags"] = tags
+    db.execute_mutation(
+        """
+        UPDATE objectified.class
+        SET metadata = %s::jsonb, updated_at = timezone('utc', clock_timestamp())
+        WHERE id = %s AND version_id = %s AND deleted_at IS NULL
+        """,
+        (json.dumps(metadata), class_id, version_id),
+    )
+    return ClassTagsResponse(tags=tags)
 
 
 @router.get(
