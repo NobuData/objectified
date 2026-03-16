@@ -265,7 +265,7 @@ function PropertiesListPanel({
         mode="edit"
         initial={
           editingProp
-            ? { name: editingProp.name, data: editingProp.data as Record<string, any> }
+            ? { name: editingProp.name, description: editingProp.description, data: editingProp.data as Record<string, any> }
             : undefined
         }
         existingNames={properties.map((p) => p.name)}

@@ -177,6 +177,9 @@ function CheckboxField({
 
 const NONE_VALUE = '__none__';
 
+/** Validates the suffix of an OpenAPI/JSON Schema extension key (after "x-"). */
+const EXTENSION_KEY_SUFFIX_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
+
 function SelectField({
   id,
   value,
@@ -263,6 +266,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   // Extensions local state
   const [newExtKey, setNewExtKey] = useState('');
   const [newExtValue, setNewExtValue] = useState('');
+  const [extKeyError, setExtKeyError] = useState('');
 
   const handleAddEnum = () => {
     if (!enumInput.trim()) {
@@ -421,8 +425,15 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   };
 
   const handleAddExtension = () => {
-    const key = newExtKey.trim().startsWith('x-') ? newExtKey.trim() : `x-${newExtKey.trim()}`;
-    if (!newExtKey.trim()) return;
+    const trimmedKey = newExtKey.trim();
+    if (!trimmedKey) return;
+    const key = trimmedKey.startsWith('x-') ? trimmedKey : `x-${trimmedKey}`;
+    const suffix = key.slice(2);
+    if (!suffix || !EXTENSION_KEY_SUFFIX_PATTERN.test(suffix)) {
+      setExtKeyError('Extension key must start with "x-" followed by a name using letters, digits, hyphens, or underscores (e.g. x-my-field).');
+      return;
+    }
+    setExtKeyError('');
     let parsedValue: any;
     try {
       parsedValue = JSON.parse(newExtValue.trim());
@@ -996,14 +1007,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               onChange={(v) => onChange('propertyNamesFormat', v)}
               options={[
                 { value: '', label: 'None' },
-                { value: 'email', label: 'email' },
-                { value: 'uuid', label: 'uuid' },
-                { value: 'uri', label: 'uri' },
-                { value: 'hostname', label: 'hostname' },
-                { value: 'ipv4', label: 'ipv4' },
-                { value: 'ipv6', label: 'ipv6' },
-                { value: 'date', label: 'date' },
-                { value: 'date-time', label: 'date-time' },
+                ...(FORMAT_OPTIONS.string || []).map((f) => ({ value: f.value, label: f.label })),
               ]}
               placeholder="Select format"
             />
@@ -1322,7 +1326,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               <TextInput
                 id="pff-ext-key"
                 value={newExtKey}
-                onChange={setNewExtKey}
+                onChange={(v) => { setNewExtKey(v); setExtKeyError(''); }}
                 placeholder="x-custom-field"
               />
             </div>
@@ -1336,6 +1340,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               />
             </div>
           </div>
+          {extKeyError && <p className="text-xs text-red-600 dark:text-red-400">{extKeyError}</p>}
           <div className="flex justify-end">
             <button
               type="button"
