@@ -36,6 +36,7 @@ interface PropertyDialogProps {
   /** Initial property data for edit mode. */
   initial?: {
     name: string;
+    description?: string;
     data?: Record<string, any>;
   };
   /** Available class names for schema references. */
@@ -65,7 +66,7 @@ export default function PropertyDialog({
 
     if (mode === 'edit' && initial) {
       setPropertyName(initial.name);
-      if (initial.data) {
+      if (initial.data && Object.keys(initial.data).length > 0) {
         const parsed = parsePropertySchema(initial.data);
         setPropertyType(parsed.propertyType);
         setIsArray(parsed.isArray);
@@ -73,7 +74,7 @@ export default function PropertyDialog({
       } else {
         setPropertyType('string');
         setIsArray(false);
-        setFormData({});
+        setFormData(initial.description ? { description: initial.description } : {});
       }
     } else {
       setPropertyName('');

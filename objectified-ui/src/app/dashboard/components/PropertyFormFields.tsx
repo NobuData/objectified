@@ -25,6 +25,11 @@ import {
   Settings,
   Code,
   ToggleLeft,
+  ArrowUpAZ,
+  ArrowDownAZ,
+  Puzzle,
+  Braces,
+  Sparkles,
 } from 'lucide-react';
 import type { PropertyFormData } from '../utils/propertySchemaUtils';
 import { FORMAT_OPTIONS } from '../utils/propertySchemaUtils';
@@ -172,6 +177,9 @@ function CheckboxField({
 
 const NONE_VALUE = '__none__';
 
+/** Validates the suffix of an OpenAPI/JSON Schema extension key (after "x-"). */
+const EXTENSION_KEY_SUFFIX_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
+
 function SelectField({
   id,
   value,
@@ -246,6 +254,19 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   const [enumInput, setEnumInput] = useState('');
   const [enumError, setEnumError] = useState('');
   const [exampleInput, setExampleInput] = useState('');
+  const [exampleError, setExampleError] = useState('');
+
+  // Pattern properties local state
+  const [newPatternKey, setNewPatternKey] = useState('');
+  const [newPatternSchema, setNewPatternSchema] = useState('{ "type": "string" }');
+
+  // Dependent schemas local state
+  const [newDepPropName, setNewDepPropName] = useState('');
+
+  // Extensions local state
+  const [newExtKey, setNewExtKey] = useState('');
+  const [newExtValue, setNewExtValue] = useState('');
+  const [extKeyError, setExtKeyError] = useState('');
 
   const handleAddEnum = () => {
     if (!enumInput.trim()) {
@@ -281,13 +302,154 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   };
 
   const handleAddExample = () => {
-    if (!exampleInput.trim()) return;
+    if (!exampleInput.trim()) {
+      setExampleError('Example value cannot be empty');
+      return;
+    }
+    try {
+      JSON.parse(exampleInput.trim());
+    } catch {
+      setExampleError('Example must be valid JSON');
+      return;
+    }
     onChange('examples', [...(data.examples || []), exampleInput.trim()]);
     setExampleInput('');
+    setExampleError('');
   };
 
   const handleDeleteExample = (index: number) => {
     onChange('examples', (data.examples || []).filter((_, i) => i !== index));
+  };
+
+  const handleSortEnumAZ = () => {
+    if (!data.enum || data.enum.length === 0) return;
+    const sorted = [...data.enum].sort((a, b) => {
+      if (baseType === 'number' || baseType === 'integer') {
+        return Number(a) - Number(b);
+      }
+      return a.toLowerCase().localeCompare(b.toLowerCase());
+    });
+    onChange('enum', sorted);
+  };
+
+  const handleSortEnumZA = () => {
+    if (!data.enum || data.enum.length === 0) return;
+    const sorted = [...data.enum].sort((a, b) => {
+      if (baseType === 'number' || baseType === 'integer') {
+        return Number(b) - Number(a);
+      }
+      return b.toLowerCase().localeCompare(a.toLowerCase());
+    });
+    onChange('enum', sorted);
+  };
+
+  const generateExample = () => {
+    let exampleValue: any;
+    if (data.enum && data.enum.length > 0) {
+      exampleValue = data.enum[0];
+      if (baseType === 'number' || baseType === 'integer') {
+        const numValue = Number(exampleValue);
+        if (!isNaN(numValue)) exampleValue = numValue;
+      }
+    } else {
+      switch (baseType) {
+        case 'string':
+          if (data.format === 'email') exampleValue = 'user@example.com';
+          else if (data.format === 'uri') exampleValue = 'https://example.com';
+          else if (data.format === 'date') exampleValue = '2025-11-30';
+          else if (data.format === 'date-time') exampleValue = '2025-11-30T12:00:00Z';
+          else if (data.format === 'time') exampleValue = '12:00:00';
+          else if (data.format === 'uuid') exampleValue = '123e4567-e89b-12d3-a456-426614174000';
+          else exampleValue = data.description || 'example string';
+          break;
+        case 'number':
+          exampleValue = data.minimum ? parseFloat(data.minimum) + (data.minimumType === 'exclusive' ? 0.1 : 0) : 42.5;
+          break;
+        case 'integer':
+          exampleValue = data.minimum ? Math.ceil(parseFloat(data.minimum) + (data.minimumType === 'exclusive' ? 1 : 0)) : 42;
+          break;
+        case 'boolean':
+          exampleValue = true;
+          break;
+        case 'object':
+          exampleValue = { property: 'value' };
+          break;
+        default:
+          exampleValue = null;
+          break;
+      }
+    }
+    if (isArray) exampleValue = [exampleValue];
+    const jsonString = JSON.stringify(exampleValue, null, 2);
+    onChange('examples', [...(data.examples || []), jsonString]);
+  };
+
+  const handleAddPatternProperty = () => {
+    if (!newPatternKey.trim()) return;
+    let schemaObj: any;
+    try {
+      schemaObj = JSON.parse(newPatternSchema.trim());
+    } catch {
+      return; // Invalid JSON, don't add
+    }
+    const updated = { ...(data.patternProperties || {}), [newPatternKey.trim()]: schemaObj };
+    onChange('patternProperties', updated);
+    setNewPatternKey('');
+    setNewPatternSchema('{ "type": "string" }');
+  };
+
+  const handleDeletePatternProperty = (pattern: string) => {
+    const updated = { ...(data.patternProperties || {}) };
+    delete updated[pattern];
+    onChange('patternProperties', Object.keys(updated).length > 0 ? updated : undefined);
+  };
+
+  const handleAddDependentSchema = () => {
+    if (!newDepPropName.trim()) return;
+    const newSchemas = {
+      ...(data.dependentSchemas || {}),
+      [newDepPropName.trim()]: {
+        if: { properties: { [newDepPropName.trim()]: {} } },
+        then: { required: [] },
+        else: { required: [] },
+      },
+    };
+    onChange('dependentSchemas', newSchemas);
+    setNewDepPropName('');
+  };
+
+  const handleDeleteDependentSchema = (key: string) => {
+    const updated = { ...(data.dependentSchemas || {}) };
+    delete updated[key];
+    onChange('dependentSchemas', Object.keys(updated).length > 0 ? updated : undefined);
+  };
+
+  const handleAddExtension = () => {
+    const trimmedKey = newExtKey.trim();
+    if (!trimmedKey) return;
+    const key = trimmedKey.startsWith('x-') ? trimmedKey : `x-${trimmedKey}`;
+    const suffix = key.slice(2);
+    if (!suffix || !EXTENSION_KEY_SUFFIX_PATTERN.test(suffix)) {
+      setExtKeyError('Extension key must start with "x-" followed by a name using letters, digits, hyphens, or underscores (e.g. x-my-field).');
+      return;
+    }
+    setExtKeyError('');
+    let parsedValue: any;
+    try {
+      parsedValue = JSON.parse(newExtValue.trim());
+    } catch {
+      parsedValue = newExtValue.trim();
+    }
+    const updated = { ...(data.extensions || {}), [key]: parsedValue };
+    onChange('extensions', updated);
+    setNewExtKey('');
+    setNewExtValue('');
+  };
+
+  const handleDeleteExtension = (key: string) => {
+    const updated = { ...(data.extensions || {}) };
+    delete updated[key];
+    onChange('extensions', Object.keys(updated).length > 0 ? updated : undefined);
   };
 
   const showStringConstraints = baseType === 'string';
@@ -337,13 +499,24 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
         </div>
         {/* Examples */}
         <div>
-          <FieldLabel optional>Examples</FieldLabel>
+          <div className="flex items-center gap-2 mb-1">
+            <FieldLabel optional>Examples</FieldLabel>
+            <button
+              type="button"
+              onClick={generateExample}
+              className="p-1 rounded-md text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+              aria-label="Generate example"
+              title="Generate example based on schema"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <div className="flex gap-2">
             <div className="flex-1">
               <TextInput
                 id="pff-example-input"
                 value={exampleInput}
-                onChange={setExampleInput}
+                onChange={(v) => { setExampleInput(v); setExampleError(''); }}
                 placeholder="Add example value (JSON)"
               />
             </div>
@@ -356,6 +529,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               <Plus className="h-4 w-4" />
             </button>
           </div>
+          {exampleError && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{exampleError}</p>}
           {(data.examples || []).length > 0 && (
             <ul className="mt-2 space-y-1">
               {data.examples!.map((ex, i) => (
@@ -398,13 +572,19 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             id="pff-readonly"
             label="Read Only"
             checked={data.readOnly || false}
-            onChange={(v) => onChange('readOnly', v)}
+            onChange={(v) => {
+              onChange('readOnly', v);
+              if (v) onChange('writeOnly', false);
+            }}
           />
           <CheckboxField
             id="pff-writeonly"
             label="Write Only"
             checked={data.writeOnly || false}
-            onChange={(v) => onChange('writeOnly', v)}
+            onChange={(v) => {
+              onChange('writeOnly', v);
+              if (v) onChange('readOnly', false);
+            }}
           />
         </div>
         <CheckboxField
@@ -479,6 +659,42 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               />
             </div>
           </div>
+          {/* Inline Content Media Type for binary/byte formats */}
+          {(data.format === 'binary' || data.format === 'byte') && (
+            <div className="mt-3 p-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">Binary Content Settings</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel htmlFor="pff-inline-contentmedia" optional>Content Media Type</FieldLabel>
+                  <TextInput
+                    id="pff-inline-contentmedia"
+                    value={data.contentMediaType || ''}
+                    onChange={(v) => onChange('contentMediaType', v)}
+                    placeholder="image/png"
+                  />
+                </div>
+                <div>
+                  <FieldLabel htmlFor="pff-inline-contentencoding" optional>Content Encoding</FieldLabel>
+                  <TextInput
+                    id="pff-inline-contentencoding"
+                    value={data.contentEncoding || ''}
+                    onChange={(v) => onChange('contentEncoding', v)}
+                    placeholder="base64"
+                  />
+                </div>
+              </div>
+              <div className="mt-2">
+                <FieldLabel htmlFor="pff-inline-contentschema" optional>Content Schema</FieldLabel>
+                <TextArea
+                  id="pff-inline-contentschema"
+                  value={data.contentSchema || ''}
+                  onChange={(v) => onChange('contentSchema', v)}
+                  placeholder='{ "type": "object" }'
+                  rows={2}
+                />
+              </div>
+            </div>
+          )}
         </Section>
       )}
 
@@ -784,6 +1000,29 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             </div>
           </div>
           <div>
+            <FieldLabel htmlFor="pff-propnamesformat" optional>Prop Names Format</FieldLabel>
+            <SelectField
+              id="pff-propnamesformat"
+              value={data.propertyNamesFormat || ''}
+              onChange={(v) => onChange('propertyNamesFormat', v)}
+              options={[
+                { value: '', label: 'None' },
+                ...(FORMAT_OPTIONS.string || []).map((f) => ({ value: f.value, label: f.label })),
+              ]}
+              placeholder="Select format"
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="pff-propnamesdesc" optional>Prop Names Description</FieldLabel>
+            <TextArea
+              id="pff-propnamesdesc"
+              value={data.propertyNamesDescription || ''}
+              onChange={(v) => onChange('propertyNamesDescription', v)}
+              placeholder="Property names must be lowercase, start with letter..."
+              rows={2}
+            />
+          </div>
+          <div>
             <FieldLabel htmlFor="pff-unevaluatedprops" optional>Unevaluated Properties</FieldLabel>
             <SelectField
               id="pff-unevaluatedprops"
@@ -809,6 +1048,112 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               />
             </div>
           )}
+
+          {/* Pattern Properties */}
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Braces className="h-3.5 w-3.5 text-indigo-500" />
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Pattern Properties</span>
+            </div>
+            {data.patternProperties && Object.entries(data.patternProperties).length > 0 && (
+              <ul className="space-y-2 mb-2">
+                {Object.entries(data.patternProperties).map(([pattern, schema]) => (
+                  <li key={pattern} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="flex-1 font-mono text-sm text-indigo-600 dark:text-indigo-400 truncate">{pattern}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePatternProperty(pattern)}
+                        className="text-slate-400 hover:text-red-500 transition-colors"
+                        aria-label={`Remove pattern ${pattern}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <pre className="text-xs text-slate-600 dark:text-slate-400 font-mono overflow-auto max-h-20">
+                      {typeof schema === 'string' ? schema : JSON.stringify(schema, null, 2)}
+                    </pre>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="space-y-2">
+              <TextInput
+                id="pff-new-pattern-key"
+                value={newPatternKey}
+                onChange={setNewPatternKey}
+                placeholder="^env_|^flag_"
+              />
+              <TextArea
+                id="pff-new-pattern-schema"
+                value={newPatternSchema}
+                onChange={setNewPatternSchema}
+                placeholder='{ "type": "string" }'
+                rows={2}
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddPatternProperty}
+                  disabled={!newPatternKey.trim()}
+                  className="px-2 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Add pattern property"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Dependent Schemas */}
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Puzzle className="h-3.5 w-3.5 text-indigo-500" />
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Dependent Schemas</span>
+            </div>
+            {data.dependentSchemas && Object.entries(data.dependentSchemas).length > 0 && (
+              <ul className="space-y-2 mb-2">
+                {Object.entries(data.dependentSchemas).map(([triggerProp, schema]) => (
+                  <li key={triggerProp} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-mono text-xs font-semibold">{triggerProp}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">triggers conditional validation</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDependentSchema(triggerProp)}
+                        className="ml-auto text-slate-400 hover:text-red-500 transition-colors"
+                        aria-label={`Remove dependent schema ${triggerProp}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <pre className="text-xs text-slate-600 dark:text-slate-400 font-mono overflow-auto max-h-20">
+                      {typeof schema === 'string' ? schema : JSON.stringify(schema, null, 2)}
+                    </pre>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <TextInput
+                  id="pff-new-dep-prop"
+                  value={newDepPropName}
+                  onChange={setNewDepPropName}
+                  placeholder="Enter trigger property name"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAddDependentSchema}
+                disabled={!newDepPropName.trim()}
+                className="px-2 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Add dependent schema"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </Section>
       )}
 
@@ -828,7 +1173,31 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
           {data.const && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Const is mutually exclusive with enum</p>}
         </div>
         <div>
-          <FieldLabel optional>Enum values</FieldLabel>
+          <div className="flex items-center gap-2 mb-1">
+            <FieldLabel optional>Enum values</FieldLabel>
+            {data.enum && data.enum.length > 1 && (
+              <div className="flex gap-1 ml-auto">
+                <button
+                  type="button"
+                  onClick={handleSortEnumAZ}
+                  className="p-1 rounded-md text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+                  aria-label="Sort enum A-Z"
+                  title="Sort A→Z"
+                >
+                  <ArrowUpAZ className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSortEnumZA}
+                  className="p-1 rounded-md text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+                  aria-label="Sort enum Z-A"
+                  title="Sort Z→A"
+                >
+                  <ArrowDownAZ className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
           <div className="flex gap-2">
             <div className="flex-1">
               <TextInput
@@ -920,6 +1289,69 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             placeholder='{ "type": "object" }'
             rows={2}
           />
+        </div>
+      </Section>
+
+      {/* Extensions (x- prefixed) */}
+      <Section
+        title="Extensions"
+        icon={<Braces className="h-3.5 w-3.5" />}
+        badge="x-"
+      >
+        {data.extensions && Object.entries(data.extensions).length > 0 && (
+          <ul className="space-y-1 mb-2">
+            {Object.entries(data.extensions).map(([key, value]) => (
+              <li key={key} className="flex items-center gap-2 px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 text-sm font-mono">
+                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{key}</span>
+                <span className="text-slate-400">=</span>
+                <span className="flex-1 truncate text-slate-700 dark:text-slate-300">
+                  {typeof value === 'string' ? value : JSON.stringify(value)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteExtension(key)}
+                  className="text-slate-400 hover:text-red-500 transition-colors"
+                  aria-label={`Remove extension ${key}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <FieldLabel htmlFor="pff-ext-key" optional>Key</FieldLabel>
+              <TextInput
+                id="pff-ext-key"
+                value={newExtKey}
+                onChange={(v) => { setNewExtKey(v); setExtKeyError(''); }}
+                placeholder="x-custom-field"
+              />
+            </div>
+            <div>
+              <FieldLabel htmlFor="pff-ext-value" optional>Value</FieldLabel>
+              <TextInput
+                id="pff-ext-value"
+                value={newExtValue}
+                onChange={setNewExtValue}
+                placeholder="value (JSON or string)"
+              />
+            </div>
+          </div>
+          {extKeyError && <p className="text-xs text-red-600 dark:text-red-400">{extKeyError}</p>}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleAddExtension}
+              disabled={!newExtKey.trim()}
+              className="px-2 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Add extension"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </Section>
 
