@@ -447,7 +447,7 @@ function ClassListPanel({
     }
   }, [canEdit]);
 
-  // When canvas requests edit (e.g. double-click on node), open the class dialog. GitHub #80.
+  // When canvas requests edit (e.g. double-click or context menu "Edit class"), open the class dialog. GitHub #80, #101.
   useEffect(() => {
     if (!editClassIdRequest || !onConsumeEditClassRequest) return;
     if (canEdit) {

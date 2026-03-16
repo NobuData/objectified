@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * Add/Edit class dialog (name, description, schema, tags).
+ * Edit is opened from canvas double-click or sidebar. Reference: GitHub #101.
+ */
+
 import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as ScrollArea from '@radix-ui/react-scroll-area';
