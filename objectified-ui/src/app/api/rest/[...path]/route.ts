@@ -51,6 +51,12 @@ function copyResponseHeaders(res: Response): Record<string, string> {
 }
 
 async function proxyResponse(res: Response): Promise<NextResponse> {
+  if (res.status === 204 || res.status === 304) {
+    return new NextResponse(null, {
+      status: res.status,
+      headers: copyResponseHeaders(res),
+    });
+  }
   const body = await res.arrayBuffer();
   return new NextResponse(body, {
     status: res.status,
