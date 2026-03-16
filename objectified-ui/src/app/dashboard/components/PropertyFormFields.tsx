@@ -470,7 +470,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
     .map((propertyName) => ({
       value: `#/components/schemas/${propertyName}`,
       label: propertyName,
-      description: 'Library property',
+      description: 'Project property',
     }))
     .filter((opt) => !classRefOptions.some((classOpt) => classOpt.value === opt.value));
   const refOptions = [
@@ -518,15 +518,16 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
           />
         </div>
         <div>
-          <FieldLabel htmlFor="pff-ref-select" optional>$ref target</FieldLabel>
+          <FieldLabel htmlFor="pff-ref" optional>$ref target</FieldLabel>
           <div className="space-y-2">
             {refOptions.length > 1 && (
               <SelectField
                 id="pff-ref-select"
+                aria-label="Select $ref target from available classes or project properties"
                 value={data.$ref || ''}
                 onChange={(v) => onChange('$ref', v)}
                 options={refOptions}
-                placeholder="Select class or library property"
+                placeholder="Select class or project property"
               />
             )}
             <TextInput
