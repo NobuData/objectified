@@ -198,6 +198,31 @@ describe('stateToCommitPayload', () => {
       expect.objectContaining({ tags: ['domain', 'core'] })
     );
   });
+
+  it('includes empty tags array in class metadata when class tags are cleared (GitHub #100)', () => {
+    const state = {
+      versionId: 'v1',
+      revision: 1,
+      classes: [
+        {
+          id: 'c1',
+          name: 'User',
+          description: '',
+          properties: [],
+          canvas_metadata: { position: { x: 0, y: 0 } },
+          tags: [],
+        },
+      ],
+      properties: [],
+      canvas_metadata: null,
+      groups: [],
+    };
+    const payload = stateToCommitPayload(state);
+    expect(payload.classes).toHaveLength(1);
+    expect(payload.classes![0].metadata).toEqual(
+      expect.objectContaining({ tags: [] })
+    );
+  });
 });
 
 describe('classesAndPropertiesToState', () => {
