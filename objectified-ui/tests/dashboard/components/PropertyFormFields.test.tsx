@@ -8,6 +8,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PropertyFormFields from '@/app/dashboard/components/PropertyFormFields';
 import type { PropertyFormData } from '@/app/dashboard/utils/propertySchemaUtils';
+import { FORMAT_OPTIONS } from '@/app/dashboard/utils/propertySchemaUtils';
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="root"></div>';
@@ -730,6 +731,41 @@ describe('PropertyFormFields', () => {
     expect(mockOnChange).toHaveBeenCalledWith('extensions', { 'x-mykey': 'myval' });
   });
 
+  it('shows validation error for extension key with empty suffix (x- only)', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} data={{}} />);
+    await user.click(screen.getByText('Extensions'));
+    const keyInput = screen.getByPlaceholderText(/x-custom-field/i);
+    await user.type(keyInput, 'x-');
+    await user.click(screen.getByLabelText('Add extension'));
+    expect(mockOnChange).not.toHaveBeenCalled();
+    expect(screen.getByText(/extension key must start with "x-"/i)).toBeInTheDocument();
+  });
+
+  it('shows validation error for extension key with invalid characters', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} data={{}} />);
+    await user.click(screen.getByText('Extensions'));
+    const keyInput = screen.getByPlaceholderText(/x-custom-field/i);
+    await user.type(keyInput, 'x-bad key!');
+    await user.click(screen.getByLabelText('Add extension'));
+    expect(mockOnChange).not.toHaveBeenCalled();
+    expect(screen.getByText(/extension key must start with "x-"/i)).toBeInTheDocument();
+  });
+
+  it('clears extension key error when key input changes', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} data={{}} />);
+    await user.click(screen.getByText('Extensions'));
+    const keyInput = screen.getByPlaceholderText(/x-custom-field/i);
+    await user.type(keyInput, 'x-');
+    await user.click(screen.getByLabelText('Add extension'));
+    expect(screen.getByText(/extension key must start with "x-"/i)).toBeInTheDocument();
+    await user.clear(keyInput);
+    await user.type(keyInput, 'x-valid');
+    expect(screen.queryByText(/extension key must start with "x-"/i)).toBeNull();
+  });
+
   it('calls onChange to delete an extension', async () => {
     const user = userEvent.setup();
     render(
@@ -1024,6 +1060,26 @@ describe('PropertyFormFields', () => {
     render(<PropertyFormFields {...defaultProps} baseType="object" data={{}} />);
     await user.click(screen.getByText('Object Constraints'));
     expect(screen.getByText('Prop Names Format')).toBeInTheDocument();
+  });
+
+  it('prop names format selector includes all string formats from FORMAT_OPTIONS', async () => {
+    const user = userEvent.setup();
+    // Verify the select renders and accepts formats from FORMAT_OPTIONS.string
+    // that were not in the previous hard-coded list (e.g. 'iri', 'uri-reference').
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="object"
+        data={{ propertyNamesFormat: 'iri' }}
+      />,
+    );
+    await user.click(screen.getByText('Object Constraints'));
+    expect(screen.getByText('Prop Names Format')).toBeInTheDocument();
+    // FORMAT_OPTIONS.string should include all standard string formats
+    expect(FORMAT_OPTIONS.string.length).toBeGreaterThan(8);
+    expect(FORMAT_OPTIONS.string.some((f) => f.value === 'iri')).toBe(true);
+    expect(FORMAT_OPTIONS.string.some((f) => f.value === 'uri-reference')).toBe(true);
+    expect(FORMAT_OPTIONS.string.some((f) => f.value === 'idn-email')).toBe(true);
   });
 
   it('shows property names description for object type', async () => {
