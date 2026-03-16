@@ -1214,54 +1214,54 @@ export default function DesignCanvas() {
                       >
                         Edit class
                       </button>
-                      {((): string[] => {
+                      {(() => {
                         const currentTags =
                           (nodeContextMenu.node.data as { tags?: string[] }).tags ?? [];
-                        return availableTagNames.filter((t) => !currentTags.includes(t));
-                      })().length > 0 && (
-                        <>
-                          <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
-                            Add tag
-                          </span>
-                          {availableTagNames
-                            .filter(
-                              (t) =>
-                                !((nodeContextMenu.node.data as { tags?: string[] }).tags ?? []).includes(t)
-                            )
-                            .map((tagName) => (
-                              <button
-                                key={tagName}
-                                type="button"
-                                className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                                onClick={() => {
-                                  handleAssignTagToClass(nodeContextMenu.node.id, tagName);
-                                }}
-                              >
-                                {tagName}
-                              </button>
-                            ))}
-                        </>
-                      )}
-                      {((nodeContextMenu.node.data as { tags?: string[] }).tags ?? []).length > 0 && (
-                        <>
-                          <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
-                            Remove tag
-                          </span>
-                          {((nodeContextMenu.node.data as { tags?: string[] }).tags ?? []).map(
-                            (tagName) => (
-                              <button
-                                key={tagName}
-                                type="button"
-                                className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                                onClick={() => {
-                                  handleRemoveTagFromClass(nodeContextMenu.node.id, tagName);
-                                }}
-                              >
-                                {tagName}
-                              </button>
-                            ))}
-                        </>
-                      )}
+                        return (
+                          <>
+                            {availableTagNames.filter((t) => !currentTags.includes(t)).length > 0 && (
+                              <>
+                                <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
+                                  Add tag
+                                </span>
+                                {availableTagNames
+                                  .filter((t) => !currentTags.includes(t))
+                                  .map((tagName) => (
+                                    <button
+                                      key={tagName}
+                                      type="button"
+                                      className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                      onClick={() => {
+                                        handleAssignTagToClass(nodeContextMenu.node.id, tagName);
+                                      }}
+                                    >
+                                      {tagName}
+                                    </button>
+                                  ))}
+                              </>
+                            )}
+                            {currentTags.length > 0 && (
+                              <>
+                                <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
+                                  Remove tag
+                                </span>
+                                {currentTags.map((tagName) => (
+                                  <button
+                                    key={tagName}
+                                    type="button"
+                                    className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                    onClick={() => {
+                                      handleRemoveTagFromClass(nodeContextMenu.node.id, tagName);
+                                    }}
+                                  >
+                                    {tagName}
+                                  </button>
+                                ))}
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
                       <button
                         type="button"
                         className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
