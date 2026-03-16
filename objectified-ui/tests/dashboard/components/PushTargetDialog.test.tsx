@@ -39,6 +39,7 @@ beforeEach(() => {
 describe('PushTargetDialog', () => {
   it('renders the dialog title when open', async () => {
     render(<PushTargetDialog {...baseProps} />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Version 2' })).toBeInTheDocument());
     expect(screen.getByText('Push to version')).toBeInTheDocument();
   });
 
@@ -84,16 +85,18 @@ describe('PushTargetDialog', () => {
 
   it('displays pushError when provided', async () => {
     render(<PushTargetDialog {...baseProps} pushError="Something went wrong" />);
-    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong'));
   });
 
   it('does not show conflict suggestion when pushConflict409 is false', async () => {
     render(<PushTargetDialog {...baseProps} pushConflict409={false} onPull={jest.fn()} />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Version 2' })).toBeInTheDocument());
     expect(screen.queryByText('Server has newer changes')).toBeNull();
   });
 
   it('does not show conflict suggestion when pushConflict409 is true but no onPull/onMerge', async () => {
     render(<PushTargetDialog {...baseProps} pushConflict409={true} />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Version 2' })).toBeInTheDocument());
     expect(screen.queryByText('Server has newer changes')).toBeNull();
   });
 

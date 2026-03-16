@@ -224,6 +224,7 @@ export default function VersionHistoryDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
         <Dialog.Content
           className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-2xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-xl shadow-xl flex flex-col border border-slate-200 dark:border-slate-700"
+          aria-describedby={undefined}
           onEscapeKeyDown={(e) => {
             if (branchDialogOpen) { e.preventDefault(); return; }
             onOpenChange(false);
@@ -424,6 +425,7 @@ export default function VersionHistoryDialog({
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10003]" />
           <Dialog.Content
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10004] w-full max-w-md bg-white dark:bg-slate-900 rounded-xl shadow-xl flex flex-col border border-slate-200 dark:border-slate-700 p-4"
+            aria-describedby={undefined}
             onEscapeKeyDown={() => setBranchDialogOpen(false)}
             onPointerDownOutside={() => setBranchDialogOpen(false)}
           >

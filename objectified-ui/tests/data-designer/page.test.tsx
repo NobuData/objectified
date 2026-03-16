@@ -68,7 +68,7 @@ describe('DataDesignerPage', () => {
     expect(screen.getByLabelText(/Select project/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Select version/i)).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Classes/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Properties/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Props/i })).toBeInTheDocument();
     expect(screen.getByTestId('react-flow-canvas')).toBeInTheDocument();
     expect(screen.getByTestId('react-flow-controls')).toBeInTheDocument();
     expect(screen.getByTestId('react-flow-minimap')).toBeInTheDocument();

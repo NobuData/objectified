@@ -187,6 +187,7 @@ export default function RelationshipGraphDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
         <Dialog.Content
           className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-4xl h-[80vh] bg-white dark:bg-slate-900 rounded-xl shadow-xl flex flex-col border border-slate-200 dark:border-slate-700"
+          aria-describedby={undefined}
           onEscapeKeyDown={() => onOpenChange(false)}
           onPointerDownOutside={() => onOpenChange(false)}
         >
