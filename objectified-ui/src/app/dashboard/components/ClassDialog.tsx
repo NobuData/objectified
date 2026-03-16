@@ -137,16 +137,20 @@ function TagPicker({
   onChange,
   tagDefinitions,
   placeholder,
+  inputId,
   'aria-label': ariaLabel,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
   tagDefinitions: Record<string, { color?: string }>;
   placeholder: string;
+  inputId?: string;
   'aria-label': string;
 }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
+  // Allow time for option button clicks to fire before closing the dropdown on blur.
+  const BLUR_CLOSE_DELAY_MS = 150;
   const allTagNames = useMemo(() => {
     const set = new Set<string>(value);
     Object.keys(tagDefinitions).forEach((k) => set.add(k));
@@ -162,7 +166,7 @@ function TagPicker({
       ),
     [allTagNames, value, input]
   );
-  const canAddNew = input.trim() && !value.includes(input.trim());
+  const canAddNew = input.trim().length > 0 && !value.includes(input.trim());
 
   const addTag = (name: string) => {
     const trimmed = name.trim();
@@ -200,12 +204,17 @@ function TagPicker({
           );
         })}
         <input
+          id={inputId}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), BLUR_CLOSE_DELAY_MS)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setOpen(false);
+            } else if (e.key === 'Enter') {
               e.preventDefault();
               if (canAddNew) addTag(input);
               else if (available.length > 0) addTag(available[0]);
@@ -313,7 +322,7 @@ export default function ClassDialog({
       name: trimmed,
       description: description.trim(),
       ...(builtSchema ? { schema: builtSchema } : {}),
-      tags: tags.length > 0 ? tags : undefined,
+      tags,
     });
   };
 
@@ -418,7 +427,7 @@ export default function ClassDialog({
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <label htmlFor="class-tags" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Tags
                       </label>
                       <TagPicker
@@ -426,6 +435,7 @@ export default function ClassDialog({
                         onChange={(v) => setForm((f) => ({ ...f, tags: v }))}
                         tagDefinitions={tagDefinitions}
                         placeholder="Add tags..."
+                        inputId="class-tags"
                         aria-label="Class tags"
                       />
                     </div>
