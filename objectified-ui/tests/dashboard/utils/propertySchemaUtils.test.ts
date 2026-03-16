@@ -13,13 +13,13 @@ import {
 
 describe('propertySchemaUtils', () => {
   describe('PROPERTY_TYPES', () => {
-    it('contains all JSON Schema 2020-12 primitive types', () => {
+    it('contains JSON Schema 2020-12 primitive types (array is excluded; use isArray toggle)', () => {
       expect(PROPERTY_TYPES).toContain('string');
       expect(PROPERTY_TYPES).toContain('number');
       expect(PROPERTY_TYPES).toContain('integer');
       expect(PROPERTY_TYPES).toContain('boolean');
       expect(PROPERTY_TYPES).toContain('object');
-      expect(PROPERTY_TYPES).toContain('array');
+      expect(PROPERTY_TYPES).not.toContain('array');
       expect(PROPERTY_TYPES).toContain('null');
     });
   });
@@ -180,9 +180,10 @@ describe('propertySchemaUtils', () => {
     });
 
     // Required and metadata flags
-    it('sets required flag', () => {
+    it('encodes required as x-required extension (not as boolean in property schema)', () => {
       const result = buildPropertySchema({ required: true }, 'string', false);
-      expect(result.required).toBe(true);
+      expect(result['x-required']).toBe(true);
+      expect(result.required).toBeUndefined();
     });
 
     it('sets readOnly flag', () => {
@@ -428,6 +429,46 @@ describe('propertySchemaUtils', () => {
       expect(result.additionalProperties).toEqual({ type: 'integer' });
     });
 
+    it('omits additionalProperties when JSON is invalid and value is not an identifier', () => {
+      const result = buildPropertySchema(
+        { additionalProperties: 'schema', additionalPropertiesSchema: '{ bad json }' },
+        'object',
+        false,
+      );
+      expect(result.additionalProperties).toBeUndefined();
+    });
+
+    it('ignores non-numeric minLength and maxLength values', () => {
+      const result = buildPropertySchema(
+        { minLength: 'abc', maxLength: 'xyz' },
+        'string',
+        false,
+      );
+      expect(result.minLength).toBeUndefined();
+      expect(result.maxLength).toBeUndefined();
+    });
+
+    it('does not apply string constraints for non-string types', () => {
+      const result = buildPropertySchema(
+        { format: 'email', pattern: '^[a-z]', minLength: '3' },
+        'boolean',
+        false,
+      );
+      expect(result.format).toBeUndefined();
+      expect(result.pattern).toBeUndefined();
+      expect(result.minLength).toBeUndefined();
+    });
+
+    it('does not apply numeric constraints for non-numeric types', () => {
+      const result = buildPropertySchema(
+        { minimum: '0', maximum: '100', minimumType: 'inclusive', maximumType: 'inclusive' },
+        'string',
+        false,
+      );
+      expect(result.minimum).toBeUndefined();
+      expect(result.maximum).toBeUndefined();
+    });
+
     it('applies minProperties and maxProperties for objects', () => {
       const result = buildPropertySchema(
         { minProperties: '1', maxProperties: '10' },
@@ -632,7 +673,8 @@ describe('propertySchemaUtils', () => {
       expect(result.pattern).toBe('^[a-z]');
       expect(result.minLength).toBe(5);
       expect(result.maxLength).toBe(100);
-      expect(result.required).toBe(true);
+      expect(result['x-required']).toBe(true);
+      expect(result.required).toBeUndefined();
       expect(result.deprecated).toBe(true);
       expect(result['x-deprecation-message']).toBe('Use contact_email');
       expect(result.examples).toEqual(['user@example.com']);
@@ -761,7 +803,7 @@ describe('propertySchemaUtils', () => {
     it('parses metadata flags', () => {
       const { formData } = parsePropertySchema({
         type: 'string',
-        required: true,
+        'x-required': true,
         readOnly: true,
         writeOnly: true,
         deprecated: true,

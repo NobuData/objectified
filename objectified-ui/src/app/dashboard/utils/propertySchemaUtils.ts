@@ -90,7 +90,6 @@ export const PROPERTY_TYPES = [
   'integer',
   'boolean',
   'object',
-  'array',
   'null',
 ] as const;
 
@@ -171,8 +170,14 @@ function applyMinMax(target: any, formData: PropertyFormData): void {
 function applyStringConstraints(target: any, formData: PropertyFormData): void {
   if (formData.format) target.format = formData.format;
   if (formData.pattern) target.pattern = formData.pattern;
-  if (formData.minLength) target.minLength = parseInt(formData.minLength);
-  if (formData.maxLength) target.maxLength = parseInt(formData.maxLength);
+  if (formData.minLength) {
+    const v = parseInt(formData.minLength);
+    if (!isNaN(v)) target.minLength = v;
+  }
+  if (formData.maxLength) {
+    const v = parseInt(formData.maxLength);
+    if (!isNaN(v)) target.maxLength = v;
+  }
 }
 
 function applyConstOrEnum(target: any, formData: PropertyFormData): void {
@@ -197,17 +202,25 @@ function applyObjectConstraints(target: any, formData: PropertyFormData): void {
       try {
         target.additionalProperties = JSON.parse(schemaValue);
       } catch {
-        target.additionalProperties = { $ref: `#/components/schemas/${schemaValue}` };
+        // JSON parse failed — only use as class name if it's a valid identifier
+        // (otherwise the input is invalid JSON and not usable as a $ref)
       }
     } else if (schemaValue.startsWith('#/') || schemaValue.startsWith('$ref')) {
       target.additionalProperties = { $ref: schemaValue };
-    } else {
+    } else if (/^[A-Za-z_][A-Za-z0-9_./-]*$/.test(schemaValue)) {
+      // Treat as a class / component schema name
       target.additionalProperties = { $ref: `#/components/schemas/${schemaValue}` };
     }
   }
 
-  if (formData.minProperties) target.minProperties = parseInt(formData.minProperties);
-  if (formData.maxProperties) target.maxProperties = parseInt(formData.maxProperties);
+  if (formData.minProperties) {
+    const v = parseInt(formData.minProperties);
+    if (!isNaN(v)) target.minProperties = v;
+  }
+  if (formData.maxProperties) {
+    const v = parseInt(formData.maxProperties);
+    if (!isNaN(v)) target.maxProperties = v;
+  }
 
   if (formData.patternProperties && Object.keys(formData.patternProperties).length > 0) {
     target.patternProperties = formData.patternProperties;
@@ -222,8 +235,14 @@ function applyObjectConstraints(target: any, formData: PropertyFormData): void {
   if (hasPropertyNames) {
     target.propertyNames = { type: 'string' } as any;
     if (formData.propertyNamesPattern) target.propertyNames.pattern = formData.propertyNamesPattern;
-    if (formData.propertyNamesMinLength) target.propertyNames.minLength = parseInt(formData.propertyNamesMinLength);
-    if (formData.propertyNamesMaxLength) target.propertyNames.maxLength = parseInt(formData.propertyNamesMaxLength);
+    if (formData.propertyNamesMinLength) {
+      const v = parseInt(formData.propertyNamesMinLength);
+      if (!isNaN(v)) target.propertyNames.minLength = v;
+    }
+    if (formData.propertyNamesMaxLength) {
+      const v = parseInt(formData.propertyNamesMaxLength);
+      if (!isNaN(v)) target.propertyNames.maxLength = v;
+    }
     if (formData.propertyNamesFormat) target.propertyNames.format = formData.propertyNamesFormat;
     if (formData.propertyNamesDescription) target.propertyNames.description = formData.propertyNamesDescription;
   }
@@ -266,12 +285,20 @@ export function buildPropertySchema(
   if (formData.examples && formData.examples.length > 0) {
     schema.examples = formData.examples.map((ex) => tryParseJson(ex));
   }
-  if (formData.required) schema.required = true;
+  // `required` is tracked as x-required since JSON Schema's `required` is a parent-object array,
+  // not a boolean on the individual property schema.
+  if (formData.required) schema['x-required'] = true;
 
   if (isArray) {
     schema.type = formData.nullable ? ['array', 'null'] : 'array';
-    if (formData.minItems) schema.minItems = parseInt(formData.minItems);
-    if (formData.maxItems) schema.maxItems = parseInt(formData.maxItems);
+    if (formData.minItems) {
+      const v = parseInt(formData.minItems);
+      if (!isNaN(v)) schema.minItems = v;
+    }
+    if (formData.maxItems) {
+      const v = parseInt(formData.maxItems);
+      if (!isNaN(v)) schema.maxItems = v;
+    }
     if (formData.uniqueItems) schema.uniqueItems = true;
 
     if (formData.contains && formData.contains.trim()) {
@@ -306,8 +333,12 @@ export function buildPropertySchema(
       }
     } else {
       const itemsSchema: any = { type: propertyType };
-      applyStringConstraints(itemsSchema, formData);
-      applyMinMax(itemsSchema, formData);
+      if (propertyType === 'string') {
+        applyStringConstraints(itemsSchema, formData);
+      }
+      if (propertyType === 'number' || propertyType === 'integer') {
+        applyMinMax(itemsSchema, formData);
+      }
       applyConstOrEnum(itemsSchema, formData);
       if (propertyType === 'object') {
         applyObjectConstraints(itemsSchema, formData);
@@ -317,8 +348,12 @@ export function buildPropertySchema(
     }
   } else {
     schema.type = formData.nullable ? [propertyType, 'null'] : propertyType;
-    applyStringConstraints(schema, formData);
-    applyMinMax(schema, formData);
+    if (propertyType === 'string') {
+      applyStringConstraints(schema, formData);
+    }
+    if (propertyType === 'number' || propertyType === 'integer') {
+      applyMinMax(schema, formData);
+    }
     applyConstOrEnum(schema, formData);
     if (propertyType === 'object') {
       applyObjectConstraints(schema, formData);
@@ -467,7 +502,7 @@ export function parsePropertySchema(
   formData.default = constraintSource.default?.toString() || '';
 
   // Metadata
-  formData.required = schemaData.required || false;
+  formData.required = schemaData['x-required'] || false;
   formData.readOnly = schemaData.readOnly || false;
   formData.writeOnly = schemaData.writeOnly || false;
   formData.deprecated = schemaData.deprecated || false;
