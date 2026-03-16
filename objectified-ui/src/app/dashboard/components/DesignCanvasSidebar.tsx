@@ -42,9 +42,9 @@ import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import ClassDialog, { type ClassFormData } from './ClassDialog';
 import TagManager, { type TagDefinitions } from './TagManager';
-import ProjectPropertyDialog, {
-  type ProjectPropertyFormData,
-} from './ProjectPropertyDialog';
+import PropertyDialog, {
+  type PropertyDialogSaveData,
+} from './PropertyDialog';
 import ClassPropertyDialog, {
   type ClassPropertySaveData,
 } from './ClassPropertyDialog';
@@ -132,8 +132,8 @@ function SearchableList({
 interface PropertiesListPanelProps {
   properties: StudioProperty[];
   canEdit: boolean;
-  onAdd: (data: ProjectPropertyFormData) => void;
-  onUpdate: (propertyId: string, data: ProjectPropertyFormData) => void;
+  onAdd: (data: PropertyDialogSaveData) => void;
+  onUpdate: (propertyId: string, data: PropertyDialogSaveData) => void;
   onDelete: (prop: StudioProperty) => void;
   onSelectProperty: (propertyName: string) => void;
 }
@@ -159,12 +159,12 @@ function PropertiesListPanel({
     [properties, query]
   );
 
-  const handleSaveAdd = (data: ProjectPropertyFormData) => {
+  const handleSaveAdd = (data: PropertyDialogSaveData) => {
     onAdd(data);
     setAddOpen(false);
   };
 
-  const handleSaveEdit = (data: ProjectPropertyFormData) => {
+  const handleSaveEdit = (data: PropertyDialogSaveData) => {
     if (editingProp) {
       onUpdate(editingProp.id, data);
       setEditingProp(null);
@@ -253,19 +253,19 @@ function PropertiesListPanel({
           </button>
         </div>
       )}
-      <ProjectPropertyDialog
+      <PropertyDialog
         open={addOpen}
         mode="add"
         existingNames={properties.map((p) => p.name)}
         onSave={handleSaveAdd}
         onClose={() => setAddOpen(false)}
       />
-      <ProjectPropertyDialog
+      <PropertyDialog
         open={editingProp !== null}
         mode="edit"
         initial={
           editingProp
-            ? { name: editingProp.name, description: editingProp.description ?? '' }
+            ? { name: editingProp.name, data: editingProp.data as Record<string, any> }
             : undefined
         }
         existingNames={properties.map((p) => p.name)}
@@ -1085,13 +1085,13 @@ export default function DesignCanvasSidebar() {
   // ─── Project property handlers (GitHub #99) ─────────────────────────────────
 
   const handleAddProjectProperty = useCallback(
-    async (data: ProjectPropertyFormData) => {
+    async (data: PropertyDialogSaveData) => {
       if (!tenantId || !projectId) return;
       try {
         const created = await createProperty(
           tenantId,
           projectId,
-          { name: data.name, description: data.description || undefined },
+          { name: data.name, description: data.description || undefined, data: data.data },
           options
         );
         studio?.applyChange((draft) => {
@@ -1111,14 +1111,14 @@ export default function DesignCanvasSidebar() {
   );
 
   const handleUpdateProjectProperty = useCallback(
-    async (propertyId: string, data: ProjectPropertyFormData) => {
+    async (propertyId: string, data: PropertyDialogSaveData) => {
       if (!tenantId || !projectId) return;
       try {
         const updated = await updateProperty(
           tenantId,
           projectId,
           propertyId,
-          { name: data.name, description: data.description || undefined },
+          { name: data.name, description: data.description || undefined, data: data.data },
           options
         );
         studio?.applyChange((draft) => {
@@ -1126,6 +1126,7 @@ export default function DesignCanvasSidebar() {
           if (p) {
             p.name = updated.name;
             p.description = updated.description;
+            p.data = updated.data;
           }
         });
       } catch (e) {

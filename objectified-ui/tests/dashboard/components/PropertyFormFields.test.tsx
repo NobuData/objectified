@@ -680,4 +680,393 @@ describe('PropertyFormFields', () => {
     render(<PropertyFormFields {...defaultProps} />);
     expect(screen.getByText('OpenAPI')).toBeInTheDocument();
   });
+
+  // Extensions section
+  it('renders Extensions section header', () => {
+    render(<PropertyFormFields {...defaultProps} />);
+    expect(screen.getByText('Extensions')).toBeInTheDocument();
+  });
+
+  it('renders x- badge on Extensions section', () => {
+    render(<PropertyFormFields {...defaultProps} />);
+    expect(screen.getByText('x-')).toBeInTheDocument();
+  });
+
+  it('renders existing extensions', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ extensions: { 'x-custom': 'hello', 'x-version': '2' } }}
+      />,
+    );
+    await user.click(screen.getByText('Extensions'));
+    expect(screen.getByText('x-custom')).toBeInTheDocument();
+    expect(screen.getByText('hello')).toBeInTheDocument();
+    expect(screen.getByText('x-version')).toBeInTheDocument();
+  });
+
+  it('calls onChange to add an extension', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} data={{}} />);
+    await user.click(screen.getByText('Extensions'));
+    const keyInput = screen.getByPlaceholderText(/x-custom-field/i);
+    const valueInput = screen.getByPlaceholderText(/value \(json or string\)/i);
+    await user.type(keyInput, 'x-foo');
+    await user.type(valueInput, 'bar');
+    await user.click(screen.getByLabelText('Add extension'));
+    expect(mockOnChange).toHaveBeenCalledWith('extensions', { 'x-foo': 'bar' });
+  });
+
+  it('auto-prefixes x- when adding extension without it', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} data={{}} />);
+    await user.click(screen.getByText('Extensions'));
+    const keyInput = screen.getByPlaceholderText(/x-custom-field/i);
+    const valueInput = screen.getByPlaceholderText(/value \(json or string\)/i);
+    await user.type(keyInput, 'mykey');
+    await user.type(valueInput, 'myval');
+    await user.click(screen.getByLabelText('Add extension'));
+    expect(mockOnChange).toHaveBeenCalledWith('extensions', { 'x-mykey': 'myval' });
+  });
+
+  it('calls onChange to delete an extension', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ extensions: { 'x-foo': 'bar', 'x-baz': 'qux' } }}
+      />,
+    );
+    await user.click(screen.getByText('Extensions'));
+    await user.click(screen.getByLabelText('Remove extension x-foo'));
+    expect(mockOnChange).toHaveBeenCalledWith('extensions', { 'x-baz': 'qux' });
+  });
+
+  // Pattern Properties
+  it('shows Pattern Properties section for object type', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} baseType="object" data={{}} />);
+    await user.click(screen.getByText('Object Constraints'));
+    expect(screen.getByText('Pattern Properties')).toBeInTheDocument();
+  });
+
+  it('renders existing pattern properties', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="object"
+        data={{ patternProperties: { '^env_': { type: 'string' } } }}
+      />,
+    );
+    await user.click(screen.getByText('Object Constraints'));
+    expect(screen.getByText('^env_')).toBeInTheDocument();
+  });
+
+  it('calls onChange to add a pattern property', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} baseType="object" data={{}} />);
+    await user.click(screen.getByText('Object Constraints'));
+    const patternInput = screen.getByPlaceholderText('^env_|^flag_');
+    await user.type(patternInput, '^test_');
+    await user.click(screen.getByLabelText('Add pattern property'));
+    expect(mockOnChange).toHaveBeenCalledWith('patternProperties', {
+      '^test_': { type: 'string' },
+    });
+  });
+
+  it('calls onChange to delete a pattern property', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="object"
+        data={{ patternProperties: { '^env_': { type: 'string' }, '^flag_': { type: 'boolean' } } }}
+      />,
+    );
+    await user.click(screen.getByText('Object Constraints'));
+    await user.click(screen.getByLabelText('Remove pattern ^env_'));
+    expect(mockOnChange).toHaveBeenCalledWith('patternProperties', {
+      '^flag_': { type: 'boolean' },
+    });
+  });
+
+  // Dependent Schemas
+  it('shows Dependent Schemas section for object type', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} baseType="object" data={{}} />);
+    await user.click(screen.getByText('Object Constraints'));
+    expect(screen.getByText('Dependent Schemas')).toBeInTheDocument();
+  });
+
+  it('renders existing dependent schemas', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="object"
+        data={{
+          dependentSchemas: {
+            status: {
+              if: { properties: { status: {} } },
+              then: { required: ['reason'] },
+              else: { required: [] },
+            },
+          },
+        }}
+      />,
+    );
+    await user.click(screen.getByText('Object Constraints'));
+    expect(screen.getByText('status')).toBeInTheDocument();
+  });
+
+  it('calls onChange to add a dependent schema', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} baseType="object" data={{}} />);
+    await user.click(screen.getByText('Object Constraints'));
+    const input = screen.getByPlaceholderText('Enter trigger property name');
+    await user.type(input, 'myProp');
+    await user.click(screen.getByLabelText('Add dependent schema'));
+    expect(mockOnChange).toHaveBeenCalledWith('dependentSchemas', {
+      myProp: {
+        if: { properties: { myProp: {} } },
+        then: { required: [] },
+        else: { required: [] },
+      },
+    });
+  });
+
+  it('calls onChange to delete a dependent schema', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="object"
+        data={{
+          dependentSchemas: {
+            a: { if: { properties: { a: {} } }, then: { required: [] }, else: { required: [] } },
+            b: { if: { properties: { b: {} } }, then: { required: [] }, else: { required: [] } },
+          },
+        }}
+      />,
+    );
+    await user.click(screen.getByText('Object Constraints'));
+    await user.click(screen.getByLabelText('Remove dependent schema a'));
+    expect(mockOnChange).toHaveBeenCalledWith('dependentSchemas', {
+      b: { if: { properties: { b: {} } }, then: { required: [] }, else: { required: [] } },
+    });
+  });
+
+  // readOnly / writeOnly mutual exclusivity
+  it('unsets writeOnly when readOnly is toggled on', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ writeOnly: true }}
+      />,
+    );
+    await user.click(screen.getByText('Property Flags'));
+    const readOnlyCheckbox = screen.getByLabelText('Read Only');
+    await user.click(readOnlyCheckbox);
+    expect(mockOnChange).toHaveBeenCalledWith('readOnly', true);
+    expect(mockOnChange).toHaveBeenCalledWith('writeOnly', false);
+  });
+
+  it('unsets readOnly when writeOnly is toggled on', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ readOnly: true }}
+      />,
+    );
+    await user.click(screen.getByText('Property Flags'));
+    const writeOnlyCheckbox = screen.getByLabelText('Write Only');
+    await user.click(writeOnlyCheckbox);
+    expect(mockOnChange).toHaveBeenCalledWith('writeOnly', true);
+    expect(mockOnChange).toHaveBeenCalledWith('readOnly', false);
+  });
+
+  // Enum sorting
+  it('shows enum sort buttons when more than 1 enum value', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ enum: ['banana', 'apple', 'cherry'] }}
+      />,
+    );
+    await user.click(screen.getByText('Enum / Const Values'));
+    expect(screen.getByLabelText('Sort enum A-Z')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sort enum Z-A')).toBeInTheDocument();
+  });
+
+  it('does not show enum sort buttons with fewer than 2 enum values', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ enum: ['one'] }}
+      />,
+    );
+    await user.click(screen.getByText('Enum / Const Values'));
+    expect(screen.queryByLabelText('Sort enum A-Z')).not.toBeInTheDocument();
+  });
+
+  it('sorts enum values A-Z when sort button is clicked', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ enum: ['cherry', 'apple', 'banana'] }}
+      />,
+    );
+    await user.click(screen.getByText('Enum / Const Values'));
+    await user.click(screen.getByLabelText('Sort enum A-Z'));
+    expect(mockOnChange).toHaveBeenCalledWith('enum', ['apple', 'banana', 'cherry']);
+  });
+
+  it('sorts enum values Z-A when sort button is clicked', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ enum: ['apple', 'cherry', 'banana'] }}
+      />,
+    );
+    await user.click(screen.getByText('Enum / Const Values'));
+    await user.click(screen.getByLabelText('Sort enum Z-A'));
+    expect(mockOnChange).toHaveBeenCalledWith('enum', ['cherry', 'banana', 'apple']);
+  });
+
+  it('sorts numeric enum values numerically', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="number"
+        data={{ enum: ['10', '2', '30'] }}
+      />,
+    );
+    await user.click(screen.getByText('Enum / Const Values'));
+    await user.click(screen.getByLabelText('Sort enum A-Z'));
+    expect(mockOnChange).toHaveBeenCalledWith('enum', ['2', '10', '30']);
+  });
+
+  // Example JSON validation
+  it('shows error when adding non-JSON example', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ examples: [] }}
+      />,
+    );
+    const input = screen.getByPlaceholderText(/add example value/i);
+    await user.type(input, 'not valid json');
+    await user.click(screen.getByLabelText(/add example/i));
+    expect(screen.getByText('Example must be valid JSON')).toBeInTheDocument();
+    expect(mockOnChange).not.toHaveBeenCalledWith('examples', expect.anything());
+  });
+
+  it('shows error when adding empty example', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ examples: [] }}
+      />,
+    );
+    await user.click(screen.getByLabelText(/add example/i));
+    expect(screen.getByText('Example value cannot be empty')).toBeInTheDocument();
+  });
+
+  // Generate example button
+  it('shows generate example button', () => {
+    render(<PropertyFormFields {...defaultProps} data={{}} />);
+    expect(screen.getByLabelText('Generate example')).toBeInTheDocument();
+  });
+
+  it('generates a string example when clicked', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} data={{}} />);
+    await user.click(screen.getByLabelText('Generate example'));
+    expect(mockOnChange).toHaveBeenCalledWith('examples', expect.any(Array));
+    const call = mockOnChange.mock.calls.find(
+      (c: any[]) => c[0] === 'examples',
+    );
+    expect(call).toBeTruthy();
+    expect(call![1].length).toBe(1);
+    // Should be valid JSON
+    expect(() => JSON.parse(call![1][0])).not.toThrow();
+  });
+
+  it('generates an email example for string with email format', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ format: 'email' }}
+      />,
+    );
+    await user.click(screen.getByLabelText('Generate example'));
+    const call = mockOnChange.mock.calls.find(
+      (c: any[]) => c[0] === 'examples',
+    );
+    expect(call![1][0]).toContain('@');
+  });
+
+  // Property names format/description
+  it('shows property names format selector for object type', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} baseType="object" data={{}} />);
+    await user.click(screen.getByText('Object Constraints'));
+    expect(screen.getByText('Prop Names Format')).toBeInTheDocument();
+  });
+
+  it('shows property names description for object type', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} baseType="object" data={{}} />);
+    await user.click(screen.getByText('Object Constraints'));
+    expect(screen.getByText('Prop Names Description')).toBeInTheDocument();
+  });
+
+  // Content media type inline for binary/byte
+  it('shows inline content media type fields when format is binary', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ format: 'binary' }}
+      />,
+    );
+    await user.click(screen.getByText('String Constraints'));
+    expect(screen.getByText('Binary Content Settings')).toBeInTheDocument();
+  });
+
+  it('shows inline content media type fields when format is byte', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ format: 'byte' }}
+      />,
+    );
+    await user.click(screen.getByText('String Constraints'));
+    expect(screen.getByText('Binary Content Settings')).toBeInTheDocument();
+  });
+
+  it('does not show inline content media type fields for non-binary formats', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        data={{ format: 'email' }}
+      />,
+    );
+    await user.click(screen.getByText('String Constraints'));
+    expect(screen.queryByText('Binary Content Settings')).not.toBeInTheDocument();
+  });
 });
