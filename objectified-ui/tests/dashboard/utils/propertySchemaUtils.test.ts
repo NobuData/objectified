@@ -109,6 +109,16 @@ describe('propertySchemaUtils', () => {
       expect(result).toEqual({ $ref: '#/components/schemas/Address' });
     });
 
+    it('strips the "$ref:" prefix from a $ref value', () => {
+      const result = buildPropertySchema({ $ref: '$ref: #/components/schemas/Address' }, 'object', false);
+      expect(result).toEqual({ $ref: '#/components/schemas/Address' });
+    });
+
+    it('strips "$ref:" prefix without leading space', () => {
+      const result = buildPropertySchema({ $ref: '$ref:#/components/schemas/Address' }, 'object', false);
+      expect(result).toEqual({ $ref: '#/components/schemas/Address' });
+    });
+
     it('builds a nullable $ref schema as anyOf', () => {
       const result = buildPropertySchema(
         { $ref: '#/components/schemas/Address', nullable: true },

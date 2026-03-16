@@ -142,7 +142,8 @@ function tryParseJson(value: string): any {
 function normaliseRefValue(value?: string): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
-  if (trimmed.startsWith('#/') || trimmed.startsWith('$ref:')) return trimmed;
+  if (trimmed.startsWith('$ref:')) return trimmed.replace(/^\$ref:\s*/, '');
+  if (trimmed.startsWith('#/') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
   if (/^[A-Za-z_][A-Za-z0-9_./-]*$/.test(trimmed)) {
     return `#/components/schemas/${trimmed}`;
   }

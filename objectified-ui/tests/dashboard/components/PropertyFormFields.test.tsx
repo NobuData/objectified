@@ -149,7 +149,7 @@ describe('PropertyFormFields', () => {
     expect(mockOnChange).toHaveBeenCalledWith('default', expect.stringContaining('x'));
   });
 
-  it('shows $ref target selector options for classes and library properties', () => {
+  it('shows $ref target selector options for classes and project properties', () => {
     render(
       <PropertyFormFields
         {...defaultProps}
