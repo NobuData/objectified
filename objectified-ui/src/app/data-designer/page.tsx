@@ -14,6 +14,7 @@ import { CanvasGroupProvider } from '@/app/contexts/CanvasGroupContext';
 import { CanvasLayoutProvider } from '@/app/contexts/CanvasLayoutContext';
 import { CanvasSearchProvider } from '@/app/contexts/CanvasSearchContext';
 import { CanvasFocusModeProvider } from '@/app/contexts/CanvasFocusModeContext';
+import { CanvasSidebarActionsProvider } from '@/app/contexts/CanvasSidebarActionsContext';
 import { CanvasExportProvider } from '@/app/contexts/CanvasExportContext';
 import { EditClassRequestProvider } from '@/app/contexts/EditClassRequestContext';
 import CanvasSearchBar from '@/app/dashboard/components/CanvasSearchBar';
@@ -28,7 +29,8 @@ export default function DataDesignerPage() {
               <CanvasLayoutProvider>
                 <CanvasSearchProvider>
                   <CanvasFocusModeProvider>
-                    <EditClassRequestProvider>
+                    <CanvasSidebarActionsProvider>
+                      <EditClassRequestProvider>
                       <StudioVersionSync />
                       <StudioUrlLoader />
 
@@ -49,6 +51,7 @@ export default function DataDesignerPage() {
                         </div>
                       </div>
                     </EditClassRequestProvider>
+                    </CanvasSidebarActionsProvider>
                   </CanvasFocusModeProvider>
                 </CanvasSearchProvider>
               </CanvasLayoutProvider>
