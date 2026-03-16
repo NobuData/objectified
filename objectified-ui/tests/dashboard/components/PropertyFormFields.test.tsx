@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PropertyFormFields from '@/app/dashboard/components/PropertyFormFields';
 import type { PropertyFormData } from '@/app/dashboard/utils/propertySchemaUtils';

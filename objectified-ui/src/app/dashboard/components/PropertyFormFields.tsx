@@ -242,7 +242,6 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   data,
   onChange,
   showTitle = true,
-  availableClasses = [],
 }) => {
   const [enumInput, setEnumInput] = useState('');
   const [enumError, setEnumError] = useState('');

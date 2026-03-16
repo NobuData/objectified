@@ -320,7 +320,7 @@ describe('PropertyDialog', () => {
       description: null,
       data: expect.objectContaining({
         type: 'string',
-        required: true,
+        'x-required': true,
       }),
     });
   });
