@@ -101,8 +101,7 @@ export default function ProjectPropertyDialog({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                disabled={mode === 'edit'}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-800 dark:text-slate-200 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-800 dark:text-slate-200 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="Property name"
                 aria-invalid={!!error}
               />

@@ -23,6 +23,9 @@ import {
   getRestClientOptions,
   listClassesWithPropertiesAndTags,
   listProperties,
+  createProperty,
+  updateProperty,
+  deleteProperty,
 } from '@lib/api/rest-client';
 import {
   generateLocalId,
@@ -173,7 +176,7 @@ function PropertiesListPanel({
   const handleDeleteClick = async (prop: StudioProperty) => {
     const ok = await confirm({
       title: 'Delete property',
-      message: `Delete project property "${prop.name}"? This will not remove it from classes that use it until you save.`,
+      message: `Delete project property "${prop.name}"? Classes that already reference this property will continue to do so, but it will no longer be available in the project property library.`,
       variant: 'danger',
       confirmLabel: 'Delete',
     });
@@ -1055,39 +1058,69 @@ export default function DesignCanvasSidebar() {
   // ─── Project property handlers (GitHub #99) ─────────────────────────────────
 
   const handleAddProjectProperty = useCallback(
-    (data: ProjectPropertyFormData) => {
-      studio?.applyChange((draft) => {
-        draft.properties.push({
-          id: generateLocalId(),
-          name: data.name,
-          description: data.description || undefined,
-          data: {},
+    async (data: ProjectPropertyFormData) => {
+      if (!tenantId || !projectId) return;
+      try {
+        const created = await createProperty(
+          tenantId,
+          projectId,
+          { name: data.name, description: data.description || undefined },
+          options
+        );
+        studio?.applyChange((draft) => {
+          draft.properties.push({
+            id: created.id,
+            project_id: created.project_id,
+            name: created.name,
+            description: created.description,
+            data: created.data,
+          });
         });
-      });
+      } catch (e) {
+        console.error('Failed to create property:', e);
+      }
     },
-    [studio]
+    [tenantId, projectId, options.jwt, options.apiKey, studio]
   );
 
   const handleUpdateProjectProperty = useCallback(
-    (propertyId: string, data: ProjectPropertyFormData) => {
-      studio?.applyChange((draft) => {
-        const p = draft.properties.find((x) => x.id === propertyId);
-        if (p) {
-          p.name = data.name;
-          p.description = data.description || undefined;
-        }
-      });
+    async (propertyId: string, data: ProjectPropertyFormData) => {
+      if (!tenantId || !projectId) return;
+      try {
+        const updated = await updateProperty(
+          tenantId,
+          projectId,
+          propertyId,
+          { name: data.name, description: data.description || undefined },
+          options
+        );
+        studio?.applyChange((draft) => {
+          const p = draft.properties.find((x) => x.id === propertyId);
+          if (p) {
+            p.name = updated.name;
+            p.description = updated.description;
+          }
+        });
+      } catch (e) {
+        console.error('Failed to update property:', e);
+      }
     },
-    [studio]
+    [tenantId, projectId, options.jwt, options.apiKey, studio]
   );
 
   const handleDeleteProjectProperty = useCallback(
-    (prop: StudioProperty) => {
-      studio?.applyChange((draft) => {
-        draft.properties = draft.properties.filter((x) => x.id !== prop.id);
-      });
+    async (prop: StudioProperty) => {
+      if (!tenantId || !projectId) return;
+      try {
+        await deleteProperty(tenantId, projectId, prop.id, options);
+        studio?.applyChange((draft) => {
+          draft.properties = draft.properties.filter((x) => x.id !== prop.id);
+        });
+      } catch (e) {
+        console.error('Failed to delete property:', e);
+      }
     },
-    [studio]
+    [tenantId, projectId, options.jwt, options.apiKey, studio]
   );
 
   return (
