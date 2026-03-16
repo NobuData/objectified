@@ -16,14 +16,23 @@ export interface ClassFormData {
   description: string;
   schema?: Record<string, unknown>;
   canvas_metadata?: { position?: { x: number; y: number } };
+  /** Tag names assigned to the class (GitHub #100). */
+  tags?: string[];
 }
 
 interface ClassDialogProps {
   open: boolean;
   mode: 'add' | 'edit';
-  initial?: { name: string; description: string; schema?: Record<string, unknown> };
+  initial?: {
+    name: string;
+    description: string;
+    schema?: Record<string, unknown>;
+    tags?: string[];
+  };
   /** Class names available for composition refs (allOf/oneOf/anyOf) and additionalProperties. */
   existingClassNames?: string[];
+  /** Project tag names with optional colors (for pill display and picker). GitHub #100. */
+  tagDefinitions?: Record<string, { color?: string }>;
   onSave: (data: ClassFormData) => void;
   onClose: () => void;
 }
@@ -33,6 +42,7 @@ interface FormState {
   description: string;
   error: string;
   schema: ClassFormSchemaState;
+  tags: string[];
 }
 
 function MultiSelectRefs({
@@ -120,11 +130,138 @@ function MultiSelectRefs({
   );
 }
 
+const DEFAULT_TAG_COLOR = '#94a3b8';
+
+function TagPicker({
+  value,
+  onChange,
+  tagDefinitions,
+  placeholder,
+  'aria-label': ariaLabel,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  tagDefinitions: Record<string, { color?: string }>;
+  placeholder: string;
+  'aria-label': string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState('');
+  const allTagNames = useMemo(() => {
+    const set = new Set<string>(value);
+    Object.keys(tagDefinitions).forEach((k) => set.add(k));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [value, tagDefinitions]);
+  const available = useMemo(
+    () =>
+      allTagNames.filter(
+        (name) =>
+          !value.includes(name) &&
+          (input.trim() === '' ||
+            name.toLowerCase().includes(input.trim().toLowerCase()))
+      ),
+    [allTagNames, value, input]
+  );
+  const canAddNew = input.trim() && !value.includes(input.trim());
+
+  const addTag = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || value.includes(trimmed)) return;
+    onChange([...value, trimmed]);
+    setInput('');
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <div
+        className="w-full min-h-[38px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 flex flex-wrap gap-1.5 items-center focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent"
+        aria-label={ariaLabel}
+      >
+        {value.map((tagName) => {
+          const color =
+            tagDefinitions[tagName]?.color ?? DEFAULT_TAG_COLOR;
+          return (
+            <span
+              key={tagName}
+              className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs font-medium text-white border border-white/20"
+              style={{ backgroundColor: color }}
+            >
+              {tagName}
+              <button
+                type="button"
+                onClick={() => onChange(value.filter((x) => x !== tagName))}
+                className="hover:bg-white/20 rounded p-0.5"
+                aria-label={`Remove tag ${tagName}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          );
+        })}
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (canAddNew) addTag(input);
+              else if (available.length > 0) addTag(available[0]);
+            }
+          }}
+          placeholder={value.length === 0 ? placeholder : ''}
+          className="flex-1 min-w-[80px] bg-transparent border-0 py-0 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none"
+        />
+      </div>
+      {open && (available.length > 0 || canAddNew) && (
+        <>
+          <div
+            className="fixed inset-0 z-[10003]"
+            aria-hidden
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute z-[10004] mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-lg max-h-48 overflow-auto">
+            {available.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => addTag(name)}
+                className="w-full px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+              >
+                <span
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{
+                    backgroundColor:
+                      tagDefinitions[name]?.color ?? DEFAULT_TAG_COLOR,
+                  }}
+                />
+                {name}
+              </button>
+            ))}
+            {canAddNew && (
+              <button
+                type="button"
+                onClick={() => addTag(input)}
+                className="w-full px-3 py-2 text-left text-sm text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+              >
+                + Add &quot;{input.trim()}&quot;
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ClassDialog({
   open,
   mode,
   initial,
   existingClassNames = [],
+  tagDefinitions = {},
   onSave,
   onClose,
 }: ClassDialogProps) {
@@ -135,6 +272,7 @@ export default function ClassDialog({
     schema: initial?.schema
       ? schemaToFormState(initial.schema as Record<string, unknown>)
       : initialClassFormSchemaState,
+    tags: initial?.tags ?? [],
   });
 
   useEffect(() => {
@@ -146,11 +284,12 @@ export default function ClassDialog({
         schema: initial?.schema
           ? schemaToFormState(initial.schema as Record<string, unknown>)
           : initialClassFormSchemaState,
+        tags: initial?.tags ?? [],
       });
     }
-  }, [open, initial?.name, initial?.description, initial?.schema]);
+  }, [open, initial?.name, initial?.description, initial?.schema, initial?.tags]);
 
-  const { name, description, error, schema } = form;
+  const { name, description, error, schema, tags } = form;
   const classNamesForRefs = useMemo(
     () => {
       if (mode === 'edit') {
@@ -174,6 +313,7 @@ export default function ClassDialog({
       name: trimmed,
       description: description.trim(),
       ...(builtSchema ? { schema: builtSchema } : {}),
+      tags: tags.length > 0 ? tags : undefined,
     });
   };
 
@@ -275,6 +415,18 @@ export default function ClassDialog({
                         placeholder="Optional description"
                         rows={2}
                         className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Tags
+                      </label>
+                      <TagPicker
+                        value={tags}
+                        onChange={(v) => setForm((f) => ({ ...f, tags: v }))}
+                        tagDefinitions={tagDefinitions}
+                        placeholder="Add tags..."
+                        aria-label="Class tags"
                       />
                     </div>
                     {/* Composition: allOf / oneOf / anyOf */}

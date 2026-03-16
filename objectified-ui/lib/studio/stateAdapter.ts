@@ -175,6 +175,7 @@ export function stateToCommitPayload(
       ...(c.canvas_metadata
         ? { canvas_metadata: c.canvas_metadata }
         : {}),
+      ...(c.tags != null && c.tags.length > 0 ? { tags: c.tags } : {}),
     };
     return {
       name: c.name,

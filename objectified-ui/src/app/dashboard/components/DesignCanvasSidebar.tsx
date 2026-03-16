@@ -7,8 +7,6 @@ import * as ContextMenu from '@radix-ui/react-context-menu';
 import {
   Search,
   Plus,
-  LayoutGrid,
-  Tag,
   Loader2,
   AlertTriangle,
   ChevronDown,
@@ -17,7 +15,6 @@ import {
   Trash2,
   ArrowUp,
   ArrowDown,
-  Folder,
 } from 'lucide-react';
 import {
   getRestClientOptions,
@@ -44,6 +41,7 @@ import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContex
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import ClassDialog, { type ClassFormData } from './ClassDialog';
+import TagManager, { type TagDefinitions } from './TagManager';
 import ProjectPropertyDialog, {
   type ProjectPropertyFormData,
 } from './ProjectPropertyDialog';
@@ -381,6 +379,8 @@ interface ClassListPanelProps {
   onConsumeEditClassRequest?: () => void;
   /** When user selects a class in the list, zoom canvas to that node. GitHub #99. */
   onSelectClass?: (classId: string) => void;
+  /** Tag name -> color for pill display in class dialog. GitHub #100. */
+  tagDefinitions?: TagDefinitions;
 }
 
 /**
@@ -422,6 +422,7 @@ function ClassListPanel({
   editClassIdRequest,
   onConsumeEditClassRequest,
   onSelectClass,
+  tagDefinitions = {},
 }: ClassListPanelProps) {
   const [query, setQuery] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -521,6 +522,7 @@ function ClassListPanel({
             name: editingClass.name,
             description: editingClass.description ?? '',
             schema: editingClass.schema,
+            tags: editingClass.tags,
           }
         : undefined,
     [editingClass]
@@ -743,6 +745,7 @@ function ClassListPanel({
         open={addClassOpen}
         mode="add"
         existingClassNames={classes.map((c) => c.name)}
+        tagDefinitions={tagDefinitions}
         onSave={handleAddClass}
         onClose={() => setAddClassOpen(false)}
       />
@@ -751,6 +754,7 @@ function ClassListPanel({
         mode="edit"
         initial={editClassInitial}
         existingClassNames={classes.map((c) => c.name)}
+        tagDefinitions={tagDefinitions}
         onSave={handleUpdateClass}
         onClose={() => setEditingClass(null)}
       />
@@ -883,6 +887,28 @@ export default function DesignCanvasSidebar() {
 
   const studioClasses = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
   const studioProperties = useMemo(() => studio?.state?.properties ?? [], [studio?.state]);
+  const tagDefinitions = useMemo((): TagDefinitions => {
+    const meta = studio?.state?.canvas_metadata as { tag_definitions?: TagDefinitions } | undefined;
+    return meta?.tag_definitions ?? {};
+  }, [studio?.state?.canvas_metadata]);
+  const tagNamesForManager = useMemo(() => {
+    const set = new Set<string>(Object.keys(tagDefinitions));
+    studioClasses.forEach((c) => {
+      (c.tags ?? []).forEach((t) => set.add(t));
+    });
+    return Array.from(set);
+  }, [studioClasses, tagDefinitions]);
+  const handleUpdateTagDefinitions = useCallback(
+    (next: TagDefinitions) => {
+      studio?.applyChange((draft) => {
+        draft.canvas_metadata = {
+          ...(draft.canvas_metadata ?? {}),
+          tag_definitions: next,
+        };
+      });
+    },
+    [studio]
+  );
   const propertiesItems = useStudioData
     ? studioProperties.map((p) => p.name).sort((a, b) => a.localeCompare(b))
     : propertyNames;
@@ -918,6 +944,7 @@ export default function DesignCanvasSidebar() {
           draft.classes[idx].name = data.name;
           draft.classes[idx].description = data.description;
           if (data.schema !== undefined) draft.classes[idx].schema = data.schema;
+          if (data.tags !== undefined) draft.classes[idx].tags = data.tags;
         }
       });
     },
@@ -1124,7 +1151,7 @@ export default function DesignCanvasSidebar() {
   );
 
   return (
-    <aside className="w-64 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col shrink-0">
+    <aside className="w-80 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col shrink-0">
       {/* Error banner — shown when the studio failed to load data */}
       {studio?.error && (
         <div
@@ -1136,27 +1163,30 @@ export default function DesignCanvasSidebar() {
         </div>
       )}
       <Tabs.Root defaultValue="classes" className="flex flex-col flex-1 min-h-0">
-        <Tabs.List className="flex shrink-0 border-b border-slate-200 dark:border-slate-700">
+        <Tabs.List className="flex shrink-0 border-b border-slate-200 dark:border-slate-700 min-w-0">
           <Tabs.Trigger
             value="classes"
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-3 text-sm font-medium text-slate-600 dark:text-slate-400 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 dark:data-[state=active]:border-indigo-400 border-b-2 border-transparent hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+            className="flex-1 min-w-0 flex items-center justify-center px-1.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 dark:data-[state=active]:border-indigo-400 border-b-2 border-transparent hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
           >
-            <LayoutGrid className="h-4 w-4" />
-            Classes
+            <span className="truncate">Classes</span>
           </Tabs.Trigger>
           <Tabs.Trigger
             value="properties"
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-3 text-sm font-medium text-slate-600 dark:text-slate-400 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 dark:data-[state=active]:border-indigo-400 border-b-2 border-transparent hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+            className="flex-1 min-w-0 flex items-center justify-center px-1.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 dark:data-[state=active]:border-indigo-400 border-b-2 border-transparent hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
           >
-            <Tag className="h-4 w-4" />
-            Properties
+            <span className="truncate">Props</span>
           </Tabs.Trigger>
           <Tabs.Trigger
             value="groups"
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-3 text-sm font-medium text-slate-600 dark:text-slate-400 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 dark:data-[state=active]:border-indigo-400 border-b-2 border-transparent hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+            className="flex-1 min-w-0 flex items-center justify-center px-1.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 dark:data-[state=active]:border-indigo-400 border-b-2 border-transparent hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
           >
-            <Folder className="h-4 w-4" />
-            Groups
+            <span className="truncate">Groups</span>
+          </Tabs.Trigger>
+          <Tabs.Trigger
+            value="tags"
+            className="flex-1 min-w-0 flex items-center justify-center px-1.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 dark:data-[state=active]:border-indigo-400 border-b-2 border-transparent hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+          >
+            <span className="truncate">Tags</span>
           </Tabs.Trigger>
         </Tabs.List>
 
@@ -1182,6 +1212,7 @@ export default function DesignCanvasSidebar() {
               editClassIdRequest={editClassRequest?.requestEditClassId ?? null}
               onConsumeEditClassRequest={editClassRequest?.clearRequest}
               onSelectClass={sidebarActions?.zoomToClass}
+              tagDefinitions={tagDefinitions}
             />
           ) : (
             <SearchableList
@@ -1232,6 +1263,25 @@ export default function DesignCanvasSidebar() {
           ) : (
             <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
               Load a version to see groups.
+            </p>
+          )}
+        </Tabs.Content>
+
+        <Tabs.Content value="tags" className="flex-1 min-h-0 mt-0">
+          {noVersion ? (
+            <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
+              Select a version to manage tags.
+            </p>
+          ) : useStudioData ? (
+            <TagManager
+              tagNames={tagNamesForManager}
+              tagDefinitions={tagDefinitions}
+              onUpdateTagDefinitions={handleUpdateTagDefinitions}
+              canEdit={!isReadOnly}
+            />
+          ) : (
+            <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
+              Load a version to see tags.
             </p>
           )}
         </Tabs.Content>
