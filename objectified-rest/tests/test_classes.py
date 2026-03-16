@@ -412,3 +412,97 @@ def test_list_classes_requires_auth(client):
         r = client.get(f"/v1/versions/{_VERSION_ID}/classes")
     app.dependency_overrides[require_authenticated] = lambda: _CALLER
     assert r.status_code == 401
+
+
+# ─── Class tags (GitHub #103) ───────────────────────────────────────────────
+
+
+def test_get_tags_for_class_returns_tags(client):
+    """GET /v1/versions/{vid}/classes/{cid}/tags returns tag list."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [{"metadata": {"tags": ["a", "b"]}}],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/tags")
+    assert r.status_code == 200
+    assert r.json()["tags"] == ["a", "b"]
+
+
+def test_get_tags_for_class_empty_metadata(client):
+    """GET .../tags returns [] when class has no tags in metadata."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [{"metadata": None}],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/tags")
+    assert r.status_code == 200
+    assert r.json()["tags"] == []
+
+
+def test_get_tags_for_class_not_found_returns_404(client):
+    """GET .../tags returns 404 when class missing."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [[_version_lookup_row()], []]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/tags")
+    assert r.status_code == 404
+
+
+def test_assign_tag_to_class_adds_tag(client):
+    """POST .../tags adds tag to class metadata (GitHub #103)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [{"id": _CLASS_ID, "metadata": {"tags": ["existing"]}}],
+        ]
+        mock_db.execute_mutation.return_value = [{"id": _CLASS_ID}]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/tags",
+            json={"tag": "new-tag"},
+        )
+    assert r.status_code == 200
+    assert r.json()["tags"] == ["existing", "new-tag"]
+    assert mock_db.execute_mutation.called
+
+
+def test_assign_tag_to_class_idempotent(client):
+    """POST .../tags with existing tag does not duplicate."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [{"id": _CLASS_ID, "metadata": {"tags": ["a", "b"]}}],
+        ]
+        mock_db.execute_mutation.return_value = [{"id": _CLASS_ID}]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/tags",
+            json={"tag": "a"},
+        )
+    assert r.status_code == 200
+    assert r.json()["tags"] == ["a", "b"]
+
+
+def test_assign_tag_to_class_empty_tag_returns_400(client):
+    """POST .../tags with empty tag returns 400."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [[_version_lookup_row()], [{"id": _CLASS_ID, "metadata": {}}]]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/tags",
+            json={"tag": "   "},
+        )
+    assert r.status_code == 400
+
+
+def test_remove_tag_from_class_removes_tag(client):
+    """DELETE .../tags/{tag_name} removes tag (GitHub #103)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [{"id": _CLASS_ID, "metadata": {"tags": ["a", "b", "c"]}}],
+        ]
+        mock_db.execute_mutation.return_value = [{"id": _CLASS_ID}]
+        r = client.delete(
+            f"/v1/versions/{_VERSION_ID}/classes/{_CLASS_ID}/tags/b",
+        )
+    assert r.status_code == 200
+    assert r.json()["tags"] == ["a", "c"]

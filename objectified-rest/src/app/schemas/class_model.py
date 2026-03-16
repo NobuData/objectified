@@ -58,6 +58,18 @@ class ClassUpdate(BaseModel):
     canvas_metadata: Optional[ClassCanvasMetadata] = None
 
 
+class ClassAssignTagRequest(BaseModel):
+    """Request body for assigning a tag to a class (GitHub #103)."""
+
+    tag: str
+
+
+class ClassTagsResponse(BaseModel):
+    """Response for get tags for class (GitHub #103)."""
+
+    tags: list[str] = Field(default_factory=list)
+
+
 class ClassWithPropertiesAndTags(ClassSchema):
     """
     Class with embedded properties and tags for canvas load.

@@ -213,6 +213,41 @@ def create_version(
 
 
 @router.get(
+    "/versions/{version_id}/tags",
+    response_model=List[str],
+    summary="List tags for version",
+    description=(
+        "Return all tag names used by classes in this version (project tag list). "
+        "GitHub #103."
+    ),
+)
+def list_tags_for_version(
+    version_id: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> List[str]:
+    """List all tag names assigned to any class in the version."""
+    _assert_version_exists(version_id, include_deleted=False)
+    rows = db.execute_query(
+        """
+        SELECT metadata FROM objectified.class
+        WHERE version_id = %s AND deleted_at IS NULL
+        """,
+        (version_id,),
+    )
+    seen: set[str] = set()
+    for row in rows:
+        meta = row.get("metadata") or {}
+        tags = meta.get("tags")
+        if isinstance(tags, str) and tags.strip():
+            seen.add(tags.strip())
+        elif isinstance(tags, list):
+            for t in tags:
+                if t is not None and str(t).strip():
+                    seen.add(str(t).strip())
+    return sorted(seen)
+
+
+@router.get(
     "/versions/{version_id}",
     response_model=VersionSchema,
     summary="Get version by ID",

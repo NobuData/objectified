@@ -716,6 +716,44 @@ export default function DesignCanvas() {
     [studio, groups, classes, versionId]
   );
 
+  /** All tag names available in the project (for Add tag submenu). GitHub #103. */
+  const availableTagNames = useMemo(() => {
+    const set = new Set<string>(Object.keys(tagDefinitions));
+    classes.forEach((c) => (c.tags ?? []).forEach((t) => set.add(t)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [classes, tagDefinitions]);
+
+  const handleAssignTagToClass = useCallback(
+    (classId: string, tagName: string) => {
+      if (!studio?.applyChange) return;
+      const trimmed = tagName.trim();
+      if (!trimmed) return;
+      studio.applyChange((draft) => {
+        const c = draft.classes.find((x) => getStableClassId(x) === classId);
+        if (!c) return;
+        const tags = [...(c.tags ?? [])];
+        if (tags.includes(trimmed)) return;
+        tags.push(trimmed);
+        c.tags = tags;
+      });
+      setNodeContextMenu(null);
+    },
+    [studio]
+  );
+
+  const handleRemoveTagFromClass = useCallback(
+    (classId: string, tagName: string) => {
+      if (!studio?.applyChange) return;
+      studio.applyChange((draft) => {
+        const c = draft.classes.find((x) => getStableClassId(x) === classId);
+        if (!c) return;
+        c.tags = (c.tags ?? []).filter((t) => t !== tagName);
+      });
+      setNodeContextMenu(null);
+    },
+    [studio]
+  );
+
   const handleNodeContextMenu = useCallback(
     (e: MouseEvent<Element>, node: Node) => {
       e.preventDefault();
@@ -1176,6 +1214,54 @@ export default function DesignCanvas() {
                       >
                         Edit class
                       </button>
+                      {(() => {
+                        const currentTags =
+                          (nodeContextMenu.node.data as { tags?: string[] }).tags ?? [];
+                        return (
+                          <>
+                            {availableTagNames.filter((t) => !currentTags.includes(t)).length > 0 && (
+                              <>
+                                <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
+                                  Add tag
+                                </span>
+                                {availableTagNames
+                                  .filter((t) => !currentTags.includes(t))
+                                  .map((tagName) => (
+                                    <button
+                                      key={tagName}
+                                      type="button"
+                                      className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                      onClick={() => {
+                                        handleAssignTagToClass(nodeContextMenu.node.id, tagName);
+                                      }}
+                                    >
+                                      {tagName}
+                                    </button>
+                                  ))}
+                              </>
+                            )}
+                            {currentTags.length > 0 && (
+                              <>
+                                <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
+                                  Remove tag
+                                </span>
+                                {currentTags.map((tagName) => (
+                                  <button
+                                    key={tagName}
+                                    type="button"
+                                    className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                    onClick={() => {
+                                      handleRemoveTagFromClass(nodeContextMenu.node.id, tagName);
+                                    }}
+                                  >
+                                    {tagName}
+                                  </button>
+                                ))}
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
                       <button
                         type="button"
                         className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"

@@ -245,6 +245,11 @@ export interface ClassWithPropertiesAndTags extends ClassSchema {
   tags?: string[];
 }
 
+/** Response for getTagsForClass / assignTagToClass / removeTagFromClass (GitHub #103). */
+export interface ClassTagsResponse {
+  tags: string[];
+}
+
 export interface ClassCreate {
   name: string;
   description?: string;
@@ -1030,6 +1035,65 @@ export async function deleteClass(
   return request<void>(
     'DELETE',
     `/versions/${versionId}/classes/${classId}`,
+    undefined,
+    options
+  );
+}
+
+/** Get tags for a class (GitHub #103). */
+export async function getTagsForClass(
+  versionId: string,
+  classId: string,
+  options: RestClientOptions = {},
+  includeDeleted = false
+): Promise<ClassTagsResponse> {
+  const q = includeDeleted ? '?include_deleted=true' : '';
+  return request<ClassTagsResponse>(
+    'GET',
+    `/versions/${versionId}/classes/${classId}/tags${q}`,
+    undefined,
+    options
+  );
+}
+
+/** Assign a tag to a class (GitHub #103). */
+export async function assignTagToClass(
+  versionId: string,
+  classId: string,
+  tag: string,
+  options: RestClientOptions = {}
+): Promise<ClassTagsResponse> {
+  return request<ClassTagsResponse>(
+    'POST',
+    `/versions/${versionId}/classes/${classId}/tags`,
+    { tag: tag.trim() },
+    options
+  );
+}
+
+/** Remove a tag from a class (GitHub #103). */
+export async function removeTagFromClass(
+  versionId: string,
+  classId: string,
+  tagName: string,
+  options: RestClientOptions = {}
+): Promise<ClassTagsResponse> {
+  return request<ClassTagsResponse>(
+    'DELETE',
+    `/versions/${versionId}/classes/${classId}/tags/${encodeURIComponent(tagName)}`,
+    undefined,
+    options
+  );
+}
+
+/** List all tag names used in the version (project tag list) (GitHub #103). */
+export async function listTagsForVersion(
+  versionId: string,
+  options: RestClientOptions = {}
+): Promise<string[]> {
+  return request<string[]>(
+    'GET',
+    `/versions/${versionId}/tags`,
     undefined,
     options
   );
