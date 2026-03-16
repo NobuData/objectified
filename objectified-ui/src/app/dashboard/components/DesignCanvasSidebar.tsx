@@ -131,6 +131,7 @@ function SearchableList({
 
 interface PropertiesListPanelProps {
   properties: StudioProperty[];
+  availableClassNames: string[];
   canEdit: boolean;
   onAdd: (data: PropertyDialogSaveData) => void;
   onUpdate: (propertyId: string, data: PropertyDialogSaveData) => void;
@@ -140,6 +141,7 @@ interface PropertiesListPanelProps {
 
 function PropertiesListPanel({
   properties,
+  availableClassNames,
   canEdit,
   onAdd,
   onUpdate,
@@ -256,6 +258,8 @@ function PropertiesListPanel({
       <PropertyDialog
         open={addOpen}
         mode="add"
+        availableClasses={availableClassNames}
+        availableProperties={properties.map((p) => p.name)}
         existingNames={properties.map((p) => p.name)}
         onSave={handleSaveAdd}
         onClose={() => setAddOpen(false)}
@@ -268,6 +272,10 @@ function PropertiesListPanel({
             ? { name: editingProp.name, description: editingProp.description, data: editingProp.data as Record<string, any> }
             : undefined
         }
+        availableClasses={availableClassNames}
+        availableProperties={properties
+          .filter((p) => p.id !== editingProp?.id)
+          .map((p) => p.name)}
         existingNames={properties.map((p) => p.name)}
         onSave={handleSaveEdit}
         onClose={() => setEditingProp(null)}
@@ -1233,6 +1241,7 @@ export default function DesignCanvasSidebar() {
           ) : useStudioData ? (
             <PropertiesListPanel
               properties={studioProperties}
+              availableClassNames={studioClasses.map((c) => c.name)}
               canEdit={!isReadOnly}
               onAdd={handleAddProjectProperty}
               onUpdate={handleUpdateProjectProperty}

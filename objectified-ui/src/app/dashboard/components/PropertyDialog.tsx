@@ -41,6 +41,8 @@ interface PropertyDialogProps {
   };
   /** Available class names for schema references. */
   availableClasses?: string[];
+  /** Available project property names for reference suggestions. */
+  availableProperties?: string[];
   /** Existing property names for duplicate checking. */
   existingNames?: string[];
 }
@@ -52,6 +54,7 @@ export default function PropertyDialog({
   onClose,
   initial,
   availableClasses = [],
+  availableProperties = [],
   existingNames = [],
 }: PropertyDialogProps) {
   const [propertyName, setPropertyName] = useState('');
@@ -279,6 +282,7 @@ export default function PropertyDialog({
                   data={formData}
                   onChange={handleFormChange}
                   availableClasses={availableClasses}
+                  availableProperties={availableProperties}
                 />
               </Tabs.Content>
 

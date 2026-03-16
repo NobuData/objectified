@@ -149,6 +149,26 @@ describe('PropertyFormFields', () => {
     expect(mockOnChange).toHaveBeenCalledWith('default', expect.stringContaining('x'));
   });
 
+  it('shows $ref target selector options for classes and library properties', () => {
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        availableClasses={['Address']}
+        availableProperties={['CommonContact']}
+      />,
+    );
+    expect(screen.getByLabelText(/\$ref target/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('#/components/schemas/ClassName')).toBeInTheDocument();
+  });
+
+  it('calls onChange when $ref value is typed', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} />);
+    const refInput = screen.getByPlaceholderText('#/components/schemas/ClassName');
+    await user.type(refInput, '#/components/schemas/Address');
+    expect(mockOnChange).toHaveBeenCalledWith('$ref', expect.any(String));
+  });
+
   // Property flags
   it('shows flag checkboxes when Property Flags section is expanded', async () => {
     const user = userEvent.setup();

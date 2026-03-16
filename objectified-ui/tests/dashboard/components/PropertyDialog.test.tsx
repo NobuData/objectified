@@ -192,6 +192,24 @@ describe('PropertyDialog', () => {
     });
   });
 
+  it('saves a property with $ref data', async () => {
+    const user = userEvent.setup();
+    render(<PropertyDialog {...defaultProps} availableClasses={['Address']} />);
+    await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'address');
+    await user.type(
+      screen.getByPlaceholderText('#/components/schemas/ClassName'),
+      '#/components/schemas/Address',
+    );
+    await user.click(screen.getByRole('button', { name: /add property/i }));
+    expect(mockOnSave).toHaveBeenCalledWith({
+      name: 'address',
+      description: null,
+      data: expect.objectContaining({
+        $ref: '#/components/schemas/Address',
+      }),
+    });
+  });
+
   it('trims name whitespace before saving', async () => {
     const user = userEvent.setup();
     render(<PropertyDialog {...defaultProps} />);
