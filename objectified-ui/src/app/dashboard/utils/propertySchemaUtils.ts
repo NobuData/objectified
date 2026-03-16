@@ -7,6 +7,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export interface PropertyFormData {
+  $ref?: string;
   title?: string;
   description?: string;
   format?: string;
@@ -136,6 +137,17 @@ function tryParseJson(value: string): any {
   } catch {
     return value;
   }
+}
+
+function normaliseRefValue(value?: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('$ref:')) return trimmed.replace(/^\$ref:\s*/, '');
+  if (trimmed.startsWith('#/') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  if (/^[A-Za-z_][A-Za-z0-9_./-]*$/.test(trimmed)) {
+    return `#/components/schemas/${trimmed}`;
+  }
+  return undefined;
 }
 
 function applyMinMax(target: any, formData: PropertyFormData): void {
@@ -271,6 +283,7 @@ export function buildPropertySchema(
   isArray: boolean,
 ): Record<string, any> {
   const schema: Record<string, any> = {};
+  const refValue = normaliseRefValue(formData.$ref);
 
   if (formData.title) schema.title = formData.title;
   if (formData.description) schema.description = formData.description;
@@ -331,6 +344,8 @@ export function buildPropertySchema(
       } else {
         schema.items = true;
       }
+    } else if (refValue) {
+      schema.items = { $ref: refValue };
     } else {
       const itemsSchema: any = { type: propertyType };
       if (propertyType === 'string') {
@@ -347,18 +362,26 @@ export function buildPropertySchema(
       schema.items = itemsSchema;
     }
   } else {
-    schema.type = formData.nullable ? [propertyType, 'null'] : propertyType;
-    if (propertyType === 'string') {
-      applyStringConstraints(schema, formData);
+    if (refValue) {
+      if (formData.nullable) {
+        schema.anyOf = [{ $ref: refValue }, { type: 'null' }];
+      } else {
+        schema.$ref = refValue;
+      }
+    } else {
+      schema.type = formData.nullable ? [propertyType, 'null'] : propertyType;
+      if (propertyType === 'string') {
+        applyStringConstraints(schema, formData);
+      }
+      if (propertyType === 'number' || propertyType === 'integer') {
+        applyMinMax(schema, formData);
+      }
+      applyConstOrEnum(schema, formData);
+      if (propertyType === 'object') {
+        applyObjectConstraints(schema, formData);
+      }
+      applyNotComposition(schema, formData);
     }
-    if (propertyType === 'number' || propertyType === 'integer') {
-      applyMinMax(schema, formData);
-    }
-    applyConstOrEnum(schema, formData);
-    if (propertyType === 'object') {
-      applyObjectConstraints(schema, formData);
-    }
-    applyNotComposition(schema, formData);
   }
 
   // XML Object (OpenAPI 3.1)
@@ -408,10 +431,32 @@ export function parsePropertySchema(
   const formData: PropertyFormData = {};
   let propertyType = 'string';
   let isArray = false;
+  let extractedRef: string | undefined;
 
   const typeValue = schemaData.type;
   let isNullable = false;
   let actualType = typeValue;
+
+  if (typeof schemaData.$ref === 'string' && schemaData.$ref.trim()) {
+    extractedRef = schemaData.$ref;
+  }
+  if (Array.isArray(schemaData.anyOf)) {
+    const anyOfRef = schemaData.anyOf.find(
+      (entry: unknown) =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof (entry as Record<string, unknown>).$ref === 'string'
+    ) as { $ref?: string } | undefined;
+    if (anyOfRef?.$ref?.trim()) {
+      extractedRef = anyOfRef.$ref;
+      isNullable = schemaData.anyOf.some(
+        (entry: unknown) =>
+          typeof entry === 'object' &&
+          entry !== null &&
+          (entry as Record<string, unknown>).type === 'null'
+      );
+    }
+  }
 
   if (Array.isArray(typeValue)) {
     isNullable = typeValue.includes('null');
@@ -425,9 +470,12 @@ export function parsePropertySchema(
   if (isArray && hasTupleMode) {
     propertyType = 'string';
   } else if (isArray && schemaData.items && typeof schemaData.items === 'object') {
-    propertyType = schemaData.items.type || 'string';
+    propertyType = schemaData.items.type || (schemaData.items.$ref ? 'object' : 'string');
+    if (typeof schemaData.items.$ref === 'string' && schemaData.items.$ref.trim()) {
+      extractedRef = schemaData.items.$ref;
+    }
   } else if (!isArray) {
-    propertyType = actualType || 'string';
+    propertyType = actualType || (extractedRef ? 'object' : 'string');
   }
 
   const constraintSource = (isArray && !hasTupleMode && schemaData.items && typeof schemaData.items === 'object')
@@ -437,6 +485,7 @@ export function parsePropertySchema(
   formData.title = schemaData.title || '';
   formData.description = schemaData.description || '';
   formData.nullable = isNullable;
+  formData.$ref = extractedRef || '';
 
   // String constraints
   formData.format = constraintSource.format || '';

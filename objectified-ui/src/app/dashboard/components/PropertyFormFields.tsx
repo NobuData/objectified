@@ -42,6 +42,7 @@ export interface PropertyFormFieldsProps {
   showTitle?: boolean;
   size?: 'small' | 'medium';
   availableClasses?: string[];
+  availableProperties?: string[];
 }
 
 interface SectionProps {
@@ -250,6 +251,8 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   data,
   onChange,
   showTitle = true,
+  availableClasses = [],
+  availableProperties = [],
 }) => {
   const [enumInput, setEnumInput] = useState('');
   const [enumError, setEnumError] = useState('');
@@ -458,6 +461,23 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   const showObjectConstraints = baseType === 'object';
 
   const formatOptions = FORMAT_OPTIONS[baseType] || [];
+  const classRefOptions = availableClasses.map((className) => ({
+    value: `#/components/schemas/${className}`,
+    label: className,
+    description: 'Class',
+  }));
+  const propertyRefOptions = availableProperties
+    .map((propertyName) => ({
+      value: `#/components/schemas/${propertyName}`,
+      label: propertyName,
+      description: 'Project property',
+    }))
+    .filter((opt) => !classRefOptions.some((classOpt) => classOpt.value === opt.value));
+  const refOptions = [
+    { value: '', label: 'None' },
+    ...classRefOptions,
+    ...propertyRefOptions,
+  ];
 
   return (
     <div className="space-y-1" data-testid="property-form-fields">
@@ -496,6 +516,27 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             onChange={(v) => onChange('default', v)}
             placeholder="Default value"
           />
+        </div>
+        <div>
+          <FieldLabel htmlFor="pff-ref" optional>$ref target</FieldLabel>
+          <div className="space-y-2">
+            {refOptions.length > 1 && (
+              <SelectField
+                id="pff-ref-select"
+                aria-label="Select $ref target from available classes or project properties"
+                value={data.$ref || ''}
+                onChange={(v) => onChange('$ref', v)}
+                options={refOptions}
+                placeholder="Select class or project property"
+              />
+            )}
+            <TextInput
+              id="pff-ref"
+              value={data.$ref || ''}
+              onChange={(v) => onChange('$ref', v)}
+              placeholder="#/components/schemas/ClassName"
+            />
+          </div>
         </div>
         {/* Examples */}
         <div>

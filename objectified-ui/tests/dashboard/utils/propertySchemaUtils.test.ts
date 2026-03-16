@@ -104,6 +104,44 @@ describe('propertySchemaUtils', () => {
       expect(result).toEqual({ type: 'object' });
     });
 
+    it('builds a direct $ref schema', () => {
+      const result = buildPropertySchema({ $ref: '#/components/schemas/Address' }, 'object', false);
+      expect(result).toEqual({ $ref: '#/components/schemas/Address' });
+    });
+
+    it('strips the "$ref:" prefix from a $ref value', () => {
+      const result = buildPropertySchema({ $ref: '$ref: #/components/schemas/Address' }, 'object', false);
+      expect(result).toEqual({ $ref: '#/components/schemas/Address' });
+    });
+
+    it('strips "$ref:" prefix without leading space', () => {
+      const result = buildPropertySchema({ $ref: '$ref:#/components/schemas/Address' }, 'object', false);
+      expect(result).toEqual({ $ref: '#/components/schemas/Address' });
+    });
+
+    it('builds a nullable $ref schema as anyOf', () => {
+      const result = buildPropertySchema(
+        { $ref: '#/components/schemas/Address', nullable: true },
+        'object',
+        false,
+      );
+      expect(result.anyOf).toEqual([
+        { $ref: '#/components/schemas/Address' },
+        { type: 'null' },
+      ]);
+      expect(result.type).toBeUndefined();
+    });
+
+    it('builds an array of $ref items', () => {
+      const result = buildPropertySchema(
+        { $ref: '#/components/schemas/Address' },
+        'object',
+        true,
+      );
+      expect(result.type).toBe('array');
+      expect(result.items).toEqual({ $ref: '#/components/schemas/Address' });
+    });
+
     // Title and description
     it('includes title when set', () => {
       const result = buildPropertySchema({ title: 'User ID' }, 'string', false);
@@ -705,6 +743,33 @@ describe('propertySchemaUtils', () => {
     it('parses a minimal boolean schema', () => {
       const { propertyType } = parsePropertySchema({ type: 'boolean' });
       expect(propertyType).toBe('boolean');
+    });
+
+    it('parses a direct $ref schema', () => {
+      const { formData, propertyType, isArray } = parsePropertySchema({
+        $ref: '#/components/schemas/Address',
+      });
+      expect(formData.$ref).toBe('#/components/schemas/Address');
+      expect(propertyType).toBe('object');
+      expect(isArray).toBe(false);
+    });
+
+    it('parses a nullable $ref anyOf schema', () => {
+      const { formData } = parsePropertySchema({
+        anyOf: [{ $ref: '#/components/schemas/Address' }, { type: 'null' }],
+      });
+      expect(formData.$ref).toBe('#/components/schemas/Address');
+      expect(formData.nullable).toBe(true);
+    });
+
+    it('parses an array with $ref items', () => {
+      const { formData, propertyType, isArray } = parsePropertySchema({
+        type: 'array',
+        items: { $ref: '#/components/schemas/Address' },
+      });
+      expect(formData.$ref).toBe('#/components/schemas/Address');
+      expect(propertyType).toBe('object');
+      expect(isArray).toBe(true);
     });
 
     it('parses a nullable string type', () => {
