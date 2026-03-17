@@ -17,8 +17,8 @@ export interface ClassPropertySaveData {
   refType?: ClassRefType;
   /** Override: mark this property as required in the class schema (stored in data.required). */
   overrideRequired?: boolean;
-  /** Display order (stored in data['x-order']). */
-  order?: number;
+  /** Display order (stored in data['x-order']). null means explicitly clear the value. */
+  order?: number | null;
   /** Parent class-property id for nesting (nested under this property). */
   parentId?: string | null;
 }
@@ -161,8 +161,8 @@ export default function ClassPropertyDialog({
       referenceClass && referenceClass !== NO_REFERENCE_VALUE
         ? referenceClass.trim()
         : undefined;
-    const orderNum = order.trim() === '' ? undefined : parseInt(order, 10);
-    const validOrder = orderNum !== undefined && !isNaN(orderNum) ? orderNum : undefined;
+    const orderNum = order.trim() === '' ? null : parseInt(order, 10);
+    const validOrder: number | null = orderNum !== null && !isNaN(orderNum) ? orderNum : null;
     const realParentId =
       parentId && parentId !== NO_PARENT_VALUE ? parentId : undefined;
     onSave({
@@ -318,7 +318,6 @@ export default function ClassPropertyDialog({
                   setForm((f) => ({ ...f, overrideRequired: checked === true }))
                 }
                 className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
-                aria-label="Required"
               >
                 <Checkbox.Indicator className="flex items-center justify-center text-white">
                   <Check className="h-3 w-3" />
@@ -348,7 +347,6 @@ export default function ClassPropertyDialog({
                 onChange={(e) => setForm((f) => ({ ...f, order: e.target.value }))}
                 placeholder="Optional display order"
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                aria-label="Display order"
               />
             </div>
 
@@ -368,7 +366,6 @@ export default function ClassPropertyDialog({
                   <Select.Trigger
                     id="property-parent"
                     className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    aria-label="Nested under property"
                   >
                     <Select.Value placeholder="None (top-level)" />
                     <Select.Icon>

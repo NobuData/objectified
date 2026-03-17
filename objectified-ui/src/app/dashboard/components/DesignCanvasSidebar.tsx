@@ -823,8 +823,7 @@ function ClassListPanel({
                         (c) => c.toLowerCase() === parsed.toLowerCase()
                       )
                     : undefined;
-                const data = (editingProp.prop.data ?? editingProp.prop.property_data) as
-                  Record<string, unknown> | undefined;
+                const classData = editingProp.prop.data as Record<string, unknown> | undefined;
                 return {
                   name: editingProp.prop.name,
                   description: editingProp.prop.description ?? '',
@@ -835,8 +834,8 @@ function ClassListPanel({
                       | Record<string, unknown>
                       | undefined
                   ),
-                  overrideRequired: data?.required === true,
-                  order: typeof data?.['x-order'] === 'number' ? data['x-order'] : undefined,
+                  overrideRequired: classData?.required === true,
+                  order: typeof classData?.['x-order'] === 'number' ? classData['x-order'] : undefined,
                   parentId: editingProp.prop.parent_id ?? undefined,
                 };
               })()
@@ -1049,7 +1048,7 @@ export default function DesignCanvasSidebar() {
             : {};
           if (data.overrideRequired === true) baseData.required = true;
           else if (data.overrideRequired === false) baseData.required = false;
-          if (data.order !== undefined) baseData['x-order'] = data.order;
+          if (data.order !== undefined && data.order !== null) baseData['x-order'] = data.order;
           const propData = Object.keys(baseData).length > 0 ? baseData : undefined;
           draft.classes[idx].properties.push({
             localId: generateLocalId(),
@@ -1087,7 +1086,8 @@ export default function DesignCanvasSidebar() {
         }
         if (data.overrideRequired === true) next.required = true;
         else if (data.overrideRequired === false) next.required = false;
-        if (data.order !== undefined) next['x-order'] = data.order;
+        if (data.order === null) delete next['x-order'];
+        else if (data.order !== undefined) next['x-order'] = data.order;
         prop.data = Object.keys(next).length > 0 ? next : undefined;
       });
     },
