@@ -375,7 +375,7 @@ function buildItemsSchemaFromFormData(propertyType: string, formData: PropertyFo
 /**
  * Keywords that the property form can represent directly for an items schema.
  * If an items schema contains only these keys, no override is needed and the form
- * fields remain fully editable.  Any other key (e.g. anyOf, allOf, if/then/else)
+ * fields remain fully editable.  Any other key (e.g. anyOf, allOf, oneOf)
  * triggers itemsSchemaOverride so that the custom schema is preserved on round-trip.
  */
 const REPRESENTABLE_ITEMS_KEYWORDS = new Set([
