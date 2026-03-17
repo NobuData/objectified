@@ -1,7 +1,7 @@
 /**
  * Property schema utilities for JSON Schema 2020-12 / OpenAPI 3.2.0.
  * Provides form data types, schema building, and parsing for the property dialog.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints: format, min/max, enum, default).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -32,6 +32,8 @@ export interface PropertyFormData {
   tupleMode?: boolean;
   prefixItems?: any[];
   itemsSchema?: string;
+  /** Optional custom items schema (JSON) for non-tuple arrays. When set, used as schema.items instead of building from base type. */
+  itemsSchemaOverride?: string;
 
   unevaluatedItems?: 'default' | 'allow' | 'disallow' | 'schema';
   unevaluatedItemsSchema?: string;
@@ -318,6 +320,38 @@ function applyNotComposition(target: any, formData: PropertyFormData): void {
 }
 
 /**
+ * Build the items schema object for a non-tuple array from form data and property type.
+ * Extracted to avoid duplication between the override-fallback and default code paths.
+ */
+function buildItemsSchemaFromFormData(propertyType: string, formData: PropertyFormData): any {
+  const itemsSchema: any = { type: propertyType };
+  if (propertyType === 'string') applyStringConstraints(itemsSchema, formData);
+  if (propertyType === 'number' || propertyType === 'integer') {
+    if (formData.format) itemsSchema.format = formData.format;
+    applyMinMax(itemsSchema, formData);
+  }
+  applyConstOrEnum(itemsSchema, formData, propertyType);
+  if (propertyType === 'object') applyObjectConstraints(itemsSchema, formData);
+  applyNotComposition(itemsSchema, formData);
+  return itemsSchema;
+}
+
+/**
+ * Keywords that the property form can represent directly for an items schema.
+ * If an items schema contains only these keys, no override is needed and the form
+ * fields remain fully editable.  Any other key (e.g. anyOf, allOf, if/then/else)
+ * triggers itemsSchemaOverride so that the custom schema is preserved on round-trip.
+ */
+const REPRESENTABLE_ITEMS_KEYWORDS = new Set([
+  'type', 'format', 'pattern', 'minLength', 'maxLength',
+  'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+  'const', 'enum',
+  'not',
+  'additionalProperties', 'minProperties', 'maxProperties',
+  'patternProperties', 'propertyNames', 'dependentSchemas', 'unevaluatedProperties',
+]);
+
+/**
  * Build a JSON Schema object from form data, property type, and array flag.
  */
 export function buildPropertySchema(
@@ -389,21 +423,17 @@ export function buildPropertySchema(
       }
     } else if (refValue) {
       schema.items = { $ref: refValue };
+    } else if (formData.itemsSchemaOverride && formData.itemsSchemaOverride.trim()) {
+      const parsed = tryParseJson(formData.itemsSchemaOverride);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        schema.items = parsed;
+      } else if (parsed === true || parsed === false) {
+        schema.items = parsed;
+      } else {
+        schema.items = buildItemsSchemaFromFormData(propertyType, formData);
+      }
     } else {
-      const itemsSchema: any = { type: propertyType };
-      if (propertyType === 'string') {
-        applyStringConstraints(itemsSchema, formData);
-      }
-      if (propertyType === 'number' || propertyType === 'integer') {
-        if (formData.format) itemsSchema.format = formData.format;
-        applyMinMax(itemsSchema, formData);
-      }
-      applyConstOrEnum(itemsSchema, formData, propertyType);
-      if (propertyType === 'object') {
-        applyObjectConstraints(itemsSchema, formData);
-      }
-      applyNotComposition(itemsSchema, formData);
-      schema.items = itemsSchema;
+      schema.items = buildItemsSchemaFromFormData(propertyType, formData);
     }
   } else {
     if (refValue) {
@@ -575,6 +605,20 @@ export function parsePropertySchema(
   formData.itemsSchema = hasTupleMode && schemaData.items !== undefined
     ? (typeof schemaData.items === 'object' ? JSON.stringify(schemaData.items, null, 2) : String(schemaData.items))
     : '';
+
+  // Items schema override (non-tuple): only set when items contains keywords that
+  // the form fields cannot represent, to preserve round-trip fidelity without
+  // blocking normal form editing for simple schemas.
+  if (isArray && !hasTupleMode && schemaData.items && typeof schemaData.items === 'object' && !schemaData.items.$ref) {
+    const hasNonRepresentableKey = Object.keys(schemaData.items).some(
+      (k) => !REPRESENTABLE_ITEMS_KEYWORDS.has(k),
+    );
+    formData.itemsSchemaOverride = hasNonRepresentableKey
+      ? JSON.stringify(schemaData.items, null, 2)
+      : '';
+  } else {
+    formData.itemsSchemaOverride = '';
+  }
 
   // Unevaluated items
   if (schemaData.unevaluatedItems === true) {

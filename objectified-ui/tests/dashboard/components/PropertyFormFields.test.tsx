@@ -272,6 +272,27 @@ describe('PropertyFormFields', () => {
     expect(screen.getByLabelText(/items schema/i)).toBeInTheDocument();
   });
 
+  it('shows items schema (optional JSON) when array and not tuple mode', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} isArray={true} data={{}} />);
+    await user.click(screen.getByText('Array Constraints'));
+    expect(screen.getByLabelText(/items schema \(optional json\)/i)).toBeInTheDocument();
+  });
+
+  it('shows prefix items (tuple slots) and Add slot when tuple mode', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        isArray={true}
+        data={{ tupleMode: true }}
+      />,
+    );
+    await user.click(screen.getByText('Array Constraints'));
+    expect(screen.getByText(/prefix items \(tuple slots\)/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add slot/i })).toBeInTheDocument();
+  });
+
   // Object constraints interaction
   it('shows additional properties selector for object type', async () => {
     const user = userEvent.setup();
