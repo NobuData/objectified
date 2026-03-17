@@ -8,7 +8,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import * as Checkbox from '@radix-ui/react-checkbox';
 import * as Select from '@radix-ui/react-select';
@@ -128,6 +128,7 @@ function TextArea({
   placeholder,
   rows = 3,
   onBlur,
+  onFocus,
   className: classNameProp,
   'aria-label': ariaLabel,
 }: {
@@ -137,6 +138,7 @@ function TextArea({
   placeholder?: string;
   rows?: number;
   onBlur?: () => void;
+  onFocus?: () => void;
   className?: string;
   'aria-label'?: string;
 }) {
@@ -146,6 +148,7 @@ function TextArea({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
+      onFocus={onFocus}
       placeholder={placeholder}
       rows={rows}
       aria-label={ariaLabel}
@@ -284,6 +287,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
 
   // Object constraints: properties JSON draft, required property name input
   const [propertiesDraft, setPropertiesDraft] = useState('');
+  const propertiesEditing = useRef(false);
   const [objectRequiredInput, setObjectRequiredInput] = useState('');
   const [objectRequiredError, setObjectRequiredError] = useState('');
 
@@ -445,12 +449,13 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
 
   const showObjectConstraints = baseType === 'object';
   useEffect(() => {
-    if (showObjectConstraints) {
+    if (showObjectConstraints && !propertiesEditing.current) {
       setPropertiesDraft(JSON.stringify(data.properties || {}, null, 2));
     }
   }, [showObjectConstraints, data.properties]);
 
   const handlePropertiesBlur = () => {
+    propertiesEditing.current = false;
     const raw = propertiesDraft.trim();
     if (!raw) {
       onChange('properties', undefined);
@@ -484,10 +489,6 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
     const trimmed = objectRequiredInput.trim();
     if (!trimmed) {
       setObjectRequiredError('Property name cannot be empty');
-      return;
-    }
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
-      setObjectRequiredError('Name must start with a letter or underscore and contain only letters, numbers, and underscores.');
       return;
     }
     if (data.objectRequired?.includes(trimmed)) {
@@ -1143,6 +1144,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               id="pff-object-properties"
               value={propertiesDraft}
               onChange={(v) => handlePropertiesChange(v)}
+              onFocus={() => { propertiesEditing.current = true; }}
               onBlur={handlePropertiesBlur}
               placeholder='{ "name": { "type": "string" }, "age": { "type": "integer" } }'
               rows={4}

@@ -1179,12 +1179,44 @@ describe('propertySchemaUtils', () => {
       expect(formData.properties).toEqual(props);
     });
 
+    it('rejects array as properties value', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        properties: ['name', 'age'] as any,
+      });
+      expect(formData.properties).toBeUndefined();
+    });
+
     it('parses required (object-level property names)', () => {
       const { formData } = parsePropertySchema({
         type: 'object',
         required: ['name', 'email'],
       });
       expect(formData.objectRequired).toEqual(['name', 'email']);
+    });
+
+    it('trims and deduplicates required entries', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        required: ['name', '  name  ', 'email', 'email'],
+      });
+      expect(formData.objectRequired).toEqual(['name', 'email']);
+    });
+
+    it('filters empty strings from required', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        required: ['name', '   ', '', 'email'],
+      });
+      expect(formData.objectRequired).toEqual(['name', 'email']);
+    });
+
+    it('returns undefined for objectRequired when all required entries are empty/whitespace', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        required: ['   ', ''],
+      });
+      expect(formData.objectRequired).toBeUndefined();
     });
 
     it('parses object with properties and required', () => {

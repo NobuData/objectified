@@ -662,12 +662,22 @@ export function parsePropertySchema(
     : [];
 
   // Object constraints: properties, required (object-level)
-  formData.properties = constraintSource.properties && typeof constraintSource.properties === 'object'
+  formData.properties = constraintSource.properties
+    && typeof constraintSource.properties === 'object'
+    && !Array.isArray(constraintSource.properties)
     ? constraintSource.properties
     : undefined;
-  formData.objectRequired = Array.isArray(constraintSource.required)
-    ? constraintSource.required.filter((v: unknown): v is string => typeof v === 'string')
-    : undefined;
+  if (Array.isArray(constraintSource.required)) {
+    const normalized = [...new Set(
+      constraintSource.required
+        .filter((v: unknown): v is string => typeof v === 'string')
+        .map((v: string) => v.trim())
+        .filter((v: string) => v.length > 0),
+    )];
+    formData.objectRequired = normalized.length > 0 ? normalized : undefined;
+  } else {
+    formData.objectRequired = undefined;
+  }
 
   // Object constraints: additionalProperties, etc.
   if (constraintSource.hasOwnProperty('additionalProperties')) {
