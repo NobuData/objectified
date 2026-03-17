@@ -1,7 +1,7 @@
 /**
  * Property schema utilities for JSON Schema 2020-12 / OpenAPI 3.2.0.
  * Provides form data types, schema building, and parsing for the property dialog.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints: format, min/max, enum, default).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -32,6 +32,8 @@ export interface PropertyFormData {
   tupleMode?: boolean;
   prefixItems?: any[];
   itemsSchema?: string;
+  /** Optional custom items schema (JSON) for non-tuple arrays. When set, used as schema.items instead of building from base type. */
+  itemsSchemaOverride?: string;
 
   unevaluatedItems?: 'default' | 'allow' | 'disallow' | 'schema';
   unevaluatedItemsSchema?: string;
@@ -389,6 +391,24 @@ export function buildPropertySchema(
       }
     } else if (refValue) {
       schema.items = { $ref: refValue };
+    } else if (formData.itemsSchemaOverride && formData.itemsSchemaOverride.trim()) {
+      const parsed = tryParseJson(formData.itemsSchemaOverride);
+      if (typeof parsed === 'object' && parsed !== null) {
+        schema.items = parsed;
+      } else if (parsed === true || parsed === false) {
+        schema.items = parsed;
+      } else {
+        const itemsSchema: any = { type: propertyType };
+        if (propertyType === 'string') applyStringConstraints(itemsSchema, formData);
+        if (propertyType === 'number' || propertyType === 'integer') {
+          if (formData.format) itemsSchema.format = formData.format;
+          applyMinMax(itemsSchema, formData);
+        }
+        applyConstOrEnum(itemsSchema, formData, propertyType);
+        if (propertyType === 'object') applyObjectConstraints(itemsSchema, formData);
+        applyNotComposition(itemsSchema, formData);
+        schema.items = itemsSchema;
+      }
     } else {
       const itemsSchema: any = { type: propertyType };
       if (propertyType === 'string') {
@@ -575,6 +595,13 @@ export function parsePropertySchema(
   formData.itemsSchema = hasTupleMode && schemaData.items !== undefined
     ? (typeof schemaData.items === 'object' ? JSON.stringify(schemaData.items, null, 2) : String(schemaData.items))
     : '';
+
+  // Items schema override (non-tuple): when items is a custom object (no $ref), preserve for round-trip
+  if (isArray && !hasTupleMode && schemaData.items && typeof schemaData.items === 'object' && !schemaData.items.$ref) {
+    formData.itemsSchemaOverride = JSON.stringify(schemaData.items, null, 2);
+  } else {
+    formData.itemsSchemaOverride = '';
+  }
 
   // Unevaluated items
   if (schemaData.unevaluatedItems === true) {

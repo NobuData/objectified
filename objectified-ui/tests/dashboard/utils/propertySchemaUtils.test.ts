@@ -472,6 +472,25 @@ describe('propertySchemaUtils', () => {
       expect(result.items).toBe(true);
     });
 
+    it('uses itemsSchemaOverride for non-tuple array when set', () => {
+      const result = buildPropertySchema(
+        { itemsSchemaOverride: '{ "type": "integer", "minimum": 0 }' },
+        'string',
+        true,
+      );
+      expect(result.type).toBe('array');
+      expect(result.items).toEqual({ type: 'integer', minimum: 0 });
+    });
+
+    it('ignores invalid itemsSchemaOverride and builds from base type', () => {
+      const result = buildPropertySchema(
+        { itemsSchemaOverride: 'not json' },
+        'number',
+        true,
+      );
+      expect(result.items).toEqual({ type: 'number' });
+    });
+
     // Unevaluated items
     it('sets unevaluatedItems to true when allow', () => {
       const result = buildPropertySchema({ unevaluatedItems: 'allow' }, 'string', true);
@@ -1061,6 +1080,24 @@ describe('propertySchemaUtils', () => {
       expect(formData.itemsSchema).toBe(JSON.stringify({ type: 'boolean' }, null, 2));
     });
 
+    it('parses itemsSchemaOverride when array items is custom object without $ref', () => {
+      const itemsSchema = { type: 'integer', minimum: 0, maximum: 100 };
+      const { formData } = parsePropertySchema({
+        type: 'array',
+        items: itemsSchema,
+      });
+      expect(formData.itemsSchemaOverride).toBe(JSON.stringify(itemsSchema, null, 2));
+    });
+
+    it('does not set itemsSchemaOverride when array items has $ref', () => {
+      const { formData } = parsePropertySchema({
+        type: 'array',
+        items: { $ref: '#/components/schemas/Foo' },
+      });
+      expect(formData.$ref).toBe('#/components/schemas/Foo');
+      expect(formData.itemsSchemaOverride).toBe('');
+    });
+
     it('parses unevaluatedItems: true', () => {
       const { formData } = parsePropertySchema({
         type: 'array',
@@ -1428,6 +1465,14 @@ describe('propertySchemaUtils', () => {
       const { formData } = parsePropertySchema(schema);
       expect(formData.tupleMode).toBe(true);
       expect(formData.prefixItems).toEqual([{ type: 'string' }, { type: 'number' }]);
+    });
+
+    it('round-trips itemsSchemaOverride for non-tuple array', () => {
+      const itemsJson = JSON.stringify({ type: 'integer', minimum: 0, maximum: 10 }, null, 2);
+      const original: PropertyFormData = { itemsSchemaOverride: itemsJson };
+      const schema = buildPropertySchema(original, 'string', true);
+      const { formData } = parsePropertySchema(schema);
+      expect(formData.itemsSchemaOverride).toBe(itemsJson);
     });
   });
 });

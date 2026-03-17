@@ -3,7 +3,7 @@
 /**
  * Reusable form fields for property creation/editing with full
  * JSON Schema 2020-12 / OpenAPI 3.2.0 support.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints: format, min/max, enum, default).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -270,6 +270,9 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   const [newExtKey, setNewExtKey] = useState('');
   const [newExtValue, setNewExtValue] = useState('');
   const [extKeyError, setExtKeyError] = useState('');
+
+  // Prefix items (tuple) draft per index while editing invalid JSON
+  const [prefixItemDrafts, setPrefixItemDrafts] = useState<Record<number, string>>({});
 
   const handleAddEnum = () => {
     if (!enumInput.trim()) {
@@ -862,6 +865,18 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
           icon={<List className="h-3.5 w-3.5" />}
           badge="Array"
         >
+          {!data.tupleMode && (
+            <div>
+              <FieldLabel htmlFor="pff-itemsschemaoverride" optional>Items Schema (optional JSON)</FieldLabel>
+              <TextArea
+                id="pff-itemsschemaoverride"
+                value={data.itemsSchemaOverride || ''}
+                onChange={(v) => onChange('itemsSchemaOverride', v)}
+                placeholder='e.g. { "type": "string" } or leave empty to use type below'
+                rows={2}
+              />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <FieldLabel htmlFor="pff-minitems" optional>Min Items</FieldLabel>
@@ -931,16 +946,88 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             onChange={(v) => onChange('tupleMode', v)}
           />
           {data.tupleMode && (
-            <div>
-              <FieldLabel htmlFor="pff-itemsschema" optional>Items Schema (beyond prefix)</FieldLabel>
-              <TextArea
-                id="pff-itemsschema"
-                value={data.itemsSchema || ''}
-                onChange={(v) => onChange('itemsSchema', v)}
-                placeholder='{ "type": "string" } or true/false'
-                rows={2}
-              />
-            </div>
+            <>
+              <div>
+                <FieldLabel optional>Prefix Items (tuple slots)</FieldLabel>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                  Each slot is a JSON Schema. Order defines the tuple.
+                </p>
+                {(data.prefixItems || []).map((item, index) => {
+                  const stringified = typeof item === 'object' ? JSON.stringify(item, null, 2) : String(item);
+                  const value = prefixItemDrafts[index] ?? stringified;
+                  return (
+                  <div key={index} className="flex gap-2 items-start mb-2">
+                    <TextArea
+                      aria-label={`Prefix item ${index + 1}`}
+                      value={value}
+                      onChange={(v) => {
+                        setPrefixItemDrafts((prev) => ({ ...prev, [index]: v }));
+                        try {
+                          const parsed = JSON.parse(v.trim() || '{}');
+                          const next = [...(data.prefixItems || [])];
+                          next[index] = parsed;
+                          onChange('prefixItems', next);
+                          setPrefixItemDrafts((prev) => {
+                            const u = { ...prev };
+                            delete u[index];
+                            return u;
+                          });
+                        } catch {
+                          // Invalid JSON while typing; keep draft
+                        }
+                      }}
+                      onBlur={() => {
+                        if (prefixItemDrafts[index] !== undefined) {
+                          try {
+                            JSON.parse(prefixItemDrafts[index].trim() || '{}');
+                          } catch {
+                            setPrefixItemDrafts((prev) => {
+                              const u = { ...prev };
+                              delete u[index];
+                              return u;
+                            });
+                          }
+                        }
+                      }}
+                      placeholder='{ "type": "string" }'
+                      rows={2}
+                      className="flex-1 font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = (data.prefixItems || []).filter((_, i) => i !== index);
+                        onChange('prefixItems', next.length ? next : undefined);
+                        setPrefixItemDrafts({});
+                      }}
+                      className="p-2 rounded border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400"
+                      aria-label={`Remove prefix item ${index + 1}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => onChange('prefixItems', [...(data.prefixItems || []), { type: 'string' }])}
+                  className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add slot
+                </button>
+              </div>
+              <div>
+                <FieldLabel htmlFor="pff-itemsschema" optional>Items Schema (beyond prefix)</FieldLabel>
+                <TextArea
+                  id="pff-itemsschema"
+                  value={data.itemsSchema || ''}
+                  onChange={(v) => onChange('itemsSchema', v)}
+                  placeholder='{ "type": "string" } or true/false'
+                  rows={2}
+                />
+              </div>
+            </>
           )}
           <div>
             <FieldLabel htmlFor="pff-unevaluateditems" optional>Unevaluated Items</FieldLabel>
