@@ -386,7 +386,17 @@ describe('propertySchemaUtils', () => {
       expect(buildPropertySchema({ default: 'true' }, 'boolean', false).default).toBe(true);
       expect(buildPropertySchema({ default: 'false' }, 'boolean', false).default).toBe(false);
       expect(buildPropertySchema({ default: '{"a":1}' }, 'object', false).default).toEqual({ a: 1 });
-      expect(buildPropertySchema({ default: '[1,2]' }, 'string', true).default).toEqual([1, 2]);
+      const arrResult = buildPropertySchema({ default: '[1,2]' }, 'string', true);
+      expect(arrResult.default).toEqual([1, 2]);
+      // default must not leak into items subschema
+      expect(arrResult.items?.default).toBeUndefined();
+    });
+
+    it('does not coerce string defaults that look like other types (#110)', () => {
+      // "42" should remain the string "42" for a string property
+      expect(buildPropertySchema({ default: '42' }, 'string', false).default).toBe('42');
+      // "true" should remain the string "true" for a string property
+      expect(buildPropertySchema({ default: 'true' }, 'string', false).default).toBe('true');
     });
 
     // Array type
@@ -1032,6 +1042,15 @@ describe('propertySchemaUtils', () => {
         default: [1, 2],
       });
       expect(formData2.default).toBe('[1,2]');
+    });
+
+    it('falls back to items.default for arrays created before top-level default was used (#110)', () => {
+      // Schemas created before the fix stored default on items.default; we must remain backward-compatible.
+      const { formData } = parsePropertySchema({
+        type: 'array',
+        items: { type: 'string', default: ['a', 'b'] as any },
+      });
+      expect(formData.default).toBe('["a","b"]');
     });
 
     it('parses number format', () => {
