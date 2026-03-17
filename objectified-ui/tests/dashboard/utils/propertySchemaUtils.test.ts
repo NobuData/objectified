@@ -734,6 +734,32 @@ describe('propertySchemaUtils', () => {
       expect(result.not).toBe('not-json');
     });
 
+    // Conditional (if/then/else) — JSON Schema 2020-12
+    it('applies if/then/else conditional schemas', () => {
+      const ifSchema = '{ "required": ["country"] }';
+      const thenSchema = '{ "properties": { "country": { "const": "US" } } }';
+      const elseSchema = '{ "properties": { "country": {} } }';
+      const result = buildPropertySchema(
+        { ifSchema, thenSchema, elseSchema },
+        'object',
+        false,
+      );
+      expect(result.if).toEqual({ required: ['country'] });
+      expect(result.then).toEqual({ properties: { country: { const: 'US' } } });
+      expect(result.else).toEqual({ properties: { country: {} } });
+    });
+
+    it('applies only if when then/else empty', () => {
+      const result = buildPropertySchema(
+        { ifSchema: '{ "type": "object" }' },
+        'string',
+        false,
+      );
+      expect(result.if).toEqual({ type: 'object' });
+      expect(result.then).toBeUndefined();
+      expect(result.else).toBeUndefined();
+    });
+
     // XML Object (OpenAPI 3.1)
     it('includes XML object when any XML field is set', () => {
       const result = buildPropertySchema(
@@ -1383,6 +1409,28 @@ describe('propertySchemaUtils', () => {
       expect(formData.not).toBe(JSON.stringify({ type: 'null' }, null, 2));
     });
 
+    it('parses if/then/else conditional schemas', () => {
+      const ifSchema = { required: ['country'] };
+      const thenSchema = { properties: { country: { const: 'US' } } };
+      const elseSchema = { properties: { country: {} } };
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        if: ifSchema,
+        then: thenSchema,
+        else: elseSchema,
+      });
+      expect(formData.ifSchema).toBe(JSON.stringify(ifSchema, null, 2));
+      expect(formData.thenSchema).toBe(JSON.stringify(thenSchema, null, 2));
+      expect(formData.elseSchema).toBe(JSON.stringify(elseSchema, null, 2));
+    });
+
+    it('parses missing if/then/else as empty string', () => {
+      const { formData } = parsePropertySchema({ type: 'string' });
+      expect(formData.ifSchema).toBe('');
+      expect(formData.thenSchema).toBe('');
+      expect(formData.elseSchema).toBe('');
+    });
+
     // XML Object
     it('parses XML object', () => {
       const { formData } = parsePropertySchema({
@@ -1619,6 +1667,18 @@ describe('propertySchemaUtils', () => {
       const schema = buildPropertySchema(original, 'string', true);
       const { formData } = parsePropertySchema(schema);
       expect(formData.itemsSchemaOverride).toBe(itemsJson);
+    });
+
+    it('round-trips if/then/else conditional schemas', () => {
+      const ifSchema = JSON.stringify({ required: ['country'] }, null, 2);
+      const thenSchema = JSON.stringify({ properties: { country: { const: 'US' } } }, null, 2);
+      const elseSchema = JSON.stringify({ properties: { country: {} } }, null, 2);
+      const original: PropertyFormData = { ifSchema, thenSchema, elseSchema };
+      const schema = buildPropertySchema(original, 'object', false);
+      const { formData } = parsePropertySchema(schema);
+      expect(formData.ifSchema).toBe(ifSchema);
+      expect(formData.thenSchema).toBe(thenSchema);
+      expect(formData.elseSchema).toBe(elseSchema);
     });
   });
 });
