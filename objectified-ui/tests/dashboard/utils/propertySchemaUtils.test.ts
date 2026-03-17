@@ -1487,6 +1487,16 @@ describe('propertySchemaUtils', () => {
       expect(formData.deprecationMessage).toBe('Old');
     });
 
+    it('excludes x-required from extensions (#112)', () => {
+      const { formData } = parsePropertySchema({
+        type: 'string',
+        'x-required': true,
+        'x-custom': 'value',
+      });
+      expect(formData.required).toBe(true);
+      expect(formData.extensions).toEqual({ 'x-custom': 'value' });
+    });
+
     // External docs
     it('parses externalDocs', () => {
       const { formData } = parsePropertySchema({

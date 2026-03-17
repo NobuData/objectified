@@ -1,7 +1,7 @@
 /**
  * Property schema utilities for JSON Schema 2020-12 / OpenAPI 3.2.0.
  * Provides form data types, schema building, and parsing for the property dialog.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values), #111 (conditional: if/then/else, dependentSchemas).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values), #111 (conditional: if/then/else, dependentSchemas), #112 (extensions x-*, XML attribute/wrapped).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -808,10 +808,14 @@ export function parsePropertySchema(
       : String(schemaData.else))
     : '';
 
-  // Extensions
+  // Extensions (x-*); exclude first-class fields so they do not appear in Extensions list (#112)
   const extensions: Record<string, any> = {};
   Object.keys(schemaData).forEach((key) => {
-    if (key.startsWith('x-') && key !== 'x-deprecation-message') {
+    if (
+      key.startsWith('x-') &&
+      key !== 'x-deprecation-message' &&
+      key !== 'x-required'
+    ) {
       extensions[key] = schemaData[key];
     }
   });
