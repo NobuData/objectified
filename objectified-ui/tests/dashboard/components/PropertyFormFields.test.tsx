@@ -1,6 +1,6 @@
 /**
  * Unit tests for PropertyFormFields.
- * Reference: GitHub #104
+ * Reference: GitHub #104, #106
  */
 
 import React from 'react';
@@ -143,7 +143,7 @@ describe('PropertyFormFields', () => {
 
   it('calls onChange when default value is typed', async () => {
     const user = userEvent.setup();
-    render(<PropertyFormFields {...defaultProps} />);
+    render(<PropertyFormFields {...defaultProps} baseType="number" />);
     const defaultField = screen.getByPlaceholderText(/default value/i);
     await user.type(defaultField, 'x');
     expect(mockOnChange).toHaveBeenCalledWith('default', expect.stringContaining('x'));
@@ -1144,5 +1144,82 @@ describe('PropertyFormFields', () => {
     );
     await user.click(screen.getByText('String Constraints'));
     expect(screen.queryByText('Binary Content Settings')).not.toBeInTheDocument();
+  });
+
+  // String Constraints Default/Example field tests (#106)
+  it('hides Basic Info "Default value" field when baseType is string and shows string constraint default instead', async () => {
+    const user = userEvent.setup();
+    render(<PropertyFormFields {...defaultProps} baseType="string" />);
+    expect(screen.queryByLabelText(/default value/i)).not.toBeInTheDocument();
+    await user.click(screen.getByText('String Constraints'));
+    expect(screen.getByPlaceholderText('Default string value')).toBeInTheDocument();
+  });
+
+  it('shows Basic Info "Default value" field for non-string types', () => {
+    render(<PropertyFormFields {...defaultProps} baseType="number" />);
+    expect(screen.getByLabelText(/default value/i)).toBeInTheDocument();
+  });
+
+  it('string constraints Default field updates data.default', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="string"
+        data={{}}
+        onChange={onChange}
+      />,
+    );
+    await user.click(screen.getByText('String Constraints'));
+    const defaultInput = screen.getByPlaceholderText('Default string value');
+    await user.type(defaultInput, 'hello');
+    expect(onChange).toHaveBeenCalledWith('default', expect.any(String));
+  });
+
+  it('string constraints Example field updates only examples[0] and preserves other entries', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="string"
+        data={{ examples: ['first', 'second', 'third'] }}
+        onChange={onChange}
+      />,
+    );
+    await user.click(screen.getByText('String Constraints'));
+    const exampleInput = screen.getByPlaceholderText('Example string value');
+    await user.type(exampleInput, 'x');
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1];
+    expect(lastCall[0]).toBe('examples');
+    const updatedExamples: string[] = lastCall[1];
+    // examples[0] is updated (appended), while second and third are preserved
+    expect(updatedExamples[0]).toContain('x');
+    expect(updatedExamples[1]).toBe('second');
+    expect(updatedExamples[2]).toBe('third');
+  });
+
+  it('string constraints Example field clears examples[0] when emptied, preserving others with more than two entries', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="string"
+        data={{ examples: ['first', 'second', 'third', 'fourth'] }}
+        onChange={onChange}
+      />,
+    );
+    await user.click(screen.getByText('String Constraints'));
+    const exampleInput = screen.getByPlaceholderText('Example string value');
+    await user.clear(exampleInput);
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1];
+    expect(lastCall[0]).toBe('examples');
+    const updatedExamples: string[] = lastCall[1];
+    expect(updatedExamples[0]).toBe('second');
+    expect(updatedExamples[1]).toBe('third');
+    expect(updatedExamples[2]).toBe('fourth');
+    expect(updatedExamples.length).toBe(3);
   });
 });
