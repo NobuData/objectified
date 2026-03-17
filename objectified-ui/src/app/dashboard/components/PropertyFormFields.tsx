@@ -508,7 +508,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             rows={2}
           />
         </div>
-        {baseType !== 'string' && (
+        {baseType !== 'string' && !showNumberConstraints && (
           <div>
             <FieldLabel htmlFor="pff-default" optional>Default value</FieldLabel>
             <TextInput
