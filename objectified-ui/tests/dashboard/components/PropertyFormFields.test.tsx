@@ -144,9 +144,12 @@ describe('PropertyFormFields', () => {
   it('calls onChange when default value is typed', async () => {
     const user = userEvent.setup();
     render(<PropertyFormFields {...defaultProps} baseType="number" />);
-    const defaultField = screen.getByPlaceholderText(/default value/i);
-    await user.type(defaultField, 'x');
-    expect(mockOnChange).toHaveBeenCalledWith('default', expect.stringContaining('x'));
+    await user.click(screen.getByText('Number Constraints'));
+    const defaultField = document.getElementById('pff-num-default');
+    expect(defaultField).toBeInTheDocument();
+    await user.type(defaultField!, '42');
+    expect(mockOnChange).toHaveBeenCalledWith('default', '4');
+    expect(mockOnChange).toHaveBeenCalledWith('default', '2');
   });
 
   it('shows $ref target selector options for classes and project properties', () => {
@@ -1170,7 +1173,7 @@ describe('PropertyFormFields', () => {
   });
 
   it('shows Basic Info "Default value" field for non-string types', () => {
-    render(<PropertyFormFields {...defaultProps} baseType="number" />);
+    render(<PropertyFormFields {...defaultProps} baseType="boolean" />);
     expect(screen.getByLabelText(/default value/i)).toBeInTheDocument();
   });
 
