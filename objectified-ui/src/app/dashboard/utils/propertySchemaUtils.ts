@@ -202,18 +202,27 @@ function applyConstOrEnum(
   if (formData.const && formData.const.trim()) {
     let parsed = tryParseJson(formData.const);
     if (isNumeric && (typeof parsed !== 'number' || isNaN(parsed))) {
-      const n = propertyType === 'integer' ? parseInt(String(parsed), 10) : parseFloat(String(parsed));
-      parsed = !isNaN(n) ? (propertyType === 'integer' ? Math.trunc(n) : n) : parsed;
+      const n = Number(String(parsed));
+      if (!isNaN(n)) {
+        if (propertyType === 'integer') {
+          if (Number.isInteger(n)) parsed = n;
+        } else {
+          parsed = n;
+        }
+      }
     }
     target.const = parsed;
   } else if (formData.enum && formData.enum.length > 0) {
     if (isNumeric) {
-      target.enum = formData.enum.map((s) => {
-        const parsed = tryParseJson(s);
-        const n = typeof parsed === 'number' ? parsed : Number(s);
-        const val = isNaN(n) ? 0 : n;
-        return propertyType === 'integer' ? Math.trunc(val) : val;
-      });
+      target.enum = formData.enum
+        .map((s) => {
+          const parsed = tryParseJson(s);
+          const n = typeof parsed === 'number' ? parsed : Number(s);
+          if (isNaN(n)) return undefined;
+          if (propertyType === 'integer' && !Number.isInteger(n)) return undefined;
+          return n;
+        })
+        .filter((v): v is number => v !== undefined);
     } else {
       target.enum = formData.enum;
     }
@@ -221,8 +230,14 @@ function applyConstOrEnum(
   if (formData.default && formData.default.trim()) {
     if (isNumeric) {
       const parsed = tryParseJson(formData.default);
-      const n = typeof parsed === 'number' ? parsed : (propertyType === 'integer' ? parseInt(formData.default, 10) : parseFloat(formData.default));
-      if (!isNaN(n)) target.default = propertyType === 'integer' ? Math.trunc(n) : n;
+      const n = typeof parsed === 'number' ? parsed : Number(formData.default);
+      if (!isNaN(n)) {
+        if (propertyType === 'integer') {
+          if (Number.isInteger(n)) target.default = n;
+        } else {
+          target.default = n;
+        }
+      }
     } else {
       target.default = formData.default;
     }
@@ -574,7 +589,7 @@ export function parsePropertySchema(
   }
 
   // Enum / const / default (enum normalized to string[] for form)
-  formData.enum = (constraintSource.enum || []).map((v: any) => String(v));
+  formData.enum = (constraintSource.enum || []).map((v: any) => typeof v === 'string' ? v : JSON.stringify(v));
   formData.const = constraintSource.const !== undefined
     ? (typeof constraintSource.const === 'string' ? constraintSource.const : JSON.stringify(constraintSource.const))
     : '';

@@ -223,6 +223,16 @@ describe('propertySchemaUtils', () => {
       expect(result.default).toBe(42);
     });
 
+    it('ignores non-integer default for integer type (does not truncate)', () => {
+      const result = buildPropertySchema({ default: '2.9' }, 'integer', false);
+      expect(result.default).toBeUndefined();
+    });
+
+    it('ignores NaN default for number type', () => {
+      const result = buildPropertySchema({ default: 'abc' }, 'number', false);
+      expect(result.default).toBeUndefined();
+    });
+
     it('coerces enum to numbers for number type', () => {
       const result = buildPropertySchema(
         { enum: ['1', '2.5', '3'] },
@@ -239,6 +249,33 @@ describe('propertySchemaUtils', () => {
         false,
       );
       expect(result.enum).toEqual([1, 2, 3]);
+    });
+
+    it('filters out invalid (NaN) enum values for number type instead of defaulting to 0', () => {
+      const result = buildPropertySchema(
+        { enum: ['1', 'foo', '3'] },
+        'number',
+        false,
+      );
+      expect(result.enum).toEqual([1, 3]);
+    });
+
+    it('filters out non-integer enum values for integer type instead of truncating', () => {
+      const result = buildPropertySchema(
+        { enum: ['1', '2.5', '3'] },
+        'integer',
+        false,
+      );
+      expect(result.enum).toEqual([1, 3]);
+    });
+
+    it('filters out invalid (NaN) enum values for integer type', () => {
+      const result = buildPropertySchema(
+        { enum: ['1', 'bar', '3'] },
+        'integer',
+        false,
+      );
+      expect(result.enum).toEqual([1, 3]);
     });
 
     // Nullable
@@ -906,6 +943,14 @@ describe('propertySchemaUtils', () => {
         enum: [1, 2, 3],
       });
       expect(formData.enum).toEqual(['1', '2', '3']);
+    });
+
+    it('serializes non-primitive enum values with JSON.stringify in parsePropertySchema', () => {
+      const { formData } = parsePropertySchema({
+        type: 'string',
+        enum: [{ key: 'a' }, [1, 2], 'plain'],
+      });
+      expect(formData.enum).toEqual(['{"key":"a"}', '[1,2]', 'plain']);
     });
 
     it('parses default value (number type)', () => {
