@@ -203,6 +203,7 @@ function applyConstOrEnum(
   target: any,
   formData: PropertyFormData,
   propertyType?: string,
+  skipDefault?: boolean,
 ): void {
   const isNumeric = propertyType === 'number' || propertyType === 'integer';
   if (formData.const && formData.const.trim()) {
@@ -233,7 +234,7 @@ function applyConstOrEnum(
       target.enum = formData.enum;
     }
   }
-  if (formData.default && formData.default.trim()) {
+  if (!skipDefault && formData.default && formData.default.trim()) {
     if (isNumeric) {
       const parsed = tryParseJson(formData.default);
       const n = typeof parsed === 'number' ? parsed : Number(formData.default);
@@ -244,15 +245,23 @@ function applyConstOrEnum(
           target.default = n;
         }
       }
-    } else {
+    } else if (propertyType === 'boolean') {
       const parsed = tryParseJson(formData.default);
-      if (typeof parsed === 'boolean' || typeof parsed === 'object') {
-        target.default = parsed;
-      } else if (typeof parsed === 'number' && !isNaN(parsed)) {
+      if (typeof parsed === 'boolean') {
         target.default = parsed;
       } else {
         target.default = formData.default;
       }
+    } else if (propertyType === 'object') {
+      const parsed = tryParseJson(formData.default);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        target.default = parsed;
+      } else {
+        target.default = formData.default;
+      }
+    } else {
+      // string and all other types: keep default as-is (do not coerce)
+      target.default = formData.default;
     }
   }
 }
@@ -348,7 +357,9 @@ function buildItemsSchemaFromFormData(propertyType: string, formData: PropertyFo
     if (formData.format) itemsSchema.format = formData.format;
     applyMinMax(itemsSchema, formData);
   }
-  applyConstOrEnum(itemsSchema, formData, propertyType);
+  // Skip default when building items schema: the array default lives on the top-level schema,
+  // not on the items subschema.
+  applyConstOrEnum(itemsSchema, formData, propertyType, true);
   if (propertyType === 'object') applyObjectConstraints(itemsSchema, formData);
   applyNotComposition(itemsSchema, formData);
   return itemsSchema;
@@ -672,13 +683,21 @@ export function parsePropertySchema(
   formData.const = constraintSource.const !== undefined
     ? (typeof constraintSource.const === 'string' ? constraintSource.const : JSON.stringify(constraintSource.const))
     : '';
-  // Default is top-level schema metadata (same for array and non-array).
-  formData.default =
-    schemaData.default === undefined || schemaData.default === null
-      ? ''
-      : typeof schemaData.default === 'object'
-        ? JSON.stringify(schemaData.default)
-        : String(schemaData.default);
+  // Default is top-level schema metadata. For backward-compatibility, fall back to
+  // constraintSource.default (items.default) for array schemas created before this change.
+  let rawDefault: any = undefined;
+  if (schemaData.default !== undefined && schemaData.default !== null) {
+    rawDefault = schemaData.default;
+  } else if (isArray && constraintSource.default !== undefined && constraintSource.default !== null) {
+    rawDefault = constraintSource.default;
+  }
+  if (rawDefault === undefined || rawDefault === null) {
+    formData.default = '';
+  } else if (typeof rawDefault === 'object') {
+    formData.default = JSON.stringify(rawDefault);
+  } else {
+    formData.default = String(rawDefault);
+  }
 
   // Metadata
   formData.required = schemaData['x-required'] || false;
