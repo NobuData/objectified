@@ -508,15 +508,17 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             rows={2}
           />
         </div>
-        <div>
-          <FieldLabel htmlFor="pff-default" optional>Default value</FieldLabel>
-          <TextInput
-            id="pff-default"
-            value={data.default || ''}
-            onChange={(v) => onChange('default', v)}
-            placeholder="Default value"
-          />
-        </div>
+        {baseType !== 'string' && (
+          <div>
+            <FieldLabel htmlFor="pff-default" optional>Default value</FieldLabel>
+            <TextInput
+              id="pff-default"
+              value={data.default || ''}
+              onChange={(v) => onChange('default', v)}
+              placeholder="Default value"
+            />
+          </div>
+        )}
         <div>
           <FieldLabel htmlFor="pff-ref" optional>$ref target</FieldLabel>
           <div className="space-y-2">
@@ -714,7 +716,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             <TextInput
               id="pff-string-example"
               value={data.examples?.[0] ?? ''}
-              onChange={(v) => onChange('examples', v ? [v] : [])}
+              onChange={(v) => onChange('examples', v ? [v, ...(data.examples?.slice(1) || [])] : (data.examples?.slice(1) || []))}
               placeholder="Example string value"
             />
           </div>
