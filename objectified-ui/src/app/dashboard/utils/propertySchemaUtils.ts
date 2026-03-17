@@ -1,7 +1,7 @@
 /**
  * Property schema utilities for JSON Schema 2020-12 / OpenAPI 3.2.0.
  * Provides form data types, schema building, and parsing for the property dialog.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values), #111 (conditional: if/then/else, dependentSchemas).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -43,6 +43,13 @@ export interface PropertyFormData {
   default?: string;
 
   not?: string;
+
+  /** JSON Schema 2020-12 conditional: if schema (JSON string). */
+  ifSchema?: string;
+  /** JSON Schema 2020-12 conditional: then schema (JSON string). */
+  thenSchema?: string;
+  /** JSON Schema 2020-12 conditional: else schema (JSON string). */
+  elseSchema?: string;
 
   required?: boolean;
   nullable?: boolean;
@@ -375,7 +382,7 @@ const REPRESENTABLE_ITEMS_KEYWORDS = new Set([
   'type', 'format', 'pattern', 'minLength', 'maxLength',
   'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
   'const', 'enum',
-  'not',
+  'not', 'if', 'then', 'else',
   'properties', 'required',
   'additionalProperties', 'minProperties', 'maxProperties',
   'patternProperties', 'propertyNames', 'dependentSchemas', 'unevaluatedProperties',
@@ -522,6 +529,17 @@ export function buildPropertySchema(
   if (formData.contentEncoding) schema.contentEncoding = formData.contentEncoding;
   if (formData.contentSchema && formData.contentSchema.trim()) {
     schema.contentSchema = tryParseJson(formData.contentSchema);
+  }
+
+  // Conditional schema (JSON Schema 2020-12: if/then/else)
+  if (formData.ifSchema?.trim()) {
+    schema.if = tryParseJson(formData.ifSchema);
+  }
+  if (formData.thenSchema?.trim()) {
+    schema.then = tryParseJson(formData.thenSchema);
+  }
+  if (formData.elseSchema?.trim()) {
+    schema.else = tryParseJson(formData.elseSchema);
   }
 
   // $comment (JSON Schema 2020-12)
@@ -772,6 +790,23 @@ export function parsePropertySchema(
 
   // NOT composition
   formData.not = constraintSource.not ? JSON.stringify(constraintSource.not, null, 2) : '';
+
+  // Conditional (if/then/else) — top-level on the schema, so read from schemaData not constraintSource
+  formData.ifSchema = schemaData.if !== undefined && schemaData.if !== null
+    ? (typeof schemaData.if === 'object'
+      ? JSON.stringify(schemaData.if, null, 2)
+      : String(schemaData.if))
+    : '';
+  formData.thenSchema = schemaData.then !== undefined && schemaData.then !== null
+    ? (typeof schemaData.then === 'object'
+      ? JSON.stringify(schemaData.then, null, 2)
+      : String(schemaData.then))
+    : '';
+  formData.elseSchema = schemaData.else !== undefined && schemaData.else !== null
+    ? (typeof schemaData.else === 'object'
+      ? JSON.stringify(schemaData.else, null, 2)
+      : String(schemaData.else))
+    : '';
 
   // Extensions
   const extensions: Record<string, any> = {};

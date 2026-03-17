@@ -3,7 +3,7 @@
 /**
  * Reusable form fields for property creation/editing with full
  * JSON Schema 2020-12 / OpenAPI 3.2.0 support.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values), #111 (conditional: if/then/else, dependentSchemas).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -1539,6 +1539,45 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             placeholder='{ "type": "null" }'
             rows={2}
           />
+        </div>
+        <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Puzzle className="h-3.5 w-3.5 text-indigo-500" />
+            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Conditional (if/then/else)</span>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">When instance validates against <code className="font-mono">if</code>, it must validate against <code className="font-mono">then</code>; otherwise <code className="font-mono">else</code>. JSON Schema 2020-12.</p>
+          <div className="space-y-2">
+            <div>
+              <FieldLabel htmlFor="pff-if-schema" optional>if (condition schema)</FieldLabel>
+              <TextArea
+                id="pff-if-schema"
+                value={data.ifSchema || ''}
+                onChange={(v) => onChange('ifSchema', v)}
+                placeholder='{ "required": ["country"] }'
+                rows={2}
+              />
+            </div>
+            <div>
+              <FieldLabel htmlFor="pff-then-schema" optional>then (schema when if passes)</FieldLabel>
+              <TextArea
+                id="pff-then-schema"
+                value={data.thenSchema || ''}
+                onChange={(v) => onChange('thenSchema', v)}
+                placeholder='{ "properties": { "country": { "const": "US" } } }'
+                rows={2}
+              />
+            </div>
+            <div>
+              <FieldLabel htmlFor="pff-else-schema" optional>else (schema when if fails)</FieldLabel>
+              <TextArea
+                id="pff-else-schema"
+                value={data.elseSchema || ''}
+                onChange={(v) => onChange('elseSchema', v)}
+                placeholder='{ "properties": { "country": {} } }'
+                rows={2}
+              />
+            </div>
+          </div>
         </div>
         <div>
           <FieldLabel htmlFor="pff-comment" optional>$comment</FieldLabel>
