@@ -668,13 +668,11 @@ export function parsePropertySchema(
     ? constraintSource.properties
     : undefined;
   if (Array.isArray(constraintSource.required)) {
-    const normalized = [...new Set(
-      constraintSource.required
-        .filter((v: unknown): v is string => typeof v === 'string')
-        .map((v: string) => v.trim())
-        .filter((v: string) => v.length > 0),
-    )];
-    formData.objectRequired = normalized.length > 0 ? normalized : undefined;
+    const normalized: string[] = constraintSource.required
+      .filter((v: unknown): v is string => typeof v === 'string')
+      .map((v: string) => v.trim())
+      .filter((v: string) => v.length > 0);
+    formData.objectRequired = normalized.length > 0 ? [...new Set(normalized)] : undefined;
   } else {
     formData.objectRequired = undefined;
   }
