@@ -3,7 +3,7 @@
 /**
  * Reusable form fields for property creation/editing with full
  * JSON Schema 2020-12 / OpenAPI 3.2.0 support.
- * Reference: GitHub #104, #106 (stringConstraints: format, pattern, minLength, maxLength, enum, default, example).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints: format, min/max, enum, default).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -839,6 +839,20 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               type="number"
             />
           </div>
+          <div>
+            <FieldLabel htmlFor="pff-num-default" optional>Default</FieldLabel>
+            <TextInput
+              id="pff-num-default"
+              value={data.default || ''}
+              onChange={(v) => onChange('default', v)}
+              placeholder={baseType === 'integer' ? 'e.g. 0 or 42' : 'e.g. 0 or 42.5'}
+              type="text"
+              inputMode="decimal"
+            />
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Enum values can be added in the &quot;Enum / Const Values&quot; section below.
+          </p>
         </Section>
       )}
 

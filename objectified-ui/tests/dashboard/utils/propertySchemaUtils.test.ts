@@ -206,6 +206,41 @@ describe('propertySchemaUtils', () => {
       expect(result.multipleOf).toBeUndefined();
     });
 
+    it('applies number/integer format (int32, int64, float, double)', () => {
+      expect(buildPropertySchema({ format: 'int32' }, 'integer', false).format).toBe('int32');
+      expect(buildPropertySchema({ format: 'int64' }, 'integer', false).format).toBe('int64');
+      expect(buildPropertySchema({ format: 'float' }, 'number', false).format).toBe('float');
+      expect(buildPropertySchema({ format: 'double' }, 'number', false).format).toBe('double');
+    });
+
+    it('coerces default to number for number type', () => {
+      const result = buildPropertySchema({ default: '42.5' }, 'number', false);
+      expect(result.default).toBe(42.5);
+    });
+
+    it('coerces default to integer for integer type', () => {
+      const result = buildPropertySchema({ default: '42' }, 'integer', false);
+      expect(result.default).toBe(42);
+    });
+
+    it('coerces enum to numbers for number type', () => {
+      const result = buildPropertySchema(
+        { enum: ['1', '2.5', '3'] },
+        'number',
+        false,
+      );
+      expect(result.enum).toEqual([1, 2.5, 3]);
+    });
+
+    it('coerces enum to integers for integer type', () => {
+      const result = buildPropertySchema(
+        { enum: ['1', '2', '3'] },
+        'integer',
+        false,
+      );
+      expect(result.enum).toEqual([1, 2, 3]);
+    });
+
     // Nullable
     it('makes a type nullable with array notation', () => {
       const result = buildPropertySchema({ nullable: true }, 'string', false);
@@ -863,6 +898,30 @@ describe('propertySchemaUtils', () => {
         default: 'hello',
       });
       expect(formData.default).toBe('hello');
+    });
+
+    it('parses enum values (number type) as string[]', () => {
+      const { formData } = parsePropertySchema({
+        type: 'number',
+        enum: [1, 2, 3],
+      });
+      expect(formData.enum).toEqual(['1', '2', '3']);
+    });
+
+    it('parses default value (number type)', () => {
+      const { formData } = parsePropertySchema({
+        type: 'number',
+        default: 42.5,
+      });
+      expect(formData.default).toBe('42.5');
+    });
+
+    it('parses number format', () => {
+      const { formData } = parsePropertySchema({
+        type: 'integer',
+        format: 'int64',
+      });
+      expect(formData.format).toBe('int64');
     });
 
     it('parses metadata flags', () => {

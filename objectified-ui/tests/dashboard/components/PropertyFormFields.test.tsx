@@ -532,6 +532,20 @@ describe('PropertyFormFields', () => {
     expect(screen.getByDisplayValue('0.5')).toBeInTheDocument();
   });
 
+  it('shows Default and enum hint in Number Constraints', async () => {
+    const user = userEvent.setup();
+    render(
+      <PropertyFormFields
+        {...defaultProps}
+        baseType="integer"
+        data={{ default: '0' }}
+      />,
+    );
+    await user.click(screen.getByText('Number Constraints'));
+    expect(document.getElementById('pff-num-default')).toBeInTheDocument();
+    expect(screen.getByText(/Enum values can be added in the/)).toBeInTheDocument();
+  });
+
   it('pre-fills array constraint fields from data', async () => {
     const user = userEvent.setup();
     render(
