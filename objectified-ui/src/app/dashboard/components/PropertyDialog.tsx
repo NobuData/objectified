@@ -3,7 +3,7 @@
 /**
  * Dialog for adding or editing a property with full JSON Schema 2020-12 support.
  * Supports form view and JSON preview, type selection, and array toggle.
- * Reference: GitHub #104, #106 (string constraints in property form).
+ * Reference: GitHub #104, #106 (string constraints), #110 (metadata in property form).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

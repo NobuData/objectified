@@ -1,7 +1,7 @@
 /**
  * Property schema utilities for JSON Schema 2020-12 / OpenAPI 3.2.0.
  * Provides form data types, schema building, and parsing for the property dialog.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -203,6 +203,7 @@ function applyConstOrEnum(
   target: any,
   formData: PropertyFormData,
   propertyType?: string,
+  skipDefault?: boolean,
 ): void {
   const isNumeric = propertyType === 'number' || propertyType === 'integer';
   if (formData.const && formData.const.trim()) {
@@ -233,7 +234,7 @@ function applyConstOrEnum(
       target.enum = formData.enum;
     }
   }
-  if (formData.default && formData.default.trim()) {
+  if (!skipDefault && formData.default && formData.default.trim()) {
     if (isNumeric) {
       const parsed = tryParseJson(formData.default);
       const n = typeof parsed === 'number' ? parsed : Number(formData.default);
@@ -244,7 +245,22 @@ function applyConstOrEnum(
           target.default = n;
         }
       }
+    } else if (propertyType === 'boolean') {
+      const parsed = tryParseJson(formData.default);
+      if (typeof parsed === 'boolean') {
+        target.default = parsed;
+      } else {
+        target.default = formData.default;
+      }
+    } else if (propertyType === 'object') {
+      const parsed = tryParseJson(formData.default);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        target.default = parsed;
+      } else {
+        target.default = formData.default;
+      }
     } else {
+      // string and all other types: keep default as-is (do not coerce)
       target.default = formData.default;
     }
   }
@@ -341,7 +357,9 @@ function buildItemsSchemaFromFormData(propertyType: string, formData: PropertyFo
     if (formData.format) itemsSchema.format = formData.format;
     applyMinMax(itemsSchema, formData);
   }
-  applyConstOrEnum(itemsSchema, formData, propertyType);
+  // Skip default when building items schema: the array default lives on the top-level schema,
+  // not on the items subschema.
+  applyConstOrEnum(itemsSchema, formData, propertyType, true);
   if (propertyType === 'object') applyObjectConstraints(itemsSchema, formData);
   applyNotComposition(itemsSchema, formData);
   return itemsSchema;
@@ -390,6 +408,22 @@ export function buildPropertySchema(
   // `required` is tracked as x-required since JSON Schema's `required` is a parent-object array,
   // not a boolean on the individual property schema.
   if (formData.required) schema['x-required'] = true;
+
+  // Top-level default for array type (non-array default is set in applyConstOrEnum).
+  if (isArray && formData.default && formData.default.trim()) {
+    const parsed = tryParseJson(formData.default);
+    if (Array.isArray(parsed)) {
+      schema.default = parsed;
+    } else if (typeof parsed === 'object' && parsed !== null) {
+      schema.default = parsed;
+    } else if (typeof parsed === 'number' && !isNaN(parsed)) {
+      schema.default = parsed;
+    } else if (typeof parsed === 'boolean') {
+      schema.default = parsed;
+    } else {
+      schema.default = formData.default;
+    }
+  }
 
   if (isArray) {
     schema.type = formData.nullable ? ['array', 'null'] : 'array';
@@ -649,7 +683,21 @@ export function parsePropertySchema(
   formData.const = constraintSource.const !== undefined
     ? (typeof constraintSource.const === 'string' ? constraintSource.const : JSON.stringify(constraintSource.const))
     : '';
-  formData.default = constraintSource.default?.toString() || '';
+  // Default is top-level schema metadata. For backward-compatibility, fall back to
+  // constraintSource.default (items.default) for array schemas created before this change.
+  let rawDefault: any = undefined;
+  if (schemaData.default !== undefined && schemaData.default !== null) {
+    rawDefault = schemaData.default;
+  } else if (isArray && constraintSource.default !== undefined && constraintSource.default !== null) {
+    rawDefault = constraintSource.default;
+  }
+  if (rawDefault === undefined || rawDefault === null) {
+    formData.default = '';
+  } else if (typeof rawDefault === 'object') {
+    formData.default = JSON.stringify(rawDefault);
+  } else {
+    formData.default = String(rawDefault);
+  }
 
   // Metadata
   formData.required = schemaData['x-required'] || false;

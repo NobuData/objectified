@@ -3,7 +3,7 @@
 /**
  * Reusable form fields for property creation/editing with full
  * JSON Schema 2020-12 / OpenAPI 3.2.0 support.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -669,7 +669,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
         </div>
       </Section>
 
-      {/* Property Flags */}
+      {/* Property Flags (GitHub #110: readOnly, writeOnly, deprecated, nullable). Values (default, examples) are in Basic Info above. */}
       <Section
         title="Property Flags"
         icon={<ToggleLeft className="h-3.5 w-3.5" />}
