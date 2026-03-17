@@ -1,7 +1,7 @@
 /**
  * Property schema utilities for JSON Schema 2020-12 / OpenAPI 3.2.0.
  * Provides form data types, schema building, and parsing for the property dialog.
- * Reference: GitHub #104
+ * Reference: GitHub #104, #106 (stringConstraints: format, pattern, minLength, maxLength, enum, default, example).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -179,6 +179,7 @@ function applyMinMax(target: any, formData: PropertyFormData): void {
   }
 }
 
+/** Apply string constraints (format, pattern, minLength, maxLength). Reference: GitHub #106 stringConstraints. */
 function applyStringConstraints(target: any, formData: PropertyFormData): void {
   if (formData.format) target.format = formData.format;
   if (formData.pattern) target.pattern = formData.pattern;
