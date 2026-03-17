@@ -1,7 +1,7 @@
 /**
  * Property schema utilities for JSON Schema 2020-12 / OpenAPI 3.2.0.
  * Provides form data types, schema building, and parsing for the property dialog.
- * Reference: GitHub #104, #106 (stringConstraints: format, pattern, minLength, maxLength, enum, default, example).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints: format, min/max, enum, default).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -193,13 +193,55 @@ function applyStringConstraints(target: any, formData: PropertyFormData): void {
   }
 }
 
-function applyConstOrEnum(target: any, formData: PropertyFormData): void {
+function applyConstOrEnum(
+  target: any,
+  formData: PropertyFormData,
+  propertyType?: string,
+): void {
+  const isNumeric = propertyType === 'number' || propertyType === 'integer';
   if (formData.const && formData.const.trim()) {
-    target.const = tryParseJson(formData.const);
+    let parsed = tryParseJson(formData.const);
+    if (isNumeric && (typeof parsed !== 'number' || isNaN(parsed))) {
+      const n = Number(String(parsed));
+      if (!isNaN(n)) {
+        if (propertyType === 'integer') {
+          if (Number.isInteger(n)) parsed = n;
+        } else {
+          parsed = n;
+        }
+      }
+    }
+    target.const = parsed;
   } else if (formData.enum && formData.enum.length > 0) {
-    target.enum = formData.enum;
+    if (isNumeric) {
+      target.enum = formData.enum
+        .map((s) => {
+          const parsed = tryParseJson(s);
+          const n = typeof parsed === 'number' ? parsed : Number(s);
+          if (isNaN(n)) return undefined;
+          if (propertyType === 'integer' && !Number.isInteger(n)) return undefined;
+          return n;
+        })
+        .filter((v): v is number => v !== undefined);
+    } else {
+      target.enum = formData.enum;
+    }
   }
-  if (formData.default) target.default = formData.default;
+  if (formData.default && formData.default.trim()) {
+    if (isNumeric) {
+      const parsed = tryParseJson(formData.default);
+      const n = typeof parsed === 'number' ? parsed : Number(formData.default);
+      if (!isNaN(n)) {
+        if (propertyType === 'integer') {
+          if (Number.isInteger(n)) target.default = n;
+        } else {
+          target.default = n;
+        }
+      }
+    } else {
+      target.default = formData.default;
+    }
+  }
 }
 
 function applyObjectConstraints(target: any, formData: PropertyFormData): void {
@@ -353,9 +395,10 @@ export function buildPropertySchema(
         applyStringConstraints(itemsSchema, formData);
       }
       if (propertyType === 'number' || propertyType === 'integer') {
+        if (formData.format) itemsSchema.format = formData.format;
         applyMinMax(itemsSchema, formData);
       }
-      applyConstOrEnum(itemsSchema, formData);
+      applyConstOrEnum(itemsSchema, formData, propertyType);
       if (propertyType === 'object') {
         applyObjectConstraints(itemsSchema, formData);
       }
@@ -375,9 +418,10 @@ export function buildPropertySchema(
         applyStringConstraints(schema, formData);
       }
       if (propertyType === 'number' || propertyType === 'integer') {
+        if (formData.format) schema.format = formData.format;
         applyMinMax(schema, formData);
       }
-      applyConstOrEnum(schema, formData);
+      applyConstOrEnum(schema, formData, propertyType);
       if (propertyType === 'object') {
         applyObjectConstraints(schema, formData);
       }
@@ -544,8 +588,8 @@ export function parsePropertySchema(
     formData.unevaluatedItems = 'default';
   }
 
-  // Enum / const / default
-  formData.enum = constraintSource.enum || [];
+  // Enum / const / default (enum normalized to string[] for form)
+  formData.enum = (constraintSource.enum || []).map((v: any) => typeof v === 'string' ? v : JSON.stringify(v));
   formData.const = constraintSource.const !== undefined
     ? (typeof constraintSource.const === 'string' ? constraintSource.const : JSON.stringify(constraintSource.const))
     : '';
