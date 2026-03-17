@@ -3,7 +3,7 @@
 /**
  * Reusable form fields for property creation/editing with full
  * JSON Schema 2020-12 / OpenAPI 3.2.0 support.
- * Reference: GitHub #104
+ * Reference: GitHub #104, #106 (stringConstraints: format, pattern, minLength, maxLength, enum, default, example).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -508,15 +508,17 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             rows={2}
           />
         </div>
-        <div>
-          <FieldLabel htmlFor="pff-default" optional>Default value</FieldLabel>
-          <TextInput
-            id="pff-default"
-            value={data.default || ''}
-            onChange={(v) => onChange('default', v)}
-            placeholder="Default value"
-          />
-        </div>
+        {baseType !== 'string' && (
+          <div>
+            <FieldLabel htmlFor="pff-default" optional>Default value</FieldLabel>
+            <TextInput
+              id="pff-default"
+              value={data.default || ''}
+              onChange={(v) => onChange('default', v)}
+              placeholder="Default value"
+            />
+          </div>
+        )}
         <div>
           <FieldLabel htmlFor="pff-ref" optional>$ref target</FieldLabel>
           <div className="space-y-2">
@@ -647,7 +649,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
         )}
       </Section>
 
-      {/* String Constraints */}
+      {/* String Constraints (GitHub #106: format, pattern, minLength, maxLength, enum, default, example) */}
       {showStringConstraints && (
         <Section
           title="String Constraints"
@@ -699,6 +701,24 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
                 type="number"
               />
             </div>
+          </div>
+          <div>
+            <FieldLabel htmlFor="pff-string-default" optional>Default</FieldLabel>
+            <TextInput
+              id="pff-string-default"
+              value={data.default || ''}
+              onChange={(v) => onChange('default', v)}
+              placeholder="Default string value"
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="pff-string-example" optional>Example</FieldLabel>
+            <TextInput
+              id="pff-string-example"
+              value={data.examples?.[0] ?? ''}
+              onChange={(v) => onChange('examples', v ? [v, ...(data.examples?.slice(1) || [])] : (data.examples?.slice(1) || []))}
+              placeholder="Example string value"
+            />
           </div>
           {/* Inline Content Media Type for binary/byte formats */}
           {(data.format === 'binary' || data.format === 'byte') && (
