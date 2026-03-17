@@ -482,6 +482,15 @@ describe('propertySchemaUtils', () => {
       expect(result.items).toEqual({ type: 'integer', minimum: 0 });
     });
 
+    it('ignores array value for itemsSchemaOverride and builds from base type', () => {
+      const result = buildPropertySchema(
+        { itemsSchemaOverride: '[{"type":"string"}]' },
+        'number',
+        true,
+      );
+      expect(result.items).toEqual({ type: 'number' });
+    });
+
     it('ignores invalid itemsSchemaOverride and builds from base type', () => {
       const result = buildPropertySchema(
         { itemsSchemaOverride: 'not json' },
@@ -1080,8 +1089,17 @@ describe('propertySchemaUtils', () => {
       expect(formData.itemsSchema).toBe(JSON.stringify({ type: 'boolean' }, null, 2));
     });
 
-    it('parses itemsSchemaOverride when array items is custom object without $ref', () => {
+    it('does not set itemsSchemaOverride when array items uses only representable keywords', () => {
       const itemsSchema = { type: 'integer', minimum: 0, maximum: 100 };
+      const { formData } = parsePropertySchema({
+        type: 'array',
+        items: itemsSchema,
+      });
+      expect(formData.itemsSchemaOverride).toBe('');
+    });
+
+    it('sets itemsSchemaOverride when array items contains non-representable keywords', () => {
+      const itemsSchema = { anyOf: [{ type: 'string' }, { type: 'integer' }] };
       const { formData } = parsePropertySchema({
         type: 'array',
         items: itemsSchema,
@@ -1467,8 +1485,8 @@ describe('propertySchemaUtils', () => {
       expect(formData.prefixItems).toEqual([{ type: 'string' }, { type: 'number' }]);
     });
 
-    it('round-trips itemsSchemaOverride for non-tuple array', () => {
-      const itemsJson = JSON.stringify({ type: 'integer', minimum: 0, maximum: 10 }, null, 2);
+    it('round-trips itemsSchemaOverride for non-tuple array with non-representable keywords', () => {
+      const itemsJson = JSON.stringify({ anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }] }, null, 2);
       const original: PropertyFormData = { itemsSchemaOverride: itemsJson };
       const schema = buildPropertySchema(original, 'string', true);
       const { formData } = parsePropertySchema(schema);
