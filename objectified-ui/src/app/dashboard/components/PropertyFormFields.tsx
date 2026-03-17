@@ -847,7 +847,6 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               onChange={(v) => onChange('default', v)}
               placeholder={baseType === 'integer' ? 'e.g. 0 or 42' : 'e.g. 0 or 42.5'}
               type="text"
-              inputMode="decimal"
             />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
