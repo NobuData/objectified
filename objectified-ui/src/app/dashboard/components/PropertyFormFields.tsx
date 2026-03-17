@@ -3,7 +3,7 @@
 /**
  * Reusable form fields for property creation/editing with full
  * JSON Schema 2020-12 / OpenAPI 3.2.0 support.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values), #111 (conditional: if/then/else, dependentSchemas).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values), #111 (conditional: if/then/else, dependentSchemas), #112 (extensions x-*, XML attribute/wrapped).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
