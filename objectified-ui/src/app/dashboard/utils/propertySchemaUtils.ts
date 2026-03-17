@@ -1,7 +1,7 @@
 /**
  * Property schema utilities for JSON Schema 2020-12 / OpenAPI 3.2.0.
  * Provides form data types, schema building, and parsing for the property dialog.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -52,6 +52,10 @@ export interface PropertyFormData {
   deprecationMessage?: string;
   examples?: string[];
 
+  /** Object schema: properties (name -> schema). */
+  properties?: Record<string, any>;
+  /** Object schema: required property names (JSON Schema "required" array). */
+  objectRequired?: string[];
   additionalProperties?: 'default' | 'true' | 'false' | 'type' | 'schema';
   additionalPropertiesType?: 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array';
   additionalPropertiesSchema?: string;
@@ -247,6 +251,13 @@ function applyConstOrEnum(
 }
 
 function applyObjectConstraints(target: any, formData: PropertyFormData): void {
+  if (formData.properties && Object.keys(formData.properties).length > 0) {
+    target.properties = formData.properties;
+  }
+  if (formData.objectRequired && formData.objectRequired.length > 0) {
+    target.required = formData.objectRequired;
+  }
+
   if (formData.additionalProperties === 'true') {
     target.additionalProperties = true;
   } else if (formData.additionalProperties === 'false') {
@@ -347,6 +358,7 @@ const REPRESENTABLE_ITEMS_KEYWORDS = new Set([
   'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
   'const', 'enum',
   'not',
+  'properties', 'required',
   'additionalProperties', 'minProperties', 'maxProperties',
   'patternProperties', 'propertyNames', 'dependentSchemas', 'unevaluatedProperties',
 ]);
@@ -649,7 +661,23 @@ export function parsePropertySchema(
     ? schemaData.examples.map((ex: any) => (typeof ex === 'string' ? ex : JSON.stringify(ex)))
     : [];
 
-  // Object constraints
+  // Object constraints: properties, required (object-level)
+  formData.properties = constraintSource.properties
+    && typeof constraintSource.properties === 'object'
+    && !Array.isArray(constraintSource.properties)
+    ? constraintSource.properties
+    : undefined;
+  if (Array.isArray(constraintSource.required)) {
+    const normalized: string[] = constraintSource.required
+      .filter((v: unknown): v is string => typeof v === 'string')
+      .map((v: string) => v.trim())
+      .filter((v: string) => v.length > 0);
+    formData.objectRequired = normalized.length > 0 ? [...new Set(normalized)] : undefined;
+  } else {
+    formData.objectRequired = undefined;
+  }
+
+  // Object constraints: additionalProperties, etc.
   if (constraintSource.hasOwnProperty('additionalProperties')) {
     if (constraintSource.additionalProperties === true) {
       formData.additionalProperties = 'true';

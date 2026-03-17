@@ -617,6 +617,31 @@ describe('propertySchemaUtils', () => {
       expect(result.maxProperties).toBe(10);
     });
 
+    it('applies properties (object constraints)', () => {
+      const props = { name: { type: 'string' }, age: { type: 'integer' } };
+      const result = buildPropertySchema({ properties: props }, 'object', false);
+      expect(result.properties).toEqual(props);
+    });
+
+    it('applies required (object-level property names)', () => {
+      const result = buildPropertySchema(
+        { objectRequired: ['name', 'email'] },
+        'object',
+        false,
+      );
+      expect(result.required).toEqual(['name', 'email']);
+    });
+
+    it('omits properties when empty object', () => {
+      const result = buildPropertySchema({ properties: {} }, 'object', false);
+      expect(result.properties).toBeUndefined();
+    });
+
+    it('omits required when empty array', () => {
+      const result = buildPropertySchema({ objectRequired: [] }, 'object', false);
+      expect(result.required).toBeUndefined();
+    });
+
     it('applies patternProperties', () => {
       const pp = { '^x-': { type: 'string' } };
       const result = buildPropertySchema({ patternProperties: pp }, 'object', false);
@@ -1145,6 +1170,66 @@ describe('propertySchemaUtils', () => {
     });
 
     // Object constraints
+    it('parses properties (object constraints)', () => {
+      const props = { name: { type: 'string' }, age: { type: 'integer' } };
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        properties: props,
+      });
+      expect(formData.properties).toEqual(props);
+    });
+
+    it('rejects array as properties value', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        properties: ['name', 'age'] as any,
+      });
+      expect(formData.properties).toBeUndefined();
+    });
+
+    it('parses required (object-level property names)', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        required: ['name', 'email'],
+      });
+      expect(formData.objectRequired).toEqual(['name', 'email']);
+    });
+
+    it('trims and deduplicates required entries', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        required: ['name', '  name  ', 'email', 'email'],
+      });
+      expect(formData.objectRequired).toEqual(['name', 'email']);
+    });
+
+    it('filters empty strings from required', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        required: ['name', '   ', '', 'email'],
+      });
+      expect(formData.objectRequired).toEqual(['name', 'email']);
+    });
+
+    it('returns undefined for objectRequired when all required entries are empty/whitespace', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        required: ['   ', ''],
+      });
+      expect(formData.objectRequired).toBeUndefined();
+    });
+
+    it('parses object with properties and required', () => {
+      const props = { id: { type: 'integer' }, label: { type: 'string' } };
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        properties: props,
+        required: ['id'],
+      });
+      expect(formData.properties).toEqual(props);
+      expect(formData.objectRequired).toEqual(['id']);
+    });
+
     it('parses additionalProperties: true', () => {
       const { formData } = parsePropertySchema({
         type: 'object',
@@ -1387,6 +1472,8 @@ describe('propertySchemaUtils', () => {
 
     it('round-trips an object with all constraints', () => {
       const original: PropertyFormData = {
+        properties: { name: { type: 'string' }, count: { type: 'integer' } },
+        objectRequired: ['name'],
         additionalProperties: 'false',
         minProperties: '1',
         maxProperties: '10',
@@ -1395,6 +1482,8 @@ describe('propertySchemaUtils', () => {
       };
       const schema = buildPropertySchema(original, 'object', false);
       const { formData } = parsePropertySchema(schema);
+      expect(formData.properties).toEqual(original.properties);
+      expect(formData.objectRequired).toEqual(['name']);
       expect(formData.additionalProperties).toBe('false');
       expect(formData.minProperties).toBe('1');
       expect(formData.maxProperties).toBe('10');
