@@ -127,21 +127,29 @@ function TextArea({
   onChange,
   placeholder,
   rows = 3,
+  onBlur,
+  className: classNameProp,
+  'aria-label': ariaLabel,
 }: {
   id?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   rows?: number;
+  onBlur?: () => void;
+  className?: string;
+  'aria-label'?: string;
 }) {
   return (
     <textarea
       id={id}
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
       placeholder={placeholder}
       rows={rows}
-      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none font-mono"
+      aria-label={ariaLabel}
+      className={`w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none font-mono ${classNameProp ?? ''}`.trim()}
     />
   );
 }
