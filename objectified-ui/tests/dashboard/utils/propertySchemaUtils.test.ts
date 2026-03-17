@@ -382,6 +382,13 @@ describe('propertySchemaUtils', () => {
       expect(result.default).toBe('hello');
     });
 
+    it('coerces default from JSON string for boolean/object/array (#110)', () => {
+      expect(buildPropertySchema({ default: 'true' }, 'boolean', false).default).toBe(true);
+      expect(buildPropertySchema({ default: 'false' }, 'boolean', false).default).toBe(false);
+      expect(buildPropertySchema({ default: '{"a":1}' }, 'object', false).default).toEqual({ a: 1 });
+      expect(buildPropertySchema({ default: '[1,2]' }, 'string', true).default).toEqual([1, 2]);
+    });
+
     // Array type
     it('builds an array schema with items', () => {
       const result = buildPropertySchema({}, 'string', true);
@@ -1012,6 +1019,19 @@ describe('propertySchemaUtils', () => {
         default: 42.5,
       });
       expect(formData.default).toBe('42.5');
+    });
+
+    it('parses default value (object/array) as JSON string for round-trip (#110)', () => {
+      const { formData } = parsePropertySchema({
+        type: 'object',
+        default: { key: 'value' },
+      });
+      expect(formData.default).toBe('{"key":"value"}');
+      const { formData: formData2 } = parsePropertySchema({
+        type: 'array',
+        default: [1, 2],
+      });
+      expect(formData2.default).toBe('[1,2]');
     });
 
     it('parses number format', () => {
