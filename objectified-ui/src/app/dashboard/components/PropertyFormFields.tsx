@@ -3,12 +3,12 @@
 /**
  * Reusable form fields for property creation/editing with full
  * JSON Schema 2020-12 / OpenAPI 3.2.0 support.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import * as Checkbox from '@radix-ui/react-checkbox';
 import * as Select from '@radix-ui/react-select';
@@ -282,6 +282,11 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   // Prefix items (tuple) draft per index while editing invalid JSON
   const [prefixItemDrafts, setPrefixItemDrafts] = useState<Record<number, string>>({});
 
+  // Object constraints: properties JSON draft, required property name input
+  const [propertiesDraft, setPropertiesDraft] = useState('');
+  const [objectRequiredInput, setObjectRequiredInput] = useState('');
+  const [objectRequiredError, setObjectRequiredError] = useState('');
+
   const handleAddEnum = () => {
     if (!enumInput.trim()) {
       setEnumError('Enum value cannot be empty');
@@ -438,6 +443,66 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
     onChange('dependentSchemas', Object.keys(updated).length > 0 ? updated : undefined);
   };
 
+  const showObjectConstraints = baseType === 'object';
+  useEffect(() => {
+    if (showObjectConstraints) {
+      setPropertiesDraft(JSON.stringify(data.properties || {}, null, 2));
+    }
+  }, [showObjectConstraints, data.properties]);
+
+  const handlePropertiesBlur = () => {
+    const raw = propertiesDraft.trim();
+    if (!raw) {
+      onChange('properties', undefined);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        onChange('properties', parsed);
+      }
+    } catch {
+      // Invalid JSON; leave form data unchanged
+    }
+  };
+
+  const handlePropertiesChange = (value: string) => {
+    setPropertiesDraft(value);
+    const raw = value.trim();
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        onChange('properties', parsed);
+      }
+    } catch {
+      // Invalid JSON; don't update form data
+    }
+  };
+
+  const handleAddObjectRequired = () => {
+    const trimmed = objectRequiredInput.trim();
+    if (!trimmed) {
+      setObjectRequiredError('Property name cannot be empty');
+      return;
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
+      setObjectRequiredError('Name must start with a letter or underscore and contain only letters, numbers, and underscores.');
+      return;
+    }
+    if (data.objectRequired?.includes(trimmed)) {
+      setObjectRequiredError('This property is already in the required list');
+      return;
+    }
+    onChange('objectRequired', [...(data.objectRequired || []), trimmed]);
+    setObjectRequiredInput('');
+    setObjectRequiredError('');
+  };
+
+  const handleDeleteObjectRequired = (name: string) => {
+    onChange('objectRequired', (data.objectRequired || []).filter((n) => n !== name));
+  };
+
   const handleAddExtension = () => {
     const trimmedKey = newExtKey.trim();
     if (!trimmedKey) return;
@@ -469,7 +534,6 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   const showStringConstraints = baseType === 'string';
   const showNumberConstraints = baseType === 'number' || baseType === 'integer';
   const showArrayConstraints = isArray;
-  const showObjectConstraints = baseType === 'object';
 
   const formatOptions = FORMAT_OPTIONS[baseType] || [];
   const classRefOptions = availableClasses.map((className) => ({
@@ -1073,6 +1137,58 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
           icon={<Box className="h-3.5 w-3.5" />}
           badge="Object"
         >
+          <div>
+            <FieldLabel htmlFor="pff-object-properties" optional>Properties</FieldLabel>
+            <TextArea
+              id="pff-object-properties"
+              value={propertiesDraft}
+              onChange={(v) => handlePropertiesChange(v)}
+              onBlur={handlePropertiesBlur}
+              placeholder='{ "name": { "type": "string" }, "age": { "type": "integer" } }'
+              rows={4}
+              aria-label="Object properties (JSON)"
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="pff-object-required" optional>Required (property names)</FieldLabel>
+            <div className="flex gap-2">
+              <TextInput
+                id="pff-object-required"
+                value={objectRequiredInput}
+                onChange={(v) => { setObjectRequiredInput(v); setObjectRequiredError(''); }}
+                placeholder="Property name"
+              />
+              <button
+                type="button"
+                onClick={handleAddObjectRequired}
+                disabled={!objectRequiredInput.trim()}
+                className="px-2 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                aria-label="Add required property"
+              >
+                <Plus className="h-4 w-3.5" />
+              </button>
+            </div>
+            {objectRequiredError && (
+              <p className="text-xs text-red-600 dark:text-red-400 mt-1" role="alert">{objectRequiredError}</p>
+            )}
+            {(data.objectRequired || []).length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {(data.objectRequired || []).map((name) => (
+                  <li key={name} className="flex items-center gap-2 py-1 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <span className="flex-1 font-mono text-sm text-slate-800 dark:text-slate-200">{name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteObjectRequired(name)}
+                      className="text-slate-400 hover:text-red-500 transition-colors"
+                      aria-label={`Remove required ${name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div>
             <FieldLabel htmlFor="pff-additionalprops" optional>Additional Properties</FieldLabel>
             <SelectField
