@@ -521,6 +521,32 @@ function ClassListPanel({
     [classes, editingProp]
   );
 
+  /** Stable id for a class-property (server id or localId). */
+  const getStablePropertyId = useCallback((p: StudioClassProperty) => p.id ?? p.localId ?? '', []);
+
+  /** Top-level properties of the class we're adding to, for parent dropdown (GitHub #113). */
+  const availableParentPropertiesAdd = useMemo(() => {
+    if (addPropClassId == null) return [];
+    const cls = classes.find((c) => getStableClassId(c) === addPropClassId);
+    if (!cls) return [];
+    return cls.properties
+      .filter((p) => !p.parent_id)
+      .map((p) => ({ id: getStablePropertyId(p), name: p.name }))
+      .filter((x) => x.id);
+  }, [classes, addPropClassId, getStablePropertyId]);
+
+  /** Top-level properties of the class we're editing (excluding current), for parent dropdown (GitHub #113). */
+  const availableParentPropertiesEdit = useMemo(() => {
+    if (editingProp == null) return [];
+    const cls = classes.find((c) => getStableClassId(c) === editingProp.classId);
+    if (!cls) return [];
+    const currentId = getStablePropertyId(editingProp.prop);
+    return cls.properties
+      .filter((p) => !p.parent_id && getStablePropertyId(p) !== currentId)
+      .map((p) => ({ id: getStablePropertyId(p), name: p.name }))
+      .filter((x) => x.id);
+  }, [classes, editingProp, getStablePropertyId]);
+
   // Memoize the initial form values so the ClassDialog useEffect dependency on initial.schema
   // doesn't fire on every render when editingClass hasn't actually changed.
   const editClassInitial = useMemo(
@@ -771,6 +797,7 @@ function ClassListPanel({
         mode="add"
         availableProperties={availableProperties}
         availableClassNamesForRef={availableClassNamesForRefAdd}
+        availableParentProperties={availableParentPropertiesAdd}
         onSave={handleAddProp}
         onClose={() => setAddPropClassId(null)}
       />
@@ -779,6 +806,7 @@ function ClassListPanel({
         mode="edit"
         availableProperties={availableProperties}
         availableClassNamesForRef={availableClassNamesForRefEdit}
+        availableParentProperties={availableParentPropertiesEdit}
         initial={
           editingProp
             ? (() => {
@@ -795,6 +823,8 @@ function ClassListPanel({
                         (c) => c.toLowerCase() === parsed.toLowerCase()
                       )
                     : undefined;
+                const data = (editingProp.prop.data ?? editingProp.prop.property_data) as
+                  Record<string, unknown> | undefined;
                 return {
                   name: editingProp.prop.name,
                   description: editingProp.prop.description ?? '',
@@ -805,6 +835,9 @@ function ClassListPanel({
                       | Record<string, unknown>
                       | undefined
                   ),
+                  overrideRequired: data?.required === true,
+                  order: typeof data?.['x-order'] === 'number' ? data['x-order'] : undefined,
+                  parentId: editingProp.prop.parent_id ?? undefined,
                 };
               })()
             : undefined
@@ -1008,17 +1041,22 @@ export default function DesignCanvasSidebar() {
       studio?.applyChange((draft) => {
         const idx = draft.classes.findIndex((c) => getStableClassId(c) === classId);
         if (idx >= 0) {
-          const propData = data.referenceClass
+          const baseData: Record<string, unknown> = data.referenceClass
             ? {
                 $ref: refForClassName(data.referenceClass),
                 refType: data.refType ?? 'direct',
               }
-            : undefined;
+            : {};
+          if (data.overrideRequired === true) baseData.required = true;
+          else if (data.overrideRequired === false) baseData.required = false;
+          if (data.order !== undefined) baseData['x-order'] = data.order;
+          const propData = Object.keys(baseData).length > 0 ? baseData : undefined;
           draft.classes[idx].properties.push({
             localId: generateLocalId(),
             name: data.name,
             description: data.description,
             property_id: data.propertyId,
+            parent_id: data.parentId ?? undefined,
             property_name: linked?.name,
             property_data: linked?.data,
             data: propData,
@@ -1037,19 +1075,20 @@ export default function DesignCanvasSidebar() {
         const prop = draft.classes[classIdx].properties[propIndex];
         prop.name = data.name;
         prop.description = data.description;
+        if (data.parentId !== undefined) prop.parent_id = data.parentId ?? undefined;
         const existingData = prop.data as Record<string, unknown> | undefined;
+        const next: Record<string, unknown> = { ...(existingData ?? {}) };
         if (data.referenceClass?.trim()) {
-          prop.data = {
-            ...(existingData ?? {}),
-            $ref: refForClassName(data.referenceClass),
-            refType: data.refType ?? 'direct',
-          };
+          next.$ref = refForClassName(data.referenceClass);
+          next.refType = data.refType ?? 'direct';
         } else {
-          const next: Record<string, unknown> = { ...(existingData ?? {}) };
           delete next.$ref;
           delete next.refType;
-          prop.data = Object.keys(next).length > 0 ? next : undefined;
         }
+        if (data.overrideRequired === true) next.required = true;
+        else if (data.overrideRequired === false) next.required = false;
+        if (data.order !== undefined) next['x-order'] = data.order;
+        prop.data = Object.keys(next).length > 0 ? next : undefined;
       });
     },
     [studio]
