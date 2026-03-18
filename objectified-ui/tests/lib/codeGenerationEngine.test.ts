@@ -2,13 +2,15 @@
  * Reference: GitHub #119 — configurable code generation templates.
  */
 
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import type { StudioClass } from '@lib/studio/types';
 import {
   generateTypeScript,
   generateGraphQL,
+  generateGo,
   buildCodegenMustacheView,
   toSnakeCase,
+  toSafeIdentifier,
 } from '@lib/studio/codeGenerationEngine';
 import { renderCustomMustacheTemplate, generateFromBuiltinTemplate } from '@lib/studio/codeGenerationRegistry';
 
@@ -100,5 +102,109 @@ describe('generateFromBuiltinTemplate', () => {
     const out = generateFromBuiltinTemplate('sql-ddl', sampleClasses);
     expect(out).toContain('create table');
     expect(out.toLowerCase()).toContain('user');
+  });
+});
+
+describe('toSafeIdentifier', () => {
+  it('returns valid identifier as-is', () => {
+    expect(toSafeIdentifier('MyClass')).toBe('MyClass');
+    expect(toSafeIdentifier('_my_class')).toBe('_my_class');
+  });
+
+  it('replaces spaces and hyphens with underscores', () => {
+    expect(toSafeIdentifier('My Class')).toBe('My_Class');
+    expect(toSafeIdentifier('my-class')).toBe('my_class');
+  });
+
+  it('prepends underscore if starts with digit', () => {
+    expect(toSafeIdentifier('3DPoint')).toBe('_3DPoint');
+  });
+
+  it('handles empty string', () => {
+    expect(toSafeIdentifier('')).toBe('_');
+  });
+});
+
+describe('identifier sanitization in generators', () => {
+  const unsafeClasses: StudioClass[] = [
+    {
+      id: 'class-unsafe',
+      name: 'My Class',
+      properties: [{ name: 'value', property_data: { type: 'string' }, data: {} }],
+    },
+  ];
+
+  it('sanitizes class name in TypeScript output', () => {
+    const out = generateTypeScript(unsafeClasses);
+    expect(out).toContain('export interface My_Class');
+    expect(out).toContain('// original: My Class');
+  });
+
+  it('sanitizes class name in GraphQL output', () => {
+    const out = generateGraphQL(unsafeClasses);
+    expect(out).toContain('type My_Class');
+    expect(out).toContain('# original: My Class');
+  });
+
+  it('sanitizes class name in Go output', () => {
+    const out = generateGo(unsafeClasses);
+    expect(out).toContain('type My_Class struct');
+    expect(out).toContain('// original: My Class');
+  });
+});
+
+describe('generateGraphQL scalar JSON', () => {
+  const classWithObject: StudioClass[] = [
+    {
+      id: 'class-meta',
+      name: 'Meta',
+      properties: [{ name: 'data', property_data: { type: 'object' }, data: {} }],
+    },
+  ];
+
+  it('emits scalar JSON when object/array fields are present', () => {
+    const out = generateGraphQL(classWithObject);
+    expect(out).toContain('scalar JSON');
+  });
+
+  it('does not emit scalar JSON when only scalar fields are present', () => {
+    const out = generateGraphQL(sampleClasses);
+    expect(out).not.toContain('scalar JSON');
+  });
+});
+
+describe('generateGo encoding/json import', () => {
+  const classWithRaw: StudioClass[] = [
+    {
+      id: 'class-raw',
+      name: 'RawData',
+      properties: [{ name: 'payload', property_data: { type: 'object' }, data: {} }],
+    },
+  ];
+
+  it('emits encoding/json import hint when json.RawMessage is used', () => {
+    const out = generateGo(classWithRaw);
+    expect(out).toContain('// import "encoding/json"');
+  });
+
+  it('does not emit encoding/json import when no raw message fields', () => {
+    const out = generateGo(sampleClasses);
+    expect(out).not.toContain('encoding/json');
+  });
+});
+
+describe('buildClassModels duplicate detection', () => {
+  const dupClasses: StudioClass[] = [
+    { id: 'a', name: 'Widget', properties: [] },
+    { id: 'b', name: 'widget', properties: [] },
+  ];
+
+  it('warns on duplicate normalized class names', () => {
+    const spy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    generateTypeScript(dupClasses);
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining('Duplicate class name')
+    );
+    spy.mockRestore();
   });
 });
