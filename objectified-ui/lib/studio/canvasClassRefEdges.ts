@@ -33,6 +33,17 @@ export interface ClassRefEdgeData extends Record<string, unknown> {
   label?: string;
 }
 
+const REF_CLASS_ID_KEYS = ['x-ref-class-id', 'refClassId', 'ref_class_id'] as const;
+
+export function getRefClassIdFromData(data: Record<string, unknown> | undefined): string | null {
+  if (!data) return null;
+  for (const key of REF_CLASS_ID_KEYS) {
+    const v = data[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 /** Extract referenced schema/class names (normalized lowercase) from a JSON Schema-like object (e.g. $ref, items.$ref). */
 function extractRefs(obj: unknown, classNames: Set<string>): Set<string> {
   const out = new Set<string>();
@@ -91,6 +102,14 @@ export function getRefTypeFromData(data: Record<string, unknown> | undefined): C
  * ambiguous links.
  */
 export function buildClassRefEdges(classes: StudioClass[]): Edge<ClassRefEdgeData>[] {
+  // Build validIds from ALL classes (independent of name de-duplication) so that
+  // x-ref-class-id references can resolve even for classes with blank/duplicate names.
+  const validIds = new Set<string>();
+  for (const cls of classes) {
+    const id = getStableClassId(cls);
+    if (id) validIds.add(id);
+  }
+
   // Build normalized (trim+lowercase) name → id map; detect and skip duplicates.
   const nameToId = new Map<string, string>();
   const duplicates = new Set<string>();
@@ -114,9 +133,8 @@ export function buildClassRefEdges(classes: StudioClass[]): Edge<ClassRefEdgeDat
   const arrowMarker = { type: MarkerType.ArrowClosed };
 
   for (const cls of classes) {
-    const sourceName = (cls.name ?? '').trim().toLowerCase();
-    if (!sourceName) continue;
-    const sourceId = nameToId.get(sourceName);
+    // Use getStableClassId directly so id-based edges don't depend on nameToId.
+    const sourceId = getStableClassId(cls);
     if (!sourceId) continue;
 
     const properties = (cls.properties ?? []) as StudioClassProperty[];
@@ -126,6 +144,24 @@ export function buildClassRefEdges(classes: StudioClass[]): Edge<ClassRefEdgeDat
       const refs = extractRefs(data, classNames);
       const refType = getRefTypeFromData(data);
       const propName = (prop.name ?? '').trim();
+
+      const refClassId = getRefClassIdFromData(data);
+      if (refClassId && validIds.has(refClassId) && refClassId !== sourceId) {
+        const id = `class-ref-${sourceId}--${refClassId}--${propName || refClassId}`;
+        edges.push({
+          id,
+          source: sourceId,
+          target: refClassId,
+          type: 'classRef',
+          markerEnd: arrowMarker,
+          markerStart: refType === 'bidirectional' ? arrowMarker : undefined,
+          data: {
+            refType,
+            label: propName || undefined,
+          },
+        });
+        continue;
+      }
 
       for (const targetName of refs) {
         const targetId = nameToId.get(targetName);

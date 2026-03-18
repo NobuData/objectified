@@ -15,6 +15,8 @@ import * as Checkbox from '@radix-ui/react-checkbox';
 import * as Tabs from '@radix-ui/react-tabs';
 import { ChevronDown, Check, X, FileText, Code } from 'lucide-react';
 import { PropertyFormFields } from './PropertyFormFields';
+import { useStudioOptional } from '@/app/contexts/StudioContext';
+import { getSchemaModeFromCanvasMetadata, type SchemaMode } from '@lib/studio/schemaMode';
 import {
   type PropertyFormData,
   PROPERTY_TYPES,
@@ -65,6 +67,10 @@ export default function PropertyDialog({
   existingNames = [],
   restClientOptions,
 }: PropertyDialogProps) {
+  const studio = useStudioOptional();
+  const schemaMode: SchemaMode = studio?.state
+    ? getSchemaModeFromCanvasMetadata(studio.state.canvas_metadata)
+    : 'openapi';
   const [propertyName, setPropertyName] = useState('');
   const [propertyType, setPropertyType] = useState('string');
   const [isArray, setIsArray] = useState(false);
@@ -357,6 +363,7 @@ export default function PropertyDialog({
                   onChange={handleFormChange}
                   availableClasses={availableClasses}
                   availableProperties={availableProperties}
+                  schemaMode={schemaMode}
                 />
               </Tabs.Content>
 

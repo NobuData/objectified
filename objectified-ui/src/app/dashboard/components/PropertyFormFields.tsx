@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import type { PropertyFormData } from '../utils/propertySchemaUtils';
 import { FORMAT_OPTIONS } from '../utils/propertySchemaUtils';
+import type { SchemaMode } from '@lib/studio/schemaMode';
 
 export interface PropertyFormFieldsProps {
   baseType: string;
@@ -43,6 +44,7 @@ export interface PropertyFormFieldsProps {
   size?: 'small' | 'medium';
   availableClasses?: string[];
   availableProperties?: string[];
+  schemaMode?: SchemaMode;
 }
 
 interface SectionProps {
@@ -264,6 +266,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
   showTitle = true,
   availableClasses = [],
   availableProperties = [],
+  schemaMode = 'openapi',
 }) => {
   const [enumInput, setEnumInput] = useState('');
   const [enumError, setEnumError] = useState('');
@@ -596,7 +599,9 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
           </div>
         )}
         <div>
-          <FieldLabel htmlFor="pff-ref" optional>$ref target</FieldLabel>
+          <FieldLabel htmlFor="pff-ref" optional>
+            {schemaMode === 'sql' ? 'Reference target' : '$ref target'}
+          </FieldLabel>
           <div className="space-y-2">
             {refOptions.length > 1 && (
               <SelectField
@@ -1681,75 +1686,76 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
         </div>
       </Section>
 
-      {/* External Docs & XML */}
-      <Section
-        title="External Docs & XML"
-        icon={<Code className="h-3.5 w-3.5" />}
-        badge="OpenAPI"
-      >
-        <div>
-          <FieldLabel htmlFor="pff-externaldocsurl" optional>External Docs URL</FieldLabel>
-          <TextInput
-            id="pff-externaldocsurl"
-            value={data.externalDocsUrl || ''}
-            onChange={(v) => onChange('externalDocsUrl', v)}
-            placeholder="https://docs.example.com"
-          />
-        </div>
-        <div>
-          <FieldLabel htmlFor="pff-externaldocsdesc" optional>External Docs Description</FieldLabel>
-          <TextInput
-            id="pff-externaldocsdesc"
-            value={data.externalDocsDescription || ''}
-            onChange={(v) => onChange('externalDocsDescription', v)}
-            placeholder="See the documentation for details"
-          />
-        </div>
-        <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">XML Serialization</p>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <FieldLabel htmlFor="pff-xmlname" optional>Name</FieldLabel>
-              <TextInput
-                id="pff-xmlname"
-                value={data.xmlName || ''}
-                onChange={(v) => onChange('xmlName', v)}
-              />
-            </div>
-            <div>
-              <FieldLabel htmlFor="pff-xmlprefix" optional>Prefix</FieldLabel>
-              <TextInput
-                id="pff-xmlprefix"
-                value={data.xmlPrefix || ''}
-                onChange={(v) => onChange('xmlPrefix', v)}
-              />
-            </div>
+      {schemaMode === 'openapi' && (
+        <Section
+          title="External Docs & XML"
+          icon={<Code className="h-3.5 w-3.5" />}
+          badge="OpenAPI"
+        >
+          <div>
+            <FieldLabel htmlFor="pff-externaldocsurl" optional>External Docs URL</FieldLabel>
+            <TextInput
+              id="pff-externaldocsurl"
+              value={data.externalDocsUrl || ''}
+              onChange={(v) => onChange('externalDocsUrl', v)}
+              placeholder="https://docs.example.com"
+            />
           </div>
           <div>
-            <FieldLabel htmlFor="pff-xmlnamespace" optional>Namespace</FieldLabel>
+            <FieldLabel htmlFor="pff-externaldocsdesc" optional>External Docs Description</FieldLabel>
             <TextInput
-              id="pff-xmlnamespace"
-              value={data.xmlNamespace || ''}
-              onChange={(v) => onChange('xmlNamespace', v)}
-              placeholder="http://example.com/ns"
+              id="pff-externaldocsdesc"
+              value={data.externalDocsDescription || ''}
+              onChange={(v) => onChange('externalDocsDescription', v)}
+              placeholder="See the documentation for details"
             />
           </div>
-          <div className="flex gap-4 mt-1">
-            <CheckboxField
-              id="pff-xmlattribute"
-              label="Attribute"
-              checked={data.xmlAttribute || false}
-              onChange={(v) => onChange('xmlAttribute', v)}
-            />
-            <CheckboxField
-              id="pff-xmlwrapped"
-              label="Wrapped"
-              checked={data.xmlWrapped || false}
-              onChange={(v) => onChange('xmlWrapped', v)}
-            />
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">XML Serialization</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <FieldLabel htmlFor="pff-xmlname" optional>Name</FieldLabel>
+                <TextInput
+                  id="pff-xmlname"
+                  value={data.xmlName || ''}
+                  onChange={(v) => onChange('xmlName', v)}
+                />
+              </div>
+              <div>
+                <FieldLabel htmlFor="pff-xmlprefix" optional>Prefix</FieldLabel>
+                <TextInput
+                  id="pff-xmlprefix"
+                  value={data.xmlPrefix || ''}
+                  onChange={(v) => onChange('xmlPrefix', v)}
+                />
+              </div>
+            </div>
+            <div>
+              <FieldLabel htmlFor="pff-xmlnamespace" optional>Namespace</FieldLabel>
+              <TextInput
+                id="pff-xmlnamespace"
+                value={data.xmlNamespace || ''}
+                onChange={(v) => onChange('xmlNamespace', v)}
+                placeholder="http://example.com/ns"
+              />
+            </div>
+            <div className="flex gap-4 mt-1">
+              <CheckboxField
+                id="pff-xmlattribute"
+                label="Attribute"
+                checked={data.xmlAttribute || false}
+                onChange={(v) => onChange('xmlAttribute', v)}
+              />
+              <CheckboxField
+                id="pff-xmlwrapped"
+                label="Wrapped"
+                checked={data.xmlWrapped || false}
+                onChange={(v) => onChange('xmlWrapped', v)}
+              />
+            </div>
           </div>
-        </div>
-      </Section>
+        </Section>
+      )}
     </div>
   );
 };
