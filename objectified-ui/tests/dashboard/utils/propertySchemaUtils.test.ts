@@ -8,6 +8,7 @@ import {
   parsePropertySchema,
   FORMAT_OPTIONS,
   PROPERTY_TYPES,
+  normaliseRefValue,
   type PropertyFormData,
 } from '@/app/dashboard/utils/propertySchemaUtils';
 
@@ -1755,6 +1756,62 @@ describe('propertySchemaUtils', () => {
       expect(propertyType).toBe('object');
       expect(formData.refStorage).toBe('id');
       expect(formData.$ref).toBe('#/components/schemas/Tag');
+    });
+
+    it('buildPropertySchema persists x-ref-class-ref for the original full ref', () => {
+      const fd: PropertyFormData = { $ref: '#/components/schemas/Order' };
+      const schema = buildPropertySchema(fd, 'object', false, { schemaMode: 'sql' });
+      expect(schema['x-ref-class-ref']).toBe('#/components/schemas/Order');
+    });
+
+    it('buildPropertySchema persists x-ref-class-ref for #/$defs/ ref', () => {
+      const fd: PropertyFormData = { $ref: '#/$defs/Product' };
+      const schema = buildPropertySchema(fd, 'object', false, { schemaMode: 'sql' });
+      expect(schema['x-ref-class-ref']).toBe('#/$defs/Product');
+      expect(schema['x-ref-class-name']).toBe('Product');
+    });
+
+    it('parsePropertySchema round-trips #/$defs/ ref via x-ref-class-ref', () => {
+      const schema = {
+        type: 'string',
+        format: 'uuid',
+        'x-ref-storage': 'id',
+        'x-ref-class-name': 'Product',
+        'x-ref-class-ref': '#/$defs/Product',
+      };
+      const { formData } = parsePropertySchema(schema);
+      expect(formData.$ref).toBe('#/$defs/Product');
+      expect(formData.refStorage).toBe('id');
+    });
+
+    it('parsePropertySchema falls back to refForClassName when x-ref-class-ref is absent', () => {
+      const schema = {
+        type: 'string',
+        format: 'uuid',
+        'x-ref-storage': 'id',
+        'x-ref-class-name': 'Fallback',
+      };
+      const { formData } = parsePropertySchema(schema);
+      expect(formData.$ref).toBe('#/components/schemas/Fallback');
+    });
+
+    it('normaliseRefValue converts plain identifier to #/components/schemas/ ref', () => {
+      expect(normaliseRefValue('Item')).toBe('#/components/schemas/Item');
+      expect(normaliseRefValue('MyClass')).toBe('#/components/schemas/MyClass');
+    });
+
+    it('normaliseRefValue passes through existing #/components/schemas/ refs unchanged', () => {
+      expect(normaliseRefValue('#/components/schemas/Order')).toBe('#/components/schemas/Order');
+    });
+
+    it('normaliseRefValue passes through #/$defs/ refs unchanged', () => {
+      expect(normaliseRefValue('#/$defs/Product')).toBe('#/$defs/Product');
+    });
+
+    it('normaliseRefValue returns undefined for empty or invalid input', () => {
+      expect(normaliseRefValue('')).toBeUndefined();
+      expect(normaliseRefValue(undefined)).toBeUndefined();
+      expect(normaliseRefValue('  ')).toBeUndefined();
     });
   });
 });
