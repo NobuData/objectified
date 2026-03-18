@@ -1,13 +1,30 @@
 /**
  * Property schema utilities for JSON Schema 2020-12 / OpenAPI 3.2.0.
  * Provides form data types, schema building, and parsing for the property dialog.
- * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values), #111 (conditional: if/then/else, dependentSchemas), #112 (extensions x-*, XML attribute/wrapped).
+ * Reference: GitHub #104, #106 (stringConstraints), #107 (numberConstraints), #108 (arrayConstraints, tupleMode), #109 (objectConstraints), #110 (metadata: propertyFlags, values), #111 (conditional: if/then/else, dependentSchemas), #112 (extensions x-*, XML attribute/wrapped), #118 (SQL mode ID-based class refs).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import {
+  parseClassNameFromRef,
+  refForClassName,
+} from '@lib/studio/canvasClassRefEdges';
+
+/** Options for buildPropertySchema (GitHub #118: SQL ID refs vs nested $ref). */
+export interface BuildPropertySchemaOptions {
+  schemaMode?: 'openapi' | 'sql';
+  /** Resolve canvas class stable id by class name (for x-ref-class-id). */
+  resolveRefClassId?: (className: string) => string | null;
+}
+
 export interface PropertyFormData {
   $ref?: string;
+  /**
+   * In SQL mode, how a class reference is stored: ID (uuid FK metadata) vs nested $ref.
+   * OpenAPI mode ignores this (always $ref). Default in SQL when unset: ID storage.
+   */
+  refStorage?: 'id' | 'nested';
   title?: string;
   description?: string;
   format?: string;
@@ -161,6 +178,31 @@ function normaliseRefValue(value?: string): string | undefined {
     return `#/components/schemas/${trimmed}`;
   }
   return undefined;
+}
+
+function applySqlClassRefMetadata(
+  schema: Record<string, any>,
+  refValue: string,
+  storage: 'id' | 'nested',
+  resolveRefClassId?: (className: string) => string | null,
+): void {
+  const className = parseClassNameFromRef(refValue);
+  if (!className) return;
+  schema['x-ref-storage'] = storage;
+  schema['x-ref-class-name'] = className;
+  const id = resolveRefClassId?.(className);
+  if (id) schema['x-ref-class-id'] = id;
+}
+
+function useSqlIdRefStorage(
+  formData: PropertyFormData,
+  schemaMode: 'openapi' | 'sql' | undefined,
+  refValue: string | undefined,
+): boolean {
+  if (schemaMode !== 'sql' || !refValue || !parseClassNameFromRef(refValue)) {
+    return false;
+  }
+  return formData.refStorage !== 'nested';
 }
 
 function applyMinMax(target: any, formData: PropertyFormData): void {
@@ -395,9 +437,13 @@ export function buildPropertySchema(
   formData: PropertyFormData,
   propertyType: string,
   isArray: boolean,
+  options?: BuildPropertySchemaOptions,
 ): Record<string, any> {
   const schema: Record<string, any> = {};
   const refValue = normaliseRefValue(formData.$ref);
+  const schemaMode = options?.schemaMode ?? 'openapi';
+  const resolveRefClassId = options?.resolveRefClassId;
+  const idRef = useSqlIdRefStorage(formData, schemaMode, refValue);
 
   if (formData.title) schema.title = formData.title;
   if (formData.description) schema.description = formData.description;
@@ -474,8 +520,14 @@ export function buildPropertySchema(
       } else {
         schema.items = true;
       }
+    } else if (idRef && refValue) {
+      schema.items = { type: 'string', format: 'uuid' };
+      applySqlClassRefMetadata(schema, refValue, 'id', resolveRefClassId);
     } else if (refValue) {
       schema.items = { $ref: refValue };
+      if (schemaMode === 'sql' && parseClassNameFromRef(refValue)) {
+        applySqlClassRefMetadata(schema, refValue, 'nested', resolveRefClassId);
+      }
     } else if (formData.itemsSchemaOverride && formData.itemsSchemaOverride.trim()) {
       const parsed = tryParseJson(formData.itemsSchemaOverride);
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
@@ -490,10 +542,21 @@ export function buildPropertySchema(
     }
   } else {
     if (refValue) {
-      if (formData.nullable) {
+      if (idRef) {
+        if (formData.nullable) {
+          schema.anyOf = [{ type: 'string', format: 'uuid' }, { type: 'null' }];
+        } else {
+          schema.type = 'string';
+          schema.format = 'uuid';
+        }
+        applySqlClassRefMetadata(schema, refValue, 'id', resolveRefClassId);
+      } else if (formData.nullable) {
         schema.anyOf = [{ $ref: refValue }, { type: 'null' }];
       } else {
         schema.$ref = refValue;
+      }
+      if (!idRef && schemaMode === 'sql' && parseClassNameFromRef(refValue)) {
+        applySqlClassRefMetadata(schema, refValue, 'nested', resolveRefClassId);
       }
     } else {
       schema.type = formData.nullable ? [propertyType, 'null'] : propertyType;
@@ -615,6 +678,32 @@ export function parsePropertySchema(
     }
   } else if (!isArray) {
     propertyType = actualType || (extractedRef ? 'object' : 'string');
+  }
+
+  const xRefClassNameRaw = schemaData['x-ref-class-name'];
+  const xRefClassName =
+    typeof xRefClassNameRaw === 'string' ? xRefClassNameRaw.trim() : '';
+  if (schemaData['x-ref-storage'] === 'id' && xRefClassName) {
+    formData.refStorage = 'id';
+    extractedRef = refForClassName(xRefClassName);
+    propertyType = 'object';
+    if (isArray) {
+      if (Array.isArray(schemaData.type) && schemaData.type.includes('null')) {
+        isNullable = true;
+      }
+    } else if (Array.isArray(schemaData.anyOf)) {
+      isNullable = schemaData.anyOf.some(
+        (entry: unknown) =>
+          typeof entry === 'object' &&
+          entry !== null &&
+          (entry as Record<string, unknown>).type === 'null'
+      );
+    }
+  } else if (
+    schemaData['x-ref-storage'] === 'nested' &&
+    (extractedRef || xRefClassName)
+  ) {
+    formData.refStorage = 'nested';
   }
 
   const constraintSource = (isArray && !hasTupleMode && schemaData.items && typeof schemaData.items === 'object')

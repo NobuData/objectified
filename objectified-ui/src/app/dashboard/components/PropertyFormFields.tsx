@@ -34,6 +34,7 @@ import {
 import type { PropertyFormData } from '../utils/propertySchemaUtils';
 import { FORMAT_OPTIONS } from '../utils/propertySchemaUtils';
 import type { SchemaMode } from '@lib/studio/schemaMode';
+import { parseClassNameFromRef } from '@lib/studio/canvasClassRefEdges';
 
 export interface PropertyFormFieldsProps {
   baseType: string;
@@ -619,6 +620,55 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
               onChange={(v) => onChange('$ref', v)}
               placeholder="#/components/schemas/ClassName"
             />
+            {schemaMode === 'sql' &&
+              Boolean(data.$ref?.trim()) &&
+              parseClassNameFromRef(data.$ref ?? '') && (
+                <div className="space-y-1 pt-1">
+                  <FieldLabel htmlFor="pff-ref-storage">Reference storage (SQL)</FieldLabel>
+                  <Select.Root
+                    value={data.refStorage === 'nested' ? 'nested' : 'id'}
+                    onValueChange={(v) => {
+                      if (v === 'nested') onChange('refStorage', 'nested');
+                      else onChange('refStorage', undefined);
+                    }}
+                  >
+                    <Select.Trigger
+                      id="pff-ref-storage"
+                      className="flex h-9 w-full items-center justify-between rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500"
+                      aria-label="SQL reference storage"
+                    >
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="z-[10010] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
+                        <Select.Viewport className="p-1">
+                          <Select.Item
+                            value="id"
+                            className="px-3 py-2 rounded-md text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800"
+                          >
+                            <Select.ItemText>
+                              ID (foreign key / uuid column)
+                            </Select.ItemText>
+                          </Select.Item>
+                          <Select.Item
+                            value="nested"
+                            className="px-3 py-2 rounded-md text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800"
+                          >
+                            <Select.ItemText>Nested ($ref object)</Select.ItemText>
+                          </Select.Item>
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    ID storage maps to uuid columns and FK metadata for SQL export; nested keeps a
+                    JSON Schema <code className="text-[11px]">$ref</code> to the class.
+                  </p>
+                </div>
+              )}
           </div>
         </div>
         {/* Examples */}

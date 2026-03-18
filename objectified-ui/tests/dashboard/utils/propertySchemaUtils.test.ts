@@ -1691,4 +1691,70 @@ describe('propertySchemaUtils', () => {
       expect(formData.elseSchema).toBe(elseSchema);
     });
   });
+
+  describe('GitHub #118: SQL mode class references', () => {
+    it('buildPropertySchema emits ID-based metadata in sql mode', () => {
+      const fd: PropertyFormData = { $ref: '#/components/schemas/Order' };
+      const schema = buildPropertySchema(fd, 'object', false, {
+        schemaMode: 'sql',
+        resolveRefClassId: () => 'cls-1',
+      });
+      expect(schema.type).toBe('string');
+      expect(schema.format).toBe('uuid');
+      expect(schema['x-ref-storage']).toBe('id');
+      expect(schema['x-ref-class-name']).toBe('Order');
+      expect(schema['x-ref-class-id']).toBe('cls-1');
+      expect(schema.$ref).toBeUndefined();
+    });
+
+    it('buildPropertySchema keeps nested $ref in sql when refStorage is nested', () => {
+      const fd: PropertyFormData = {
+        $ref: '#/components/schemas/Order',
+        refStorage: 'nested',
+      };
+      const schema = buildPropertySchema(fd, 'object', false, {
+        schemaMode: 'sql',
+        resolveRefClassId: () => 'z',
+      });
+      expect(schema.$ref).toBe('#/components/schemas/Order');
+      expect(schema['x-ref-storage']).toBe('nested');
+      expect(schema['x-ref-class-name']).toBe('Order');
+    });
+
+    it('parsePropertySchema restores form for ID-based scalar storage', () => {
+      const schema = {
+        type: 'string',
+        format: 'uuid',
+        'x-ref-storage': 'id',
+        'x-ref-class-name': 'Customer',
+      };
+      const { formData, propertyType } = parsePropertySchema(schema);
+      expect(propertyType).toBe('object');
+      expect(formData.$ref).toBe('#/components/schemas/Customer');
+      expect(formData.refStorage).toBe('id');
+    });
+
+    it('buildPropertySchema array of ID refs in sql mode', () => {
+      const fd: PropertyFormData = { $ref: 'Item' };
+      const schema = buildPropertySchema(fd, 'object', true, { schemaMode: 'sql' });
+      expect(schema.type).toBe('array');
+      expect(schema.items).toEqual({ type: 'string', format: 'uuid' });
+      expect(schema['x-ref-storage']).toBe('id');
+      expect(schema['x-ref-class-name']).toBe('Item');
+    });
+
+    it('parsePropertySchema restores array ID ref form', () => {
+      const schema = {
+        type: 'array',
+        items: { type: 'string', format: 'uuid' },
+        'x-ref-storage': 'id',
+        'x-ref-class-name': 'Tag',
+      };
+      const { formData, propertyType, isArray } = parsePropertySchema(schema);
+      expect(isArray).toBe(true);
+      expect(propertyType).toBe('object');
+      expect(formData.refStorage).toBe('id');
+      expect(formData.$ref).toBe('#/components/schemas/Tag');
+    });
+  });
 });
