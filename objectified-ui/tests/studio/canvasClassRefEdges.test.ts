@@ -2,7 +2,7 @@
  * Unit tests for class ref edge building (GitHub #81).
  */
 
-import { buildClassRefEdges, parseClassNameFromRef } from '@lib/studio/canvasClassRefEdges';
+import { buildClassRefEdges, parseClassNameFromRef, getRefClassIdFromData } from '@lib/studio/canvasClassRefEdges';
 import type { StudioClass } from '@lib/studio/types';
 
 describe('buildClassRefEdges', () => {
@@ -303,6 +303,85 @@ describe('buildClassRefEdges', () => {
     expect(direct?.markerStart).toBeUndefined();
     expect(bidir?.markerEnd).toBeDefined();
     expect(bidir?.markerStart).toBeDefined();
+  });
+
+  it('resolves x-ref-class-id for target class with duplicate normalized name (skipped in nameToId)', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    // Two classes with duplicate normalized names – neither appears in nameToId.
+    // But the source can still use x-ref-class-id to resolve the target by stable id.
+    const classes: StudioClass[] = [
+      { id: 'dup-1', name: 'Widget', properties: [] },
+      { id: 'dup-2', name: 'widget', properties: [] },
+      {
+        id: 'src',
+        name: 'Page',
+        properties: [
+          {
+            name: 'myWidget',
+            data: {
+              $ref: '#/components/schemas/Widget',
+              'x-ref-class-id': 'dup-1',
+            },
+          },
+        ],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    // x-ref-class-id 'dup-1' is in validIds (built from ALL classes), so the edge is created.
+    expect(edges).toHaveLength(1);
+    expect(edges[0].source).toBe('src');
+    expect(edges[0].target).toBe('dup-1');
+    warnSpy.mockRestore();
+  });
+
+  it('builds edges from a source class with a blank name using x-ref-class-id', () => {
+    // Source class has no name but a valid id; it should still generate edges via x-ref-class-id.
+    const classes: StudioClass[] = [
+      { id: 'target-id', name: 'Target', properties: [] },
+      {
+        id: 'source-id',
+        name: '',
+        properties: [
+          {
+            name: 'ref',
+            data: {
+              'x-ref-class-id': 'target-id',
+            },
+          },
+        ],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].source).toBe('source-id');
+    expect(edges[0].target).toBe('target-id');
+  });
+});
+
+describe('getRefClassIdFromData', () => {
+  it('returns null for undefined or empty data', () => {
+    expect(getRefClassIdFromData(undefined)).toBeNull();
+    expect(getRefClassIdFromData({})).toBeNull();
+  });
+
+  it('reads x-ref-class-id', () => {
+    expect(getRefClassIdFromData({ 'x-ref-class-id': 'abc' })).toBe('abc');
+  });
+
+  it('reads refClassId (camelCase alias)', () => {
+    expect(getRefClassIdFromData({ refClassId: 'xyz' })).toBe('xyz');
+  });
+
+  it('reads ref_class_id (snake_case alias)', () => {
+    expect(getRefClassIdFromData({ ref_class_id: 'def' })).toBe('def');
+  });
+
+  it('returns null for empty string values', () => {
+    expect(getRefClassIdFromData({ 'x-ref-class-id': '  ' })).toBeNull();
+  });
+
+  it('trims whitespace from the value', () => {
+    expect(getRefClassIdFromData({ 'x-ref-class-id': '  id-123  ' })).toBe('id-123');
   });
 });
 

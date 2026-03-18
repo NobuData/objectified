@@ -53,6 +53,7 @@ import {
   refForClassName,
   parseClassNameFromRef,
   getRefTypeFromData,
+  getRefClassIdFromData,
 } from '@lib/studio/canvasClassRefEdges';
 
 // ─── Project-level property list (read-only, search-only) ────────────────────
@@ -815,30 +816,42 @@ function ClassListPanel({
         initial={
           editingProp
             ? (() => {
-                const refStr = (editingProp.prop.data ?? editingProp.prop.property_data)
-                  ?.$ref as string | undefined;
-                const parsed =
-                  refStr != null ? parseClassNameFromRef(refStr) : undefined;
-                const referenceClass =
-                  parsed &&
-                  availableClassNamesForRefEdit.some(
-                    (c) => c.toLowerCase() === parsed.toLowerCase()
-                  )
-                    ? availableClassNamesForRefEdit.find(
-                        (c) => c.toLowerCase() === parsed.toLowerCase()
-                      )
-                    : undefined;
-                const classData = editingProp.prop.data as Record<string, unknown> | undefined;
+                const propData = (editingProp.prop.data ?? editingProp.prop.property_data) as
+                  | Record<string, unknown>
+                  | undefined;
+                // Resolve reference class: prefer x-ref-class-id (stable, survives renames)
+                // then fall back to parsing $ref.
+                let referenceClass: string | undefined;
+                const refClassId = getRefClassIdFromData(propData);
+                if (refClassId) {
+                  const refCls = studioClasses.find((c) => getStableClassId(c) === refClassId);
+                  if (refCls?.name) {
+                    const refClsName = refCls.name.trim();
+                    referenceClass = availableClassNamesForRefEdit.find(
+                      (c) => c.toLowerCase() === refClsName.toLowerCase()
+                    );
+                  }
+                }
+                if (!referenceClass) {
+                  const refStr = propData?.$ref as string | undefined;
+                  const parsed = refStr != null ? parseClassNameFromRef(refStr) : undefined;
+                  referenceClass =
+                    parsed &&
+                    availableClassNamesForRefEdit.some(
+                      (c) => c.toLowerCase() === parsed.toLowerCase()
+                    )
+                      ? availableClassNamesForRefEdit.find(
+                          (c) => c.toLowerCase() === parsed.toLowerCase()
+                        )
+                      : undefined;
+                }
+                const classData = propData;
                 return {
                   name: editingProp.prop.name,
                   description: editingProp.prop.description ?? '',
                   propertyId: editingProp.prop.property_id,
                   referenceClass,
-                  refType: getRefTypeFromData(
-                    (editingProp.prop.data ?? editingProp.prop.property_data) as
-                      | Record<string, unknown>
-                      | undefined
-                  ),
+                  refType: getRefTypeFromData(propData),
                   overrideRequired: classData?.required === true,
                   order: typeof classData?.['x-order'] === 'number' ? classData['x-order'] : undefined,
                   parentId: editingProp.prop.parent_id ?? undefined,
@@ -936,10 +949,13 @@ export default function DesignCanvasSidebar() {
     (name: string): string | null => {
       const trimmed = name.trim();
       if (!trimmed) return null;
-      const match = studioClasses.find(
-        (c) => (c.name ?? '').trim().toLowerCase() === trimmed.toLowerCase()
+      const lower = trimmed.toLowerCase();
+      const matches = studioClasses.filter(
+        (c) => (c.name ?? '').trim().toLowerCase() === lower
       );
-      const id = match ? getStableClassId(match) : '';
+      // Return null if ambiguous (multiple matches) or not found to avoid persisting wrong id.
+      if (matches.length !== 1) return null;
+      const id = getStableClassId(matches[0]);
       return id ? id : null;
     },
     [studioClasses]
