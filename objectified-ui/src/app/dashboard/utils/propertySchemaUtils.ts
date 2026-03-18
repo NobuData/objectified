@@ -169,7 +169,7 @@ function tryParseJson(value: string): any {
   }
 }
 
-function normaliseRefValue(value?: string): string | undefined {
+export function normaliseRefValue(value?: string): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
   if (trimmed.startsWith('$ref:')) return trimmed.replace(/^\$ref:\s*/, '');
@@ -190,6 +190,7 @@ function applySqlClassRefMetadata(
   if (!className) return;
   schema['x-ref-storage'] = storage;
   schema['x-ref-class-name'] = className;
+  schema['x-ref-class-ref'] = refValue;
   const id = resolveRefClassId?.(className);
   if (id) schema['x-ref-class-id'] = id;
 }
@@ -685,7 +686,8 @@ export function parsePropertySchema(
     typeof xRefClassNameRaw === 'string' ? xRefClassNameRaw.trim() : '';
   if (schemaData['x-ref-storage'] === 'id' && xRefClassName) {
     formData.refStorage = 'id';
-    extractedRef = refForClassName(xRefClassName);
+    const storedRef = typeof schemaData['x-ref-class-ref'] === 'string' ? schemaData['x-ref-class-ref'].trim() : '';
+    extractedRef = storedRef || refForClassName(xRefClassName);
     propertyType = 'object';
     if (isArray) {
       if (Array.isArray(schemaData.type) && schemaData.type.includes('null')) {

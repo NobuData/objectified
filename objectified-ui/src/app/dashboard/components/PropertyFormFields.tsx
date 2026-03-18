@@ -32,7 +32,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { PropertyFormData } from '../utils/propertySchemaUtils';
-import { FORMAT_OPTIONS } from '../utils/propertySchemaUtils';
+import { FORMAT_OPTIONS, normaliseRefValue } from '../utils/propertySchemaUtils';
 import type { SchemaMode } from '@lib/studio/schemaMode';
 import { parseClassNameFromRef } from '@lib/studio/canvasClassRefEdges';
 
@@ -622,7 +622,7 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
             />
             {schemaMode === 'sql' &&
               Boolean(data.$ref?.trim()) &&
-              parseClassNameFromRef(data.$ref ?? '') && (
+              parseClassNameFromRef(normaliseRefValue(data.$ref) ?? '') && (
                 <div className="space-y-1 pt-1">
                   <FieldLabel htmlFor="pff-ref-storage">Reference storage (SQL)</FieldLabel>
                   <Select.Root
