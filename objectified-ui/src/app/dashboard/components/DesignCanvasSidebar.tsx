@@ -55,6 +55,7 @@ import {
   getRefTypeFromData,
   getRefClassIdFromData,
 } from '@lib/studio/canvasClassRefEdges';
+import { getSchemaMode, type SchemaMode } from '@lib/studio/schemaMode';
 
 // ─── Project-level property list (read-only, search-only) ────────────────────
 
@@ -376,6 +377,7 @@ interface ClassListPanelProps {
   availableProperties: { id: string; name: string; data?: Record<string, unknown> }[];
   canEdit: boolean;
   loading: boolean;
+  schemaMode: SchemaMode;
   onAddClass: (data: ClassFormData) => void;
   onUpdateClass: (classId: string, data: ClassFormData) => void;
   onDeleteClass: (cls: StudioClass) => void;
@@ -425,6 +427,7 @@ function ClassListPanel({
   availableProperties,
   canEdit,
   loading,
+  schemaMode,
   onAddClass,
   onUpdateClass,
   onDeleteClass,
@@ -804,6 +807,7 @@ function ClassListPanel({
         availableProperties={availableProperties}
         availableClassNamesForRef={availableClassNamesForRefAdd}
         availableParentProperties={availableParentPropertiesAdd}
+        schemaMode={schemaMode}
         onSave={handleAddProp}
         onClose={() => setAddPropClassId(null)}
       />
@@ -813,14 +817,17 @@ function ClassListPanel({
         availableProperties={availableProperties}
         availableClassNamesForRef={availableClassNamesForRefEdit}
         availableParentProperties={availableParentPropertiesEdit}
+        schemaMode={schemaMode}
         initial={
           editingProp
             ? (() => {
                 const propData = (editingProp.prop.data ?? editingProp.prop.property_data) as
                   | Record<string, unknown>
                   | undefined;
-                // Resolve reference class: prefer x-ref-class-id (stable, survives renames)
-                // then fall back to parsing $ref.
+                // Resolve reference class: prefer x-ref-class-id (stable, survives renames),
+                // then fall back to parsing $ref, then fall back to x-ref-class-name
+                // (needed in SQL mode with referenceStorage:'id' where $ref is omitted and
+                // x-ref-class-id may be absent for duplicate/ambiguous or deleted targets).
                 let referenceClass: string | undefined;
                 const refClassId = getRefClassIdFromData(propData);
                 if (refClassId) {
@@ -845,13 +852,31 @@ function ClassListPanel({
                         )
                       : undefined;
                 }
+                if (!referenceClass) {
+                  const refClassName = propData?.['x-ref-class-name'] as string | undefined;
+                  if (refClassName) {
+                    referenceClass = availableClassNamesForRefEdit.find(
+                      (c) => c.toLowerCase() === refClassName.trim().toLowerCase()
+                    );
+                  }
+                }
                 const classData = propData;
+                const hasRef = typeof propData?.$ref === 'string' && propData.$ref.trim() !== '';
+                const hasRefClassId = Boolean(getRefClassIdFromData(propData));
                 return {
                   name: editingProp.prop.name,
                   description: editingProp.prop.description ?? '',
                   propertyId: editingProp.prop.property_id,
                   referenceClass,
                   refType: getRefTypeFromData(propData),
+                  referenceStorage:
+                    schemaMode === 'sql'
+                      ? ((propData?.['x-ref-storage'] as string | undefined) === 'nested' || hasRef
+                          ? 'nested'
+                          : hasRefClassId
+                            ? 'id'
+                            : 'id')
+                      : 'nested',
                   overrideRequired: classData?.required === true,
                   order: typeof classData?.['x-order'] === 'number' ? classData['x-order'] : undefined,
                   parentId: editingProp.prop.parent_id ?? undefined,
@@ -945,6 +970,7 @@ export default function DesignCanvasSidebar() {
 
   const studioClasses = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
   const studioProperties = useMemo(() => studio?.state?.properties ?? [], [studio?.state]);
+  const schemaMode: SchemaMode = studio?.state ? getSchemaMode(studio.state) : 'openapi';
   const findStableClassIdByName = useCallback(
     (name: string): string | null => {
       const trimmed = name.trim();
@@ -1074,13 +1100,18 @@ export default function DesignCanvasSidebar() {
       studio?.applyChange((draft) => {
         const idx = draft.classes.findIndex((c) => getStableClassId(c) === classId);
         if (idx >= 0) {
-          const baseData: Record<string, unknown> = data.referenceClass
-            ? {
-                $ref: refForClassName(data.referenceClass),
-                refType: data.refType ?? 'direct',
-              }
-            : {};
-          if (refClassId) baseData['x-ref-class-id'] = refClassId;
+          const baseData: Record<string, unknown> = {};
+          if (data.referenceClass) {
+            const storage =
+              schemaMode === 'sql' ? (data.referenceStorage ?? 'id') : 'nested';
+            baseData.refType = data.refType ?? 'direct';
+            baseData['x-ref-storage'] = storage;
+            baseData['x-ref-class-name'] = data.referenceClass;
+            if (refClassId) baseData['x-ref-class-id'] = refClassId;
+            if (storage === 'nested') {
+              baseData.$ref = refForClassName(data.referenceClass);
+            }
+          }
           if (data.overrideRequired === true) baseData.required = true;
           else if (data.overrideRequired === false) baseData.required = false;
           if (data.order !== undefined && data.order !== null) baseData['x-order'] = data.order;
@@ -1098,7 +1129,7 @@ export default function DesignCanvasSidebar() {
         }
       });
     },
-    [studio, studioProperties, findStableClassIdByName]
+    [studio, studioProperties, findStableClassIdByName, schemaMode]
   );
 
   const handleUpdateClassProperty = useCallback(
@@ -1114,14 +1145,24 @@ export default function DesignCanvasSidebar() {
         const existingData = prop.data as Record<string, unknown> | undefined;
         const next: Record<string, unknown> = { ...(existingData ?? {}) };
         if (data.referenceClass?.trim()) {
-          next.$ref = refForClassName(data.referenceClass);
           next.refType = data.refType ?? 'direct';
+          const storage =
+            schemaMode === 'sql' ? (data.referenceStorage ?? 'id') : 'nested';
+          next['x-ref-storage'] = storage;
+          next['x-ref-class-name'] = data.referenceClass;
           if (refClassId) next['x-ref-class-id'] = refClassId;
           else delete next['x-ref-class-id'];
+          if (storage === 'nested') {
+            next.$ref = refForClassName(data.referenceClass);
+          } else {
+            delete next.$ref;
+          }
         } else {
           delete next.$ref;
           delete next.refType;
           delete next['x-ref-class-id'];
+          delete next['x-ref-class-name'];
+          delete next['x-ref-storage'];
         }
         if (data.overrideRequired === true) next.required = true;
         else if (data.overrideRequired === false) next.required = false;
@@ -1130,7 +1171,7 @@ export default function DesignCanvasSidebar() {
         prop.data = Object.keys(next).length > 0 ? next : undefined;
       });
     },
-    [studio, findStableClassIdByName]
+    [studio, findStableClassIdByName, schemaMode]
   );
 
   const handleRemoveClassProperty = useCallback(
@@ -1288,6 +1329,7 @@ export default function DesignCanvasSidebar() {
               availableProperties={studioProperties}
               canEdit={!isReadOnly}
               loading={classesLoading}
+              schemaMode={schemaMode}
               onAddClass={handleAddClass}
               onUpdateClass={handleUpdateClass}
               onDeleteClass={handleDeleteClass}

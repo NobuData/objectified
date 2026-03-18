@@ -7,14 +7,20 @@ import * as Checkbox from '@radix-ui/react-checkbox';
 import { ChevronDown, Check, Link2, X } from 'lucide-react';
 import type { StudioProperty } from '@lib/studio/types';
 import type { ClassRefType } from '@lib/studio/canvasClassRefEdges';
+import type { SchemaMode } from '@lib/studio/schemaMode';
 
 export interface ClassPropertySaveData {
   name: string;
   description: string;
   propertyId?: string;
-  /** When set, property references this class ($ref + refType in data). When empty, clears reference. */
+  /** When set, property references this class. When empty, clears reference. */
   referenceClass?: string;
   refType?: ClassRefType;
+  /**
+   * In SQL mode, references are typically ID-based (foreign-key style) rather than nested `$ref`.
+   * This controls how the reference is stored in property `data`.
+   */
+  referenceStorage?: 'id' | 'nested';
   /** Override: mark this property as required in the class schema (stored in data.required). */
   overrideRequired?: boolean;
   /** Display order (stored in data['x-order']). null means explicitly clear the value. */
@@ -32,6 +38,8 @@ interface ClassPropertyDialogProps {
   availableProperties: StudioProperty[];
   /** Other class names (excluding current class) for "reference to class" dropdown. */
   availableClassNamesForRef: string[];
+  /** Current schema mode (OpenAPI vs SQL). */
+  schemaMode?: SchemaMode;
   /** Initial values for edit mode. */
   initial?: {
     name: string;
@@ -39,6 +47,7 @@ interface ClassPropertyDialogProps {
     propertyId?: string;
     referenceClass?: string;
     refType?: ClassRefType;
+    referenceStorage?: 'id' | 'nested';
     overrideRequired?: boolean;
     order?: number;
     parentId?: string | null;
@@ -67,6 +76,7 @@ interface FormState {
   description: string;
   referenceClass: string;
   refType: ClassRefType;
+  referenceStorage: 'id' | 'nested';
   overrideRequired: boolean;
   order: string;
   parentId: string;
@@ -87,6 +97,7 @@ export default function ClassPropertyDialog({
   mode,
   availableProperties,
   availableClassNamesForRef,
+  schemaMode = 'openapi',
   initial,
   availableParentProperties = [],
   onSave,
@@ -98,6 +109,8 @@ export default function ClassPropertyDialog({
     description: initial?.description ?? '',
     referenceClass: initial?.referenceClass ?? NO_REFERENCE_VALUE,
     refType: initial?.refType ?? 'direct',
+    referenceStorage:
+      initial?.referenceStorage ?? (schemaMode === 'sql' ? 'id' : 'nested'),
     overrideRequired: initial?.overrideRequired ?? false,
     order: initial?.order != null ? String(initial.order) : '',
     parentId: initial?.parentId ?? NO_PARENT_VALUE,
@@ -113,6 +126,8 @@ export default function ClassPropertyDialog({
         description: initial?.description ?? '',
         referenceClass: initial?.referenceClass ?? NO_REFERENCE_VALUE,
         refType: initial?.refType ?? 'direct',
+        referenceStorage:
+          initial?.referenceStorage ?? (schemaMode === 'sql' ? 'id' : 'nested'),
         overrideRequired: initial?.overrideRequired ?? false,
         order: initial?.order != null ? String(initial.order) : '',
         parentId: initial?.parentId ?? NO_PARENT_VALUE,
@@ -126,12 +141,36 @@ export default function ClassPropertyDialog({
     initial?.description,
     initial?.referenceClass,
     initial?.refType,
+    initial?.referenceStorage,
     initial?.overrideRequired,
     initial?.order,
     initial?.parentId,
+    schemaMode,
   ]);
 
-  const { selectedPropertyId, name, description, referenceClass, refType, overrideRequired, order, parentId, error } = form;
+  const {
+    selectedPropertyId,
+    name,
+    description,
+    referenceClass,
+    refType,
+    referenceStorage,
+    overrideRequired,
+    order,
+    parentId,
+    error,
+  } = form;
+
+  const toSnakeCase = (input: string): string => {
+    const trimmed = (input ?? '').trim();
+    if (!trimmed) return '';
+    // "OrderItem" -> "order_item", "order item" -> "order_item"
+    const withUnderscores = trimmed
+      .replace(/[\s-]+/g, '_')
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/__+/g, '_');
+    return withUnderscores.toLowerCase();
+  };
 
   // When a property is selected from the dropdown, auto-fill the name
   const handlePropertySelect = (propId: string) => {
@@ -171,6 +210,7 @@ export default function ClassPropertyDialog({
       propertyId: realPropertyId,
       referenceClass: refClass,
       refType: refClass ? refType : undefined,
+      referenceStorage: refClass ? referenceStorage : undefined,
       overrideRequired,
       order: validOrder,
       parentId: realParentId ?? null,
@@ -422,7 +462,27 @@ export default function ClassPropertyDialog({
                 <Select.Root
                   value={referenceClass}
                   onValueChange={(v) =>
-                    setForm((f) => ({ ...f, referenceClass: v }))
+                    setForm((f) => {
+                      const next = { ...f, referenceClass: v };
+                      const isSelecting =
+                        v && v !== NO_REFERENCE_VALUE && schemaMode === 'sql';
+                      if (!isSelecting) return next;
+
+                      // Auto-suggest foreign key style name in SQL mode when appropriate.
+                      // Only overwrite when empty or still at a prior auto-suggested value.
+                      const selected = v.trim();
+                      const suggested = selected ? `${toSnakeCase(selected)}_id` : '';
+                      const priorWasSuggested =
+                        f.referenceClass &&
+                        f.referenceClass !== NO_REFERENCE_VALUE &&
+                        f.referenceStorage === 'id' &&
+                        f.name.trim() === `${toSnakeCase(f.referenceClass)}_id`;
+                      const shouldAutofill = !f.name.trim() || priorWasSuggested;
+                      if (suggested && f.referenceStorage === 'id' && shouldAutofill) {
+                        next.name = suggested;
+                      }
+                      return next;
+                    })
                   }
                 >
                   <Select.Trigger
@@ -471,6 +531,78 @@ export default function ClassPropertyDialog({
                 </Select.Root>
                 {referenceClass !== NO_REFERENCE_VALUE && (
                   <div className="space-y-1">
+                    {schemaMode === 'sql' && (
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="property-ref-storage"
+                          className="block text-xs font-medium text-slate-600 dark:text-slate-400"
+                        >
+                          Reference storage
+                        </label>
+                        <Select.Root
+                          value={referenceStorage}
+                          onValueChange={(v) =>
+                            setForm((f) => {
+                              const next = { ...f, referenceStorage: v as 'id' | 'nested' };
+                              if (v === 'id') {
+                                const ref = f.referenceClass;
+                                const selected =
+                                  ref && ref !== NO_REFERENCE_VALUE ? ref.trim() : '';
+                                const suggested = selected ? `${toSnakeCase(selected)}_id` : '';
+                                const priorWasSuggested =
+                                  f.referenceClass &&
+                                  f.referenceClass !== NO_REFERENCE_VALUE &&
+                                  f.referenceStorage === 'nested' &&
+                                  f.name.trim() === f.referenceClass.trim();
+                                if (suggested && (!f.name.trim() || priorWasSuggested)) {
+                                  next.name = suggested;
+                                }
+                              }
+                              return next;
+                            })
+                          }
+                        >
+                          <Select.Trigger
+                            id="property-ref-storage"
+                            className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            aria-label="Reference storage"
+                          >
+                            <Select.Value />
+                            <Select.Icon>
+                              <ChevronDown className="h-4 w-4 text-slate-400" />
+                            </Select.Icon>
+                          </Select.Trigger>
+                          <Select.Portal>
+                            <Select.Content
+                              className="z-[10003] w-full bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden"
+                              position="popper"
+                              sideOffset={4}
+                            >
+                              <Select.Viewport className="p-1">
+                                <Select.Item
+                                  value="id"
+                                  className="flex items-center px-3 py-2 rounded text-sm text-slate-900 dark:text-slate-100 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                                >
+                                  <Select.ItemText>ID (foreign key style)</Select.ItemText>
+                                  <Select.ItemIndicator className="ml-auto">
+                                    <Check className="h-4 w-4" />
+                                  </Select.ItemIndicator>
+                                </Select.Item>
+                                <Select.Item
+                                  value="nested"
+                                  className="flex items-center px-3 py-2 rounded text-sm text-slate-900 dark:text-slate-100 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                                >
+                                  <Select.ItemText>Nested ($ref)</Select.ItemText>
+                                  <Select.ItemIndicator className="ml-auto">
+                                    <Check className="h-4 w-4" />
+                                  </Select.ItemIndicator>
+                                </Select.Item>
+                              </Select.Viewport>
+                            </Select.Content>
+                          </Select.Portal>
+                        </Select.Root>
+                      </div>
+                    )}
                     <label
                       htmlFor="property-ref-type"
                       className="block text-xs font-medium text-slate-600 dark:text-slate-400"
