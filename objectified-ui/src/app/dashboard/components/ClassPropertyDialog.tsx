@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Select from '@radix-ui/react-select';
+import * as Checkbox from '@radix-ui/react-checkbox';
 import { ChevronDown, Check, Link2, X } from 'lucide-react';
 import type { StudioProperty } from '@lib/studio/types';
 import type { ClassRefType } from '@lib/studio/canvasClassRefEdges';
@@ -14,6 +15,12 @@ export interface ClassPropertySaveData {
   /** When set, property references this class ($ref + refType in data). When empty, clears reference. */
   referenceClass?: string;
   refType?: ClassRefType;
+  /** Override: mark this property as required in the class schema (stored in data.required). */
+  overrideRequired?: boolean;
+  /** Display order (stored in data['x-order']). null means explicitly clear the value. */
+  order?: number | null;
+  /** Parent class-property id for nesting (nested under this property). */
+  parentId?: string | null;
 }
 
 interface ClassPropertyDialogProps {
@@ -32,7 +39,12 @@ interface ClassPropertyDialogProps {
     propertyId?: string;
     referenceClass?: string;
     refType?: ClassRefType;
+    overrideRequired?: boolean;
+    order?: number;
+    parentId?: string | null;
   };
+  /** Eligible parent properties for nesting (same class, top-level). When editing, exclude current property. */
+  availableParentProperties?: { id: string; name: string }[];
   /** Called with the form data when the user saves. */
   onSave: (data: ClassPropertySaveData) => void;
   /** Called when the dialog is closed without saving. */
@@ -41,6 +53,9 @@ interface ClassPropertyDialogProps {
 
 /** Sentinel value for "no property linked" in the Radix Select (empty string not allowed). */
 const NO_PROPERTY_VALUE = '__no_property__';
+
+/** Sentinel value for "no parent" (top-level property). */
+const NO_PARENT_VALUE = '__no_parent__';
 
 /**
  * Dialog for adding or editing a class-property.
@@ -52,6 +67,9 @@ interface FormState {
   description: string;
   referenceClass: string;
   refType: ClassRefType;
+  overrideRequired: boolean;
+  order: string;
+  parentId: string;
   error: string;
 }
 
@@ -70,6 +88,7 @@ export default function ClassPropertyDialog({
   availableProperties,
   availableClassNamesForRef,
   initial,
+  availableParentProperties = [],
   onSave,
   onClose,
 }: ClassPropertyDialogProps) {
@@ -79,6 +98,9 @@ export default function ClassPropertyDialog({
     description: initial?.description ?? '',
     referenceClass: initial?.referenceClass ?? NO_REFERENCE_VALUE,
     refType: initial?.refType ?? 'direct',
+    overrideRequired: initial?.overrideRequired ?? false,
+    order: initial?.order != null ? String(initial.order) : '',
+    parentId: initial?.parentId ?? NO_PARENT_VALUE,
     error: '',
   });
 
@@ -91,6 +113,9 @@ export default function ClassPropertyDialog({
         description: initial?.description ?? '',
         referenceClass: initial?.referenceClass ?? NO_REFERENCE_VALUE,
         refType: initial?.refType ?? 'direct',
+        overrideRequired: initial?.overrideRequired ?? false,
+        order: initial?.order != null ? String(initial.order) : '',
+        parentId: initial?.parentId ?? NO_PARENT_VALUE,
         error: '',
       });
     }
@@ -101,9 +126,12 @@ export default function ClassPropertyDialog({
     initial?.description,
     initial?.referenceClass,
     initial?.refType,
+    initial?.overrideRequired,
+    initial?.order,
+    initial?.parentId,
   ]);
 
-  const { selectedPropertyId, name, description, referenceClass, refType, error } = form;
+  const { selectedPropertyId, name, description, referenceClass, refType, overrideRequired, order, parentId, error } = form;
 
   // When a property is selected from the dropdown, auto-fill the name
   const handlePropertySelect = (propId: string) => {
@@ -133,12 +161,19 @@ export default function ClassPropertyDialog({
       referenceClass && referenceClass !== NO_REFERENCE_VALUE
         ? referenceClass.trim()
         : undefined;
+    const orderNum = order.trim() === '' ? null : parseInt(order, 10);
+    const validOrder: number | null = orderNum !== null && !isNaN(orderNum) ? orderNum : null;
+    const realParentId =
+      parentId && parentId !== NO_PARENT_VALUE ? parentId : undefined;
     onSave({
       name: trimmed,
       description: description.trim(),
       propertyId: realPropertyId,
       referenceClass: refClass,
       refType: refClass ? refType : undefined,
+      overrideRequired,
+      order: validOrder,
+      parentId: realParentId ?? null,
     });
   };
 
@@ -273,6 +308,106 @@ export default function ClassPropertyDialog({
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
               />
             </div>
+
+            {/* Override required (GitHub #113) */}
+            <div className="flex items-center gap-2">
+              <Checkbox.Root
+                id="property-required"
+                checked={overrideRequired}
+                onCheckedChange={(checked) =>
+                  setForm((f) => ({ ...f, overrideRequired: checked === true }))
+                }
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+              >
+                <Checkbox.Indicator className="flex items-center justify-center text-white">
+                  <Check className="h-3 w-3" />
+                </Checkbox.Indicator>
+              </Checkbox.Root>
+              <label
+                htmlFor="property-required"
+                className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer"
+              >
+                Required (override)
+              </label>
+            </div>
+
+            {/* Order (GitHub #113) */}
+            <div className="space-y-1">
+              <label
+                htmlFor="property-order"
+                className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+              >
+                Order
+              </label>
+              <input
+                id="property-order"
+                type="number"
+                min={0}
+                value={order}
+                onChange={(e) => setForm((f) => ({ ...f, order: e.target.value }))}
+                placeholder="Optional display order"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Nested parent (GitHub #113) */}
+            {availableParentProperties.length > 0 && (
+              <div className="space-y-1">
+                <label
+                  htmlFor="property-parent"
+                  className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+                >
+                  Nested under
+                </label>
+                <Select.Root
+                  value={parentId}
+                  onValueChange={(v) => setForm((f) => ({ ...f, parentId: v }))}
+                >
+                  <Select.Trigger
+                    id="property-parent"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  >
+                    <Select.Value placeholder="None (top-level)" />
+                    <Select.Icon>
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    </Select.Icon>
+                  </Select.Trigger>
+                  <Select.Portal>
+                    <Select.Content
+                      className="z-[10003] w-full bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden"
+                      position="popper"
+                      sideOffset={4}
+                    >
+                      <Select.ScrollUpButton />
+                      <Select.Viewport className="p-1 max-h-48">
+                        <Select.Item
+                          value={NO_PARENT_VALUE}
+                          className="flex items-center px-3 py-2 rounded text-sm text-slate-500 dark:text-slate-400 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                        >
+                          <Select.ItemText>None (top-level)</Select.ItemText>
+                          <Select.ItemIndicator className="ml-auto">
+                            <Check className="h-4 w-4" />
+                          </Select.ItemIndicator>
+                        </Select.Item>
+                        {availableParentProperties.map((parent) => (
+                          <Select.Item
+                            key={parent.id}
+                            value={parent.id}
+                            className="flex items-center px-3 py-2 rounded text-sm text-slate-900 dark:text-slate-100 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                          >
+                            <Select.ItemText>{parent.name}</Select.ItemText>
+                            <Select.ItemIndicator className="ml-auto">
+                              <Check className="h-4 w-4" />
+                            </Select.ItemIndicator>
+                          </Select.Item>
+                        ))}
+                      </Select.Viewport>
+                      <Select.ScrollDownButton />
+                    </Select.Content>
+                  </Select.Portal>
+                </Select.Root>
+              </div>
+            )}
 
             {/* Reference to class (creates edge on canvas). GitHub #98 */}
             {availableClassNamesForRef.length > 0 && (

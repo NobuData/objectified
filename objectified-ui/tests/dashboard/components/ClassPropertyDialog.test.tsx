@@ -114,6 +114,9 @@ describe('ClassPropertyDialog', () => {
       propertyId: undefined,
       referenceClass: undefined,
       refType: undefined,
+      overrideRequired: false,
+      order: null,
+      parentId: null,
     });
   });
 
@@ -205,6 +208,9 @@ describe('ClassPropertyDialog', () => {
       propertyId: undefined,
       referenceClass: 'Order',
       refType: 'optional',
+      overrideRequired: false,
+      order: null,
+      parentId: null,
     });
   });
 
@@ -228,6 +234,9 @@ describe('ClassPropertyDialog', () => {
       propertyId: undefined,
       referenceClass: 'Product',
       refType: 'direct',
+      overrideRequired: false,
+      order: null,
+      parentId: null,
     });
   });
 
@@ -251,6 +260,9 @@ describe('ClassPropertyDialog', () => {
       propertyId: undefined,
       referenceClass: 'Order',
       refType: 'bidirectional',
+      overrideRequired: false,
+      order: null,
+      parentId: null,
     });
   });
 
@@ -274,6 +286,9 @@ describe('ClassPropertyDialog', () => {
       propertyId: undefined,
       referenceClass: undefined,
       refType: undefined,
+      overrideRequired: false,
+      order: null,
+      parentId: null,
     });
   });
 
@@ -304,6 +319,136 @@ describe('ClassPropertyDialog', () => {
       />
     );
     expect(screen.queryByText('Reference type')).toBeNull();
+  });
+
+  // GitHub #113 — override required, order, nested parent_id
+
+  it('shows Required (override) checkbox', () => {
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        {...defaultProps}
+      />
+    );
+    expect(screen.getByLabelText('Required (override)')).toBeInTheDocument();
+  });
+
+  it('shows Order field', () => {
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        {...defaultProps}
+      />
+    );
+    expect(screen.getByLabelText('Order')).toBeInTheDocument();
+  });
+
+  it('includes overrideRequired true in onSave when Required is checked', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        {...defaultProps}
+      />
+    );
+    await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'id');
+    await user.click(screen.getByLabelText('Required (override)'));
+    await user.click(screen.getByRole('button', { name: /add property/i }));
+    expect(mockOnSave).toHaveBeenCalledWith(
+      expect.objectContaining({ overrideRequired: true })
+    );
+  });
+
+  it('includes order in onSave when Order is set', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        {...defaultProps}
+      />
+    );
+    await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'id');
+    await user.type(screen.getByLabelText('Order'), '2');
+    await user.click(screen.getByRole('button', { name: /add property/i }));
+    expect(mockOnSave).toHaveBeenCalledWith(
+      expect.objectContaining({ order: 2 })
+    );
+  });
+
+  it('submits order: null when Order field is empty (to clear existing x-order)', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClassPropertyDialog
+        open
+        mode="edit"
+        availableProperties={[]}
+        initial={{ name: 'myProp', description: '', order: 3 }}
+        {...defaultProps}
+      />
+    );
+    const orderField = screen.getByLabelText('Order');
+    await user.clear(orderField);
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(mockOnSave).toHaveBeenCalledWith(
+      expect.objectContaining({ order: null })
+    );
+  });
+
+  it('shows Nested under dropdown when availableParentProperties is non-empty', () => {
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        availableParentProperties={[{ id: 'pid1', name: 'parentProp' }]}
+        {...defaultProps}
+      />
+    );
+    expect(screen.getByText('Nested under')).toBeInTheDocument();
+  });
+
+  it('does not show Nested under when availableParentProperties is empty', () => {
+    render(
+      <ClassPropertyDialog
+        open
+        mode="add"
+        availableProperties={[]}
+        availableParentProperties={[]}
+        {...defaultProps}
+      />
+    );
+    expect(screen.queryByText('Nested under')).toBeNull();
+  });
+
+  it('pre-fills overrideRequired, order, and parentId in edit mode', () => {
+    render(
+      <ClassPropertyDialog
+        open
+        mode="edit"
+        availableProperties={[]}
+        availableParentProperties={[{ id: 'pid1', name: 'parentProp' }]}
+        initial={{
+          name: 'child',
+          description: '',
+          overrideRequired: true,
+          order: 1,
+          parentId: 'pid1',
+        }}
+        {...defaultProps}
+      />
+    );
+    expect(screen.getByDisplayValue('child')).toBeInTheDocument();
+    const requiredCheckbox = screen.getByLabelText('Required (override)');
+    expect(requiredCheckbox).toBeChecked();
+    expect(screen.getByLabelText('Order')).toHaveValue(1);
   });
 });
 

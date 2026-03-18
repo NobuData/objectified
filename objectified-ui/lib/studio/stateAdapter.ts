@@ -163,13 +163,19 @@ export function stateToCommitPayload(
 ): VersionCommitPayload {
   const options = opts ?? {};
   const classesPayload: VersionCommitClass[] = state.classes.map((c) => {
-    const propertiesPayload: VersionCommitClassProperty[] = c.properties.map((p) => ({
-      name: p.name,
-      description: p.description ?? null,
-      data: p.data ?? undefined,
-      property_name: p.property_name ?? null,
-      property_data: p.property_data ?? null,
-    }));
+    const propertiesPayload: VersionCommitClassProperty[] = c.properties.map((p) => {
+      const parentPropName = p.parent_id
+        ? (c.properties.find((pp) => (pp.id ?? pp.localId) === p.parent_id)?.name ?? null)
+        : null;
+      return {
+        name: p.name,
+        description: p.description ?? null,
+        data: p.data ?? undefined,
+        property_name: p.property_name ?? null,
+        property_data: p.property_data ?? null,
+        parent_property_name: parentPropName,
+      };
+    });
     const metadata: Record<string, unknown> = {
       ...(c.metadata ?? {}),
       ...(c.canvas_metadata
