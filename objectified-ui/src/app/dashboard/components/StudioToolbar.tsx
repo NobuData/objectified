@@ -22,6 +22,7 @@ import {
   Network,
   FileDown,
   ChevronDown,
+  Code2,
 } from 'lucide-react';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
@@ -36,6 +37,7 @@ import MergeDialog from '@/app/dashboard/components/MergeDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 import ExportDialog from '@/app/dashboard/components/ExportDialog';
+import GenerateCodeDialog from '@/app/dashboard/components/GenerateCodeDialog';
 import { getSchemaMode, setSchemaModeOnDraft, type SchemaMode } from '@lib/studio/schemaMode';
 import * as Select from '@radix-ui/react-select';
 
@@ -66,6 +68,7 @@ export default function StudioToolbar() {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [canvasSettingsDialogOpen, setCanvasSettingsDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [generateCodeOpen, setGenerateCodeOpen] = useState(false);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
@@ -467,6 +470,15 @@ export default function StudioToolbar() {
       >
         <FileDown className="h-4 w-4" />
       </button>
+      <button
+        type="button"
+        onClick={() => setGenerateCodeOpen(true)}
+        className={btnBase}
+        aria-label="Generate code"
+        title="Generate TypeScript, Prisma, GraphQL, Go, Pydantic, SQL, or custom Mustache from schema"
+      >
+        <Code2 className="h-4 w-4" />
+      </button>
 
       {showGitToolbar && (
         <>
@@ -533,6 +545,7 @@ export default function StudioToolbar() {
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
       />
+      <GenerateCodeDialog open={generateCodeOpen} onOpenChange={setGenerateCodeOpen} />
     </div>
   );
 }

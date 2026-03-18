@@ -3389,6 +3389,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/mustache@npm:4.2.5":
+  version: 4.2.5
+  resolution: "@types/mustache@npm:4.2.5"
+  checksum: 10c0/624975c39068d47407eadb89628aaff5ef60f3b7a71eef92a254310896a4e90518a01dcf71d95779ab2c986034a6ca5403d22fea237c67ff87f2e2b3fb794ea6
+  languageName: node
+  linkType: hard
+
 "@types/node@npm:*, @types/node@npm:^25.3.3":
   version: 25.3.5
   resolution: "@types/node@npm:25.3.5"
@@ -7523,6 +7530,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"mustache@npm:4.2.0":
+  version: 4.2.0
+  resolution: "mustache@npm:4.2.0"
+  bin:
+    mustache: bin/mustache
+  checksum: 10c0/1f8197e8a19e63645a786581d58c41df7853da26702dbc005193e2437c98ca49b255345c173d50c08fe4b4dbb363e53cb655ecc570791f8deb09887248dd34a2
+  languageName: node
+  linkType: hard
+
 "nanoid@npm:^3.3.11, nanoid@npm:^3.3.6":
   version: 3.3.11
   resolution: "nanoid@npm:3.3.11"
@@ -7874,6 +7890,7 @@ __metadata:
     "@types/bcryptjs": "npm:^3.0.0"
     "@types/dagre": "npm:^0.7.54"
     "@types/jest": "npm:^30.0.0"
+    "@types/mustache": "npm:4.2.5"
     "@types/node": "npm:^25.3.3"
     "@types/pg": "npm:^8.18.0"
     "@types/react": "npm:^19.2.14"
@@ -7889,6 +7906,7 @@ __metadata:
     jest-environment-jsdom: "npm:^30.2.0"
     lucide-react: "npm:^0.577.0"
     monaco-editor: "npm:^0.55.1"
+    mustache: "npm:4.2.0"
     next: "npm:^16.1.6"
     next-auth: "npm:^4.24.13"
     next-themes: "npm:^0.4.6"
