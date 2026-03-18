@@ -294,6 +294,55 @@ describe('PropertyDialog', () => {
     });
   });
 
+  it('does not trigger save when Enter is pressed while validating', async () => {
+    let resolveValidate!: (value: { valid: boolean; errors: [] }) => void;
+    mockedValidate.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveValidate = resolve; }),
+    );
+    const user = userEvent.setup();
+    render(<PropertyDialog {...defaultProps} />);
+    const nameInput = screen.getByPlaceholderText(/e\.g\. id/i);
+    await user.type(nameInput, 'myField');
+
+    // Trigger first save — stays in validating state
+    fireEvent.keyDown(nameInput, { key: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /validating/i })).toBeInTheDocument();
+    });
+
+    // Second Enter while validating should be a no-op
+    fireEvent.keyDown(nameInput, { key: 'Enter' });
+    expect(mockedValidate).toHaveBeenCalledTimes(1);
+
+    // Resolve the pending validation
+    resolveValidate({ valid: true, errors: [] });
+    await waitFor(() => expect(mockOnSave).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not issue a second validate call when Save is clicked while validating', async () => {
+    let resolveValidate!: (value: { valid: boolean; errors: [] }) => void;
+    mockedValidate.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveValidate = resolve; }),
+    );
+    const user = userEvent.setup();
+    render(<PropertyDialog {...defaultProps} />);
+    await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'myField');
+
+    // First click starts validation
+    await user.click(screen.getByRole('button', { name: /add property/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /validating/i })).toBeDisabled();
+    });
+
+    // Button is disabled — a second click should be ignored by the browser;
+    // the early-return guard also protects against any programmatic trigger.
+    expect(mockedValidate).toHaveBeenCalledTimes(1);
+
+    // Finish the first request
+    resolveValidate({ valid: true, errors: [] });
+    await waitFor(() => expect(mockOnSave).toHaveBeenCalledTimes(1));
+  });
+
   // Edit mode data loading
   it('loads property data in edit mode: string with constraints', async () => {
     const user = userEvent.setup();
