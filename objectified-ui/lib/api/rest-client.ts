@@ -319,6 +319,8 @@ export interface VersionCommitClassProperty {
   data?: Record<string, unknown>;
   property_name?: string | null;
   property_data?: Record<string, unknown> | null;
+  /** Name of the parent class-property for nesting. null or omitted means top-level. */
+  parent_property_name?: string | null;
 }
 
 export interface VersionCommitClass {

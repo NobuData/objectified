@@ -302,9 +302,20 @@ def _upsert_class_properties(
 
     For each property in the payload:
     1. Find or create the property in objectified.property (project-scoped, by name).
-    2. Find or create the class_property join row (class-scoped, by name).
+    2. Find or create the class_property join row (class-scoped, by name and parent).
+
+    Properties are processed in two passes: top-level first, then nested, so that
+    parent_property_name references can be resolved to parent IDs within the same commit.
     """
-    for prop_payload in properties:
+    # Split properties into top-level and nested.
+    top_level = [p for p in properties if not (p.get("parent_property_name") or "").strip()]
+    nested = [p for p in properties if (p.get("parent_property_name") or "").strip()]
+
+    # name -> class_property.id for top-level properties (built during first pass).
+    top_level_id_map: dict[str, str] = {}
+
+    def _upsert_single(prop_payload: dict[str, Any], parent_cp_id: str | None) -> str | None:
+        """Upsert one class_property row and return its id."""
         prop_name = (prop_payload.get("name") or "").strip()
         if not prop_name:
             raise HTTPException(status_code=400, detail="Property name is required")
@@ -356,16 +367,27 @@ def _upsert_class_properties(
             property_id = str(prop_row["id"])
 
         # Find or create class_property join row.
-        cp_rows = db.execute_query(
-            """
-            SELECT id FROM objectified.class_property
-            WHERE class_id = %s AND LOWER(name) = LOWER(%s) AND parent_id IS NULL
-            LIMIT 1
-            """,
-            (class_id, prop_name),
-        )
+        if parent_cp_id is not None:
+            cp_rows = db.execute_query(
+                """
+                SELECT id FROM objectified.class_property
+                WHERE class_id = %s AND LOWER(name) = LOWER(%s) AND parent_id = %s
+                LIMIT 1
+                """,
+                (class_id, prop_name, parent_cp_id),
+            )
+        else:
+            cp_rows = db.execute_query(
+                """
+                SELECT id FROM objectified.class_property
+                WHERE class_id = %s AND LOWER(name) = LOWER(%s) AND parent_id IS NULL
+                LIMIT 1
+                """,
+                (class_id, prop_name),
+            )
+
         if cp_rows:
-            # Update existing class_property data.
+            cp_id = str(cp_rows[0]["id"])
             db.execute_mutation(
                 """
                 UPDATE objectified.class_property
@@ -373,21 +395,59 @@ def _upsert_class_properties(
                     updated_at = timezone('utc', clock_timestamp())
                 WHERE id = %s
                 """,
-                (prop_description, json.dumps(prop_data), str(cp_rows[0]["id"])),
+                (prop_description, json.dumps(prop_data), cp_id),
                 returning=False,
                 _conn=_conn,
             )
         else:
-            db.execute_mutation(
+            cp_row = db.execute_mutation(
                 """
                 INSERT INTO objectified.class_property
                     (class_id, property_id, parent_id, name, description, data)
-                VALUES (%s, %s, NULL, %s, %s, %s::jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb)
                 RETURNING id
                 """,
-                (class_id, property_id, prop_name, prop_description, json.dumps(prop_data)),
+                (class_id, property_id, parent_cp_id, prop_name, prop_description, json.dumps(prop_data)),
                 _conn=_conn,
             )
+            if not cp_row:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to create class_property '{prop_name}'",
+                )
+            cp_id = str(cp_row["id"])
+
+        return cp_id
+
+    # First pass: upsert top-level properties and build name -> id map.
+    for prop_payload in top_level:
+        cp_id = _upsert_single(prop_payload, None)
+        if cp_id:
+            top_level_id_map[prop_payload.get("name", "").strip().lower()] = cp_id
+
+    # Second pass: upsert nested properties using the name map to resolve parent ids.
+    for prop_payload in nested:
+        parent_name = (prop_payload.get("parent_property_name") or "").strip().lower()
+        parent_cp_id = top_level_id_map.get(parent_name)
+        if not parent_cp_id:
+            # Parent not found in this commit — look it up in the database.
+            parent_rows = db.execute_query(
+                """
+                SELECT id FROM objectified.class_property
+                WHERE class_id = %s AND LOWER(name) = LOWER(%s) AND parent_id IS NULL
+                LIMIT 1
+                """,
+                (class_id, parent_name),
+            )
+            parent_cp_id = str(parent_rows[0]["id"]) if parent_rows else None
+        if not parent_cp_id:
+            parent_name_display = prop_payload.get("parent_property_name")
+            nested_name_display = prop_payload.get("name")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Parent property '{parent_name_display}' not found for nested property '{nested_name_display}'",
+            )
+        _upsert_single(prop_payload, parent_cp_id)
 
 
 def _apply_commit_payload(

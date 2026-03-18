@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.9
+  version: 1.0.10
 paths:
   /v1/auth/login:
     post:
@@ -5793,6 +5793,12 @@ components:
             type: object
           - type: 'null'
           title: Property Data
+        parent_property_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Property Name
+          description: Name of the parent class-property for nesting. Null or omitted means top-level.
       type: object
       required:
       - name

@@ -148,6 +148,7 @@ class VersionCommitClassProperty(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
     property_name: Optional[str] = None
     property_data: Optional[dict[str, Any]] = None
+    parent_property_name: Optional[str] = None
 
 
 class VersionCommitClass(BaseModel):

@@ -199,6 +199,56 @@ describe('stateToCommitPayload', () => {
     );
   });
 
+  it('includes parent_property_name in commit payload when property has parent_id (GitHub #113)', () => {
+    const state: LocalVersionState = {
+      versionId: 'v1',
+      revision: 1,
+      classes: [
+        {
+          id: 'c1',
+          name: 'Address',
+          description: '',
+          properties: [
+            { id: 'cp1', name: 'street', description: '' },
+            { id: 'cp2', name: 'city', description: '', parent_id: 'cp1' },
+          ],
+          canvas_metadata: undefined,
+        },
+      ],
+      properties: [],
+      canvas_metadata: null,
+      groups: [],
+    };
+    const payload = stateToCommitPayload(state);
+    const props = payload.classes![0].properties!;
+    expect(props).toHaveLength(2);
+    expect(props[0].parent_property_name).toBeNull();
+    expect(props[1].parent_property_name).toBe('street');
+  });
+
+  it('sets parent_property_name to null when parent_id is not found in class (GitHub #113)', () => {
+    const state: LocalVersionState = {
+      versionId: 'v1',
+      revision: 1,
+      classes: [
+        {
+          id: 'c1',
+          name: 'Foo',
+          description: '',
+          properties: [
+            { id: 'cp1', name: 'bar', description: '', parent_id: 'unknown-id' },
+          ],
+          canvas_metadata: undefined,
+        },
+      ],
+      properties: [],
+      canvas_metadata: null,
+      groups: [],
+    };
+    const payload = stateToCommitPayload(state);
+    expect(payload.classes![0].properties![0].parent_property_name).toBeNull();
+  });
+
   it('includes empty tags array in class metadata when class tags are cleared (GitHub #100)', () => {
     const state = {
       versionId: 'v1',

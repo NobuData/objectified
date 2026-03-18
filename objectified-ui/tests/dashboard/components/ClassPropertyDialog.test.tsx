@@ -115,7 +115,7 @@ describe('ClassPropertyDialog', () => {
       referenceClass: undefined,
       refType: undefined,
       overrideRequired: false,
-      order: undefined,
+      order: null,
       parentId: null,
     });
   });
@@ -209,7 +209,7 @@ describe('ClassPropertyDialog', () => {
       referenceClass: 'Order',
       refType: 'optional',
       overrideRequired: false,
-      order: undefined,
+      order: null,
       parentId: null,
     });
   });
@@ -235,7 +235,7 @@ describe('ClassPropertyDialog', () => {
       referenceClass: 'Product',
       refType: 'direct',
       overrideRequired: false,
-      order: undefined,
+      order: null,
       parentId: null,
     });
   });
@@ -261,7 +261,7 @@ describe('ClassPropertyDialog', () => {
       referenceClass: 'Order',
       refType: 'bidirectional',
       overrideRequired: false,
-      order: undefined,
+      order: null,
       parentId: null,
     });
   });
@@ -287,7 +287,7 @@ describe('ClassPropertyDialog', () => {
       referenceClass: undefined,
       refType: undefined,
       overrideRequired: false,
-      order: undefined,
+      order: null,
       parentId: null,
     });
   });
@@ -344,7 +344,7 @@ describe('ClassPropertyDialog', () => {
         {...defaultProps}
       />
     );
-    expect(screen.getByLabelText('Display order')).toBeInTheDocument();
+    expect(screen.getByLabelText('Order')).toBeInTheDocument();
   });
 
   it('includes overrideRequired true in onSave when Required is checked', async () => {
@@ -376,10 +376,29 @@ describe('ClassPropertyDialog', () => {
       />
     );
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'id');
-    await user.type(screen.getByLabelText('Display order'), '2');
+    await user.type(screen.getByLabelText('Order'), '2');
     await user.click(screen.getByRole('button', { name: /add property/i }));
     expect(mockOnSave).toHaveBeenCalledWith(
       expect.objectContaining({ order: 2 })
+    );
+  });
+
+  it('submits order: null when Order field is empty (to clear existing x-order)', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClassPropertyDialog
+        open
+        mode="edit"
+        availableProperties={[]}
+        initial={{ name: 'myProp', description: '', order: 3 }}
+        {...defaultProps}
+      />
+    );
+    const orderField = screen.getByLabelText('Order');
+    await user.clear(orderField);
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(mockOnSave).toHaveBeenCalledWith(
+      expect.objectContaining({ order: null })
     );
   });
 
@@ -429,7 +448,7 @@ describe('ClassPropertyDialog', () => {
     expect(screen.getByDisplayValue('child')).toBeInTheDocument();
     const requiredCheckbox = screen.getByLabelText('Required (override)');
     expect(requiredCheckbox).toBeChecked();
-    expect(screen.getByLabelText('Display order')).toHaveValue(1);
+    expect(screen.getByLabelText('Order')).toHaveValue(1);
   });
 });
 
