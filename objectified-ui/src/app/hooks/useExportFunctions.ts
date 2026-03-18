@@ -8,14 +8,18 @@ import {
   useCanvasExportOptional,
   type ImageExportOptions,
 } from '@/app/contexts/CanvasExportContext';
+import { useStudioOptional } from '@/app/contexts/StudioContext';
 import {
   exportAsMermaid,
   exportAsPlantUML,
   exportAsDot,
   exportAsGraphML,
   exportAsJson,
+  exportAsOpenApi,
+  exportAsSqlDdl,
   type ExportGraphOptions,
 } from '@lib/studio/canvasExportFormats';
+import { getSchemaMode, type SchemaMode } from '@lib/studio/schemaMode';
 
 function downloadString(content: string, filename: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType });
@@ -39,12 +43,17 @@ export interface ExportFunctions {
   exportAsDot: (options?: ExportGraphOptions) => void;
   exportAsGraphML: (options?: ExportGraphOptions) => void;
   exportAsJson: (options?: ExportGraphOptions) => void;
+  exportAsOpenApi: () => void;
+  exportAsSqlDdl: () => void;
   imageExportReady: boolean;
   dataExportReady: boolean;
+  schemaMode: SchemaMode;
 }
 
 export function useExportFunctions(): ExportFunctions {
   const ctx = useCanvasExportOptional();
+  const studio = useStudioOptional();
+  const schemaMode: SchemaMode = studio?.state ? getSchemaMode(studio.state) : 'openapi';
 
   const noop = useCallback(async () => {}, []);
 
@@ -114,6 +123,18 @@ export function useExportFunctions(): ExportFunctions {
     [ctx?.classes]
   );
 
+  const exportAsOpenApiFn = useCallback(() => {
+    if (!ctx?.classes?.length) return;
+    const content = exportAsOpenApi(ctx.classes);
+    downloadString(content, 'openapi.json', 'application/json');
+  }, [ctx?.classes]);
+
+  const exportAsSqlDdlFn = useCallback(() => {
+    if (!ctx?.classes?.length) return;
+    const content = exportAsSqlDdl(ctx.classes);
+    downloadString(content, 'schema.sql', 'text/plain');
+  }, [ctx?.classes]);
+
   return {
     exportAsPng,
     exportAsSvg,
@@ -124,7 +145,10 @@ export function useExportFunctions(): ExportFunctions {
     exportAsDot: exportAsDotFn,
     exportAsGraphML: exportAsGraphMLFn,
     exportAsJson: exportAsJsonFn,
+    exportAsOpenApi: exportAsOpenApiFn,
+    exportAsSqlDdl: exportAsSqlDdlFn,
     imageExportReady: Boolean(ctx?.imageExportApi),
     dataExportReady: Boolean(ctx?.classes?.length),
+    schemaMode,
   };
 }

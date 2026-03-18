@@ -19,7 +19,7 @@ export interface ExportDialogProps {
 
 type ExportType = 'image' | 'data';
 type ImageFormat = 'png' | 'svg' | 'jpeg' | 'pdf';
-type DataFormat = 'mermaid' | 'plantuml' | 'dot' | 'graphml' | 'json';
+type DataFormat = 'mermaid' | 'plantuml' | 'dot' | 'graphml' | 'json' | 'openapi' | 'sql-ddl';
 type BackgroundOption = 'white' | 'transparent';
 
 const IMAGE_FORMATS: { value: ImageFormat; label: string }[] = [
@@ -29,7 +29,7 @@ const IMAGE_FORMATS: { value: ImageFormat; label: string }[] = [
   { value: 'pdf', label: 'PDF' },
 ];
 
-const DATA_FORMATS: { value: DataFormat; label: string }[] = [
+const BASE_DATA_FORMATS: { value: DataFormat; label: string }[] = [
   { value: 'mermaid', label: 'Mermaid' },
   { value: 'plantuml', label: 'PlantUML' },
   { value: 'dot', label: 'DOT' },
@@ -74,6 +74,15 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
 
   const imageDisabled = !exportFns.imageExportReady;
   const dataDisabled = !exportFns.dataExportReady;
+  const dataFormats: { value: DataFormat; label: string }[] = [
+    ...BASE_DATA_FORMATS,
+    ...(exportFns.schemaMode === 'openapi'
+      ? ([{ value: 'openapi', label: 'OpenAPI document (JSON)' }] as const)
+      : ([] as const)),
+    ...(exportFns.schemaMode === 'sql'
+      ? ([{ value: 'sql-ddl', label: 'SQL DDL (PostgreSQL)' }] as const)
+      : ([] as const)),
+  ];
 
   const handleBack = () => {
     if (step === 2) setStep(1);
@@ -114,6 +123,8 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
         dot: () => exportFns.exportAsDot(opts),
         graphml: () => exportFns.exportAsGraphML(opts),
         json: () => exportFns.exportAsJson(opts),
+        openapi: () => exportFns.exportAsOpenApi(),
+        'sql-ddl': () => exportFns.exportAsSqlDdl(),
       };
       fns[dataFormat]();
       onOpenChange(false);
@@ -135,7 +146,7 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
     exportType === 'image'
       ? `Capture as ${IMAGE_FORMATS.find((f) => f.value === imageFormat)?.label ?? imageFormat}`
       : exportType === 'data'
-        ? `Export as ${DATA_FORMATS.find((f) => f.value === dataFormat)?.label ?? dataFormat}`
+        ? `Export as ${dataFormats.find((f) => f.value === dataFormat)?.label ?? dataFormat}`
         : 'Export';
 
   return (
@@ -317,7 +328,7 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                         position="popper"
                         sideOffset={4}
                       >
-                        {DATA_FORMATS.map((f) => (
+                        {dataFormats.map((f) => (
                           <Select.Item
                             key={f.value}
                             value={f.value}
@@ -357,7 +368,7 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                   )}
                   {exportType === 'data' && (
                     <>
-                      Format: <strong className="text-slate-800 dark:text-slate-200">{DATA_FORMATS.find((f) => f.value === dataFormat)?.label ?? dataFormat}</strong>.
+                      Format: <strong className="text-slate-800 dark:text-slate-200">{dataFormats.find((f) => f.value === dataFormat)?.label ?? dataFormat}</strong>.
                       Group info: <strong className="text-slate-800 dark:text-slate-200">{includeGroupInfo ? 'Yes' : 'No'}</strong>.
                     </>
                   )}
