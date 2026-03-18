@@ -84,6 +84,18 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
       : ([] as const)),
   ];
 
+  // When schemaMode changes, reset dataFormat if the current selection is no longer available.
+  useEffect(() => {
+    const modeFormats: DataFormat[] =
+      exportFns.schemaMode === 'openapi'
+        ? ['openapi']
+        : exportFns.schemaMode === 'sql'
+          ? ['sql-ddl']
+          : [];
+    const valid: DataFormat[] = ['mermaid', 'plantuml', 'dot', 'graphml', 'json', ...modeFormats];
+    setDataFormat((prev) => (valid.includes(prev) ? prev : 'mermaid'));
+  }, [exportFns.schemaMode]);
+
   const handleBack = () => {
     if (step === 2) setStep(1);
     else if (step === 3) setStep(2);
