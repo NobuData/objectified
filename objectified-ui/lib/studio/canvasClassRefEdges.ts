@@ -35,7 +35,7 @@ export interface ClassRefEdgeData extends Record<string, unknown> {
 
 const REF_CLASS_ID_KEYS = ['x-ref-class-id', 'refClassId', 'ref_class_id'] as const;
 
-function getRefClassIdFromData(data: Record<string, unknown> | undefined): string | null {
+export function getRefClassIdFromData(data: Record<string, unknown> | undefined): string | null {
   if (!data) return null;
   for (const key of REF_CLASS_ID_KEYS) {
     const v = data[key];
@@ -102,10 +102,17 @@ export function getRefTypeFromData(data: Record<string, unknown> | undefined): C
  * ambiguous links.
  */
 export function buildClassRefEdges(classes: StudioClass[]): Edge<ClassRefEdgeData>[] {
+  // Build validIds from ALL classes (independent of name de-duplication) so that
+  // x-ref-class-id references can resolve even for classes with blank/duplicate names.
+  const validIds = new Set<string>();
+  for (const cls of classes) {
+    const id = getStableClassId(cls);
+    if (id) validIds.add(id);
+  }
+
   // Build normalized (trim+lowercase) name → id map; detect and skip duplicates.
   const nameToId = new Map<string, string>();
   const duplicates = new Set<string>();
-  const validIds = new Set<string>();
   for (const cls of classes) {
     const name = (cls.name ?? '').trim().toLowerCase();
     if (!name) continue;
@@ -119,8 +126,6 @@ export function buildClassRefEdges(classes: StudioClass[]): Edge<ClassRefEdgeDat
     } else {
       nameToId.set(name, getStableClassId(cls));
     }
-    const id = getStableClassId(cls);
-    if (id) validIds.add(id);
   }
 
   const classNames = new Set(nameToId.keys());
@@ -128,9 +133,8 @@ export function buildClassRefEdges(classes: StudioClass[]): Edge<ClassRefEdgeDat
   const arrowMarker = { type: MarkerType.ArrowClosed };
 
   for (const cls of classes) {
-    const sourceName = (cls.name ?? '').trim().toLowerCase();
-    if (!sourceName) continue;
-    const sourceId = nameToId.get(sourceName);
+    // Use getStableClassId directly so id-based edges don't depend on nameToId.
+    const sourceId = getStableClassId(cls);
     if (!sourceId) continue;
 
     const properties = (cls.properties ?? []) as StudioClassProperty[];
