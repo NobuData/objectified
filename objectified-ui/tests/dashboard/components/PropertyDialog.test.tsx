@@ -1,16 +1,27 @@
 /**
  * Unit tests for PropertyDialog.
- * Reference: GitHub #104
+ * Reference: GitHub #104, #114 (REST schema validation on submit)
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PropertyDialog from '@/app/dashboard/components/PropertyDialog';
+import { validateJsonSchema } from '@lib/api/rest-client';
+
+jest.mock('@lib/api/rest-client', () => ({
+  ...jest.requireActual('@lib/api/rest-client'),
+  validateJsonSchema: jest.fn(),
+}));
+
+const mockedValidate = validateJsonSchema as jest.MockedFunction<
+  typeof validateJsonSchema
+>;
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="root"></div>';
   jest.clearAllMocks();
+  mockedValidate.mockResolvedValue({ valid: true, errors: [] });
 });
 
 describe('PropertyDialog', () => {
@@ -22,6 +33,7 @@ describe('PropertyDialog', () => {
     mode: 'add' as const,
     onSave: mockOnSave,
     onClose: mockOnClose,
+    restClientOptions: { jwt: 'test-jwt' } as const,
   };
 
   // Visibility
@@ -74,26 +86,33 @@ describe('PropertyDialog', () => {
     const user = userEvent.setup();
     render(<PropertyDialog {...defaultProps} />);
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(screen.getByText('Property name is required.')).toBeInTheDocument();
+    expect(screen.getByText('Property name is required')).toBeInTheDocument();
     expect(mockOnSave).not.toHaveBeenCalled();
   });
 
-  it('shows error when name contains invalid characters', async () => {
+  it('accepts names with hyphens (aligned with REST name rules)', async () => {
     const user = userEvent.setup();
     render(<PropertyDialog {...defaultProps} />);
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'my-field');
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(screen.getByText(/name must start with a letter/i)).toBeInTheDocument();
-    expect(mockOnSave).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockedValidate).toHaveBeenCalled();
+      expect(mockOnSave).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'my-field' }),
+      );
+    });
   });
 
-  it('shows error when name starts with a number', async () => {
+  it('accepts name starting with a number', async () => {
     const user = userEvent.setup();
     render(<PropertyDialog {...defaultProps} />);
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), '1field');
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(screen.getByText(/name must start with a letter/i)).toBeInTheDocument();
-    expect(mockOnSave).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalledWith(
+        expect.objectContaining({ name: '1field' }),
+      );
+    });
   });
 
   it('accepts name starting with underscore', async () => {
@@ -101,7 +120,9 @@ describe('PropertyDialog', () => {
     render(<PropertyDialog {...defaultProps} />);
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), '_internal');
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(mockOnSave).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalled();
+    });
   });
 
   it('accepts alphanumeric names with underscores', async () => {
@@ -109,7 +130,9 @@ describe('PropertyDialog', () => {
     render(<PropertyDialog {...defaultProps} />);
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'my_field_123');
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(mockOnSave).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalled();
+    });
   });
 
   it('shows duplicate name error in add mode', async () => {
@@ -144,7 +167,9 @@ describe('PropertyDialog', () => {
       />,
     );
     await user.click(screen.getByRole('button', { name: /save changes/i }));
-    expect(mockOnSave).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalled();
+    });
   });
 
   it('blocks duplicate when renaming to existing name in edit mode', async () => {
@@ -185,10 +210,16 @@ describe('PropertyDialog', () => {
     render(<PropertyDialog {...defaultProps} />);
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'myField');
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(mockOnSave).toHaveBeenCalledWith({
-      name: 'myField',
-      description: null,
-      data: expect.objectContaining({ type: 'string' }),
+    await waitFor(() => {
+      expect(mockedValidate).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'string' }),
+        defaultProps.restClientOptions,
+      );
+      expect(mockOnSave).toHaveBeenCalledWith({
+        name: 'myField',
+        description: null,
+        data: expect.objectContaining({ type: 'string' }),
+      });
     });
   });
 
@@ -201,12 +232,14 @@ describe('PropertyDialog', () => {
       '#/components/schemas/Address',
     );
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(mockOnSave).toHaveBeenCalledWith({
-      name: 'address',
-      description: null,
-      data: expect.objectContaining({
-        $ref: '#/components/schemas/Address',
-      }),
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalledWith({
+        name: 'address',
+        description: null,
+        data: expect.objectContaining({
+          $ref: '#/components/schemas/Address',
+        }),
+      });
     });
   });
 
@@ -215,9 +248,11 @@ describe('PropertyDialog', () => {
     render(<PropertyDialog {...defaultProps} />);
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), '  myField  ');
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(mockOnSave).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'myField' }),
-    );
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'myField' }),
+      );
+    });
   });
 
   // Type selector
@@ -254,7 +289,58 @@ describe('PropertyDialog', () => {
     const nameInput = screen.getByPlaceholderText(/e\.g\. id/i);
     await user.type(nameInput, 'myField');
     fireEvent.keyDown(nameInput, { key: 'Enter' });
-    expect(mockOnSave).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalled();
+    });
+  });
+
+  it('does not trigger save when Enter is pressed while validating', async () => {
+    let resolveValidate!: (value: { valid: boolean; errors: [] }) => void;
+    mockedValidate.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveValidate = resolve; }),
+    );
+    const user = userEvent.setup();
+    render(<PropertyDialog {...defaultProps} />);
+    const nameInput = screen.getByPlaceholderText(/e\.g\. id/i);
+    await user.type(nameInput, 'myField');
+
+    // Trigger first save — stays in validating state
+    fireEvent.keyDown(nameInput, { key: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /validating/i })).toBeInTheDocument();
+    });
+
+    // Second Enter while validating should be a no-op
+    fireEvent.keyDown(nameInput, { key: 'Enter' });
+    expect(mockedValidate).toHaveBeenCalledTimes(1);
+
+    // Resolve the pending validation
+    resolveValidate({ valid: true, errors: [] });
+    await waitFor(() => expect(mockOnSave).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not issue a second validate call when Save is clicked while validating', async () => {
+    let resolveValidate!: (value: { valid: boolean; errors: [] }) => void;
+    mockedValidate.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveValidate = resolve; }),
+    );
+    const user = userEvent.setup();
+    render(<PropertyDialog {...defaultProps} />);
+    await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'myField');
+
+    // First click starts validation
+    await user.click(screen.getByRole('button', { name: /add property/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /validating/i })).toBeDisabled();
+    });
+
+    // Button is disabled — a second click should be ignored by the browser;
+    // the early-return guard also protects against any programmatic trigger.
+    expect(mockedValidate).toHaveBeenCalledTimes(1);
+
+    // Finish the first request
+    resolveValidate({ valid: true, errors: [] });
+    await waitFor(() => expect(mockOnSave).toHaveBeenCalledTimes(1));
   });
 
   // Edit mode data loading
@@ -333,13 +419,15 @@ describe('PropertyDialog', () => {
     await user.click(screen.getByLabelText('Required'));
 
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(mockOnSave).toHaveBeenCalledWith({
-      name: 'status',
-      description: null,
-      data: expect.objectContaining({
-        type: 'string',
-        'x-required': true,
-      }),
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalledWith({
+        name: 'status',
+        description: null,
+        data: expect.objectContaining({
+          type: 'string',
+          'x-required': true,
+        }),
+      });
     });
   });
 
@@ -387,9 +475,9 @@ describe('PropertyDialog', () => {
     const user = userEvent.setup();
     render(<PropertyDialog {...defaultProps} />);
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(screen.getByText('Property name is required.')).toBeInTheDocument();
+    expect(screen.getByText('Property name is required')).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'a');
-    expect(screen.queryByText('Property name is required.')).toBeNull();
+    expect(screen.queryByText('Property name is required')).toBeNull();
   });
 
   // Edit mode preserves complex data
@@ -416,6 +504,53 @@ describe('PropertyDialog', () => {
     const user = userEvent.setup();
     render(<PropertyDialog {...defaultProps} />);
     await user.click(screen.getByRole('button', { name: /add property/i }));
-    expect(screen.getByText('Property name is required.')).toBeInTheDocument();
+    expect(screen.getByText('Property name is required')).toBeInTheDocument();
+  });
+
+  it('shows schema errors when REST validate returns invalid', async () => {
+    mockedValidate.mockResolvedValueOnce({
+      valid: false,
+      errors: [
+        {
+          standard: 'json-schema-2020-12',
+          message: "'minimum' must be a number",
+          path: '$.minimum',
+          schema_path: '/minimum',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<PropertyDialog {...defaultProps} />);
+    await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'x');
+    await user.click(screen.getByRole('button', { name: /add property/i }));
+    expect(await screen.findByText('Invalid property data payload')).toBeInTheDocument();
+    expect(screen.getByText(/'minimum' must be a number/)).toBeInTheDocument();
+    expect(mockOnSave).not.toHaveBeenCalled();
+  });
+
+  it('shows error when validate request fails', async () => {
+    mockedValidate.mockRejectedValueOnce(new Error('network'));
+    const user = userEvent.setup();
+    render(<PropertyDialog {...defaultProps} />);
+    await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'ok');
+    await user.click(screen.getByRole('button', { name: /add property/i }));
+    expect(
+      await screen.findByText(
+        /Unable to validate property data\. Check your connection and try again\./,
+      ),
+    ).toBeInTheDocument();
+    expect(mockOnSave).not.toHaveBeenCalled();
+  });
+
+  it('skips REST validate when restClientOptions omitted', async () => {
+    const user = userEvent.setup();
+    const { restClientOptions: _, ...noRest } = defaultProps;
+    render(<PropertyDialog {...noRest} />);
+    await user.type(screen.getByPlaceholderText(/e\.g\. id/i), 'solo');
+    await user.click(screen.getByRole('button', { name: /add property/i }));
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalled();
+    });
+    expect(mockedValidate).not.toHaveBeenCalled();
   });
 });
