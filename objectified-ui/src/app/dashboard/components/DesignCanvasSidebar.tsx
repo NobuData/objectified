@@ -23,6 +23,7 @@ import {
   createProperty,
   updateProperty,
   deleteProperty,
+  type RestClientOptions,
 } from '@lib/api/rest-client';
 import {
   generateLocalId,
@@ -137,6 +138,7 @@ interface PropertiesListPanelProps {
   onUpdate: (propertyId: string, data: PropertyDialogSaveData) => void;
   onDelete: (prop: StudioProperty) => void;
   onSelectProperty: (propertyName: string) => void;
+  restClientOptions: RestClientOptions;
 }
 
 function PropertiesListPanel({
@@ -147,6 +149,7 @@ function PropertiesListPanel({
   onUpdate,
   onDelete,
   onSelectProperty,
+  restClientOptions,
 }: PropertiesListPanelProps) {
   const [query, setQuery] = useState('');
   const [addOpen, setAddOpen] = useState(false);
@@ -261,6 +264,7 @@ function PropertiesListPanel({
         availableClasses={availableClassNames}
         availableProperties={properties.map((p) => p.name)}
         existingNames={properties.map((p) => p.name)}
+        restClientOptions={restClientOptions}
         onSave={handleSaveAdd}
         onClose={() => setAddOpen(false)}
       />
@@ -277,6 +281,7 @@ function PropertiesListPanel({
           .filter((p) => p.id !== editingProp?.id)
           .map((p) => p.name)}
         existingNames={properties.map((p) => p.name)}
+        restClientOptions={restClientOptions}
         onSave={handleSaveEdit}
         onClose={() => setEditingProp(null)}
       />
@@ -1286,6 +1291,7 @@ export default function DesignCanvasSidebar() {
               onUpdate={handleUpdateProjectProperty}
               onDelete={handleDeleteProjectProperty}
               onSelectProperty={(name) => canvasSearch?.setPropertyNameFilter(name)}
+              restClientOptions={options}
             />
           ) : (
             <SearchableList

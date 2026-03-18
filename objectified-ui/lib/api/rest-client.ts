@@ -1179,6 +1179,34 @@ export async function deleteProperty(
   );
 }
 
+/** Error detail from POST /validate/json-schema (matches objectified-rest schema_validation). */
+export interface SchemaValidationErrorDetail {
+  standard: string;
+  message: string;
+  path: string;
+  schema_path: string;
+}
+
+export interface SchemaValidationResponse {
+  valid: boolean;
+  errors: SchemaValidationErrorDetail[];
+}
+
+/**
+ * Validate a JSON Schema Draft 2020-12 object (same checks as property/class data on create/update).
+ */
+export async function validateJsonSchema(
+  schema: Record<string, unknown>,
+  options: RestClientOptions = {}
+): Promise<SchemaValidationResponse> {
+  return request<SchemaValidationResponse>(
+    'POST',
+    '/validate/json-schema',
+    { schema },
+    options
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Class properties (class–property join; list = bulk read)
 // ---------------------------------------------------------------------------

@@ -21,6 +21,11 @@ import {
   buildPropertySchema,
   parsePropertySchema,
 } from '../utils/propertySchemaUtils';
+import {
+  validateJsonSchema,
+  type RestClientOptions,
+  type SchemaValidationErrorDetail,
+} from '@lib/api/rest-client';
 
 export interface PropertyDialogSaveData {
   name: string;
@@ -45,6 +50,8 @@ interface PropertyDialogProps {
   availableProperties?: string[];
   /** Existing property names for duplicate checking. */
   existingNames?: string[];
+  /** When set, property schema is validated via REST before save (same rules as create/update property). */
+  restClientOptions?: RestClientOptions;
 }
 
 export default function PropertyDialog({
@@ -56,12 +63,15 @@ export default function PropertyDialog({
   availableClasses = [],
   availableProperties = [],
   existingNames = [],
+  restClientOptions,
 }: PropertyDialogProps) {
   const [propertyName, setPropertyName] = useState('');
   const [propertyType, setPropertyType] = useState('string');
   const [isArray, setIsArray] = useState(false);
   const [formData, setFormData] = useState<PropertyFormData>({});
   const [error, setError] = useState('');
+  const [schemaErrors, setSchemaErrors] = useState<SchemaValidationErrorDetail[]>([]);
+  const [validating, setValidating] = useState(false);
   const [viewMode, setViewMode] = useState<'form' | 'json'>('form');
 
   useEffect(() => {
@@ -86,12 +96,15 @@ export default function PropertyDialog({
       setFormData({});
     }
     setError('');
+    setSchemaErrors([]);
+    setValidating(false);
     setViewMode('form');
   }, [open, mode, initial]);
 
   const handleFormChange = useCallback(
     (field: keyof PropertyFormData, value: any) => {
       setFormData((prev) => ({ ...prev, [field]: value }));
+      setSchemaErrors([]);
     },
     [],
   );
@@ -100,14 +113,16 @@ export default function PropertyDialog({
     return buildPropertySchema(formData, propertyType, isArray);
   }, [formData, propertyType, isArray]);
 
-  const handleSave = () => {
+  const clearFieldErrors = useCallback(() => {
+    setError('');
+    setSchemaErrors([]);
+  }, []);
+
+  const handleSave = async () => {
     const trimmed = propertyName.trim();
+    setSchemaErrors([]);
     if (!trimmed) {
-      setError('Property name is required.');
-      return;
-    }
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
-      setError('Name must start with a letter or underscore and contain only letters, numbers, and underscores.');
+      setError('Property name is required');
       return;
     }
 
@@ -124,6 +139,32 @@ export default function PropertyDialog({
     }
 
     const schema = buildSchema();
+    if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) {
+      setError('Property data must be a JSON object.');
+      return;
+    }
+
+    if (restClientOptions) {
+      setValidating(true);
+      setError('');
+      try {
+        const result = await validateJsonSchema(
+          schema as Record<string, unknown>,
+          restClientOptions
+        );
+        if (!result.valid) {
+          setSchemaErrors(result.errors ?? []);
+          setValidating(false);
+          return;
+        }
+      } catch {
+        setError('Unable to validate property data. Check your connection and try again.');
+        setValidating(false);
+        return;
+      }
+      setValidating(false);
+    }
+
     onSave({
       name: trimmed,
       description: formData.description || null,
@@ -199,14 +240,38 @@ export default function PropertyDialog({
                     id="pd-name"
                     type="text"
                     value={propertyName}
-                    onChange={(e) => { setPropertyName(e.target.value); setError(''); }}
+                    onChange={(e) => {
+                      setPropertyName(e.target.value);
+                      clearFieldErrors();
+                    }}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
                     placeholder="e.g. id, name, email"
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     autoFocus
                   />
                   {error && (
-                    <p className="text-sm text-red-600 dark:text-red-400 mt-1">{error}</p>
+                    <p className="text-sm text-red-600 dark:text-red-400 mt-1" role="alert">
+                      {error}
+                    </p>
+                  )}
+                  {schemaErrors.length > 0 && (
+                    <div
+                      className="mt-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm"
+                      role="alert"
+                    >
+                      <p className="font-medium text-red-800 dark:text-red-200 mb-2">
+                        Invalid property data payload
+                      </p>
+                      <ul className="list-disc pl-4 space-y-1 text-red-700 dark:text-red-300">
+                        {schemaErrors.map((err, i) => (
+                          <li key={`${err.path}-${i}`}>
+                            <span className="font-mono text-xs opacity-90">{err.path || '$'}</span>
+                            {': '}
+                            {err.message}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
 
@@ -219,7 +284,13 @@ export default function PropertyDialog({
                     >
                       Type
                     </label>
-                    <Select.Root value={propertyType} onValueChange={setPropertyType}>
+                    <Select.Root
+                      value={propertyType}
+                      onValueChange={(v) => {
+                        setPropertyType(v);
+                        setSchemaErrors([]);
+                      }}
+                    >
                       <Select.Trigger
                         id="pd-type"
                         className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
@@ -259,7 +330,10 @@ export default function PropertyDialog({
                     <Checkbox.Root
                       id="pd-array"
                       checked={isArray}
-                      onCheckedChange={(val) => setIsArray(val === true)}
+                      onCheckedChange={(val) => {
+                        setIsArray(val === true);
+                        setSchemaErrors([]);
+                      }}
                       className="h-5 w-5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
                     >
                       <Checkbox.Indicator>
@@ -305,10 +379,15 @@ export default function PropertyDialog({
             </button>
             <button
               type="button"
-              onClick={handleSave}
-              className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              onClick={() => void handleSave()}
+              disabled={validating}
+              className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {mode === 'add' ? 'Add Property' : 'Save Changes'}
+              {validating
+                ? 'Validating…'
+                : mode === 'add'
+                  ? 'Add Property'
+                  : 'Save Changes'}
             </button>
           </div>
         </Dialog.Content>
