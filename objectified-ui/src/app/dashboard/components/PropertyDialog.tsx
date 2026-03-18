@@ -19,6 +19,7 @@ import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { getSchemaModeFromCanvasMetadata, type SchemaMode } from '@lib/studio/schemaMode';
 import {
   type PropertyFormData,
+  type BuildPropertySchemaOptions,
   PROPERTY_TYPES,
   buildPropertySchema,
   parsePropertySchema,
@@ -54,6 +55,8 @@ interface PropertyDialogProps {
   existingNames?: string[];
   /** When set, property schema is validated via REST before save (same rules as create/update property). */
   restClientOptions?: RestClientOptions;
+  /** GitHub #118: resolve class stable id for SQL ID-ref metadata (x-ref-class-id). */
+  resolveRefClassId?: (className: string) => string | null;
 }
 
 export default function PropertyDialog({
@@ -66,6 +69,7 @@ export default function PropertyDialog({
   availableProperties = [],
   existingNames = [],
   restClientOptions,
+  resolveRefClassId,
 }: PropertyDialogProps) {
   const studio = useStudioOptional();
   const schemaMode: SchemaMode = studio?.state
@@ -115,9 +119,14 @@ export default function PropertyDialog({
     [],
   );
 
+  const buildSchemaOptions: BuildPropertySchemaOptions = {
+    schemaMode,
+    resolveRefClassId,
+  };
+
   const buildSchema = useCallback(() => {
-    return buildPropertySchema(formData, propertyType, isArray);
-  }, [formData, propertyType, isArray]);
+    return buildPropertySchema(formData, propertyType, isArray, buildSchemaOptions);
+  }, [formData, propertyType, isArray, schemaMode, resolveRefClassId]);
 
   const clearFieldErrors = useCallback(() => {
     setError('');

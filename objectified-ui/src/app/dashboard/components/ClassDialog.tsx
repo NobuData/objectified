@@ -551,9 +551,15 @@ export default function ClassDialog({
                         </div>
                       </div>
                     ) : (
-                      <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">
+                      <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 space-y-2">
                         <p className="text-sm text-slate-700 dark:text-slate-300">
                           SQL mode is active. OpenAPI-specific schema editing is hidden; class name, description, and tags are still editable.
+                        </p>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                          Define relationships per class via <strong>Add property</strong> on the class (reference target, ID vs nested storage) or use{' '}
+                          <strong>Props</strong> tab project properties with SQL reference storage—both persist{' '}
+                          <code className="text-[11px]">x-ref-class-id</code> /{' '}
+                          <code className="text-[11px]">x-ref-storage</code> for canvas edges and SQL export.
                         </p>
                       </div>
                     )}

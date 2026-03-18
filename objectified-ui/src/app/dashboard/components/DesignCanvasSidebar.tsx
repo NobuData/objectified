@@ -141,6 +141,7 @@ interface PropertiesListPanelProps {
   onDelete: (prop: StudioProperty) => void;
   onSelectProperty: (propertyName: string) => void;
   restClientOptions: RestClientOptions;
+  resolveRefClassId: (className: string) => string | null;
 }
 
 function PropertiesListPanel({
@@ -152,6 +153,7 @@ function PropertiesListPanel({
   onDelete,
   onSelectProperty,
   restClientOptions,
+  resolveRefClassId,
 }: PropertiesListPanelProps) {
   const [query, setQuery] = useState('');
   const [addOpen, setAddOpen] = useState(false);
@@ -267,6 +269,7 @@ function PropertiesListPanel({
         availableProperties={properties.map((p) => p.name)}
         existingNames={properties.map((p) => p.name)}
         restClientOptions={restClientOptions}
+        resolveRefClassId={resolveRefClassId}
         onSave={handleSaveAdd}
         onClose={() => setAddOpen(false)}
       />
@@ -284,6 +287,7 @@ function PropertiesListPanel({
           .map((p) => p.name)}
         existingNames={properties.map((p) => p.name)}
         restClientOptions={restClientOptions}
+        resolveRefClassId={resolveRefClassId}
         onSave={handleSaveEdit}
         onClose={() => setEditingProp(null)}
       />
@@ -1368,6 +1372,7 @@ export default function DesignCanvasSidebar() {
               onDelete={handleDeleteProjectProperty}
               onSelectProperty={(name) => canvasSearch?.setPropertyNameFilter(name)}
               restClientOptions={options}
+              resolveRefClassId={findStableClassIdByName}
             />
           ) : (
             <SearchableList
