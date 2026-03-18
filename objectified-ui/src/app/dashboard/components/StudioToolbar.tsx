@@ -23,6 +23,7 @@ import {
   FileDown,
   ChevronDown,
   Code2,
+  Columns2,
 } from 'lucide-react';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
@@ -38,6 +39,7 @@ import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 import ExportDialog from '@/app/dashboard/components/ExportDialog';
 import GenerateCodeDialog from '@/app/dashboard/components/GenerateCodeDialog';
+import { useCodeGenerationPanelOptional } from '@/app/contexts/CodeGenerationPanelContext';
 import { getSchemaMode, setSchemaModeOnDraft, type SchemaMode } from '@lib/studio/schemaMode';
 import * as Select from '@radix-ui/react-select';
 
@@ -53,6 +55,14 @@ export default function StudioToolbar() {
   const router = useRouter();
   const studio = useStudioOptional();
   const workspace = useWorkspaceOptional();
+  const codePreviewPanel = useCodeGenerationPanelOptional();
+  const [generateCodeOpen, setGenerateCodeOpen] = useState(false);
+
+  useEffect(() => {
+    if (!codePreviewPanel?.registerOpenGenerateCodeDialog) return undefined;
+    codePreviewPanel.registerOpenGenerateCodeDialog(() => setGenerateCodeOpen(true));
+    return () => codePreviewPanel.registerOpenGenerateCodeDialog(null);
+  }, [codePreviewPanel]);
   const canvasGroup = useCanvasGroupOptional();
   const canvasLayout = useCanvasLayoutOptional();
   const { data: session } = useSession();
@@ -68,7 +78,6 @@ export default function StudioToolbar() {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [canvasSettingsDialogOpen, setCanvasSettingsDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const [generateCodeOpen, setGenerateCodeOpen] = useState(false);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
@@ -470,6 +479,18 @@ export default function StudioToolbar() {
       >
         <FileDown className="h-4 w-4" />
       </button>
+      {codePreviewPanel && (
+        <button
+          type="button"
+          onClick={() => codePreviewPanel.togglePanel()}
+          className={codePreviewPanel.panelOpen ? btnPrimary : btnBase}
+          aria-pressed={codePreviewPanel.panelOpen}
+          aria-label="Toggle code preview panel"
+          title="Live code preview beside the canvas (refreshes when the schema changes)"
+        >
+          <Columns2 className="h-4 w-4" />
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setGenerateCodeOpen(true)}

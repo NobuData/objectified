@@ -6,6 +6,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import StudioToolbar from '@/app/dashboard/components/StudioToolbar';
+import { CodeGenerationPanelProvider } from '@/app/contexts/CodeGenerationPanelContext';
 
 jest.mock('next-auth/react', () => ({
   useSession: () => ({ data: { accessToken: 'token' } }),
@@ -608,5 +609,20 @@ describe('StudioToolbar', () => {
         expect(screen.queryByRole('dialog', { name: /commit/i })).not.toBeInTheDocument();
       });
     });
+  });
+
+  it('toggles code preview panel when CodeGenerationPanelProvider wraps toolbar', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(
+      <CodeGenerationPanelProvider>
+        <StudioToolbar />
+      </CodeGenerationPanelProvider>
+    );
+    const toggle = screen.getByRole('button', { name: /toggle code preview panel/i });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
   });
 });
