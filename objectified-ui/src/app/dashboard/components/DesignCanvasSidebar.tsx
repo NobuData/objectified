@@ -824,7 +824,7 @@ function ClassListPanel({
                 let referenceClass: string | undefined;
                 const refClassId = getRefClassIdFromData(propData);
                 if (refClassId) {
-                  const refCls = studioClasses.find((c) => getStableClassId(c) === refClassId);
+                  const refCls = classes.find((c) => getStableClassId(c) === refClassId);
                   if (refCls?.name) {
                     const refClsName = refCls.name.trim();
                     referenceClass = availableClassNamesForRefEdit.find(
