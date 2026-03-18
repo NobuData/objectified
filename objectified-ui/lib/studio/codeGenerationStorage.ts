@@ -26,7 +26,7 @@ export function loadCustomCodegenTemplates(
   projectId: string,
   versionId: string
 ): StoredCustomCodegenTemplate[] {
-  if (typeof window === 'undefined' || !versionId) return [];
+  if (typeof window === 'undefined' || !tenantId || !projectId || !versionId) return [];
   try {
     const raw = window.localStorage.getItem(storageKey(tenantId, projectId, versionId));
     if (!raw) return [];
@@ -56,7 +56,7 @@ function saveAll(
   versionId: string,
   list: StoredCustomCodegenTemplate[]
 ): void {
-  if (typeof window === 'undefined' || !versionId) return;
+  if (typeof window === 'undefined' || !tenantId || !projectId || !versionId) return;
   try {
     window.localStorage.setItem(storageKey(tenantId, projectId, versionId), JSON.stringify(list));
   } catch (e) {

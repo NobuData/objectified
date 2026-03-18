@@ -10,6 +10,19 @@ import { getStableClassId } from './types';
 import { parseClassNameFromRef } from './canvasClassRefEdges';
 import { exportAsSqlDdl } from './canvasExportFormats';
 
+/**
+ * Convert a string to a safe identifier by replacing invalid characters with
+ * underscores and prepending an underscore if the first character is a digit.
+ * Retains alphanumerics, `_`, and `$`.
+ */
+export function toSafeIdentifier(name: string): string {
+  const s = (name ?? '').trim();
+  if (!s) return '_';
+  let safe = s.replace(/[^a-zA-Z0-9_$]/g, '_');
+  if (/^[0-9]/.test(safe)) safe = `_${safe}`;
+  return safe;
+}
+
 export function toSnakeCase(input: string): string {
   const s = (input ?? '').trim();
   if (!s) return '';
@@ -80,12 +93,15 @@ export interface CodegenField {
   description?: string;
   isRefId: boolean;
   refModelName?: string;
+  refModelSafeName?: string;
   refModelSnake?: string;
   baseType: ReturnType<typeof mapJsonSchemaTypeToBase>;
 }
 
 export interface CodegenClassModel {
   name: string;
+  /** Safe identifier version of name (invalid chars replaced with underscores). */
+  safeName: string;
   snake: string;
   id: string;
   fields: CodegenField[];
@@ -94,12 +110,24 @@ export interface CodegenClassModel {
 function buildClassModels(classes: StudioClass[]): CodegenClassModel[] {
   const nameById = new Map<string, string>();
   const nameByLower = new Map<string, string>();
+  const seenLower = new Set<string>();
+  const duplicateLower = new Set<string>();
+
   for (const c of classes) {
     const n = (c.name ?? '').trim();
     if (!n) continue;
+    const lower = n.toLowerCase();
+    if (seenLower.has(lower)) {
+      duplicateLower.add(lower);
+      console.warn(`[codeGenerationEngine] Duplicate class name (case-insensitive): "${n}" — skipping for ref resolution`);
+    } else {
+      seenLower.add(lower);
+    }
     const id = getStableClassId(c);
     if (id) nameById.set(id, n);
-    nameByLower.set(n.toLowerCase(), n);
+    if (!duplicateLower.has(lower)) {
+      nameByLower.set(lower, n);
+    }
   }
 
   const models: CodegenClassModel[] = [];
@@ -134,6 +162,7 @@ function buildClassModels(classes: StudioClass[]): CodegenClassModel[] {
         description: typeof prop.description === 'string' ? prop.description : undefined,
         isRefId: Boolean(isIdRef && refModelName),
         refModelName,
+        refModelSafeName: refModelName ? toSafeIdentifier(refModelName) : undefined,
         refModelSnake: refModelName ? toSnakeCase(refModelName) : undefined,
         baseType: mapJsonSchemaTypeToBase(schema.type),
       });
@@ -141,6 +170,7 @@ function buildClassModels(classes: StudioClass[]): CodegenClassModel[] {
 
     models.push({
       name: clsName,
+      safeName: toSafeIdentifier(clsName),
       snake: toSnakeCase(clsName) || clsName.toLowerCase(),
       id: clsId,
       fields,
@@ -161,7 +191,9 @@ export function generateTypeScript(classes: StudioClass[]): string {
     '',
   ];
   for (const m of models) {
-    lines.push(`export interface ${m.name} {`);
+    const safeName = m.safeName;
+    const nameComment = safeName !== m.name ? ` // original: ${m.name}` : '';
+    lines.push(`export interface ${safeName} {${nameComment}`);
     lines.push('  id: string;');
     for (const f of m.fields) {
       if (f.isRefId && f.refModelName) {
@@ -213,24 +245,26 @@ export function generatePrisma(classes: StudioClass[]): string {
     '',
   ];
   for (const m of models) {
+    const safeName = m.safeName;
+    const nameComment = safeName !== m.name ? ` // original: ${m.name}` : '';
     const refCounts = new Map<string, number>();
     for (const f of m.fields) {
-      if (f.isRefId && f.refModelName) {
-        refCounts.set(f.refModelName, (refCounts.get(f.refModelName) ?? 0) + 1);
+      if (f.isRefId && f.refModelSafeName) {
+        refCounts.set(f.refModelSafeName, (refCounts.get(f.refModelSafeName) ?? 0) + 1);
       }
     }
-    lines.push(`model ${m.name} {`);
+    lines.push(`model ${safeName} {${nameComment}`);
     lines.push('  id String @id @default(uuid())');
     for (const f of m.fields) {
-      if (f.isRefId && f.refModelName) {
+      if (f.isRefId && f.refModelName && f.refModelSafeName) {
         const col = f.snake.endsWith('_id') ? f.snake : `${f.snake}_id`;
         const opt = f.optional ? '?' : '';
-        const multi = (refCounts.get(f.refModelName) ?? 0) > 1;
-        const relName = multi ? `"${m.name}_${f.snake}_to_${f.refModelName}", ` : '';
-        const relField = relationFieldName(f.refModelName, f.snake);
+        const multi = (refCounts.get(f.refModelSafeName) ?? 0) > 1;
+        const relName = multi ? `"${safeName}_${f.snake}_to_${f.refModelSafeName}", ` : '';
+        const relField = relationFieldName(f.refModelSafeName, f.snake);
         lines.push(`  ${col} String${opt}`);
         lines.push(
-          `  ${relField} ${f.refModelName}${f.optional ? '?' : ''} @relation(${relName}fields: [${col}], references: [id])`
+          `  ${relField} ${f.refModelSafeName}${f.optional ? '?' : ''} @relation(${relName}fields: [${col}], references: [id])`
         );
       } else {
         let prismaT: string;
@@ -265,12 +299,22 @@ export function generatePrisma(classes: StudioClass[]): string {
 /** GraphQL object types (SDL). */
 export function generateGraphQL(classes: StudioClass[]): string {
   const models = buildClassModels(classes);
+  const needsJsonScalar = models.some((m) =>
+    m.fields.some(
+      (f) => !f.isRefId && (f.baseType === 'array' || f.baseType === 'object' || f.baseType === 'unknown')
+    )
+  );
   const lines: string[] = ['# Generated by Objectified — GraphQL SDL', ''];
+  if (needsJsonScalar) {
+    lines.push('scalar JSON', '');
+  }
   for (const m of models) {
-    lines.push(`type ${m.name} {`);
+    const safeName = m.safeName;
+    const nameComment = safeName !== m.name ? ` # original: ${m.name}` : '';
+    lines.push(`type ${safeName} {${nameComment}`);
     lines.push('  id: ID!');
     for (const f of m.fields) {
-      if (f.isRefId && f.refModelName) {
+      if (f.isRefId && f.refModelName && f.refModelSafeName) {
         const col = f.snake.endsWith('_id') ? f.snake : `${f.snake}_id`;
         const bang = f.optional ? '' : '!';
         lines.push(`  ${col}: ID${bang}`);
@@ -316,13 +360,23 @@ function goExportedField(snake: string): string {
 /** Go structs (uuid uses github.com/google/uuid). */
 export function generateGo(classes: StudioClass[]): string {
   const models = buildClassModels(classes);
+  const needsRawMessage = models.some((m) =>
+    m.fields.some(
+      (f) => !f.isRefId && (f.baseType === 'array' || f.baseType === 'object' || f.baseType === 'unknown')
+    )
+  );
   const lines: string[] = [
     '// Generated by Objectified — Go structs',
     '// import "github.com/google/uuid"',
-    '',
   ];
+  if (needsRawMessage) {
+    lines.push('// import "encoding/json"');
+  }
+  lines.push('');
   for (const m of models) {
-    lines.push(`type ${m.name} struct {`);
+    const safeName = m.safeName;
+    const nameComment = safeName !== m.name ? ` // original: ${m.name}` : '';
+    lines.push(`type ${safeName} struct {${nameComment}`);
     lines.push('\tID uuid.UUID `json:"id"`');
     for (const f of m.fields) {
       if (f.isRefId && f.refModelName) {
@@ -377,10 +431,12 @@ export function generatePydantic(classes: StudioClass[]): string {
     '',
   ];
   for (const m of models) {
-    lines.push(`class ${m.name}(BaseModel):`);
+    const safeName = m.safeName;
+    const nameComment = safeName !== m.name ? `  # original: ${m.name}` : '';
+    lines.push(`class ${safeName}(BaseModel):${nameComment}`);
     lines.push('    id: UUID');
     for (const f of m.fields) {
-      if (f.isRefId && f.refModelName) {
+      if (f.isRefId && f.refModelName && f.refModelSafeName) {
         const col = f.snake.endsWith('_id') ? f.snake : `${f.snake}_id`;
         const opt = f.optional ? 'Optional[UUID]' : 'UUID';
         const defaultPart = f.optional ? ' = None' : '';
