@@ -90,23 +90,35 @@ describe('CodeGenerationPreviewForm', () => {
     expect(screen.queryByText(/export interface Widget/i)).not.toBeInTheDocument();
   });
 
-  it('copy puts preview output on clipboard', async () => {
-    useStudioOptional.mockReturnValue({
-      state: {
-        versionId: 'v1',
-        classes: [{ id: 'c1', name: 'Zap', properties: [] }],
-      },
+  describe('clipboard', () => {
+    afterEach(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: undefined,
+        configurable: true,
+      });
     });
-    const writeText = jest.fn(() => Promise.resolve());
-    Object.assign(navigator, { clipboard: { writeText } });
 
-    render(<CodeGenerationPreviewForm variant="dialog" active />);
-    await waitFor(() => {
-      expect(screen.getByText(/export interface Zap/i)).toBeInTheDocument();
+    it('copy puts preview output on clipboard', async () => {
+      useStudioOptional.mockReturnValue({
+        state: {
+          versionId: 'v1',
+          classes: [{ id: 'c1', name: 'Zap', properties: [] }],
+        },
+      });
+      const writeText = jest.fn(() => Promise.resolve());
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+
+      render(<CodeGenerationPreviewForm variant="dialog" active />);
+      await waitFor(() => {
+        expect(screen.getByText(/export interface Zap/i)).toBeInTheDocument();
+      });
+      await userEvent.click(screen.getByRole('button', { name: /^Copy$/i }));
+      expect(writeText).toHaveBeenCalled();
+      const pasted = writeText.mock.calls[0][0] as string;
+      expect(pasted).toContain('Zap');
     });
-    await userEvent.click(screen.getByRole('button', { name: /^Copy$/i }));
-    expect(writeText).toHaveBeenCalled();
-    const pasted = writeText.mock.calls[0][0] as string;
-    expect(pasted).toContain('Zap');
   });
 });

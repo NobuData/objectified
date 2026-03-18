@@ -58,11 +58,12 @@ export default function StudioToolbar() {
   const codePreviewPanel = useCodeGenerationPanelOptional();
   const [generateCodeOpen, setGenerateCodeOpen] = useState(false);
 
+  const registerOpenGenerateCodeDialog = codePreviewPanel?.registerOpenGenerateCodeDialog;
   useEffect(() => {
-    if (!codePreviewPanel?.registerOpenGenerateCodeDialog) return undefined;
-    codePreviewPanel.registerOpenGenerateCodeDialog(() => setGenerateCodeOpen(true));
-    return () => codePreviewPanel.registerOpenGenerateCodeDialog(null);
-  }, [codePreviewPanel]);
+    if (!registerOpenGenerateCodeDialog) return undefined;
+    registerOpenGenerateCodeDialog(() => setGenerateCodeOpen(true));
+    return () => registerOpenGenerateCodeDialog(null);
+  }, [registerOpenGenerateCodeDialog]);
   const canvasGroup = useCanvasGroupOptional();
   const canvasLayout = useCanvasLayoutOptional();
   const { data: session } = useSession();
