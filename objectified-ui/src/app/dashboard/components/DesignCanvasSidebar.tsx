@@ -824,8 +824,10 @@ function ClassListPanel({
                 const propData = (editingProp.prop.data ?? editingProp.prop.property_data) as
                   | Record<string, unknown>
                   | undefined;
-                // Resolve reference class: prefer x-ref-class-id (stable, survives renames)
-                // then fall back to parsing $ref.
+                // Resolve reference class: prefer x-ref-class-id (stable, survives renames),
+                // then fall back to parsing $ref, then fall back to x-ref-class-name
+                // (needed in SQL mode with referenceStorage:'id' where $ref is omitted and
+                // x-ref-class-id may be absent for duplicate/ambiguous or deleted targets).
                 let referenceClass: string | undefined;
                 const refClassId = getRefClassIdFromData(propData);
                 if (refClassId) {
@@ -849,6 +851,14 @@ function ClassListPanel({
                           (c) => c.toLowerCase() === parsed.toLowerCase()
                         )
                       : undefined;
+                }
+                if (!referenceClass) {
+                  const refClassName = propData?.['x-ref-class-name'] as string | undefined;
+                  if (refClassName) {
+                    referenceClass = availableClassNamesForRefEdit.find(
+                      (c) => c.toLowerCase() === refClassName.trim().toLowerCase()
+                    );
+                  }
                 }
                 const classData = propData;
                 const hasRef = typeof propData?.$ref === 'string' && propData.$ref.trim() !== '';
