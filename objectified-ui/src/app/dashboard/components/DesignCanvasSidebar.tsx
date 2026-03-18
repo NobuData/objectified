@@ -932,6 +932,18 @@ export default function DesignCanvasSidebar() {
 
   const studioClasses = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
   const studioProperties = useMemo(() => studio?.state?.properties ?? [], [studio?.state]);
+  const findStableClassIdByName = useCallback(
+    (name: string): string | null => {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      const match = studioClasses.find(
+        (c) => (c.name ?? '').trim().toLowerCase() === trimmed.toLowerCase()
+      );
+      const id = match ? getStableClassId(match) : '';
+      return id ? id : null;
+    },
+    [studioClasses]
+  );
   const tagDefinitions = useMemo((): TagDefinitions => {
     const meta = studio?.state?.canvas_metadata as { tag_definitions?: TagDefinitions } | undefined;
     return meta?.tag_definitions ?? {};
@@ -1042,6 +1054,7 @@ export default function DesignCanvasSidebar() {
       const linked = data.propertyId
         ? studioProperties.find((p) => p.id === data.propertyId)
         : null;
+      const refClassId = data.referenceClass ? findStableClassIdByName(data.referenceClass) : null;
       studio?.applyChange((draft) => {
         const idx = draft.classes.findIndex((c) => getStableClassId(c) === classId);
         if (idx >= 0) {
@@ -1051,6 +1064,7 @@ export default function DesignCanvasSidebar() {
                 refType: data.refType ?? 'direct',
               }
             : {};
+          if (refClassId) baseData['x-ref-class-id'] = refClassId;
           if (data.overrideRequired === true) baseData.required = true;
           else if (data.overrideRequired === false) baseData.required = false;
           if (data.order !== undefined && data.order !== null) baseData['x-order'] = data.order;
@@ -1068,11 +1082,12 @@ export default function DesignCanvasSidebar() {
         }
       });
     },
-    [studio, studioProperties]
+    [studio, studioProperties, findStableClassIdByName]
   );
 
   const handleUpdateClassProperty = useCallback(
     (classId: string, propIndex: number, data: ClassPropertySaveData) => {
+      const refClassId = data.referenceClass ? findStableClassIdByName(data.referenceClass) : null;
       studio?.applyChange((draft) => {
         const classIdx = draft.classes.findIndex((c) => getStableClassId(c) === classId);
         if (classIdx < 0 || !draft.classes[classIdx].properties[propIndex]) return;
@@ -1085,9 +1100,12 @@ export default function DesignCanvasSidebar() {
         if (data.referenceClass?.trim()) {
           next.$ref = refForClassName(data.referenceClass);
           next.refType = data.refType ?? 'direct';
+          if (refClassId) next['x-ref-class-id'] = refClassId;
+          else delete next['x-ref-class-id'];
         } else {
           delete next.$ref;
           delete next.refType;
+          delete next['x-ref-class-id'];
         }
         if (data.overrideRequired === true) next.required = true;
         else if (data.overrideRequired === false) next.required = false;
@@ -1096,7 +1114,7 @@ export default function DesignCanvasSidebar() {
         prop.data = Object.keys(next).length > 0 ? next : undefined;
       });
     },
-    [studio]
+    [studio, findStableClassIdByName]
   );
 
   const handleRemoveClassProperty = useCallback(

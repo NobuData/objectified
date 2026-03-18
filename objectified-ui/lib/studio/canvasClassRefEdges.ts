@@ -33,6 +33,17 @@ export interface ClassRefEdgeData extends Record<string, unknown> {
   label?: string;
 }
 
+const REF_CLASS_ID_KEYS = ['x-ref-class-id', 'refClassId', 'ref_class_id'] as const;
+
+function getRefClassIdFromData(data: Record<string, unknown> | undefined): string | null {
+  if (!data) return null;
+  for (const key of REF_CLASS_ID_KEYS) {
+    const v = data[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 /** Extract referenced schema/class names (normalized lowercase) from a JSON Schema-like object (e.g. $ref, items.$ref). */
 function extractRefs(obj: unknown, classNames: Set<string>): Set<string> {
   const out = new Set<string>();
@@ -94,6 +105,7 @@ export function buildClassRefEdges(classes: StudioClass[]): Edge<ClassRefEdgeDat
   // Build normalized (trim+lowercase) name → id map; detect and skip duplicates.
   const nameToId = new Map<string, string>();
   const duplicates = new Set<string>();
+  const validIds = new Set<string>();
   for (const cls of classes) {
     const name = (cls.name ?? '').trim().toLowerCase();
     if (!name) continue;
@@ -107,6 +119,8 @@ export function buildClassRefEdges(classes: StudioClass[]): Edge<ClassRefEdgeDat
     } else {
       nameToId.set(name, getStableClassId(cls));
     }
+    const id = getStableClassId(cls);
+    if (id) validIds.add(id);
   }
 
   const classNames = new Set(nameToId.keys());
@@ -126,6 +140,24 @@ export function buildClassRefEdges(classes: StudioClass[]): Edge<ClassRefEdgeDat
       const refs = extractRefs(data, classNames);
       const refType = getRefTypeFromData(data);
       const propName = (prop.name ?? '').trim();
+
+      const refClassId = getRefClassIdFromData(data);
+      if (refClassId && validIds.has(refClassId) && refClassId !== sourceId) {
+        const id = `class-ref-${sourceId}--${refClassId}--${propName || refClassId}`;
+        edges.push({
+          id,
+          source: sourceId,
+          target: refClassId,
+          type: 'classRef',
+          markerEnd: arrowMarker,
+          markerStart: refType === 'bidirectional' ? arrowMarker : undefined,
+          data: {
+            refType,
+            label: propName || undefined,
+          },
+        });
+        continue;
+      }
 
       for (const targetName of refs) {
         const targetId = nameToId.get(targetName);

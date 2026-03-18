@@ -71,6 +71,30 @@ describe('buildClassRefEdges', () => {
     expect(edges[0].data?.refType).toBe('optional');
   });
 
+  it('builds edge using x-ref-class-id when present (stable id reference)', () => {
+    const classes: StudioClass[] = [
+      { id: 'id-user', name: 'User', properties: [] },
+      {
+        id: 'id-order',
+        name: 'Order',
+        properties: [
+          {
+            name: 'customer',
+            data: {
+              $ref: '#/components/schemas/User',
+              'x-ref-class-id': 'id-user',
+              refType: 'direct',
+            },
+          },
+        ],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].source).toBe('id-order');
+    expect(edges[0].target).toBe('id-user');
+  });
+
   it('accepts all ref_type alias keys (refType, ref_type, linkType, link_type)', () => {
     // link_type
     const withLinkType: StudioClass[] = [

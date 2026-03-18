@@ -21,6 +21,7 @@ import {
   Group,
   Network,
   FileDown,
+  ChevronDown,
 } from 'lucide-react';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
@@ -35,11 +36,16 @@ import MergeDialog from '@/app/dashboard/components/MergeDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 import ExportDialog from '@/app/dashboard/components/ExportDialog';
+import { getSchemaMode, setSchemaModeOnDraft, type SchemaMode } from '@lib/studio/schemaMode';
+import * as Select from '@radix-ui/react-select';
 
 const btnBase =
   'p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
 const btnPrimary =
   'flex items-center gap-2 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium';
+
+const selectTrigger =
+  'h-9 inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
 
 export default function StudioToolbar() {
   const router = useRouter();
@@ -190,6 +196,7 @@ export default function StudioToolbar() {
   }, [isReadOnly]);
 
   const showGitToolbar = Boolean(studio && studio.state);
+  const schemaMode: SchemaMode = studio?.state ? getSchemaMode(studio.state) : 'openapi';
 
   return (
     <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -378,6 +385,48 @@ export default function StudioToolbar() {
 
       {showGitToolbar && (
         <div className="h-4 w-px bg-slate-200 dark:bg-slate-600" aria-hidden />
+      )}
+      {showGitToolbar && (
+        <Select.Root
+          value={schemaMode}
+          onValueChange={(v) => {
+            if (!studio?.applyChange) return;
+            if (v !== 'openapi' && v !== 'sql') return;
+            studio.applyChange((draft) => {
+              setSchemaModeOnDraft(draft, v);
+            });
+          }}
+          disabled={studio?.loading || isReadOnly}
+        >
+          <Select.Trigger
+            className={selectTrigger}
+            aria-label="Schema mode"
+            title="Schema mode"
+          >
+            <Select.Value />
+            <Select.Icon>
+              <ChevronDown className="h-4 w-4 text-slate-400" />
+            </Select.Icon>
+          </Select.Trigger>
+          <Select.Portal>
+            <Select.Content className="z-[10010] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
+              <Select.Viewport className="p-1">
+                <Select.Item
+                  value="openapi"
+                  className="px-3 py-2 rounded-md text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800"
+                >
+                  <Select.ItemText>OpenAPI mode</Select.ItemText>
+                </Select.Item>
+                <Select.Item
+                  value="sql"
+                  className="px-3 py-2 rounded-md text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800"
+                >
+                  <Select.ItemText>SQL mode</Select.ItemText>
+                </Select.Item>
+              </Select.Viewport>
+            </Select.Content>
+          </Select.Portal>
+        </Select.Root>
       )}
       <button
         type="button"
