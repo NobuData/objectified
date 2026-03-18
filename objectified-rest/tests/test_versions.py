@@ -26,6 +26,7 @@ _VERSION_ROW: dict[str, Any] = {
     "source_version_id": None,
     "creator_id": _ACCOUNT_ID,
     "name": "v1",
+    "code_generation_tag": None,
     "description": "Initial",
     "change_log": "Created",
     "enabled": True,
@@ -155,6 +156,45 @@ def test_update_version_metadata_returns_updated_version(client):
         )
     assert r.status_code == 200
     assert r.json()["description"] == "Updated"
+
+
+def test_update_version_code_generation_tag_only(client):
+    """PUT with only code_generation_tag updates tag (GH-121)."""
+    updated = {**_VERSION_ROW, "code_generation_tag": "api-v2"}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [[_version_lookup_row()]]
+        mock_db.execute_mutation.side_effect = [updated, None]
+        r = client.put(
+            f"/v1/versions/{_VERSION_ID}",
+            json={"code_generation_tag": "api-v2"},
+        )
+    assert r.status_code == 200
+    assert r.json()["code_generation_tag"] == "api-v2"
+
+
+def test_update_version_invalid_code_generation_tag_returns_400(client):
+    """PUT rejects invalid code_generation_tag pattern."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [[_version_lookup_row()]]
+        r = client.put(
+            f"/v1/versions/{_VERSION_ID}",
+            json={"code_generation_tag": "bad tag!"},
+        )
+    assert r.status_code == 400
+
+
+def test_update_version_duplicate_code_generation_tag_returns_409(client):
+    """PUT returns 409 when unique index on code_generation_tag is violated."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [[_version_lookup_row()]]
+        mock_db.execute_mutation.side_effect = Exception(
+            "23505 duplicate key value violates unique constraint"
+        )
+        r = client.put(
+            f"/v1/versions/{_VERSION_ID}",
+            json={"code_generation_tag": "api-v1"},
+        )
+    assert r.status_code == 409
 
 
 def test_delete_version_returns_204(client):

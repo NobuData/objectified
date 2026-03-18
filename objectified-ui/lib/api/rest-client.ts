@@ -192,6 +192,8 @@ export interface VersionSchema {
   id: string;
   project_id: string;
   name: string;
+  /** Stable label for code generation (e.g. v1, api-v2); unique per project (case-insensitive). */
+  code_generation_tag?: string | null;
   description?: string;
   change_log?: string;
   published?: boolean;
@@ -207,6 +209,7 @@ export interface VersionCreate {
   name: string;
   description?: string;
   change_log?: string;
+  code_generation_tag?: string | null;
   source_version_id?: string | null;
 }
 
@@ -221,6 +224,8 @@ export interface VersionCreateFromRevision {
 export interface VersionMetadataUpdate {
   description?: string | null;
   change_log?: string | null;
+  /** Omit to leave unchanged; empty string clears. */
+  code_generation_tag?: string | null;
 }
 
 export interface VersionPublishRequest {

@@ -14,6 +14,7 @@ import {
   GitCompare,
   Network,
   History,
+  Tag,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -70,10 +71,15 @@ export default function VersionsPage() {
   const [diffDialogVersion, setDiffDialogVersion] = useState<VersionSchema | null>(null);
   const [graphDialogVersion, setGraphDialogVersion] = useState<VersionSchema | null>(null);
   const [historyDialogVersion, setHistoryDialogVersion] = useState<VersionSchema | null>(null);
+  const [tagDialogVersion, setTagDialogVersion] = useState<VersionSchema | null>(null);
+  const [tagDialogValue, setTagDialogValue] = useState('');
+  const [tagDialogSubmitting, setTagDialogSubmitting] = useState(false);
+  const [tagDialogError, setTagDialogError] = useState<string | null>(null);
 
   // Create form
   const [createName, setCreateName] = useState('');
   const [createDescription, setCreateDescription] = useState('');
+  const [createCodegenTag, setCreateCodegenTag] = useState('');
   const [createChangeLog, setCreateChangeLog] = useState('');
   const [createSourceVersionId, setCreateSourceVersionId] = useState<string>('');
   const [createSubmitting, setCreateSubmitting] = useState(false);
@@ -82,6 +88,7 @@ export default function VersionsPage() {
   // Edit form
   const [editDescription, setEditDescription] = useState('');
   const [editChangeLog, setEditChangeLog] = useState('');
+  const [editCodegenTag, setEditCodegenTag] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -186,6 +193,7 @@ export default function VersionsPage() {
   const handleCreateOpen = () => {
     setCreateName('');
     setCreateDescription('');
+    setCreateCodegenTag('');
     setCreateChangeLog('');
     setCreateSourceVersionId('');
     setCreateError(null);
@@ -206,11 +214,13 @@ export default function VersionsPage() {
     setCreateSubmitting(true);
     setCreateError(null);
     try {
+      const cg = createCodegenTag.trim();
       const body: VersionCreate = {
         name,
         description: createDescription.trim(),
         change_log: createChangeLog.trim() || undefined,
         source_version_id: createSourceVersionId || undefined,
+        ...(cg ? { code_generation_tag: cg } : {}),
       };
       await createVersion(selectedTenantId, selectedProjectId, body, opts);
       setCreateOpen(false);
@@ -236,6 +246,7 @@ export default function VersionsPage() {
     setEditVersion(v);
     setEditDescription(v.description ?? '');
     setEditChangeLog(v.change_log ?? '');
+    setEditCodegenTag(v.code_generation_tag ?? '');
     setEditError(null);
   };
 
@@ -251,6 +262,7 @@ export default function VersionsPage() {
       const body: VersionMetadataUpdate = {
         description: editDescription.trim(),
         change_log: editChangeLog.trim() || null,
+        code_generation_tag: editCodegenTag.trim() === '' ? '' : editCodegenTag.trim(),
       };
       await updateVersion(editVersion.id, body, opts);
       setEditVersion(null);
@@ -439,6 +451,9 @@ export default function VersionsPage() {
                     Version
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Code gen tag
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Description
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -473,6 +488,15 @@ export default function VersionsPage() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {v.code_generation_tag ? (
+                        <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+                          {v.code_generation_tag}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500 text-sm">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm text-slate-700 dark:text-slate-300 max-w-xs truncate">
@@ -551,6 +575,17 @@ export default function VersionsPage() {
                             >
                               <History className="h-4 w-4" />
                               Version history
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                              onSelect={() => {
+                                setTagDialogVersion(v);
+                                setTagDialogValue(v.code_generation_tag ?? '');
+                                setTagDialogError(null);
+                              }}
+                            >
+                              <Tag className="h-4 w-4" />
+                              Code generation tag…
                             </DropdownMenu.Item>
                             <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
                             <DropdownMenu.Item
@@ -671,6 +706,23 @@ export default function VersionsPage() {
                   disabled={createSubmitting}
                 />
               </div>
+              <div>
+                <Label.Root htmlFor="create-codegen-tag" className={labelClass}>
+                  Code generation tag (optional)
+                </Label.Root>
+                <input
+                  id="create-codegen-tag"
+                  type="text"
+                  value={createCodegenTag}
+                  onChange={(e) => setCreateCodegenTag(e.target.value)}
+                  placeholder="e.g. api-v2, v1"
+                  className={inputClass}
+                  disabled={createSubmitting}
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Stable label for Generate code in Studio; unique per project (case-insensitive).
+                </p>
+              </div>
             </div>
             <div className="flex justify-end gap-2 p-4 pt-4 border-t border-slate-200 dark:border-slate-700">
               <Dialog.Close asChild>
@@ -767,6 +819,23 @@ export default function VersionsPage() {
                   disabled={editSubmitting}
                 />
               </div>
+              <div>
+                <Label.Root htmlFor="edit-codegen-tag" className={labelClass}>
+                  Code generation tag
+                </Label.Root>
+                <input
+                  id="edit-codegen-tag"
+                  type="text"
+                  value={editCodegenTag}
+                  onChange={(e) => setEditCodegenTag(e.target.value)}
+                  placeholder="e.g. api-v2 (leave empty to clear)"
+                  className={inputClass}
+                  disabled={editSubmitting}
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Used in Studio → Generate code to target this schema. Unique per project.
+                </p>
+              </div>
             </div>
             <div className="flex justify-end gap-2 p-4 pt-4 border-t border-slate-200 dark:border-slate-700">
               <button
@@ -786,6 +855,102 @@ export default function VersionsPage() {
                 {editSubmitting && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
+                Save
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root
+        open={!!tagDialogVersion}
+        onOpenChange={(open) => {
+          if (!open && !tagDialogSubmitting) {
+            setTagDialogVersion(null);
+            setTagDialogError(null);
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6"
+            onPointerDownOutside={(e) => {
+              if (tagDialogSubmitting) e.preventDefault();
+            }}
+          >
+            <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Code generation tag
+            </Dialog.Title>
+            {tagDialogVersion && (
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-mono">
+                {tagDialogVersion.name}
+              </p>
+            )}
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-3">
+              Set a stable label (e.g. <span className="font-mono">v1</span>,{' '}
+              <span className="font-mono">api-v2</span>) so Generate code in Studio can use this
+              version&apos;s persisted schema. Leave empty to remove the tag.
+            </p>
+            {tagDialogError && (
+              <div
+                className="mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm"
+                role="alert"
+              >
+                {tagDialogError}
+              </div>
+            )}
+            <Label.Root htmlFor="tag-dialog-input" className={`${labelClass} mt-4 block`}>
+              Tag
+            </Label.Root>
+            <input
+              id="tag-dialog-input"
+              type="text"
+              value={tagDialogValue}
+              onChange={(e) => setTagDialogValue(e.target.value)}
+              className={`mt-1 ${inputClass}`}
+              disabled={tagDialogSubmitting}
+              placeholder="api-v2"
+            />
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                type="button"
+                disabled={tagDialogSubmitting}
+                onClick={() => setTagDialogVersion(null)}
+                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={tagDialogSubmitting || !tagDialogVersion}
+                onClick={async () => {
+                  if (!tagDialogVersion) return;
+                  setTagDialogSubmitting(true);
+                  setTagDialogError(null);
+                  try {
+                    await updateVersion(
+                      tagDialogVersion.id,
+                      {
+                        code_generation_tag:
+                          tagDialogValue.trim() === '' ? '' : tagDialogValue.trim(),
+                      },
+                      opts
+                    );
+                    setTagDialogVersion(null);
+                    await fetchVersions();
+                    await alertDialog({ message: 'Code generation tag updated.', variant: 'success' });
+                  } catch (e) {
+                    setTagDialogError(
+                      e instanceof Error ? e.message : 'Failed to update tag.'
+                    );
+                  } finally {
+                    setTagDialogSubmitting(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                {tagDialogSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Save
               </button>
             </div>

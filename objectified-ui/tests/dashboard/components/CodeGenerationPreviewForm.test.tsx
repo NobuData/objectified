@@ -18,6 +18,19 @@ jest.mock('next/dynamic', () => ({
     },
 }));
 
+jest.mock('next-auth/react', () => ({
+  useSession: jest.fn(() => ({
+    data: { accessToken: 'test-token' },
+    status: 'authenticated',
+  })),
+}));
+
+jest.mock('@lib/api/rest-client', () => ({
+  listVersions: jest.fn().mockResolvedValue([]),
+  listClassesWithPropertiesAndTags: jest.fn().mockResolvedValue([]),
+  getRestClientOptions: jest.fn(() => ({})),
+}));
+
 import CodeGenerationPreviewForm from '@/app/dashboard/components/CodeGenerationPreviewForm';
 
 jest.mock('@/app/contexts/StudioContext', () => ({
@@ -25,9 +38,10 @@ jest.mock('@/app/contexts/StudioContext', () => ({
 }));
 
 jest.mock('@/app/contexts/WorkspaceContext', () => ({
+  /** No tenant/project: skip tagged-version fetch (avoids async act in unit tests). */
   useWorkspaceOptional: jest.fn(() => ({
-    tenant: { id: 't1' },
-    project: { id: 'p1' },
+    tenant: null,
+    project: null,
   })),
 }));
 
@@ -41,7 +55,6 @@ jest.mock('@/app/components/providers/DialogProvider', () => ({
 const { useStudioOptional } = require('@/app/contexts/StudioContext') as {
   useStudioOptional: jest.Mock;
 };
-
 describe('CodeGenerationPreviewForm', () => {
   beforeEach(() => {
     jest.clearAllMocks();

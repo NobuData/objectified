@@ -24,6 +24,7 @@ class VersionSchema(BaseModel):
     source_version_id: Optional[str] = None
     creator_id: str
     name: str
+    code_generation_tag: Optional[str] = None
     description: str
     change_log: Optional[str] = None
     enabled: bool = True
@@ -43,6 +44,7 @@ class VersionCreate(BaseModel):
     creator_id: Optional[str] = None
     source_version_id: Optional[str] = None
     name: str
+    code_generation_tag: Optional[str] = None
     description: str = ""
     change_log: Optional[str] = None
     enabled: bool = True
@@ -66,6 +68,7 @@ class VersionMetadataUpdate(BaseModel):
 
     description: Optional[str] = None
     change_log: Optional[str] = None
+    code_generation_tag: Optional[str] = None
 
 
 class VersionHistorySchema(BaseModel):
