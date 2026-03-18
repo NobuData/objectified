@@ -8,6 +8,8 @@ import {
   exportAsDot,
   exportAsGraphML,
   exportAsJson,
+  exportAsOpenApi,
+  exportAsSqlDdl,
 } from '@lib/studio/canvasExportFormats';
 import type { StudioClass } from '@lib/studio/types';
 
@@ -121,6 +123,54 @@ describe('canvasExportFormats', () => {
       const orderNode = parsed.nodes.find((n: { id: string }) => n.id === 'c2');
       expect(userNode.groupId).toBe('group-1');
       expect(orderNode.groupId).toBeUndefined();
+    });
+  });
+
+  describe('exportAsOpenApi', () => {
+    it('exports a valid OpenAPI document with component schemas', () => {
+      const out = exportAsOpenApi(classesWithRef, { title: 'Test API', version: '1.2.3' });
+      const parsed = JSON.parse(out);
+      expect(parsed.openapi).toBe('3.1.0');
+      expect(parsed.info).toEqual({ title: 'Test API', version: '1.2.3' });
+      expect(parsed.components.schemas.User).toBeTruthy();
+      expect(parsed.components.schemas.Order).toBeTruthy();
+      expect(parsed.components.schemas.Order.properties.customer.$ref).toBe('#/components/schemas/User');
+    });
+
+    it('collects required properties into schema.required', () => {
+      const classes: StudioClass[] = [
+        {
+          id: 'c1',
+          name: 'Thing',
+          properties: [{ name: 'name', data: { type: 'string', 'x-required': true } }],
+        },
+      ];
+      const out = exportAsOpenApi(classes);
+      const parsed = JSON.parse(out);
+      expect(parsed.components.schemas.Thing.required).toEqual(['name']);
+    });
+  });
+
+  describe('exportAsSqlDdl', () => {
+    it('exports tables and foreign keys for id-based references', () => {
+      const classes: StudioClass[] = [
+        { id: 'c1', name: 'User', properties: [] },
+        {
+          id: 'c2',
+          name: 'Order',
+          properties: [
+            {
+              name: 'customer',
+              data: { 'x-ref-class-id': 'c1', 'x-ref-storage': 'id', 'x-required': true },
+            },
+          ],
+        },
+      ];
+      const out = exportAsSqlDdl(classes);
+      expect(out).toContain('create table if not exists "user"');
+      expect(out).toContain('create table if not exists "order"');
+      expect(out).toContain('"customer_id" uuid not null');
+      expect(out).toContain('foreign key ("customer_id") references "user"("id")');
     });
   });
 });
