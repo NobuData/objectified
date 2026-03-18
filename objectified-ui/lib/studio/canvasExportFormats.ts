@@ -187,7 +187,7 @@ function getPropertySchema(prop: StudioClassProperty): Record<string, unknown> {
 }
 
 function isPropertyRequired(propSchema: Record<string, unknown>): boolean {
-  return propSchema.required === true || propSchema['x-required'] === true;
+  return propSchema['x-required'] === true;
 }
 
 function getRefTarget(propSchema: Record<string, unknown>): { refClassId?: string; refClassName?: string } {
@@ -210,8 +210,9 @@ function stripNonOpenApiPropertyKeys(schema: Record<string, unknown>): Record<st
   delete out['x-ref-storage'];
   // used only for property->required list conversion
   delete out['x-required'];
-  // class-property override flag (internal)
-  delete out.required;
+  // only remove 'required' when it is the internal boolean form; the array form is
+  // a valid JSON Schema / OpenAPI keyword and must be preserved on object sub-schemas
+  if (typeof out.required === 'boolean') delete out.required;
   return out;
 }
 
@@ -231,6 +232,7 @@ export function exportAsOpenApi(
 
   const schemas: Record<string, unknown> = {};
   const classNames = new Set<string>();
+  const seenSchemaNames = new Map<string, boolean>(); // exact (case-sensitive) name → already emitted
   for (const c of classes) {
     const name = (c.name ?? '').trim();
     if (name) classNames.add(name.toLowerCase());
@@ -239,6 +241,11 @@ export function exportAsOpenApi(
   for (const cls of classes) {
     const name = (cls.name ?? '').trim();
     if (!name) continue;
+    if (seenSchemaNames.has(name)) {
+      console.warn(`[exportAsOpenApi] Duplicate schema name "${name}" – skipping second occurrence.`);
+      continue;
+    }
+    seenSchemaNames.set(name, true);
 
     const baseSchema =
       (cls.schema as Record<string, unknown> | undefined) ?? ({ type: 'object' } as Record<string, unknown>);
@@ -296,6 +303,11 @@ export function exportAsOpenApi(
   return JSON.stringify(doc, null, 2);
 }
 
+/** Double-quote a PostgreSQL identifier, escaping embedded double quotes. */
+function quoteSqlIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
 function mapJsonSchemaTypeToSql(typeVal: unknown): string {
   if (Array.isArray(typeVal)) {
     const nonNull = typeVal.filter((t) => t !== 'null');
@@ -331,12 +343,18 @@ function mapJsonSchemaTypeToSql(typeVal: unknown): string {
 export function exportAsSqlDdl(classes: StudioClass[]): string {
   const idToTable = new Map<string, string>();
   const nameToTable = new Map<string, string>();
+  const seenTableNames = new Set<string>();
 
   for (const cls of classes) {
     const clsId = getStableClassId(cls);
     const clsName = (cls.name ?? '').trim();
     if (!clsName) continue;
     const table = toSnakeCase(clsName) || clsName.toLowerCase();
+    if (seenTableNames.has(table)) {
+      console.warn(`[exportAsSqlDdl] Duplicate table name "${table}" derived from class "${clsName}" – skipping.`);
+      continue;
+    }
+    seenTableNames.add(table);
     if (clsId) idToTable.set(clsId, table);
     nameToTable.set(clsName.toLowerCase(), table);
   }
@@ -349,12 +367,13 @@ export function exportAsSqlDdl(classes: StudioClass[]): string {
   for (const cls of classes) {
     const clsName = (cls.name ?? '').trim();
     if (!clsName) continue;
-    const table = nameToTable.get(clsName.toLowerCase()) ?? toSnakeCase(clsName) ?? clsName.toLowerCase();
+    const table = nameToTable.get(clsName.toLowerCase());
+    if (!table) continue; // skipped as duplicate during index-build pass
 
     const columnLines: string[] = [];
     const fkLines: string[] = [];
 
-    columnLines.push('  id uuid primary key');
+    columnLines.push(`  ${quoteSqlIdent('id')} uuid primary key`);
 
     for (const prop of (cls.properties ?? []) as StudioClassProperty[]) {
       const propName = (prop.name ?? '').trim();
@@ -373,19 +392,19 @@ export function exportAsSqlDdl(classes: StudioClass[]): string {
           (refClassName ? nameToTable.get(refClassName.toLowerCase()) : undefined);
         const baseCol = toSnakeCase(propName) || propName.toLowerCase();
         const colName = baseCol.endsWith('_id') ? baseCol : `${baseCol}_id`;
-        columnLines.push(`  ${colName} uuid${required ? ' not null' : ''}`);
+        columnLines.push(`  ${quoteSqlIdent(colName)} uuid${required ? ' not null' : ''}`);
         if (targetTable) {
-          fkLines.push(`  foreign key (${colName}) references ${targetTable}(id)`);
+          fkLines.push(`  foreign key (${quoteSqlIdent(colName)}) references ${quoteSqlIdent(targetTable)}(${quoteSqlIdent('id')})`);
         }
       } else {
         const baseCol = toSnakeCase(propName) || propName.toLowerCase();
         const sqlType = mapJsonSchemaTypeToSql(propSchema.type);
-        columnLines.push(`  ${baseCol} ${sqlType}${required ? ' not null' : ''}`);
+        columnLines.push(`  ${quoteSqlIdent(baseCol)} ${sqlType}${required ? ' not null' : ''}`);
       }
     }
 
     const allConstraints = [...columnLines, ...fkLines];
-    lines.push(`create table if not exists ${table} (`);
+    lines.push(`create table if not exists ${quoteSqlIdent(table)} (`);
     lines.push(allConstraints.join(',\n'));
     lines.push(');');
     lines.push('');

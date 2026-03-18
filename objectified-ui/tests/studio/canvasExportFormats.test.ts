@@ -142,7 +142,7 @@ describe('canvasExportFormats', () => {
         {
           id: 'c1',
           name: 'Thing',
-          properties: [{ name: 'name', data: { type: 'string', required: true } }],
+          properties: [{ name: 'name', data: { type: 'string', 'x-required': true } }],
         },
       ];
       const out = exportAsOpenApi(classes);
@@ -161,16 +161,16 @@ describe('canvasExportFormats', () => {
           properties: [
             {
               name: 'customer',
-              data: { 'x-ref-class-id': 'c1', 'x-ref-storage': 'id', required: true },
+              data: { 'x-ref-class-id': 'c1', 'x-ref-storage': 'id', 'x-required': true },
             },
           ],
         },
       ];
       const out = exportAsSqlDdl(classes);
-      expect(out).toContain('create table if not exists user');
-      expect(out).toContain('create table if not exists order');
-      expect(out).toContain('customer_id uuid not null');
-      expect(out).toContain('foreign key (customer_id) references user(id)');
+      expect(out).toContain('create table if not exists "user"');
+      expect(out).toContain('create table if not exists "order"');
+      expect(out).toContain('"customer_id" uuid not null');
+      expect(out).toContain('foreign key ("customer_id") references "user"("id")');
     });
   });
 });
