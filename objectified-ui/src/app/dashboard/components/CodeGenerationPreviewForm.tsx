@@ -211,7 +211,6 @@ export default function CodeGenerationPreviewForm({
   const disabled = !studio?.state?.versionId;
   const isPanel = variant === 'panel';
   const previewEditorHeight = isPanel ? 'min(42vh, 280px)' : 'min(40vh, 320px)';
-  const customEditorHeight = isPanel ? '120px' : '160px';
 
   return (
     <div
@@ -363,8 +362,7 @@ export default function CodeGenerationPreviewForm({
                 Mustache template
               </Label.Root>
               <div
-                className="mt-1 rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden"
-                style={{ height: customEditorHeight }}
+                className={`mt-1 rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden ${isPanel ? 'h-[120px]' : 'h-[160px]'}`}
               >
                 <Editor
                   height="100%"
