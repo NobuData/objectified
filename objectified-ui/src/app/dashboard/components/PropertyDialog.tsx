@@ -119,6 +119,7 @@ export default function PropertyDialog({
   }, []);
 
   const handleSave = async () => {
+    if (validating) return;
     const trimmed = propertyName.trim();
     setSchemaErrors([]);
     if (!trimmed) {
@@ -154,15 +155,14 @@ export default function PropertyDialog({
         );
         if (!result.valid) {
           setSchemaErrors(result.errors ?? []);
-          setValidating(false);
           return;
         }
       } catch {
         setError('Unable to validate property data. Check your connection and try again.');
-        setValidating(false);
         return;
+      } finally {
+        setValidating(false);
       }
-      setValidating(false);
     }
 
     onSave({
@@ -244,7 +244,7 @@ export default function PropertyDialog({
                       setPropertyName(e.target.value);
                       clearFieldErrors();
                     }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !validating) void handleSave(); }}
                     placeholder="e.g. id, name, email"
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     autoFocus
