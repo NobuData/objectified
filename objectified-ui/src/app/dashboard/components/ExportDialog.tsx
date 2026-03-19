@@ -5,12 +5,13 @@
  * Reference: GitHub #92, #93 — export dialog and export wizard.
  */
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Label from '@radix-ui/react-label';
 import * as Select from '@radix-ui/react-select';
 import { X, Image, FileCode, Loader2, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useExportFunctions } from '@/app/hooks/useExportFunctions';
+import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 
 export interface ExportDialogProps {
   open: boolean;
@@ -19,7 +20,16 @@ export interface ExportDialogProps {
 
 type ExportType = 'image' | 'data';
 type ImageFormat = 'png' | 'svg' | 'jpeg' | 'pdf';
-type DataFormat = 'mermaid' | 'plantuml' | 'dot' | 'graphml' | 'json' | 'openapi' | 'sql-ddl';
+type DataFormat =
+  | 'mermaid'
+  | 'plantuml'
+  | 'dot'
+  | 'graphml'
+  | 'json'
+  | 'openapi'
+  | 'docs-markdown'
+  | 'docs-html'
+  | 'sql-ddl';
 type BackgroundOption = 'white' | 'transparent';
 
 const IMAGE_FORMATS: { value: ImageFormat; label: string }[] = [
@@ -50,6 +60,12 @@ const selectTriggerClass =
 
 export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const exportFns = useExportFunctions();
+  const workspace = useWorkspaceOptional();
+  const tenantId = workspace?.tenant?.id ? String(workspace.tenant.id) : '';
+  const brandingStorageKey = useMemo(
+    () => (tenantId ? `objectified:docs:branding:${tenantId}` : 'objectified:docs:branding'),
+    [tenantId]
+  );
   const [step, setStep] = useState(1);
   const [exportType, setExportType] = useState<ExportType | null>(null);
   const [imageFormat, setImageFormat] = useState<ImageFormat>('png');
@@ -58,6 +74,12 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
   const [includeGroups, setIncludeGroups] = useState(true);
   const [includeGroupInfo, setIncludeGroupInfo] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [docsTitle, setDocsTitle] = useState('API Documentation');
+  const [docsVersion, setDocsVersion] = useState('0.1.0');
+  const [docsDescription, setDocsDescription] = useState('');
+  const [docsBrandName, setDocsBrandName] = useState('');
+  const [docsLogoUrl, setDocsLogoUrl] = useState('');
+  const [docsPrimaryColor, setDocsPrimaryColor] = useState('#4f46e5');
 
   useEffect(() => {
     if (open) {
@@ -69,15 +91,65 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
       setIncludeGroups(true);
       setIncludeGroupInfo(true);
       setExporting(null);
+
+      try {
+        const raw = window.localStorage.getItem(brandingStorageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<{
+            title: string;
+            version: string;
+            description: string;
+            brandName: string;
+            logoUrl: string;
+            primaryColor: string;
+          }>;
+          setDocsTitle(
+            typeof parsed.title === 'string' && parsed.title.trim()
+              ? parsed.title
+              : 'API Documentation'
+          );
+          setDocsVersion(
+            typeof parsed.version === 'string' && parsed.version.trim()
+              ? parsed.version
+              : '0.1.0'
+          );
+          setDocsDescription(typeof parsed.description === 'string' ? parsed.description : '');
+          setDocsBrandName(typeof parsed.brandName === 'string' ? parsed.brandName : '');
+          setDocsLogoUrl(typeof parsed.logoUrl === 'string' ? parsed.logoUrl : '');
+          setDocsPrimaryColor(
+            typeof parsed.primaryColor === 'string' && parsed.primaryColor.trim()
+              ? parsed.primaryColor
+              : '#4f46e5'
+          );
+        } else {
+          setDocsTitle('API Documentation');
+          setDocsVersion('0.1.0');
+          setDocsDescription('');
+          setDocsBrandName('');
+          setDocsLogoUrl('');
+          setDocsPrimaryColor('#4f46e5');
+        }
+      } catch {
+        setDocsTitle('API Documentation');
+        setDocsVersion('0.1.0');
+        setDocsDescription('');
+        setDocsBrandName('');
+        setDocsLogoUrl('');
+        setDocsPrimaryColor('#4f46e5');
+      }
     }
-  }, [open]);
+  }, [open, brandingStorageKey]);
 
   const imageDisabled = !exportFns.imageExportReady;
   const dataDisabled = !exportFns.dataExportReady;
   const dataFormats: { value: DataFormat; label: string }[] = [
     ...BASE_DATA_FORMATS,
     ...(exportFns.schemaMode === 'openapi'
-      ? ([{ value: 'openapi', label: 'OpenAPI document (JSON)' }] as const)
+      ? ([
+          { value: 'openapi', label: 'OpenAPI document (JSON)' },
+          { value: 'docs-markdown', label: 'API documentation (Markdown)' },
+          { value: 'docs-html', label: 'API documentation (Static HTML)' },
+        ] as const)
       : ([] as const)),
     ...(exportFns.schemaMode === 'sql'
       ? ([{ value: 'sql-ddl', label: 'SQL DDL (PostgreSQL)' }] as const)
@@ -88,7 +160,7 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
   useEffect(() => {
     const modeFormats: DataFormat[] =
       exportFns.schemaMode === 'openapi'
-        ? ['openapi']
+        ? ['openapi', 'docs-markdown', 'docs-html']
         : exportFns.schemaMode === 'sql'
           ? ['sql-ddl']
           : [];
@@ -129,6 +201,14 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
     setExporting(label);
     try {
       const opts = { includeGroupInfo };
+      const docsOpts = {
+        title: docsTitle,
+        version: docsVersion,
+        description: docsDescription,
+        brandName: docsBrandName,
+        logoUrl: docsLogoUrl,
+        primaryColor: docsPrimaryColor,
+      };
       const fns = {
         mermaid: () => exportFns.exportAsMermaid(opts),
         plantuml: () => exportFns.exportAsPlantUML(opts),
@@ -136,9 +216,18 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
         graphml: () => exportFns.exportAsGraphML(opts),
         json: () => exportFns.exportAsJson(opts),
         openapi: () => exportFns.exportAsOpenApi(),
+        'docs-markdown': () => exportFns.exportAsDocsMarkdown(docsOpts),
+        'docs-html': () => exportFns.exportAsDocsHtml(docsOpts),
         'sql-ddl': () => exportFns.exportAsSqlDdl(),
       };
       fns[dataFormat]();
+      if (dataFormat === 'docs-markdown' || dataFormat === 'docs-html') {
+        try {
+          window.localStorage.setItem(brandingStorageKey, JSON.stringify(docsOpts));
+        } catch {
+          // ignore storage failures (private mode, quota, etc.)
+        }
+      }
       onOpenChange(false);
     } finally {
       setExporting(null);
@@ -154,6 +243,8 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
   const isStep2Valid =
     (exportType === 'image' && (imageDisabled ? false : true)) ||
     (exportType === 'data' && (dataDisabled ? false : true));
+  const showDocsBrandingFields =
+    exportType === 'data' && (dataFormat === 'docs-markdown' || dataFormat === 'docs-html');
   const exportLabel =
     exportType === 'image'
       ? `Capture as ${IMAGE_FORMATS.find((f) => f.value === imageFormat)?.label ?? imageFormat}`
@@ -364,6 +455,98 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                     Include group information in export
                   </span>
                 </label>
+
+                {showDocsBrandingFields && (
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-slate-50/50 dark:bg-slate-800/30">
+                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      Documentation options
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label.Root htmlFor="docs-title" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Title
+                        </Label.Root>
+                        <input
+                          id="docs-title"
+                          type="text"
+                          value={docsTitle}
+                          onChange={(e) => setDocsTitle(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          placeholder="API Documentation"
+                        />
+                      </div>
+                      <div>
+                        <Label.Root htmlFor="docs-version" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Version
+                        </Label.Root>
+                        <input
+                          id="docs-version"
+                          type="text"
+                          value={docsVersion}
+                          onChange={(e) => setDocsVersion(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          placeholder="0.1.0"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label.Root htmlFor="docs-description" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Description (optional)
+                        </Label.Root>
+                        <input
+                          id="docs-description"
+                          type="text"
+                          value={docsDescription}
+                          onChange={(e) => setDocsDescription(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          placeholder="Short intro shown at top of the docs"
+                        />
+                      </div>
+                      <div>
+                        <Label.Root htmlFor="docs-brand-name" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Brand name (optional)
+                        </Label.Root>
+                        <input
+                          id="docs-brand-name"
+                          type="text"
+                          value={docsBrandName}
+                          onChange={(e) => setDocsBrandName(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          placeholder="Tenant / Product"
+                        />
+                      </div>
+                      <div>
+                        <Label.Root htmlFor="docs-primary-color" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Primary color (optional)
+                        </Label.Root>
+                        <input
+                          id="docs-primary-color"
+                          type="text"
+                          value={docsPrimaryColor}
+                          onChange={(e) => setDocsPrimaryColor(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          placeholder="#4f46e5"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label.Root htmlFor="docs-logo-url" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Logo URL (optional, http/https only)
+                        </Label.Root>
+                        <input
+                          id="docs-logo-url"
+                          type="text"
+                          value={docsLogoUrl}
+                          onChange={(e) => setDocsLogoUrl(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          placeholder="https://..."
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                      These options are saved locally{tenantId ? ' for this tenant' : ''} for
+                      convenience.
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
