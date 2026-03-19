@@ -28,6 +28,19 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 OpenAPI docs: http://localhost:8000/docs
 
+## Health probes (Kubernetes / load balancers)
+
+| Path | Purpose |
+|------|---------|
+| `GET /health` | **Liveness** — no dependency checks; use when the process should be restarted if unresponsive. |
+| `GET /ready` | **Readiness** — by default runs `SELECT 1` against PostgreSQL; returns **503** if the DB is unreachable. |
+
+To run readiness without a database check (e.g. bootstrap or custom probes), set:
+
+```bash
+READINESS_CHECK_DATABASE=false
+```
+
 ## Tests
 
 ```bash

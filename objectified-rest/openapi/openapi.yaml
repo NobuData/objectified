@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.15
+  version: 1.0.16
 paths:
   /v1/auth/login:
     post:
@@ -2119,6 +2119,10 @@ paths:
                   $ref: '#/components/schemas/SsoProviderSchema'
                 title: Response List Sso Providers V1 Tenants  Tenant Id  Sso Providers
                   Get
+        '403':
+          description: Authenticated but not a tenant member or platform admin
+        '404':
+          description: Tenant not found
         '422':
           description: Validation Error
           content:
@@ -2168,6 +2172,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SsoProviderSchema'
+        '400':
+          description: tenant_id in payload does not match path
+        '403':
+          description: Admin privileges required
+        '404':
+          description: Tenant not found
+        '409':
+          description: SSO provider name already exists for this tenant and type
         '422':
           description: Validation Error
           content:
@@ -2226,6 +2238,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SsoProviderSchema'
+        '403':
+          description: Authenticated but not a tenant member or platform admin
+        '404':
+          description: Tenant or SSO provider not found
         '422':
           description: Validation Error
           content:
@@ -2280,6 +2296,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SsoProviderSchema'
+        '400':
+          description: No fields to update
+        '403':
+          description: Admin privileges required
+        '404':
+          description: Tenant or SSO provider not found
+        '409':
+          description: SSO provider name already exists for this tenant and type
         '422':
           description: Validation Error
           content:
@@ -2324,6 +2348,410 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '403':
+          description: Admin privileges required
+        '404':
+          description: Tenant or SSO provider not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/me/permissions:
+    get:
+      tags:
+      - RBAC
+      summary: Get effective permission keys for the current caller in a tenant
+      description: Return the effective permission keys for the authenticated caller
+        for the given tenant. Tenant administrators receive all permissions implicitly;
+        non-admin members receive the baseline viewer permissions plus any role-derived
+        permissions.
+      operationId: get_my_effective_permissions_v1_tenants__tenant_id__me_permissions_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectivePermissionsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/rbac/permissions:
+    get:
+      tags:
+      - RBAC
+      summary: List permission registry (tenant admin)
+      description: List all enabled permissions available for role configuration.
+        Tenant admin only.
+      operationId: list_permissions_v1_tenants__tenant_id__rbac_permissions_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PermissionSchema'
+                title: Response List Permissions V1 Tenants  Tenant Id  Rbac Permissions
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/rbac/roles:
+    get:
+      tags:
+      - RBAC
+      summary: List roles for a tenant (tenant admin)
+      operationId: list_roles_v1_tenants__tenant_id__rbac_roles_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RoleSchema'
+                title: Response List Roles V1 Tenants  Tenant Id  Rbac Roles Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - RBAC
+      summary: Create a custom role for a tenant (tenant admin)
+      operationId: create_role_v1_tenants__tenant_id__rbac_roles_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/rbac/roles/{role_id}:
+    put:
+      tags:
+      - RBAC
+      summary: Update a role (tenant admin)
+      operationId: update_role_v1_tenants__tenant_id__rbac_roles__role_id__put
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: role_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Role Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/rbac/roles/{role_id}/permissions:
+    get:
+      tags:
+      - RBAC
+      summary: List permission keys for a role (tenant admin)
+      operationId: list_role_permissions_v1_tenants__tenant_id__rbac_roles__role_id__permissions_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: role_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Role Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                title: Response List Role Permissions V1 Tenants  Tenant Id  Rbac
+                  Roles  Role Id  Permissions Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - RBAC
+      summary: Replace permissions for a role (tenant admin)
+      operationId: replace_role_permissions_v1_tenants__tenant_id__rbac_roles__role_id__permissions_put
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: role_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Role Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RolePermissionsUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                title: Response Replace Role Permissions V1 Tenants  Tenant Id  Rbac
+                  Roles  Role Id  Permissions Put
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/rbac/assignments:
+    post:
+      tags:
+      - RBAC
+      summary: Assign a role to an account (tenant admin)
+      operationId: create_account_role_assignment_v1_tenants__tenant_id__rbac_assignments_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountRoleAssignmentCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Create Account Role Assignment V1 Tenants  Tenant
+                  Id  Rbac Assignments Post
         '422':
           description: Validation Error
           content:
@@ -2390,12 +2818,11 @@ paths:
       tags:
       - API Keys
       summary: Create API key for a tenant
-      description: Create a new API key scoped to the given tenant. Optionally set
-        ``scope_role`` (``full`` vs ``read_only``) and ``project_id`` to limit the
-        key to one project or safe HTTP methods for CI/CD. The full secret is
-        returned **once** in the ``raw_key`` field — store it immediately. Only
-        the prefix and hash are stored server-side; the raw secret cannot be retrieved
-        again.
+      description: Create a new API key scoped to the given tenant. Optionally restrict
+        to a single ``project_id`` and/or ``read_only`` scope (GET/HEAD/OPTIONS only).
+        The full secret is returned **once** in the ``raw_key`` field — store it immediately.
+        Only the prefix and hash are stored server-side; the raw secret cannot be
+        retrieved again.
       operationId: create_api_key_v1_tenants__tenant_id__api_keys_post
       parameters:
       - name: tenant_id
@@ -4679,12 +5106,15 @@ paths:
                 title: Response Root  Get
   /health:
     get:
-      summary: Health
-      description: Health check.
+      tags:
+      - Operations
+      summary: Liveness probe
+      description: Lightweight liveness check for orchestrators and load balancers.
+        Does not verify external dependencies; use ``GET /ready`` for that.
       operationId: health_health_get
       responses:
         '200':
-          description: Successful Response
+          description: Process is alive
           content:
             application/json:
               schema:
@@ -4692,6 +5122,24 @@ paths:
                   type: string
                 type: object
                 title: Response Health Health Get
+  /ready:
+    get:
+      tags:
+      - Operations
+      summary: Readiness probe
+      description: Returns 200 when the service can handle traffic. By default runs
+        a PostgreSQL ``SELECT 1`` check. Set environment variable ``READINESS_CHECK_DATABASE=false``
+        to skip the database check (process-only readiness).
+      operationId: ready_ready_get
+      responses:
+        '200':
+          description: Ready to accept traffic
+          content:
+            application/json:
+              schema:
+                title: Response Ready Ready Get
+        '503':
+          description: Not ready — dependency check failed
 components:
   schemas:
     AccountCreate:
@@ -4723,6 +5171,40 @@ components:
         always created with ``verified=False`` and ``enabled=True`` on the server
 
         side to prevent callers from self-verifying or disabling their account.'
+    AccountRoleAssignmentCreate:
+      properties:
+        account_id:
+          type: string
+          title: Account Id
+        role_id:
+          type: string
+          title: Role Id
+        resource_type:
+          anyOf:
+          - type: string
+            enum:
+            - project
+            - version
+          - type: 'null'
+          title: Resource Type
+        resource_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resource Id
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - account_id
+      - role_id
+      title: AccountRoleAssignmentCreate
     AccountSchema:
       properties:
         id:
@@ -4806,15 +5288,6 @@ components:
       type: object
       title: AccountUpdate
       description: Update payload for objectified.account (all optional).
-    ApiKeyScopeRole:
-      type: string
-      enum:
-      - full
-      - read_only
-      title: ApiKeyScopeRole
-      description: |
-        **full**: read/write (subject to RBAC unless the key is tenant-wide full).
-        **read_only**: only GET, HEAD, and OPTIONS.
     ApiKeyCreate:
       properties:
         name:
@@ -4837,16 +5310,16 @@ components:
           description: Arbitrary metadata
         scope_role:
           $ref: '#/components/schemas/ApiKeyScopeRole'
+          description: '``full``: read/write (subject to RBAC unless the key is tenant-wide
+            full). ``read_only``: only GET, HEAD, and OPTIONS.'
           default: full
-          description: |
-            **full**: read/write (subject to RBAC unless the key is tenant-wide full).
-            **read_only**: only GET, HEAD, and OPTIONS.
         project_id:
           anyOf:
           - type: string
           - type: 'null'
           title: Project Id
-          description: Optional project UUID; when set, the key is limited to that project within the tenant.
+          description: Optional project UUID. When set, the key may only access that
+            project within the tenant; tenant-wide API paths return 403.
       type: object
       required:
       - name
@@ -4856,7 +5329,6 @@ components:
         metadata: {}
         name: CI/CD pipeline key
         scope_role: full
-        project_id: null
     ApiKeyCreateResponse:
       properties:
         id:
@@ -4881,14 +5353,15 @@ components:
           description: First 8 characters of the raw key (for display)
         scope_role:
           $ref: '#/components/schemas/ApiKeyScopeRole'
-          default: full
           description: 'Key role: full access or read-only (safe HTTP methods only).'
+          default: full
         project_id:
           anyOf:
           - type: string
           - type: 'null'
           title: Project Id
-          description: When set, the key is restricted to this project within the tenant.
+          description: When set, the key is restricted to this project within the
+            tenant.
         expires_at:
           anyOf:
           - type: string
@@ -4972,14 +5445,15 @@ components:
           description: First 8 characters of the raw key (for display)
         scope_role:
           $ref: '#/components/schemas/ApiKeyScopeRole'
-          default: full
           description: 'Key role: full access or read-only (safe HTTP methods only).'
+          default: full
         project_id:
           anyOf:
           - type: string
           - type: 'null'
           title: Project Id
-          description: When set, the key is restricted to this project within the tenant.
+          description: When set, the key is restricted to this project within the
+            tenant.
         expires_at:
           anyOf:
           - type: string
@@ -5033,6 +5507,13 @@ components:
       - created_at
       title: ApiKeySchema
       description: Representation of a stored API key (never includes the raw secret).
+    ApiKeyScopeRole:
+      type: string
+      enum:
+      - full
+      - read_only
+      title: ApiKeyScopeRole
+      description: Access role for an API key (affects HTTP methods and RBAC bypass).
     ClassAssignTagRequest:
       properties:
         tag:
@@ -5397,6 +5878,33 @@ components:
       title: ConflictResolutionChoice
       description: 'A single conflict resolution: path and choice of ours, theirs,
         or custom value.'
+    EffectivePermissionsResponse:
+      properties:
+        tenant_id:
+          type: string
+          title: Tenant Id
+        account_id:
+          type: string
+          title: Account Id
+        is_tenant_admin:
+          type: boolean
+          title: Is Tenant Admin
+        role_ids:
+          items:
+            type: string
+          type: array
+          title: Role Ids
+        permission_keys:
+          items:
+            type: string
+          type: array
+          title: Permission Keys
+      type: object
+      required:
+      - tenant_id
+      - account_id
+      - is_tenant_admin
+      title: EffectivePermissionsResponse
     HTTPValidationError:
       properties:
         detail:
@@ -5574,6 +6082,31 @@ components:
       - valid
       title: OpenAPIValidationResponse
       description: Response body for OpenAPI document validation endpoint.
+    PermissionSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        key:
+          type: string
+          title: Key
+        description:
+          type: string
+          title: Description
+          default: ''
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - id
+      - key
+      title: PermissionSchema
     ProfileUpdate:
       properties:
         name:
@@ -5865,6 +6398,112 @@ components:
       type: object
       title: PropertyUpdate
       description: Update payload for objectified.property.
+    RoleCreate:
+      properties:
+        key:
+          type: string
+          maxLength: 80
+          minLength: 2
+          title: Key
+        name:
+          type: string
+          maxLength: 255
+          minLength: 1
+          title: Name
+        description:
+          type: string
+          title: Description
+          default: ''
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - key
+      - name
+      title: RoleCreate
+    RolePermissionsUpdate:
+      properties:
+        permission_keys:
+          items:
+            type: string
+          type: array
+          title: Permission Keys
+          description: Full replacement list of permission keys.
+      type: object
+      title: RolePermissionsUpdate
+    RoleSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        key:
+          type: string
+          title: Key
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+          default: ''
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - id
+      - tenant_id
+      - key
+      - name
+      title: RoleSchema
+    RoleUpdate:
+      properties:
+        key:
+          anyOf:
+          - type: string
+            maxLength: 80
+            minLength: 2
+          - type: 'null'
+          title: Key
+        name:
+          anyOf:
+          - type: string
+            maxLength: 255
+            minLength: 1
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+      type: object
+      title: RoleUpdate
     SchemaValidationRequest:
       properties:
         schema:

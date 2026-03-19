@@ -141,6 +141,8 @@ def test_root(client):
     assert r.status_code == 200
     data = r.json()
     assert data["message"] == "Objectified REST API"
+    assert data.get("health") == "/health"
+    assert data.get("ready") == "/ready"
     assert "v1" in data
     assert data["v1"]["users"] == "/v1/users"
     assert data["v1"]["tenants"] == "/v1/tenants"
@@ -151,6 +153,38 @@ def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+def test_ready_skips_database_when_disabled(client):
+    """READINESS_CHECK_DATABASE=false returns ready without calling the DB."""
+    from app.config import settings
+
+    with patch.object(settings, "readiness_check_database", False):
+        r = client.get("/ready")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ready"
+    assert body["checks"]["database"] == "skipped"
+
+
+def test_ready_ok_when_database_ping_succeeds(client):
+    """GET /ready returns 200 when db.ping() is True."""
+    with patch("app.main.db.ping", return_value=True):
+        r = client.get("/ready")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ready"
+    assert body["checks"]["database"] == "ok"
+
+
+def test_ready_503_when_database_unavailable(client):
+    """GET /ready returns 503 when db.ping() is False."""
+    with patch("app.main.db.ping", return_value=False):
+        r = client.get("/ready")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["status"] == "not_ready"
+    assert body["checks"]["database"] == "unavailable"
 
 
 def test_openapi_has_security_schemes(client):

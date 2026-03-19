@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,11 @@ class Settings(BaseSettings):
     jwt_secret: Optional[str] = None
     nextauth_secret: Optional[str] = None
     jwt_algorithm: str = "HS256"
+
+    readiness_check_database: bool = Field(
+        default=True,
+        description="If True, GET /ready verifies PostgreSQL with SELECT 1.",
+    )
 
     @property
     def effective_database_url(self) -> str:

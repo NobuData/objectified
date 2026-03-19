@@ -612,6 +612,57 @@ class TestDatabase:
 
         assert result == []
 
+    def test_database_ping_success(self):
+        """ping returns True when SELECT 1 succeeds."""
+        db = Database()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (1,)
+        mock_cursor_cm = MagicMock()
+        mock_cursor_cm.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor_cm.__exit__ = MagicMock(return_value=None)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor_cm
+        with patch.object(db, "connect", return_value=mock_conn):
+            assert db.ping() is True
+        mock_cursor.execute.assert_called_once_with("SELECT 1")
+
+    def test_database_ping_no_connection(self):
+        """ping returns False when connect returns None."""
+        db = Database()
+        with patch.object(db, "connect", return_value=None):
+            assert db.ping() is False
+
+    def test_database_ping_execute_failure(self):
+        """ping returns False when execute raises and resets the cached connection."""
+        db = Database()
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = Exception("fail")
+        mock_cursor_cm = MagicMock()
+        mock_cursor_cm.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor_cm.__exit__ = MagicMock(return_value=None)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor_cm
+        db._connection = mock_conn
+        with patch.object(db, "connect", return_value=mock_conn):
+            assert db.ping() is False
+        assert db._connection is None
+
+    def test_database_ping_execute_failure_rollback_error(self):
+        """ping returns False and still resets connection when rollback also raises."""
+        db = Database()
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = Exception("fail")
+        mock_cursor_cm = MagicMock()
+        mock_cursor_cm.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor_cm.__exit__ = MagicMock(return_value=None)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor_cm
+        mock_conn.rollback.side_effect = Exception("rollback failed")
+        db._connection = mock_conn
+        with patch.object(db, "connect", return_value=mock_conn):
+            assert db.ping() is False
+        assert db._connection is None
+
     def test_database_execute_mutation_no_returning(self):
         """Test mutation execution without RETURNING."""
         db = Database()
@@ -821,6 +872,8 @@ class TestMainApp:
         data = response.json()
         assert data["message"] == "Objectified REST API"
         assert data["version"] == "1.0.0"
+        assert data.get("health") == "/health"
+        assert data.get("ready") == "/ready"
         assert "docs" in data
         assert "openapi" in data
 
