@@ -6,7 +6,7 @@ from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_authenticated
+from app.auth import require_authenticated, require_project_permission
 from app.database import db
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schema_validation import validate_json_schema_object
@@ -52,6 +52,7 @@ def list_properties(
     tenant_id: str,
     project_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted properties"),
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[PropertySchema]:
     """List properties for a project."""
@@ -82,6 +83,7 @@ def list_properties(
 def list_deleted_properties(
     tenant_id: str,
     project_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[PropertySchema]:
     """List only soft-deleted properties for a project."""
@@ -108,6 +110,7 @@ def get_property(
     project_id: str,
     property_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted property"),
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> PropertySchema:
     """Get a property by ID."""
@@ -142,6 +145,7 @@ def get_property_by_name(
     project_id: str,
     property_name: str,
     include_deleted: bool = Query(False, description="Include soft-deleted property"),
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> PropertySchema:
     """Get a property by name."""
@@ -182,6 +186,7 @@ def create_property(
     tenant_id: str,
     project_id: str,
     payload: PropertyCreate,
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> PropertySchema:
     """Create a new property."""
@@ -261,6 +266,7 @@ def update_property(
     project_id: str,
     property_id: str,
     payload: PropertyUpdate,
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> PropertySchema:
     """Update a property by ID."""
@@ -353,6 +359,7 @@ def delete_property(
     tenant_id: str,
     project_id: str,
     property_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> None:
     """Soft-delete a property."""

@@ -6,7 +6,7 @@ Uses objectified schema: objectified.tenant, objectified.tenant_account.
 """
 
 import logging
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Callable, Optional
 
 from fastapi import Depends, Header, HTTPException
 import jwt
@@ -220,6 +220,7 @@ def _resolve_caller(
         return {
             "auth_method": "jwt",
             "user_id": user_id,
+            "account_id": user_id,
             "user_email": payload.get("email"),
             "user_name": payload.get("name"),
             # Honour an explicit is_admin claim in the token, then fall
@@ -241,7 +242,7 @@ def _resolve_caller(
                 headers={"WWW-Authenticate": "API-Key"},
             )
         # API keys that pass validate_api_key are considered internal/admin keys.
-        return {**api_key_data, "auth_method": "api_key", "is_admin": True}
+        return {**api_key_data, "auth_method": "api_key", "is_admin": True, "account_id": api_key_data.get("account_id")}
 
     raise HTTPException(
         status_code=401,
@@ -318,4 +319,239 @@ def require_admin(
         status_code=403,
         detail="Admin privileges required.",
     )
+
+
+# ---------------------------------------------------------------------------
+# RBAC: roles and permissions
+# ---------------------------------------------------------------------------
+
+PermissionKey = str
+
+
+_IMPLICIT_VIEWER_PERMISSIONS: set[PermissionKey] = {
+    "project:read",
+    "version:read",
+    "schema:read",
+}
+
+
+def _is_tenant_member(account_id: str, tenant_id: str) -> bool:
+    rows = db.execute_query(
+        """
+        SELECT 1
+        FROM objectified.tenant_account ta
+        JOIN objectified.tenant t ON t.id = ta.tenant_id
+        WHERE ta.tenant_id = %s
+          AND ta.account_id = %s
+          AND ta.deleted_at IS NULL
+          AND t.deleted_at IS NULL
+        LIMIT 1
+        """,
+        (tenant_id, account_id),
+    )
+    return bool(rows)
+
+
+def _is_tenant_admin(account_id: str, tenant_id: str) -> bool:
+    rows = db.execute_query(
+        """
+        SELECT 1
+        FROM objectified.tenant_account ta
+        JOIN objectified.tenant t ON t.id = ta.tenant_id
+        WHERE ta.tenant_id = %s
+          AND ta.account_id = %s
+          AND ta.access_level = 'administrator'
+          AND ta.deleted_at IS NULL
+          AND t.deleted_at IS NULL
+        LIMIT 1
+        """,
+        (tenant_id, account_id),
+    )
+    return bool(rows)
+
+
+def _has_rbac_permission(
+    *,
+    account_id: str,
+    tenant_id: str,
+    permission_key: PermissionKey,
+    project_id: Optional[str] = None,
+    version_id: Optional[str] = None,
+) -> bool:
+    """
+    Return True when account has a role granting permission_key in the tenant.
+
+    Role assignments may be:
+      - tenant-wide (resource_type/resource_id NULL), or
+      - scoped to a project, or
+      - scoped to a version.
+
+    When checking a version-scoped endpoint, a project-scoped assignment is
+    considered applicable (e.g. project-level publisher).
+    """
+    rows = db.execute_query(
+        """
+        SELECT 1
+        FROM objectified.account_role ar
+        JOIN objectified.role r ON r.id = ar.role_id
+        JOIN objectified.role_permission rp ON rp.role_id = r.id
+        JOIN objectified.permission p ON p.id = rp.permission_id
+        WHERE ar.tenant_id = %s
+          AND ar.account_id = %s
+          AND p.key = %s
+          AND ar.enabled = true
+          AND r.enabled = true
+          AND rp.enabled = true
+          AND ar.deleted_at IS NULL
+          AND r.deleted_at IS NULL
+          AND rp.deleted_at IS NULL
+          AND p.deleted_at IS NULL
+          AND (
+            (ar.resource_type IS NULL AND ar.resource_id IS NULL)
+            OR
+            (%s::uuid IS NOT NULL AND ar.resource_type = 'project'::objectified.rbac_resource_type AND ar.resource_id = %s::uuid)
+            OR
+            (%s::uuid IS NOT NULL AND ar.resource_type = 'version'::objectified.rbac_resource_type AND ar.resource_id = %s::uuid)
+          )
+        LIMIT 1
+        """,
+        (
+            tenant_id,
+            account_id,
+            permission_key,
+            project_id,
+            project_id,
+            version_id,
+            version_id,
+        ),
+    )
+    return bool(rows)
+
+
+def _require_permission_or_403(
+    *,
+    caller: Optional[dict[str, Any]],
+    tenant_id: str,
+    permission_key: PermissionKey,
+    project_id: Optional[str] = None,
+    version_id: Optional[str] = None,
+) -> dict[str, Any]:
+    if not caller:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    # Platform admins / internal API keys are treated as full access.
+    if caller.get("is_admin"):
+        return caller
+
+    account_id = caller.get("account_id") or caller.get("user_id") or caller.get("account_id")
+    if not account_id:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    # Tenant administrators have full permissions within the tenant.
+    if _is_tenant_admin(account_id, tenant_id):
+        return caller
+
+    if not _is_tenant_member(account_id, tenant_id):
+        raise HTTPException(status_code=403, detail="User does not have access to this tenant.")
+
+    # Implicit baseline for members.
+    if permission_key in _IMPLICIT_VIEWER_PERMISSIONS:
+        return caller
+
+    if _has_rbac_permission(
+        account_id=account_id,
+        tenant_id=tenant_id,
+        permission_key=permission_key,
+        project_id=project_id,
+        version_id=version_id,
+    ):
+        return caller
+
+    raise HTTPException(status_code=403, detail=f"Missing permission: {permission_key}")
+
+
+def require_tenant_permission(permission_key: PermissionKey) -> Callable[..., dict[str, Any]]:
+    def _dep(
+        tenant_id: str,
+        caller: Annotated[dict[str, Any], Depends(require_authenticated)],
+    ) -> dict[str, Any]:
+        return _require_permission_or_403(
+            caller=caller,
+            tenant_id=tenant_id,
+            permission_key=permission_key,
+        )
+
+    return _dep
+
+
+def require_project_permission(permission_key: PermissionKey) -> Callable[..., dict[str, Any]]:
+    def _dep(
+        tenant_id: str,
+        project_id: str,
+        caller: Annotated[dict[str, Any], Depends(require_authenticated)],
+    ) -> dict[str, Any]:
+        return _require_permission_or_403(
+            caller=caller,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            permission_key=permission_key,
+        )
+
+    return _dep
+
+
+def _resolve_version_scope(version_id: str) -> dict[str, str]:
+    row = db.execute_query(
+        """
+        SELECT p.tenant_id, v.project_id
+        FROM objectified.version v
+        JOIN objectified.project p ON p.id = v.project_id
+        WHERE v.id = %s
+          AND v.deleted_at IS NULL
+          AND p.deleted_at IS NULL
+        LIMIT 1
+        """,
+        (version_id,),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Version not found: {version_id}")
+    out = dict(row[0])
+    return {"tenant_id": str(out["tenant_id"]), "project_id": str(out["project_id"])}
+
+
+def require_version_permission(permission_key: PermissionKey) -> Callable[..., dict[str, Any]]:
+    def _dep(
+        version_id: str,
+        caller: Annotated[dict[str, Any], Depends(require_authenticated)],
+    ) -> dict[str, Any]:
+        if caller.get("is_admin"):
+            return caller
+        scope = _resolve_version_scope(version_id)
+        return _require_permission_or_403(
+            caller=caller,
+            tenant_id=scope["tenant_id"],
+            project_id=scope["project_id"],
+            version_id=version_id,
+            permission_key=permission_key,
+        )
+
+    return _dep
+
+
+def require_tenant_admin(
+    tenant_id: str,
+    caller: Annotated[dict[str, Any], Depends(require_authenticated)],
+) -> dict[str, Any]:
+    """
+    Require tenant administrator access for tenant-scoped configuration endpoints.
+
+    Accepts platform-admin/internal API keys (caller.is_admin) as full access.
+    """
+    if caller.get("is_admin"):
+        return caller
+    account_id = caller.get("account_id")
+    if not account_id:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if _is_tenant_admin(account_id, tenant_id):
+        return caller
+    raise HTTPException(status_code=403, detail="Tenant administrator privileges required.")
 

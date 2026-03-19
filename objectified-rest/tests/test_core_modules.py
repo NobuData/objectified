@@ -244,6 +244,7 @@ class TestResolveCaller:
 
         assert result["auth_method"] == "jwt"
         assert result["user_id"] == "user123"
+        assert result["account_id"] == "user123"
         assert result["is_admin"] is True
 
     def test_resolve_caller_jwt_no_is_admin_claim(self):
@@ -258,6 +259,7 @@ class TestResolveCaller:
             result = _resolve_caller(authorization=token)
 
         assert result["auth_method"] == "jwt"
+        assert result["account_id"] == "user123"
         assert result["is_admin"] is False
 
     def test_resolve_caller_invalid_jwt(self):

@@ -7,7 +7,7 @@ from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_authenticated
+from app.auth import require_authenticated, require_tenant_permission
 from app.database import db
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schemas.project import ProjectCreate, ProjectHistorySchema, ProjectSchema, ProjectUpdate
@@ -58,6 +58,7 @@ def _validate_slug(slug: str) -> str:
 def list_projects(
     tenant_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted projects"),
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("project:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[ProjectSchema]:
     """List projects for a tenant."""
@@ -86,6 +87,7 @@ def list_projects(
 )
 def list_deleted_projects(
     tenant_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("project:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[ProjectSchema]:
     """List only soft-deleted projects for a tenant."""
@@ -110,6 +112,7 @@ def get_project(
     tenant_id: str,
     project_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted project"),
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("project:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ProjectSchema:
     """Get a project by ID."""
@@ -145,6 +148,7 @@ def get_project(
 def create_project(
     tenant_id: str,
     payload: ProjectCreate,
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("project:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ProjectSchema:
     """Create a new project."""
@@ -239,6 +243,7 @@ def update_project(
     tenant_id: str,
     project_id: str,
     payload: ProjectUpdate,
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("project:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ProjectSchema:
     """Update a project by ID."""
@@ -337,6 +342,7 @@ def update_project(
 def delete_project(
     tenant_id: str,
     project_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("project:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> None:
     """Soft-delete a project."""
@@ -383,6 +389,7 @@ def delete_project(
 def restore_project(
     tenant_id: str,
     project_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("project:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ProjectSchema:
     """Restore a soft-deleted project."""
@@ -431,6 +438,7 @@ def restore_project(
 def permanent_delete_project(
     tenant_id: str,
     project_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("project:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> None:
     """Permanently delete a previously soft-deleted project."""
@@ -476,6 +484,7 @@ def permanent_delete_project(
 def get_project_history(
     tenant_id: str,
     project_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[ProjectHistorySchema]:
     """Return change history for a project."""

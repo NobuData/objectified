@@ -470,6 +470,30 @@ export interface MergeResolveResponse {
 }
 
 // ---------------------------------------------------------------------------
+// RBAC
+// ---------------------------------------------------------------------------
+
+export interface EffectivePermissionsResponse {
+  tenant_id: string;
+  account_id: string;
+  is_tenant_admin: boolean;
+  role_ids?: string[];
+  permission_keys?: string[];
+}
+
+export async function getMyTenantPermissions(
+  tenantId: string,
+  options: RestClientOptions = {}
+): Promise<EffectivePermissionsResponse> {
+  return request<EffectivePermissionsResponse>(
+    'GET',
+    `/tenants/${encodeURIComponent(tenantId)}/me/permissions`,
+    undefined,
+    options
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Current user profile (GET /me, PATCH /me)
 // ---------------------------------------------------------------------------
 

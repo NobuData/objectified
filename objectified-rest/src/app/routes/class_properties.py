@@ -5,7 +5,7 @@ from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_authenticated
+from app.auth import require_authenticated, require_version_permission
 from app.database import db
 from app.routes.helpers import _not_found
 from app.routes.versions import _assert_version_exists
@@ -77,6 +77,7 @@ def list_class_properties(
     version_id: str,
     class_id: str,
     parent_id: Optional[str] = Query(None, description="Filter by parent property ID"),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[ClassPropertySchema]:
     """List properties assigned to a class."""
@@ -115,6 +116,7 @@ def add_property_to_class(
     version_id: str,
     class_id: str,
     payload: ClassPropertyCreate,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ClassPropertySchema:
     """Add a property to a class (creates a class_property join row)."""
@@ -186,6 +188,7 @@ def update_class_property(
     class_id: str,
     class_property_id: str,
     payload: ClassPropertyUpdate,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ClassPropertySchema:
     """Update a class property join row."""
@@ -289,6 +292,7 @@ def remove_property_from_class(
     version_id: str,
     class_id: str,
     class_property_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> None:
     """Remove a property from a class (hard delete of the join row)."""

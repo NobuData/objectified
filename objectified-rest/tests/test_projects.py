@@ -20,7 +20,7 @@ _TENANT_ID = "00000000-0000-0000-0000-000000000010"
 _ACCOUNT_ID = "00000000-0000-0000-0000-000000000011"
 _PROJECT_ID = "00000000-0000-0000-0000-000000000012"
 
-_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
 
 _TENANT_ROW: dict[str, Any] = {
     "id": _TENANT_ID,

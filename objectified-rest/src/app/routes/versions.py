@@ -7,7 +7,11 @@ from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.auth import require_authenticated
+from app.auth import (
+    require_authenticated,
+    require_project_permission,
+    require_version_permission,
+)
 from app.database import db
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schemas.version import (
@@ -146,6 +150,7 @@ def _insert_version_row(
 def list_versions(
     tenant_id: str,
     project_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("version:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[VersionSchema]:
     """List active versions for a project."""
@@ -176,6 +181,7 @@ def create_version(
     tenant_id: str,
     project_id: str,
     payload: VersionCreate,
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("version:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSchema:
     """Create a version for a project."""
@@ -264,6 +270,7 @@ def create_version(
 )
 def list_tags_for_version(
     version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[str]:
     """List all tag names assigned to any class in the version."""
@@ -296,6 +303,7 @@ def list_tags_for_version(
 )
 def get_version(
     version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("version:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSchema:
     """Get a version by ID."""
@@ -316,6 +324,7 @@ def get_version(
 def update_version_metadata(
     version_id: str,
     payload: VersionMetadataUpdate,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("version:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSchema:
     """Update a version's metadata fields."""
@@ -385,6 +394,7 @@ def update_version_metadata(
 )
 def delete_version(
     version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("version:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> None:
     """Soft-delete a version."""
@@ -423,6 +433,7 @@ def delete_version(
 )
 def get_version_history(
     version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[VersionHistorySchema]:
     """Return a version's revision history."""
@@ -449,6 +460,7 @@ def get_version_history(
 def get_version_by_revision(
     version_id: str,
     revision: int,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionHistorySchema:
     """Get a single history revision for a version."""
@@ -490,6 +502,7 @@ def get_version_by_revision(
 def publish_version(
     version_id: str,
     payload: Optional[VersionPublishRequest] = None,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("version:publish"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSchema:
     """Publish a version."""
@@ -547,6 +560,7 @@ def publish_version(
 )
 def unpublish_version(
     version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("version:publish"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSchema:
     """Unpublish a version."""
@@ -602,6 +616,7 @@ def unpublish_version(
 )
 def freeze_version_schema(
     version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("version:publish"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSnapshotSchema:
     """Freeze-schema: commit an immutable snapshot capturing the current version state."""
@@ -852,6 +867,7 @@ def _compute_schema_changes_diff(
 def commit_version_snapshot(
     version_id: str,
     payload: Optional[VersionSnapshotCreate] = None,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("version:publish"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSnapshotSchema:
     """Commit a snapshot of the current version state (classes + properties)."""
@@ -919,6 +935,7 @@ def commit_version_snapshot(
 )
 def list_version_snapshots(
     version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[VersionSnapshotSchema]:
     """List all snapshots for a version."""
@@ -947,6 +964,7 @@ def list_version_snapshots(
 )
 def list_version_snapshots_metadata(
     version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[VersionSnapshotMetadataSchema]:
     """List metadata for all snapshots for a version, without the snapshot payload."""
@@ -976,6 +994,7 @@ def list_version_snapshots_metadata(
 )
 def list_version_snapshots_schema_changes(
     version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[VersionSnapshotSchemaChangesAuditSchema]:
     """List per-snapshot schema change diffs."""
@@ -1032,6 +1051,7 @@ def list_version_snapshots_schema_changes(
 def get_version_snapshot_by_revision(
     version_id: str,
     revision: int,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSnapshotSchema:
     """Get a single snapshot revision for a version."""

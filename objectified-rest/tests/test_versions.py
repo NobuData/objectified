@@ -17,7 +17,7 @@ _PROJECT_ID = "00000000-0000-0000-0000-000000000020"
 _VERSION_ID = "00000000-0000-0000-0000-000000000030"
 _ACCOUNT_ID = "00000000-0000-0000-0000-000000000040"
 
-_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
 
 _PROJECT_ROW: dict[str, Any] = {"id": _PROJECT_ID, "tenant_id": _TENANT_ID}
 _VERSION_ROW: dict[str, Any] = {
@@ -812,7 +812,7 @@ def test_freeze_schema_version_not_found_returns_404(client):
 # 403 tests for endpoints requiring user authentication (JWT only)
 # ---------------------------------------------------------------------------
 
-_API_KEY_CALLER = {"auth_method": "api_key", "account_id": _ACCOUNT_ID}
+_API_KEY_CALLER = {"auth_method": "api_key", "account_id": _ACCOUNT_ID, "is_admin": True}
 
 
 @pytest.fixture

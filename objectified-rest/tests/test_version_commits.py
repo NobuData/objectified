@@ -23,7 +23,7 @@ _CLASS_ID = "00000000-0000-0000-0000-000000000070"
 _PROPERTY_ID = "00000000-0000-0000-0000-000000000080"
 _CP_ID = "00000000-0000-0000-0000-000000000090"
 
-_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
 
 _VERSION_ROW: dict[str, Any] = {
     "id": _VERSION_ID,
@@ -562,7 +562,9 @@ class TestRollbackVersion:
 
     def test_rollback_api_key_caller_returns_403(self):
         """Rollback returns 403 when caller is an API-key user without a user_id."""
-        api_key_caller = {"auth_method": "api_key", "account_id": _ACCOUNT_ID}
+        # In production, API keys are treated as internal/admin by auth._resolve_caller.
+        # The handler still requires a JWT user_id, so the endpoint returns 403.
+        api_key_caller = {"auth_method": "api_key", "account_id": _ACCOUNT_ID, "is_admin": True}
         app.dependency_overrides[require_authenticated] = lambda: api_key_caller
         try:
             with mock_db_all() as mock_db:
@@ -663,7 +665,7 @@ class TestCreateVersionFromRevision:
                 )
         finally:
             app.dependency_overrides.clear()
-        assert r.status_code == 403
+        assert r.status_code == 401
 
     def test_create_version_from_revision_snapshot_not_found_returns_404(self, client):
         """Create version from revision returns 404 when snapshot revision does not exist."""

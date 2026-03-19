@@ -44,6 +44,15 @@ from app.schemas.version import (
     VersionUpdate,
     VersionVisibility,
 )
+from app.schemas.rbac import (
+    AccountRoleAssignmentCreate,
+    EffectivePermissionsResponse,
+    PermissionSchema,
+    RoleCreate,
+    RolePermissionsUpdate,
+    RoleSchema,
+    RoleUpdate,
+)
 
 __all__ = [
     "AccountCreate",
@@ -87,4 +96,11 @@ __all__ = [
     "VersionSchema",
     "VersionUpdate",
     "VersionVisibility",
+    "PermissionSchema",
+    "RoleSchema",
+    "RoleCreate",
+    "RoleUpdate",
+    "RolePermissionsUpdate",
+    "AccountRoleAssignmentCreate",
+    "EffectivePermissionsResponse",
 ]

@@ -6,7 +6,7 @@ from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_authenticated
+from app.auth import require_authenticated, require_version_permission
 from app.database import db
 from app.routes.helpers import _not_found
 from app.routes.versions import _assert_version_exists
@@ -50,6 +50,7 @@ def _row_to_class(row: dict[str, Any]) -> dict[str, Any]:
 def list_classes_by_version(
     version_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted classes"),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[ClassSchema]:
     """List classes for a version, optionally including soft-deleted."""
@@ -82,6 +83,7 @@ def list_classes_by_version(
 def list_classes_with_properties_and_tags(
     version_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted classes"),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[ClassWithPropertiesAndTags]:
     """List classes for a version with properties (and tags from metadata)."""
@@ -148,6 +150,7 @@ def get_class_with_properties_and_tags(
     version_id: str,
     class_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted class"),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ClassWithPropertiesAndTags:
     """Get a single class with its properties and tags."""
@@ -211,6 +214,7 @@ def get_tags_for_class(
     version_id: str,
     class_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted class"),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ClassTagsResponse:
     """Get tags for a class from metadata.tags."""
@@ -240,6 +244,7 @@ def assign_tag_to_class(
     version_id: str,
     class_id: str,
     payload: ClassAssignTagRequest,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ClassTagsResponse:
     """Assign a tag to a class by updating metadata.tags."""
@@ -284,6 +289,7 @@ def remove_tag_from_class(
     version_id: str,
     class_id: str,
     tag_name: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ClassTagsResponse:
     """Remove a tag from a class."""
@@ -324,6 +330,7 @@ def get_class(
     version_id: str,
     class_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted class"),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ClassSchema:
     """Get a class by ID scoped to a version."""
@@ -355,6 +362,7 @@ def get_class(
 def create_class(
     version_id: str,
     payload: ClassCreate,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ClassSchema:
     """Create a class in a version."""
@@ -423,6 +431,7 @@ def update_class(
     version_id: str,
     class_id: str,
     payload: ClassUpdate,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ClassSchema:
     """Update a class by ID."""
@@ -514,6 +523,7 @@ def update_class(
 def delete_class(
     version_id: str,
     class_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> None:
     """Soft-delete a class."""

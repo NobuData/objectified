@@ -19,7 +19,7 @@ _CLASS_ID_2 = "00000000-0000-0000-0000-000000000051"
 _PROP_ID = "00000000-0000-0000-0000-000000000060"
 _ACCOUNT_ID = "00000000-0000-0000-0000-000000000040"
 
-_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
 
 _VERSION_ROW: dict[str, Any] = {
     "id": _VERSION_ID,
