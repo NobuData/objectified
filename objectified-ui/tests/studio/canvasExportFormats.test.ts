@@ -9,6 +9,8 @@ import {
   exportAsGraphML,
   exportAsJson,
   exportAsOpenApi,
+  exportAsDocsMarkdown,
+  exportAsDocsHtml,
   exportAsSqlDdl,
 } from '@lib/studio/canvasExportFormats';
 import type { StudioClass } from '@lib/studio/types';
@@ -148,6 +150,38 @@ describe('canvasExportFormats', () => {
       const out = exportAsOpenApi(classes);
       const parsed = JSON.parse(out);
       expect(parsed.components.schemas.Thing.required).toEqual(['name']);
+    });
+  });
+
+  describe('exportAsDocsMarkdown', () => {
+    it('includes schemas and property tables', () => {
+      const out = exportAsDocsMarkdown(classesWithRef, {
+        title: 'Docs',
+        version: '1.0.0',
+        brandName: 'Acme',
+      });
+      expect(out).toContain('# Docs');
+      expect(out).toContain('**Brand**: Acme');
+      expect(out).toContain('## Schemas');
+      expect(out).toContain('### Order');
+      expect(out).toContain('| Property | Type | Required | Description |');
+      expect(out).toContain('`customer`');
+    });
+  });
+
+  describe('exportAsDocsHtml', () => {
+    it('renders a single-file HTML document with schema sections', () => {
+      const out = exportAsDocsHtml(classesWithRef, {
+        title: 'Docs',
+        version: '1.0.0',
+        brandName: 'Acme',
+        primaryColor: '#123456',
+      });
+      expect(out).toContain('<!doctype html>');
+      expect(out).toContain('<title>Docs — 1.0.0</title>');
+      expect(out).toContain('--primary: #123456');
+      expect(out).toContain('schema-Order');
+      expect(out).toContain('customer');
     });
   });
 

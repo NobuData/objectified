@@ -30,6 +30,20 @@ export interface ExportOpenApiOptions {
   version?: string;
 }
 
+export interface ExportDocsBrandingOptions {
+  /** Product or tenant display name shown in docs header. */
+  brandName?: string;
+  /** Optional logo image URL. */
+  logoUrl?: string;
+  /** Primary theme color (CSS color string, e.g. #4f46e5). */
+  primaryColor?: string;
+}
+
+export interface ExportDocsOptions extends ExportOpenApiOptions, ExportDocsBrandingOptions {
+  /** Optional intro text shown near the top of the docs. */
+  description?: string;
+}
+
 /** Build minimal graph from classes for export (node names + edges, optional groupId). */
 function buildExportGraph(
   classes: StudioClass[],
@@ -301,6 +315,304 @@ export function exportAsOpenApi(
   };
 
   return JSON.stringify(doc, null, 2);
+}
+
+function escapeMarkdown(s: string): string {
+  return (s ?? '')
+    .replaceAll('\\', '\\\\')
+    .replaceAll('*', '\\*')
+    .replaceAll('_', '\\_')
+    .replaceAll('`', '\\`');
+}
+
+function safeText(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  return JSON.stringify(v, null, 2);
+}
+
+function readOpenApiSchemas(openapiJson: string): Record<string, any> {
+  const doc = JSON.parse(openapiJson) as any;
+  const schemas = doc?.components?.schemas;
+  if (!schemas || typeof schemas !== 'object') return {};
+  return schemas as Record<string, any>;
+}
+
+function schemaSummary(schema: any): string {
+  const desc = typeof schema?.description === 'string' ? schema.description.trim() : '';
+  if (desc) return desc;
+  const title = typeof schema?.title === 'string' ? schema.title.trim() : '';
+  return title;
+}
+
+function propertyTypeString(propSchema: any): string {
+  if (!propSchema || typeof propSchema !== 'object') return '';
+  if (typeof propSchema.$ref === 'string') return propSchema.$ref;
+  if (typeof propSchema.type === 'string') return propSchema.type;
+  if (Array.isArray(propSchema.type)) return propSchema.type.join(' | ');
+  if (propSchema.oneOf && Array.isArray(propSchema.oneOf)) return 'oneOf';
+  if (propSchema.anyOf && Array.isArray(propSchema.anyOf)) return 'anyOf';
+  if (propSchema.allOf && Array.isArray(propSchema.allOf)) return 'allOf';
+  return '';
+}
+
+/**
+ * Export a Markdown API document from the OpenAPI component schemas.
+ * This is intentionally schema-focused (components/schemas); paths are left empty by the canvas exporter.
+ */
+export function exportAsDocsMarkdown(
+  classes: StudioClass[],
+  options?: ExportDocsOptions
+): string {
+  const title = options?.title?.trim() || 'API Documentation';
+  const version = options?.version?.trim() || '0.1.0';
+  const brandName = options?.brandName?.trim() || '';
+  const description = options?.description?.trim() || '';
+
+  const openapiJson = exportAsOpenApi(classes, { title, version });
+  const schemas = readOpenApiSchemas(openapiJson);
+  const schemaNames = Object.keys(schemas).sort((a, b) => a.localeCompare(b));
+
+  const lines: string[] = [];
+  lines.push(`# ${escapeMarkdown(title)}`);
+  lines.push('');
+  if (brandName) {
+    lines.push(`**Brand**: ${escapeMarkdown(brandName)}`);
+    lines.push('');
+  }
+  lines.push(`**Version**: ${escapeMarkdown(version)}`);
+  lines.push('');
+  if (description) {
+    lines.push(description);
+    lines.push('');
+  }
+  lines.push('## Schemas');
+  lines.push('');
+  if (schemaNames.length === 0) {
+    lines.push('_No schemas to document._');
+    lines.push('');
+    return lines.join('\n');
+  }
+
+  for (const name of schemaNames) {
+    const schema = schemas[name];
+    lines.push(`### ${escapeMarkdown(name)}`);
+    lines.push('');
+    const summary = schemaSummary(schema);
+    if (summary) {
+      lines.push(escapeMarkdown(summary));
+      lines.push('');
+    }
+
+    const props = schema?.properties && typeof schema.properties === 'object' ? schema.properties : {};
+    const requiredArr = Array.isArray(schema?.required) ? (schema.required as string[]) : [];
+    const required = new Set(requiredArr.filter((x) => typeof x === 'string'));
+    const propNames = Object.keys(props).sort((a, b) => a.localeCompare(b));
+    if (propNames.length === 0) {
+      lines.push('_No properties._');
+      lines.push('');
+      continue;
+    }
+
+    lines.push('| Property | Type | Required | Description |');
+    lines.push('| --- | --- | --- | --- |');
+    for (const pn of propNames) {
+      const ps = props[pn];
+      const ty = propertyTypeString(ps);
+      const req = required.has(pn) ? 'yes' : 'no';
+      const pd = typeof ps?.description === 'string' ? ps.description : '';
+      lines.push(
+        `| \`${escapeMarkdown(pn)}\` | \`${escapeMarkdown(ty || '-')}\` | ${req} | ${escapeMarkdown(pd || '')} |`
+      );
+    }
+    lines.push('');
+
+    const exampleValue =
+      schema?.example != null
+        ? schema.example
+        : Array.isArray(schema?.examples) && schema.examples.length > 0
+          ? schema.examples[0]
+          : null;
+    if (exampleValue != null) {
+      lines.push('#### Example');
+      lines.push('');
+      lines.push('```json');
+      lines.push(safeText(exampleValue));
+      lines.push('```');
+      lines.push('');
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function escapeHtml(s: string): string {
+  return (s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+/**
+ * Export a single-file static HTML document documenting the OpenAPI component schemas.
+ * Tenant branding is applied via CSS variables and an optional logo.
+ */
+export function exportAsDocsHtml(
+  classes: StudioClass[],
+  options?: ExportDocsOptions
+): string {
+  const title = options?.title?.trim() || 'API Documentation';
+  const version = options?.version?.trim() || '0.1.0';
+  const brandName = options?.brandName?.trim() || '';
+  const logoUrl = options?.logoUrl?.trim() || '';
+  const primaryColor = options?.primaryColor?.trim() || '#4f46e5';
+  const description = options?.description?.trim() || '';
+
+  const openapiJson = exportAsOpenApi(classes, { title, version });
+  const schemas = readOpenApiSchemas(openapiJson);
+  const schemaNames = Object.keys(schemas).sort((a, b) => a.localeCompare(b));
+
+  const navLinks = schemaNames
+    .map((n) => `<a class="nav-link" href="#schema-${encodeURIComponent(n)}">${escapeHtml(n)}</a>`)
+    .join('');
+
+  const sections = schemaNames
+    .map((name) => {
+      const schema = schemas[name];
+      const summary = schemaSummary(schema);
+      const props = schema?.properties && typeof schema.properties === 'object' ? schema.properties : {};
+      const requiredArr = Array.isArray(schema?.required) ? (schema.required as string[]) : [];
+      const required = new Set(requiredArr.filter((x) => typeof x === 'string'));
+      const propNames = Object.keys(props).sort((a, b) => a.localeCompare(b));
+      const rows =
+        propNames.length === 0
+          ? `<div class="empty">No properties.</div>`
+          : `<table class="table">
+  <thead><tr><th>Property</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+  <tbody>
+    ${propNames
+      .map((pn) => {
+        const ps = props[pn];
+        const ty = propertyTypeString(ps) || '-';
+        const req = required.has(pn) ? 'yes' : 'no';
+        const pd = typeof ps?.description === 'string' ? ps.description : '';
+        return `<tr>
+  <td class="mono">${escapeHtml(pn)}</td>
+  <td class="mono">${escapeHtml(ty)}</td>
+  <td>${escapeHtml(req)}</td>
+  <td>${escapeHtml(pd)}</td>
+</tr>`;
+      })
+      .join('\n')}
+  </tbody>
+</table>`;
+      return `<section class="schema" id="schema-${encodeURIComponent(name)}">
+  <h2>${escapeHtml(name)}</h2>
+  ${summary ? `<p class="muted">${escapeHtml(summary)}</p>` : ''}
+  ${rows}
+</section>`;
+    })
+    .join('\n');
+
+  const headerBrand = logoUrl
+    ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(brandName || title)} logo" />`
+    : '';
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)} — ${escapeHtml(version)}</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --panel: #0f1a2e;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --border: rgba(255, 255, 255, 0.12);
+        --primary: ${escapeHtml(primaryColor)};
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #ffffff;
+          --panel: #f8fafc;
+          --text: #0f172a;
+          --muted: #475569;
+          --border: rgba(15, 23, 42, 0.12);
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+        background: var(--bg);
+        color: var(--text);
+      }
+      a { color: var(--primary); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .layout { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+      .sidebar {
+        border-right: 1px solid var(--border);
+        padding: 16px 12px;
+        position: sticky;
+        top: 0;
+        align-self: start;
+        height: 100vh;
+        overflow: auto;
+        background: color-mix(in oklab, var(--panel) 75%, transparent);
+      }
+      .brand { display: flex; align-items: center; gap: 10px; padding: 8px 8px 12px; }
+      .logo { width: 28px; height: 28px; object-fit: contain; border-radius: 6px; }
+      .brand h1 { font-size: 14px; margin: 0; }
+      .brand .muted { font-size: 12px; margin-top: 2px; }
+      .nav { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+      .nav-link { padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; }
+      .nav-link:hover { background: color-mix(in oklab, var(--primary) 14%, transparent); border-color: color-mix(in oklab, var(--primary) 30%, transparent); }
+      .content { padding: 24px 22px 64px; }
+      .hero { margin-bottom: 18px; }
+      .hero h2 { font-size: 24px; margin: 0 0 6px; }
+      .hero p { margin: 0; color: var(--muted); }
+      .schema { padding: 18px 18px; border: 1px solid var(--border); border-radius: 16px; background: color-mix(in oklab, var(--panel) 85%, transparent); margin-top: 14px; }
+      .schema h2 { margin: 0 0 8px; font-size: 18px; }
+      .muted { color: var(--muted); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      .table th, .table td { text-align: left; padding: 10px 10px; border-top: 1px solid var(--border); vertical-align: top; font-size: 13px; }
+      .table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-top: none; }
+      .empty { color: var(--muted); font-size: 13px; margin-top: 6px; }
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+        .sidebar { position: relative; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          ${headerBrand}
+          <div>
+            <h1>${escapeHtml(brandName || title)}</h1>
+            <div class="muted">${escapeHtml(version)}</div>
+          </div>
+        </div>
+        <nav class="nav">
+          ${navLinks || '<div class="muted">No schemas</div>'}
+        </nav>
+      </aside>
+      <main class="content">
+        <div class="hero">
+          <h2>${escapeHtml(title)}</h2>
+          <p>${escapeHtml(description || 'Generated from Objectified schema components.')}</p>
+        </div>
+        ${sections || '<div class="muted">No schemas to document.</div>'}
+      </main>
+    </div>
+  </body>
+</html>`;
 }
 
 /** Double-quote a PostgreSQL identifier, escaping embedded double quotes. */

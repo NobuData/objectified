@@ -17,6 +17,9 @@ import {
   exportAsJson,
   exportAsOpenApi,
   exportAsSqlDdl,
+  exportAsDocsMarkdown,
+  exportAsDocsHtml,
+  type ExportDocsOptions,
   type ExportGraphOptions,
 } from '@lib/studio/canvasExportFormats';
 import { getSchemaMode, type SchemaMode } from '@lib/studio/schemaMode';
@@ -45,6 +48,8 @@ export interface ExportFunctions {
   exportAsJson: (options?: ExportGraphOptions) => void;
   exportAsOpenApi: () => void;
   exportAsSqlDdl: () => void;
+  exportAsDocsMarkdown: (options?: ExportDocsOptions) => void;
+  exportAsDocsHtml: (options?: ExportDocsOptions) => void;
   imageExportReady: boolean;
   dataExportReady: boolean;
   schemaMode: SchemaMode;
@@ -129,6 +134,24 @@ export function useExportFunctions(): ExportFunctions {
     downloadString(content, 'openapi.json', 'application/json');
   }, [ctx?.classes]);
 
+  const exportAsDocsMarkdownFn = useCallback(
+    (opts?: ExportDocsOptions) => {
+      if (!ctx?.classes?.length) return;
+      const content = exportAsDocsMarkdown(ctx.classes, opts);
+      downloadString(content, 'api-docs.md', 'text/markdown');
+    },
+    [ctx?.classes]
+  );
+
+  const exportAsDocsHtmlFn = useCallback(
+    (opts?: ExportDocsOptions) => {
+      if (!ctx?.classes?.length) return;
+      const content = exportAsDocsHtml(ctx.classes, opts);
+      downloadString(content, 'api-docs.html', 'text/html');
+    },
+    [ctx?.classes]
+  );
+
   const exportAsSqlDdlFn = useCallback(() => {
     if (!ctx?.classes?.length) return;
     const content = exportAsSqlDdl(ctx.classes);
@@ -146,6 +169,8 @@ export function useExportFunctions(): ExportFunctions {
     exportAsGraphML: exportAsGraphMLFn,
     exportAsJson: exportAsJsonFn,
     exportAsOpenApi: exportAsOpenApiFn,
+    exportAsDocsMarkdown: exportAsDocsMarkdownFn,
+    exportAsDocsHtml: exportAsDocsHtmlFn,
     exportAsSqlDdl: exportAsSqlDdlFn,
     imageExportReady: Boolean(ctx?.imageExportApi),
     dataExportReady: Boolean(ctx?.classes?.length),
