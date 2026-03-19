@@ -24,6 +24,9 @@ _PROPERTY_ID = "00000000-0000-0000-0000-000000000080"
 _CP_ID = "00000000-0000-0000-0000-000000000090"
 
 _CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
+_MEMBER_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+
+_SCOPE_ROW: dict[str, Any] = {"tenant_id": _TENANT_ID, "project_id": _PROJECT_ID}
 
 _VERSION_ROW: dict[str, Any] = {
     "id": _VERSION_ID,
@@ -80,6 +83,14 @@ def _version_lookup_row(version_row: dict[str, Any] | None = None) -> dict[str, 
 def client():
     """FastAPI test client with require_authenticated overridden."""
     app.dependency_overrides[require_authenticated] = lambda: _CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def member_client():
+    """FastAPI test client with non-admin tenant-member caller."""
+    app.dependency_overrides[require_authenticated] = lambda: _MEMBER_CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -1010,3 +1021,39 @@ class TestMergeVersion:
 
 
 
+
+
+# ---------------------------------------------------------------------------
+# RBAC: non-admin caller permission checks
+# ---------------------------------------------------------------------------
+
+
+def test_commit_non_member_returns_403(member_client):
+    """POST /v1/versions/{vid}/commit returns 403 when caller is not a tenant member."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_SCOPE_ROW],  # _resolve_version_scope
+            [],             # _is_tenant_admin → not admin
+            [],             # _is_tenant_member → not a member → 403
+        ]
+        r = member_client.post(
+            f"/v1/versions/{_VERSION_ID}/commit",
+            json={"classes": [], "label": "test"},
+        )
+    assert r.status_code == 403
+
+
+def test_commit_member_without_write_permission_returns_403(member_client):
+    """POST /v1/versions/{vid}/commit returns 403 when caller lacks schema:write permission."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_SCOPE_ROW],          # _resolve_version_scope
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member
+            [],                    # _has_rbac_permission → no schema:write → 403
+        ]
+        r = member_client.post(
+            f"/v1/versions/{_VERSION_ID}/commit",
+            json={"classes": [], "label": "test"},
+        )
+    assert r.status_code == 403

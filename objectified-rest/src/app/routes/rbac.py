@@ -8,7 +8,12 @@ from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.auth import require_authenticated, require_tenant_admin, require_tenant_permission
+from app.auth import (
+    _IMPLICIT_VIEWER_PERMISSIONS,
+    require_authenticated,
+    require_tenant_admin,
+    require_tenant_permission,
+)
 from app.database import db
 from app.routes.helpers import _assert_tenant_exists, _not_found
 from app.schemas.rbac import (
@@ -48,7 +53,7 @@ def _get_effective_permission_keys(
 ) -> set[str]:
     # Baseline for any tenant member: viewer permissions. The auth layer already
     # enforces membership; here we just compute the permission list.
-    keys: set[str] = {"project:read", "version:read", "schema:read"}
+    keys: set[str] = set(_IMPLICIT_VIEWER_PERMISSIONS)
 
     rows = db.execute_query(
         """
@@ -66,6 +71,7 @@ def _get_effective_permission_keys(
           AND r.deleted_at IS NULL
           AND rp.deleted_at IS NULL
           AND p.deleted_at IS NULL
+          AND p.enabled = true
         """,
         (tenant_id, account_id),
     )

@@ -12,14 +12,18 @@ from tests.conftest import mock_db_all
 
 _NOW = datetime.now(timezone.utc)
 
-_VERSION_ID = "00000000-0000-0000-0000-000000000030"
+_TENANT_ID = "00000000-0000-0000-0000-000000000010"
 _PROJECT_ID = "00000000-0000-0000-0000-000000000020"
+_VERSION_ID = "00000000-0000-0000-0000-000000000030"
 _CLASS_ID = "00000000-0000-0000-0000-000000000050"
 _CLASS_ID_2 = "00000000-0000-0000-0000-000000000051"
 _PROP_ID = "00000000-0000-0000-0000-000000000060"
 _ACCOUNT_ID = "00000000-0000-0000-0000-000000000040"
 
 _CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
+_MEMBER_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+
+_SCOPE_ROW: dict[str, Any] = {"tenant_id": _TENANT_ID, "project_id": _PROJECT_ID}
 
 _VERSION_ROW: dict[str, Any] = {
     "id": _VERSION_ID,
@@ -81,6 +85,14 @@ _PROP_ROW: dict[str, Any] = {
 @pytest.fixture
 def client():
     app.dependency_overrides[require_authenticated] = lambda: _CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def member_client():
+    """FastAPI test client with non-admin tenant-member caller."""
+    app.dependency_overrides[require_authenticated] = lambda: _MEMBER_CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -865,3 +877,34 @@ def test_validation_rules_export_module_unit():
     assert "description" not in qty
 
 
+
+
+# ---------------------------------------------------------------------------
+# RBAC: non-admin caller permission checks
+# ---------------------------------------------------------------------------
+
+
+def test_export_openapi_non_member_returns_403(member_client):
+    """GET /v1/versions/{vid}/export/openapi returns 403 when caller is not a tenant member."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_SCOPE_ROW],  # _resolve_version_scope
+            [],             # _is_tenant_admin → not admin
+            [],             # _is_tenant_member → not a member → 403
+        ]
+        r = member_client.get(f"/v1/versions/{_VERSION_ID}/export/openapi")
+    assert r.status_code == 403
+
+
+def test_export_openapi_member_returns_200(member_client):
+    """GET /v1/versions/{vid}/export/openapi returns 200 for a non-admin tenant member (schema:read is implicit)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_SCOPE_ROW],          # _resolve_version_scope
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member; schema:read is implicit → allowed
+            [_VERSION_ROW],        # _assert_version_exists
+            [],                    # _load_classes_with_properties: classes (empty)
+        ]
+        r = member_client.get(f"/v1/versions/{_VERSION_ID}/export/openapi")
+    assert r.status_code == 200
