@@ -367,6 +367,14 @@ export default function SchemaWorkspacePage() {
               setSelectedProjectId(null);
               setProjects([]);
               setVersions([]);
+              setLeftVersionId('');
+              setRightVersionId('');
+              setLeftRevision('');
+              setRightRevision('');
+              setLeftRevisions([]);
+              setRightRevisions([]);
+              setLeftSlot({ versionId: '', versionName: '', revision: null, loading: false, error: null, data: null });
+              setRightSlot({ versionId: '', versionName: '', revision: null, loading: false, error: null, data: null });
             }}
             className={inputClass}
             style={{ width: 'auto', minWidth: 140 }}
@@ -381,7 +389,18 @@ export default function SchemaWorkspacePage() {
           </select>
           <select
             value={selectedProjectId ?? ''}
-            onChange={(e) => setSelectedProjectId(e.target.value || null)}
+            onChange={(e) => {
+              setSelectedProjectId(e.target.value || null);
+              setVersions([]);
+              setLeftVersionId('');
+              setRightVersionId('');
+              setLeftRevision('');
+              setRightRevision('');
+              setLeftRevisions([]);
+              setRightRevisions([]);
+              setLeftSlot({ versionId: '', versionName: '', revision: null, loading: false, error: null, data: null });
+              setRightSlot({ versionId: '', versionName: '', revision: null, loading: false, error: null, data: null });
+            }}
             className={inputClass}
             style={{ width: 'auto', minWidth: 140 }}
             aria-label="Select project"
@@ -481,7 +500,7 @@ export default function SchemaWorkspacePage() {
                     </div>
                     {selectedTenantId && selectedProjectId && leftSlot.versionId && (
                       <Link
-                        href={`/data-designer?tenantId=${selectedTenantId}&projectId=${selectedProjectId}&versionId=${leftSlot.versionId}`}
+                        href={`/data-designer?${new URLSearchParams({ tenantId: selectedTenantId, projectId: selectedProjectId, versionId: leftSlot.versionId }).toString()}`}
                         className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
                       >
                         <PenTool className="h-4 w-4" />
@@ -562,7 +581,7 @@ export default function SchemaWorkspacePage() {
                     </div>
                     {selectedTenantId && selectedProjectId && rightSlot.versionId && (
                       <Link
-                        href={`/data-designer?tenantId=${selectedTenantId}&projectId=${selectedProjectId}&versionId=${rightSlot.versionId}`}
+                        href={`/data-designer?${new URLSearchParams({ tenantId: selectedTenantId, projectId: selectedProjectId, versionId: rightSlot.versionId }).toString()}`}
                         className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
                       >
                         <PenTool className="h-4 w-4" />
@@ -605,8 +624,8 @@ export default function SchemaWorkspacePage() {
                   ) : (
                     <ul className="space-y-1 text-sm font-mono text-slate-700 dark:text-slate-300">
                       {(getClasses(leftSlot) as ClassLike[]).map(
-                        (c) => (
-                          <li key={c.name ?? ''}>
+                        (c, i) => (
+                          <li key={i}>
                             {c.name ?? '—'}
                             {(c.properties?.length ?? 0) > 0 && (
                               <span className="text-slate-500 dark:text-slate-400 ml-2">
@@ -633,8 +652,8 @@ export default function SchemaWorkspacePage() {
                   ) : (
                     <ul className="space-y-1 text-sm font-mono text-slate-700 dark:text-slate-300">
                       {(getClasses(rightSlot) as ClassLike[]).map(
-                        (c) => (
-                          <li key={c.name ?? ''}>
+                        (c, i) => (
+                          <li key={i}>
                             {c.name ?? '—'}
                             {(c.properties?.length ?? 0) > 0 && (
                               <span className="text-slate-500 dark:text-slate-400 ml-2">

@@ -32,7 +32,7 @@ const navItems: NavItem[] = [
   { label: 'Tenants', href: '/dashboard/tenants', icon: Building2 },
   { label: 'Projects', href: '/dashboard/projects', icon: FolderKanban },
   { label: 'Versions', href: '/dashboard/versions', icon: GitBranch },
-  { label: 'Schema workspace', href: '/dashboard/schema-workspace', icon: Columns3 },
+  { label: 'Schema Workspace', href: '/dashboard/schema-workspace', icon: Columns3 },
   { label: 'Publish', href: '/dashboard/publish', icon: Upload },
   { label: 'Published', href: '/dashboard/published', icon: BookOpen },
   {
