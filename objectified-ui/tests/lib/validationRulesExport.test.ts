@@ -68,7 +68,7 @@ describe('generateValidationRulesExport', () => {
             name: 'street',
             parent_id: 'o1',
             property_data: { type: 'string' },
-            data: { required: true },
+            data: { 'x-required': true },
           },
         ],
       },
