@@ -1,7 +1,12 @@
 /**
  * Build OpenAPI 3.2.0 / JSON Schema 2020-12 class schema from form state.
- * Used by ClassDialog for create/edit. Reference: GitHub #95.
+ * Used by ClassDialog for create/edit. Reference: GitHub #95, #123 (codegen annotations).
  */
+
+import {
+  classSchemaToCodegenRows,
+  type ClassCodegenAnnotationRow,
+} from './classCodegenAnnotations';
 
 export interface ClassFormSchemaState {
   allOf: string[];
@@ -20,6 +25,8 @@ export interface ClassFormSchemaState {
   examples: string[];
   externalDocsUrl: string;
   externalDocsDescription: string;
+  /** x-* keys for codegen (table name, ORM hints, etc.). GitHub #123. */
+  codegenAnnotations: ClassCodegenAnnotationRow[];
 }
 
 const REF_PREFIX = '#/components/schemas/';
@@ -219,6 +226,7 @@ export function schemaToFormState(
       : [],
     externalDocsUrl: externalDocs?.url ?? '',
     externalDocsDescription: externalDocs?.description ?? '',
+    codegenAnnotations: classSchemaToCodegenRows(s as Record<string, unknown>),
   };
 }
 
@@ -239,4 +247,5 @@ export const initialClassFormSchemaState: ClassFormSchemaState = {
   examples: [],
   externalDocsUrl: '',
   externalDocsDescription: '',
+  codegenAnnotations: [],
 };

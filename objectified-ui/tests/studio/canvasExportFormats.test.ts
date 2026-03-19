@@ -172,5 +172,25 @@ describe('canvasExportFormats', () => {
       expect(out).toContain('"customer_id" uuid not null');
       expect(out).toContain('foreign key ("customer_id") references "user"("id")');
     });
+
+    it('uses x-db-table and x-db-column when set (GH-123)', () => {
+      const classes: StudioClass[] = [
+        {
+          id: 'c1',
+          name: 'User',
+          schema: { 'x-db-table': 'app_users' },
+          properties: [
+            {
+              name: 'displayName',
+              property_data: { type: 'string' },
+              data: { 'x-db-column': 'display_name', 'x-required': true },
+            },
+          ],
+        },
+      ];
+      const out = exportAsSqlDdl(classes);
+      expect(out).toContain('create table if not exists "app_users"');
+      expect(out).toContain('"display_name" text not null');
+    });
   });
 });

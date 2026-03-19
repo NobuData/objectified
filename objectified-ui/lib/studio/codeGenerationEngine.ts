@@ -3,6 +3,7 @@
  * Custom Mustache templates receive the view from buildCodegenMustacheView().
  *
  * Reference: GitHub #119 — configurable code generation templates.
+ * Reference: GitHub #123 — class/property x-* annotations (table, column, serialization, Mustache).
  */
 
 import type { StudioClass, StudioClassProperty } from './types';
@@ -41,6 +42,43 @@ function getPropertySchema(prop: StudioClassProperty): Record<string, unknown> {
 
 function isPropertyRequired(propSchema: Record<string, unknown>): boolean {
   return propSchema['x-required'] === true;
+}
+
+/** x-* keys reserved for canvas/refs; excluded from public annotation maps. */
+const INTERNAL_PROP_X_KEYS = new Set([
+  'x-order',
+  'x-ref-class-id',
+  'x-ref-class-name',
+  'x-ref-storage',
+  'x-required',
+  'x-ref-class-ref',
+]);
+
+function firstString(obj: Record<string, unknown>, ...keys: string[]): string {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return '';
+}
+
+function collectPublicXAnnotations(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!k.startsWith('x-')) continue;
+    if (INTERNAL_PROP_X_KEYS.has(k)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function annotationsToMustacheList(obj: Record<string, unknown>): { key: string; value: string }[] {
+  return Object.entries(obj)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => ({
+      key,
+      value: typeof value === 'string' ? value : JSON.stringify(value),
+    }));
 }
 
 function getRefTarget(propSchema: Record<string, unknown>): {
@@ -96,6 +134,12 @@ export interface CodegenField {
   refModelSafeName?: string;
   refModelSnake?: string;
   baseType: ReturnType<typeof mapJsonSchemaTypeToBase>;
+  /** Physical DB column (respects x-db-column / x-column-name). */
+  dbColumn: string;
+  /** JSON / API name (x-serialization-name / x-json-name or default). */
+  jsonName: string;
+  /** Public x-* annotations on the merged property schema. */
+  annotations: Record<string, unknown>;
 }
 
 export interface CodegenClassModel {
@@ -105,6 +149,9 @@ export interface CodegenClassModel {
   snake: string;
   id: string;
   fields: CodegenField[];
+  /** DB table from x-db-table / x-table-name when set. */
+  dbTable: string;
+  annotations: Record<string, unknown>;
 }
 
 function buildClassModels(classes: StudioClass[]): CodegenClassModel[] {
@@ -135,6 +182,9 @@ function buildClassModels(classes: StudioClass[]): CodegenClassModel[] {
     const clsName = (cls.name ?? '').trim();
     if (!clsName) continue;
     const clsId = getStableClassId(cls);
+    const classSchema = (cls.schema ?? {}) as Record<string, unknown>;
+    const dbTable = firstString(classSchema, 'x-db-table', 'x-table-name');
+    const classAnnotations = collectPublicXAnnotations(classSchema);
     const fields: CodegenField[] = [];
 
     for (const prop of cls.properties ?? []) {
@@ -155,9 +205,17 @@ function buildClassModels(classes: StudioClass[]): CodegenClassModel[] {
           (refClassName ? nameByLower.get(refClassName.toLowerCase()) ?? refClassName : undefined);
       }
 
+      const propSnake = toSnakeCase(propName) || propName.toLowerCase();
+      const refCol = propSnake.endsWith('_id') ? propSnake : `${propSnake}_id`;
+      const defaultDbCol = isIdRef && refModelName ? refCol : propSnake;
+      const dbColumn =
+        firstString(schema, 'x-db-column', 'x-column-name') || defaultDbCol;
+      const jsonName =
+        firstString(schema, 'x-serialization-name', 'x-json-name') || defaultDbCol;
+
       fields.push({
         name: propName,
-        snake: toSnakeCase(propName) || propName.toLowerCase(),
+        snake: propSnake,
         optional: !required,
         description: typeof prop.description === 'string' ? prop.description : undefined,
         isRefId: Boolean(isIdRef && refModelName),
@@ -165,6 +223,9 @@ function buildClassModels(classes: StudioClass[]): CodegenClassModel[] {
         refModelSafeName: refModelName ? toSafeIdentifier(refModelName) : undefined,
         refModelSnake: refModelName ? toSnakeCase(refModelName) : undefined,
         baseType: mapJsonSchemaTypeToBase(schema.type),
+        dbColumn,
+        jsonName,
+        annotations: collectPublicXAnnotations(schema),
       });
     }
 
@@ -174,6 +235,8 @@ function buildClassModels(classes: StudioClass[]): CodegenClassModel[] {
       snake: toSnakeCase(clsName) || clsName.toLowerCase(),
       id: clsId,
       fields,
+      dbTable,
+      annotations: classAnnotations,
     });
   }
   return models;
@@ -196,9 +259,10 @@ export function generateTypeScript(classes: StudioClass[]): string {
     lines.push(`export interface ${safeName} {${nameComment}`);
     lines.push('  id: string;');
     for (const f of m.fields) {
+      const propIdent = toSafeIdentifier(f.jsonName.replace(/[^a-zA-Z0-9_$]/g, '_'));
       if (f.isRefId && f.refModelName) {
         const opt = f.optional ? '?' : '';
-        lines.push(`  ${f.snake.endsWith('_id') ? f.snake : `${f.snake}_id`}${opt}: string;`);
+        lines.push(`  ${propIdent}${opt}: string;`);
       } else {
         let ts: string;
         switch (f.baseType) {
@@ -223,7 +287,7 @@ export function generateTypeScript(classes: StudioClass[]): string {
         }
         const opt = f.optional ? '?' : '';
         const comment = f.description ? ` /** ${escapeTsComment(f.description)} */` : '';
-        lines.push(`  ${f.snake}${opt}: ${ts};${comment}`);
+        lines.push(`  ${propIdent}${opt}: ${ts};${comment}`);
       }
     }
     lines.push('}');
@@ -257,14 +321,15 @@ export function generatePrisma(classes: StudioClass[]): string {
     lines.push('  id String @id @default(uuid())');
     for (const f of m.fields) {
       if (f.isRefId && f.refModelName && f.refModelSafeName) {
-        const col = f.snake.endsWith('_id') ? f.snake : `${f.snake}_id`;
+        const fieldName = f.snake.endsWith('_id') ? f.snake : `${f.snake}_id`;
+        const mapCol = f.dbColumn !== fieldName ? ` @map("${f.dbColumn.replace(/"/g, '\\"')}")` : '';
         const opt = f.optional ? '?' : '';
         const multi = (refCounts.get(f.refModelSafeName) ?? 0) > 1;
         const relName = multi ? `"${safeName}_${f.snake}_to_${f.refModelSafeName}", ` : '';
         const relField = relationFieldName(f.refModelSafeName, f.snake);
-        lines.push(`  ${col} String${opt}`);
+        lines.push(`  ${fieldName} String${opt}${mapCol}`);
         lines.push(
-          `  ${relField} ${f.refModelSafeName}${f.optional ? '?' : ''} @relation(${relName}fields: [${col}], references: [id])`
+          `  ${relField} ${f.refModelSafeName}${f.optional ? '?' : ''} @relation(${relName}fields: [${fieldName}], references: [id])`
         );
       } else {
         let prismaT: string;
@@ -287,8 +352,12 @@ export function generatePrisma(classes: StudioClass[]): string {
             prismaT = 'Json';
         }
         const opt = f.optional ? '?' : '';
-        lines.push(`  ${f.snake} ${prismaT}${opt}`);
+        const mapCol = f.dbColumn !== f.snake ? ` @map("${f.dbColumn.replace(/"/g, '\\"')}")` : '';
+        lines.push(`  ${f.snake} ${prismaT}${opt}${mapCol}`);
       }
+    }
+    if (m.dbTable) {
+      lines.push(`  @@map("${m.dbTable.replace(/"/g, '\\"')}")`);
     }
     lines.push('}');
     lines.push('');
@@ -314,10 +383,10 @@ export function generateGraphQL(classes: StudioClass[]): string {
     lines.push(`type ${safeName} {${nameComment}`);
     lines.push('  id: ID!');
     for (const f of m.fields) {
+      const gqlField = sanitizeIdentifier(f.jsonName);
       if (f.isRefId && f.refModelName && f.refModelSafeName) {
-        const col = f.snake.endsWith('_id') ? f.snake : `${f.snake}_id`;
         const bang = f.optional ? '' : '!';
-        lines.push(`  ${col}: ID${bang}`);
+        lines.push(`  ${gqlField}: ID${bang}`);
       } else {
         let g: string;
         switch (f.baseType) {
@@ -343,13 +412,24 @@ export function generateGraphQL(classes: StudioClass[]): string {
             g = 'JSON';
         }
         const bang = f.optional ? '' : '!';
-        lines.push(`  ${f.snake}: ${g}${bang}`);
+        lines.push(`  ${gqlField}: ${g}${bang}`);
       }
     }
     lines.push('}');
     lines.push('');
   }
   return lines.join('\n').trimEnd() + '\n';
+}
+
+/**
+ * Sanitize an arbitrary string into a safe identifier (no `$`, no leading digit).
+ * Used for both GraphQL field names and Go identifier segments derived from
+ * user-supplied column/serialization overrides.
+ */
+function sanitizeIdentifier(value: string): string {
+  let safe = (value ?? '').replace(/[^a-zA-Z0-9_]/g, '_');
+  if (/^[0-9]/.test(safe)) safe = `_${safe}`;
+  return safe || '_';
 }
 
 function goExportedField(snake: string): string {
@@ -379,11 +459,11 @@ export function generateGo(classes: StudioClass[]): string {
     lines.push(`type ${safeName} struct {${nameComment}`);
     lines.push('\tID uuid.UUID `json:"id"`');
     for (const f of m.fields) {
+      const jkey = f.jsonName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       if (f.isRefId && f.refModelName) {
-        const col = f.snake.endsWith('_id') ? f.snake : `${f.snake}_id`;
-        const goName = goExportedField(col);
+        const goName = goExportedField(sanitizeIdentifier(f.dbColumn));
         const ptr = f.optional ? '*' : '';
-        lines.push(`\t${goName} ${ptr}uuid.UUID \`json:"${col}"\``);
+        lines.push(`\t${goName} ${ptr}uuid.UUID \`json:"${jkey}"\``);
       } else {
         let goT: string;
         switch (f.baseType) {
@@ -404,12 +484,12 @@ export function generateGo(classes: StudioClass[]): string {
           default:
             goT = 'json.RawMessage';
         }
-        const goName = goExportedField(f.snake);
+        const goName = goExportedField(sanitizeIdentifier(f.dbColumn));
         if (f.optional && goT !== 'json.RawMessage') {
-          lines.push(`\t${goName} *${goT} \`json:"${f.snake}"\``);
+          lines.push(`\t${goName} *${goT} \`json:"${jkey}"\``);
         } else {
           const optJson = f.optional ? ',omitempty' : '';
-          lines.push(`\t${goName} ${goT} \`json:"${f.snake}${optJson}"\``);
+          lines.push(`\t${goName} ${goT} \`json:"${jkey}${optJson}"\``);
         }
       }
     }
@@ -486,16 +566,19 @@ export function buildCodegenMustacheView(classes: StudioClass[]): Record<string,
       name: m.name,
       snake: m.snake,
       id: m.id,
+      dbTable: m.dbTable,
+      annotations: m.annotations,
+      annotationRows: annotationsToMustacheList(m.annotations),
       properties: m.fields.map((f) => {
-        const col = f.isRefId && f.refModelName
-          ? f.snake.endsWith('_id')
-            ? f.snake
-            : `${f.snake}_id`
-          : f.snake;
+        const col = f.dbColumn;
         return {
           name: f.name,
           snake: f.snake,
           column: col,
+          dbColumn: f.dbColumn,
+          jsonName: f.jsonName,
+          annotations: f.annotations,
+          annotationRows: annotationsToMustacheList(f.annotations),
           optional: f.optional,
           required: !f.optional,
           description: f.description ?? '',

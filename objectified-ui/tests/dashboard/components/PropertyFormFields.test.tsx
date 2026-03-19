@@ -746,9 +746,9 @@ describe('PropertyFormFields', () => {
     expect(screen.getByText('Extensions')).toBeInTheDocument();
   });
 
-  it('renders x- badge on Extensions section', () => {
+  it('renders x- badge on codegen and Extensions sections', () => {
     render(<PropertyFormFields {...defaultProps} />);
-    expect(screen.getByText('x-')).toBeInTheDocument();
+    expect(screen.getAllByText('x-').length).toBeGreaterThanOrEqual(2);
   });
 
   it('renders existing extensions', async () => {

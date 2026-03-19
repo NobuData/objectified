@@ -536,6 +536,30 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
     onChange('extensions', Object.keys(updated).length > 0 ? updated : undefined);
   };
 
+  /** Shown in dedicated Codegen section; omitted from generic Extensions list. GitHub #123. */
+  const CODEGEN_EXTENSION_KEYS = new Set([
+    'x-db-column',
+    'x-serialization-name',
+    'x-orm-hint',
+  ]);
+
+  const setCodegenExtension = (key: string, value: string) => {
+    const ext = { ...(data.extensions || {}) };
+    const t = value.trim();
+    if (!t) {
+      delete ext[key];
+    } else {
+      ext[key] = t;
+    }
+    onChange('extensions', Object.keys(ext).length > 0 ? ext : undefined);
+  };
+
+  const getCodegenExtensionValue = (key: string): string => {
+    const v = data.extensions?.[key];
+    if (v == null) return '';
+    return typeof v === 'string' ? v : JSON.stringify(v);
+  };
+
   const showStringConstraints = baseType === 'string';
   const showNumberConstraints = baseType === 'number' || baseType === 'integer';
   const showArrayConstraints = isArray;
@@ -1673,15 +1697,60 @@ export const PropertyFormFields: React.FC<PropertyFormFieldsProps> = ({
         </div>
       </Section>
 
+      {/* Codegen-oriented x-* hints (also in exports / Mustache). GitHub #123. */}
+      <Section
+        title="Codegen annotations"
+        icon={<Braces className="h-3.5 w-3.5" />}
+        badge="x-"
+      >
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+          Table mapping uses class-level <code className="text-[11px]">x-db-table</code> on the class
+          dialog. Here: column name, JSON serialization key, and optional ORM hint.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <FieldLabel htmlFor="pff-codegen-dbcol" optional>DB column</FieldLabel>
+            <TextInput
+              id="pff-codegen-dbcol"
+              value={getCodegenExtensionValue('x-db-column')}
+              onChange={(v) => setCodegenExtension('x-db-column', v)}
+              placeholder="e.g. user_id (SQL export, Prisma @map)"
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="pff-codegen-serial" optional>Serialization name</FieldLabel>
+            <TextInput
+              id="pff-codegen-serial"
+              value={getCodegenExtensionValue('x-serialization-name')}
+              onChange={(v) => setCodegenExtension('x-serialization-name', v)}
+              placeholder="JSON / GraphQL field name override"
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="pff-codegen-orm" optional>ORM hint</FieldLabel>
+            <TextInput
+              id="pff-codegen-orm"
+              value={getCodegenExtensionValue('x-orm-hint')}
+              onChange={(v) => setCodegenExtension('x-orm-hint', v)}
+              placeholder="e.g. relationship, lazy load — for templates"
+            />
+          </div>
+        </div>
+      </Section>
+
       {/* Extensions (x- prefixed) */}
       <Section
         title="Extensions"
         icon={<Braces className="h-3.5 w-3.5" />}
         badge="x-"
       >
-        {data.extensions && Object.entries(data.extensions).length > 0 && (
+        {data.extensions &&
+          Object.entries(data.extensions).filter(([k]) => !CODEGEN_EXTENSION_KEYS.has(k)).length >
+            0 && (
           <ul className="space-y-1 mb-2">
-            {Object.entries(data.extensions).map(([key, value]) => (
+            {Object.entries(data.extensions)
+              .filter(([k]) => !CODEGEN_EXTENSION_KEYS.has(k))
+              .map(([key, value]) => (
               <li key={key} className="flex items-center gap-2 px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 text-sm font-mono">
                 <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{key}</span>
                 <span className="text-slate-400">=</span>
