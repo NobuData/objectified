@@ -8,7 +8,7 @@ Uses objectified schema: objectified.tenant, objectified.tenant_account.
 import logging
 from typing import Annotated, Any, Callable, Optional
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 import jwt
 
 from app.config import settings
@@ -165,7 +165,16 @@ def validate_authentication(
                 status_code=403,
                 detail="API key does not have access to this tenant",
             )
-        return {**api_key_data, "auth_method": "api_key"}
+        scope_role = str(api_key_data.get("scope_role") or "full").lower()
+        project_id_str = api_key_data.get("project_id")
+        tenant_wide_full = scope_role == "full" and not project_id_str
+        return {
+            **api_key_data,
+            "auth_method": "api_key",
+            "is_admin": tenant_wide_full,
+            "api_key_scope_role": scope_role,
+            "api_key_project_id": project_id_str,
+        }
 
     raise HTTPException(
         status_code=401,
@@ -230,10 +239,6 @@ def _resolve_caller(
         }
 
     if x_api_key:
-        # NOTE: API key validation is not yet implemented — validate_api_key is
-        # a placeholder that always returns None (no api_keys table in the
-        # current schema).  All API key requests will receive 401 until the
-        # table and lookup are added.
         api_key_data = db.validate_api_key(x_api_key)
         if not api_key_data:
             raise HTTPException(
@@ -241,8 +246,17 @@ def _resolve_caller(
                 detail="Invalid or expired API key",
                 headers={"WWW-Authenticate": "API-Key"},
             )
-        # API keys that pass validate_api_key are considered internal/admin keys.
-        return {**api_key_data, "auth_method": "api_key", "is_admin": True, "account_id": api_key_data.get("account_id")}
+        scope_role = str(api_key_data.get("scope_role") or "full").lower()
+        project_id = api_key_data.get("project_id")
+        tenant_wide_full = scope_role == "full" and not project_id
+        return {
+            **api_key_data,
+            "auth_method": "api_key",
+            "is_admin": tenant_wide_full,
+            "account_id": api_key_data.get("account_id"),
+            "api_key_scope_role": scope_role,
+            "api_key_project_id": project_id,
+        }
 
     raise HTTPException(
         status_code=401,
@@ -276,7 +290,39 @@ def _is_platform_admin(user_id: str) -> bool:
     return bool(rows)
 
 
+_API_KEY_SAFE_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _reject_project_scoped_api_key_on_tenant_route(caller: dict[str, Any]) -> None:
+    """Project-scoped keys may not use tenant-wide endpoints (no project in path)."""
+    if not caller or caller.get("auth_method") != "api_key":
+        return
+    if caller.get("api_key_project_id"):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This API key is restricted to a single project; "
+                "use endpoints scoped to that project or version."
+            ),
+        )
+
+
+def _assert_api_key_project_matches(
+    caller: dict[str, Any],
+    project_id: str,
+) -> None:
+    if not caller or caller.get("auth_method") != "api_key":
+        return
+    scoped = caller.get("api_key_project_id")
+    if scoped and str(scoped) != str(project_id):
+        raise HTTPException(
+            status_code=403,
+            detail="API key is not authorized for this project.",
+        )
+
+
 def require_authenticated(
+    request: Request,
     caller: Annotated[dict[str, Any], Depends(_resolve_caller)],
 ) -> dict[str, Any]:
     """
@@ -285,6 +331,15 @@ def require_authenticated(
     Injects the caller identity dict into the handler.  Does **not** check
     admin status; use ``require_admin`` for that.
     """
+    if caller and caller.get("auth_method") == "api_key":
+        scope_role = caller.get("api_key_scope_role") or str(
+            caller.get("scope_role") or "full"
+        ).lower()
+        if scope_role == "read_only" and request.method not in _API_KEY_SAFE_HTTP_METHODS:
+            raise HTTPException(
+                status_code=403,
+                detail="Read-only API keys may only use GET, HEAD, or OPTIONS.",
+            )
     return caller
 
 
@@ -298,8 +353,8 @@ def require_admin(
       1. ``is_admin: true`` in the JWT payload, OR
       2. The account holds ``access_level = 'administrator'`` in at least
          one active tenant (platform-wide admin proxy), OR
-      3. A valid internal API key (all validated API keys are treated as
-         internal/admin).
+      3. A valid tenant-wide ``full`` API key (not project-scoped and not
+         read-only); such keys bypass RBAC like platform admins.
 
     Raises:
         HTTPException 401 if unauthenticated.
@@ -475,6 +530,7 @@ def require_tenant_permission(permission_key: PermissionKey) -> Callable[..., di
         tenant_id: str,
         caller: Annotated[dict[str, Any], Depends(require_authenticated)],
     ) -> dict[str, Any]:
+        _reject_project_scoped_api_key_on_tenant_route(caller)
         return _require_permission_or_403(
             caller=caller,
             tenant_id=tenant_id,
@@ -490,6 +546,7 @@ def require_project_permission(permission_key: PermissionKey) -> Callable[..., d
         project_id: str,
         caller: Annotated[dict[str, Any], Depends(require_authenticated)],
     ) -> dict[str, Any]:
+        _assert_api_key_project_matches(caller, project_id)
         return _require_permission_or_403(
             caller=caller,
             tenant_id=tenant_id,
@@ -524,9 +581,10 @@ def require_version_permission(permission_key: PermissionKey) -> Callable[..., d
         version_id: str,
         caller: Annotated[dict[str, Any], Depends(require_authenticated)],
     ) -> dict[str, Any]:
-        if caller.get("is_admin"):
+        if caller and caller.get("is_admin"):
             return caller
         scope = _resolve_version_scope(version_id)
+        _assert_api_key_project_matches(caller, scope["project_id"])
         return _require_permission_or_403(
             caller=caller,
             tenant_id=scope["tenant_id"],
@@ -545,11 +603,21 @@ def require_tenant_admin(
     """
     Require tenant administrator access for tenant-scoped configuration endpoints.
 
-    Accepts platform-admin/internal API keys (caller.is_admin) as full access.
+    Accepts platform-admin JWTs, tenant administrators, and tenant-wide ``full``
+    API keys (caller.is_admin). Project-scoped API keys are always rejected.
     """
-    if caller.get("is_admin"):
+    if (
+        caller
+        and caller.get("auth_method") == "api_key"
+        and caller.get("api_key_project_id")
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Project-scoped API keys cannot perform tenant administration actions.",
+        )
+    if caller and caller.get("is_admin"):
         return caller
-    account_id = caller.get("account_id")
+    account_id = caller.get("account_id") if caller else None
     if not account_id:
         raise HTTPException(status_code=401, detail="Authentication required.")
     if _is_tenant_admin(account_id, tenant_id):

@@ -4330,7 +4330,7 @@
           "API Keys"
         ],
         "summary": "Create API key for a tenant",
-        "description": "Create a new API key scoped to the given tenant. The full secret is returned **once** in the ``raw_key`` field \u2014 store it immediately. Only the prefix and hash are stored server-side; the raw secret cannot be retrieved again.",
+        "description": "Create a new API key scoped to the given tenant. Optionally set ``scope_role`` (``full`` vs ``read_only``) and ``project_id`` to limit the key to one project or safe HTTP methods for CI/CD. The full secret is returned **once** in the ``raw_key`` field \u2014 store it immediately. Only the prefix and hash are stored server-side; the raw secret cannot be retrieved again.",
         "operationId": "create_api_key_v1_tenants__tenant_id__api_keys_post",
         "parameters": [
           {
@@ -8296,6 +8296,15 @@
         "title": "AccountUpdate",
         "description": "Update payload for objectified.account (all optional)."
       },
+      "ApiKeyScopeRole": {
+        "type": "string",
+        "enum": [
+          "full",
+          "read_only"
+        ],
+        "title": "ApiKeyScopeRole",
+        "description": "**full**: read/write (subject to RBAC unless the key is tenant-wide full).\n**read_only**: only GET, HEAD, and OPTIONS.\n"
+      },
       "ApiKeyCreate": {
         "properties": {
           "name": {
@@ -8323,6 +8332,23 @@
             "type": "object",
             "title": "Metadata",
             "description": "Arbitrary metadata"
+          },
+          "scope_role": {
+            "$ref": "#/components/schemas/ApiKeyScopeRole",
+            "default": "full",
+            "description": "**full**: read/write (subject to RBAC unless the key is tenant-wide full).\n**read_only**: only GET, HEAD, and OPTIONS.\n"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Optional project UUID; when set, the key is limited to that project within the tenant."
           }
         },
         "type": "object",
@@ -8333,7 +8359,9 @@
         "description": "Request body for POST /v1/tenants/{tenant_id}/api-keys.",
         "example": {
           "metadata": {},
-          "name": "CI/CD pipeline key"
+          "name": "CI/CD pipeline key",
+          "scope_role": "full",
+          "project_id": null
         }
       },
       "ApiKeyCreateResponse": {
@@ -8362,6 +8390,23 @@
             "type": "string",
             "title": "Key Prefix",
             "description": "First 8 characters of the raw key (for display)"
+          },
+          "scope_role": {
+            "$ref": "#/components/schemas/ApiKeyScopeRole",
+            "default": "full",
+            "description": "Key role: full access or read-only (safe HTTP methods only)."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "When set, the key is restricted to this project within the tenant."
           },
           "expires_at": {
             "anyOf": [
@@ -8478,6 +8523,23 @@
             "type": "string",
             "title": "Key Prefix",
             "description": "First 8 characters of the raw key (for display)"
+          },
+          "scope_role": {
+            "$ref": "#/components/schemas/ApiKeyScopeRole",
+            "default": "full",
+            "description": "Key role: full access or read-only (safe HTTP methods only)."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "When set, the key is restricted to this project within the tenant."
           },
           "expires_at": {
             "anyOf": [

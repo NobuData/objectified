@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.14
+  version: 1.0.15
 paths:
   /v1/auth/login:
     post:
@@ -2390,8 +2390,10 @@ paths:
       tags:
       - API Keys
       summary: Create API key for a tenant
-      description: Create a new API key scoped to the given tenant. The full secret
-        is returned **once** in the ``raw_key`` field — store it immediately. Only
+      description: Create a new API key scoped to the given tenant. Optionally set
+        ``scope_role`` (``full`` vs ``read_only``) and ``project_id`` to limit the
+        key to one project or safe HTTP methods for CI/CD. The full secret is
+        returned **once** in the ``raw_key`` field — store it immediately. Only
         the prefix and hash are stored server-side; the raw secret cannot be retrieved
         again.
       operationId: create_api_key_v1_tenants__tenant_id__api_keys_post
@@ -4804,6 +4806,15 @@ components:
       type: object
       title: AccountUpdate
       description: Update payload for objectified.account (all optional).
+    ApiKeyScopeRole:
+      type: string
+      enum:
+      - full
+      - read_only
+      title: ApiKeyScopeRole
+      description: |
+        **full**: read/write (subject to RBAC unless the key is tenant-wide full).
+        **read_only**: only GET, HEAD, and OPTIONS.
     ApiKeyCreate:
       properties:
         name:
@@ -4824,6 +4835,18 @@ components:
           type: object
           title: Metadata
           description: Arbitrary metadata
+        scope_role:
+          $ref: '#/components/schemas/ApiKeyScopeRole'
+          default: full
+          description: |
+            **full**: read/write (subject to RBAC unless the key is tenant-wide full).
+            **read_only**: only GET, HEAD, and OPTIONS.
+        project_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Project Id
+          description: Optional project UUID; when set, the key is limited to that project within the tenant.
       type: object
       required:
       - name
@@ -4832,6 +4855,8 @@ components:
       example:
         metadata: {}
         name: CI/CD pipeline key
+        scope_role: full
+        project_id: null
     ApiKeyCreateResponse:
       properties:
         id:
@@ -4854,6 +4879,16 @@ components:
           type: string
           title: Key Prefix
           description: First 8 characters of the raw key (for display)
+        scope_role:
+          $ref: '#/components/schemas/ApiKeyScopeRole'
+          default: full
+          description: 'Key role: full access or read-only (safe HTTP methods only).'
+        project_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Project Id
+          description: When set, the key is restricted to this project within the tenant.
         expires_at:
           anyOf:
           - type: string
@@ -4935,6 +4970,16 @@ components:
           type: string
           title: Key Prefix
           description: First 8 characters of the raw key (for display)
+        scope_role:
+          $ref: '#/components/schemas/ApiKeyScopeRole'
+          default: full
+          description: 'Key role: full access or read-only (safe HTTP methods only).'
+        project_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Project Id
+          description: When set, the key is restricted to this project within the tenant.
         expires_at:
           anyOf:
           - type: string

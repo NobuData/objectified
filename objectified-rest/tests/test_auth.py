@@ -59,6 +59,8 @@ _API_KEY_ROW: dict[str, Any] = {
     "account_id": _ACCOUNT_ID,
     "name": "Test key",
     "key_prefix": "ok_abcde",
+    "scope_role": "full",
+    "project_id": None,
     "expires_at": None,
     "last_used": None,
     "enabled": True,
@@ -375,6 +377,49 @@ class TestCreateApiKey:
         body = r.json()
         assert body["expires_at"] is not None
 
+    def test_create_api_key_with_scope_and_project(self, auth_client):
+        """Create accepts scope_role read_only and optional project_id."""
+        _proj = "10000000-0000-0000-0000-0000000000aa"
+        row = {
+            **_API_KEY_ROW,
+            "scope_role": "read_only",
+            "project_id": _proj,
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [{"id": _TENANT_ID}],
+                [{"1": 1}],
+                [{"id": _proj}],
+            ]
+            mock_db.execute_mutation.return_value = row
+            r = auth_client.post(
+                f"/v1/tenants/{_TENANT_ID}/api-keys",
+                json={
+                    "name": "Readonly project key",
+                    "scope_role": "read_only",
+                    "project_id": _proj,
+                },
+            )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["scope_role"] == "read_only"
+        assert body["project_id"] == _proj
+
+    def test_create_api_key_invalid_project_returns_400(self, auth_client):
+        """Unknown project in tenant returns 400."""
+        bad_proj = "20000000-0000-0000-0000-0000000000bb"
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [{"id": _TENANT_ID}],
+                [{"1": 1}],
+                [],
+            ]
+            r = auth_client.post(
+                f"/v1/tenants/{_TENANT_ID}/api-keys",
+                json={"name": "Bad", "project_id": bad_proj},
+            )
+        assert r.status_code == 400
+
 
 # ===========================================================================
 # DELETE /v1/tenants/{tenant_id}/api-keys/{key_id}
@@ -489,6 +534,8 @@ class TestValidateApiKey:
             "account_id": _ACCOUNT_ID,
             "enabled": False,
             "expires_at": None,
+            "scope_role": "full",
+            "project_id": None,
             "tenant_slug": "acme",
             "tenant_name": "Acme",
         }
@@ -507,6 +554,8 @@ class TestValidateApiKey:
             "account_id": _ACCOUNT_ID,
             "enabled": True,
             "expires_at": datetime.now(timezone.utc) - timedelta(seconds=1),
+            "scope_role": "full",
+            "project_id": None,
             "tenant_slug": "acme",
             "tenant_name": "Acme",
         }
@@ -525,6 +574,8 @@ class TestValidateApiKey:
             "account_id": _ACCOUNT_ID,
             "enabled": True,
             "expires_at": None,
+            "scope_role": "full",
+            "project_id": None,
             "tenant_slug": "acme",
             "tenant_name": "Acme",
         }
@@ -534,5 +585,7 @@ class TestValidateApiKey:
         assert result is not None
         assert result["tenant_slug"] == "acme"
         assert result["account_id"] == _ACCOUNT_ID
+        assert result["scope_role"] == "full"
+        assert result["project_id"] is None
 
 

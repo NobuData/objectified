@@ -78,6 +78,8 @@ class TestApiKeyTableStructure:
             ("last_used", "timestamp without time zone", "YES"),
             ("enabled", "boolean", "NO"),
             ("metadata", "jsonb", "NO"),
+            ("scope_role", "character varying", "NO"),
+            ("project_id", "uuid", "YES"),
             ("created_at", "timestamp without time zone", "NO"),
             ("updated_at", "timestamp without time zone", "YES"),
             ("deleted_at", "timestamp without time zone", "YES"),
@@ -153,7 +155,7 @@ class TestApiKeyTableConstraints:
             ORDER BY kcu.column_name ASC
             """
         )
-        assert [r["column_name"] for r in rows] == ["account_id", "tenant_id"]
+        assert [r["column_name"] for r in rows] == ["account_id", "project_id", "tenant_id"]
 
     def test_updated_at_trigger_exists(self, conn):
         row = conn.fetchone(
@@ -176,6 +178,7 @@ class TestApiKeyTableConstraints:
             "idx_api_key_enabled",
             "idx_api_key_expires_at",
             "idx_api_key_deleted_at",
+            "idx_api_key_project_id",
         ],
     )
     def test_expected_indexes_exist(self, conn, index_name):
@@ -220,6 +223,8 @@ class TestApiKeyTableDataIntegrity:
         assert row["enabled"] is True
         assert row["metadata"] == {}
         assert row["deleted_at"] is None
+        assert str(row["scope_role"]).lower() == "full"
+        assert row["project_id"] is None
 
     def test_duplicate_key_hash_raises_unique_violation(self, conn):
         tenant_id = _insert_tenant(conn, "api-key-dup-tenant")
@@ -300,4 +305,20 @@ class TestApiKeyTableDataIntegrity:
             )
         conn.execute("ROLLBACK TO SAVEPOINT before_bad_fks")
         conn.execute("RELEASE SAVEPOINT before_bad_fks")
+
+    def test_invalid_scope_role_raises_check_violation(self, conn):
+        tenant_id = _insert_tenant(conn, "api-key-bad-scope-tenant")
+        account_id = _insert_account(conn, "api-key-bad-scope@example.com")
+        conn.execute("SAVEPOINT before_bad_scope")
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            conn.execute(
+                """
+                INSERT INTO objectified.api_key
+                    (tenant_id, account_id, name, key_hash, key_prefix, scope_role)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (tenant_id, account_id, "Bad scope", "hash-badscope", "ok_badsc", "superuser"),
+            )
+        conn.execute("ROLLBACK TO SAVEPOINT before_bad_scope")
+        conn.execute("RELEASE SAVEPOINT before_bad_scope")
 

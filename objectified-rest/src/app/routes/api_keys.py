@@ -8,7 +8,7 @@ from typing import Annotated, Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_authenticated
+from app.auth import _reject_project_scoped_api_key_on_tenant_route, require_authenticated
 from app.database import db
 from app.routes.helpers import _assert_tenant_exists, _not_found
 from app.schemas.auth import ApiKeyCreate, ApiKeyCreateResponse, ApiKeySchema
@@ -16,6 +16,17 @@ from app.schemas.auth import ApiKeyCreate, ApiKeyCreateResponse, ApiKeySchema
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["API Keys"])
+
+
+def _assert_caller_api_key_tenant(caller: dict[str, Any], tenant_id: str) -> None:
+    """Ensure an API key is only used against its own tenant (path alignment)."""
+    if caller.get("auth_method") != "api_key":
+        return
+    if str(caller.get("tenant_id", "")) != str(tenant_id):
+        raise HTTPException(
+            status_code=403,
+            detail="API key is not valid for this tenant.",
+        )
 
 # Prefix length displayed to users (for identification without revealing the secret)
 _KEY_PREFIX_LEN = 8
@@ -53,9 +64,11 @@ def list_api_keys(
 ) -> List[ApiKeySchema]:
     """List API keys for a tenant."""
     _assert_tenant_exists(tenant_id)
+    _assert_caller_api_key_tenant(caller, tenant_id)
+    _reject_project_scoped_api_key_on_tenant_route(caller)
 
     is_admin = bool(caller.get("is_admin")) if caller else False
-    account_id = caller.get("user_id") if caller else None
+    account_id = (caller.get("user_id") or caller.get("account_id")) if caller else None
 
     # Non-admins must be a member of the tenant to list its keys
     if not is_admin:
@@ -87,6 +100,7 @@ def list_api_keys(
         rows = db.execute_query(
             """
             SELECT id, tenant_id, account_id, name, key_prefix,
+                   scope_role, project_id,
                    expires_at, last_used, enabled, metadata,
                    created_at, updated_at, deleted_at
             FROM objectified.api_key
@@ -99,6 +113,7 @@ def list_api_keys(
         rows = db.execute_query(
             """
             SELECT id, tenant_id, account_id, name, key_prefix,
+                   scope_role, project_id,
                    expires_at, last_used, enabled, metadata,
                    created_at, updated_at, deleted_at
             FROM objectified.api_key
@@ -117,6 +132,8 @@ def list_api_keys(
     summary="Create API key for a tenant",
     description=(
         "Create a new API key scoped to the given tenant. "
+        "Optionally restrict to a single ``project_id`` and/or ``read_only`` scope "
+        "(GET/HEAD/OPTIONS only). "
         "The full secret is returned **once** in the ``raw_key`` field — store it immediately. "
         "Only the prefix and hash are stored server-side; the raw secret cannot be retrieved again."
     ),
@@ -128,8 +145,10 @@ def create_api_key(
 ) -> ApiKeyCreateResponse:
     """Create a new API key for a tenant."""
     _assert_tenant_exists(tenant_id)
+    _assert_caller_api_key_tenant(caller, tenant_id)
+    _reject_project_scoped_api_key_on_tenant_route(caller)
 
-    account_id = caller.get("user_id") if caller else None
+    account_id = (caller.get("user_id") or caller.get("account_id")) if caller else None
     if not account_id:
         raise HTTPException(status_code=401, detail="Cannot determine account from credentials")
 
@@ -149,14 +168,32 @@ def create_api_key(
             detail="You do not have access to this tenant",
         )
 
+    if payload.project_id:
+        proj = db.execute_query(
+            """
+            SELECT id
+            FROM objectified.project
+            WHERE id = %s AND tenant_id = %s AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (payload.project_id, tenant_id),
+        )
+        if not proj:
+            raise HTTPException(
+                status_code=400,
+                detail="project_id must reference an active project in this tenant",
+            )
+
     raw_key, prefix, key_hash = _generate_api_key()
 
     row = db.execute_mutation(
         """
         INSERT INTO objectified.api_key
-            (tenant_id, account_id, name, key_hash, key_prefix, expires_at, enabled, metadata)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            (tenant_id, account_id, name, key_hash, key_prefix, expires_at, enabled,
+             metadata, scope_role, project_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
         RETURNING id, tenant_id, account_id, name, key_prefix,
+                  scope_role, project_id,
                   expires_at, last_used, enabled, metadata,
                   created_at, updated_at, deleted_at
         """,
@@ -169,6 +206,8 @@ def create_api_key(
             payload.expires_at,
             True,
             json.dumps(payload.metadata),
+            payload.scope_role.value,
+            payload.project_id,
         ),
     )
     if not row:
@@ -195,6 +234,8 @@ def revoke_api_key(
 ) -> None:
     """Revoke (soft-delete) an API key."""
     _assert_tenant_exists(tenant_id)
+    _assert_caller_api_key_tenant(caller, tenant_id)
+    _reject_project_scoped_api_key_on_tenant_route(caller)
 
     rows = db.execute_query(
         """
@@ -208,7 +249,7 @@ def revoke_api_key(
         raise _not_found("API key", key_id)
 
     # Only the owning account or a tenant admin may revoke a key
-    account_id = caller.get("user_id") if caller else None
+    account_id = (caller.get("user_id") or caller.get("account_id")) if caller else None
     is_admin = caller.get("is_admin", False) if caller else False
     key_owner = str(rows[0]["account_id"])
     if not is_admin and account_id != key_owner:
