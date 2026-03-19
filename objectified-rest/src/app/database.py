@@ -149,7 +149,8 @@ class Database:
         Returns None if the key is unknown, expired, disabled, or revoked.
 
         On success, records the last_used timestamp and returns a dict with:
-            tenant_id, tenant_slug, tenant_name, account_id, key_id
+            tenant_id, tenant_slug, tenant_name, account_id, key_id,
+            scope_role, project_id (optional UUID string)
         """
         import hashlib
         import datetime
@@ -166,6 +167,8 @@ class Database:
                    ak.account_id,
                    ak.enabled,
                    ak.expires_at,
+                   ak.scope_role,
+                   ak.project_id,
                    t.slug AS tenant_slug,
                    t.name AS tenant_name
             FROM objectified.api_key ak
@@ -208,12 +211,17 @@ class Database:
         except Exception:
             logger.warning("validate_api_key: failed to update last_used for key %s", row["key_id"])
 
+        scope_role_raw = row.get("scope_role") or "full"
+        scope_role = str(scope_role_raw).lower()
+        proj = row.get("project_id")
         return {
             "key_id": str(row["key_id"]),
             "tenant_id": str(row["tenant_id"]),
             "tenant_slug": row["tenant_slug"],
             "tenant_name": row["tenant_name"],
             "account_id": str(row["account_id"]),
+            "scope_role": scope_role,
+            "project_id": str(proj) if proj is not None else None,
         }
 
 

@@ -21,6 +21,9 @@ from app.auth import (
     _is_platform_admin,
     require_authenticated,
     require_admin,
+    require_tenant_permission,
+    require_project_permission,
+    require_tenant_admin,
 )
 from app.database import Database
 from app.config import Settings, settings
@@ -287,6 +290,101 @@ class TestResolveCaller:
         # These are tested via route tests in test_auth.py
         pass  # Placeholder for documentation
 
+    def test_resolve_caller_api_key_tenant_wide_full_is_admin(self):
+        """Tenant-wide full API key gets is_api_key_admin=True (not is_admin) for RBAC bypass."""
+        fake = {
+            "key_id": "k1",
+            "tenant_id": "t1",
+            "account_id": "a1",
+            "tenant_slug": "acme",
+            "tenant_name": "Acme",
+            "scope_role": "full",
+            "project_id": None,
+        }
+        with patch("app.auth.db.validate_api_key", return_value=fake):
+            result = _resolve_caller(authorization=None, x_api_key="ok_" + "x" * 40)
+        assert result["is_admin"] is False
+        assert result["is_api_key_admin"] is True
+        assert result["api_key_scope_role"] == "full"
+        assert result["api_key_project_id"] is None
+
+    def test_resolve_caller_api_key_read_only_not_admin(self):
+        with patch("app.auth.db.validate_api_key") as mock_val:
+            mock_val.return_value = {
+                "key_id": "k1",
+                "tenant_id": "t1",
+                "account_id": "a1",
+                "tenant_slug": "acme",
+                "tenant_name": "Acme",
+                "scope_role": "read_only",
+                "project_id": None,
+            }
+            result = _resolve_caller(authorization=None, x_api_key="ok_" + "x" * 40)
+        assert result["is_admin"] is False
+        assert result["api_key_scope_role"] == "read_only"
+
+    def test_resolve_caller_api_key_project_scoped_full_not_admin(self):
+        with patch("app.auth.db.validate_api_key") as mock_val:
+            mock_val.return_value = {
+                "key_id": "k1",
+                "tenant_id": "t1",
+                "account_id": "a1",
+                "tenant_slug": "acme",
+                "tenant_name": "Acme",
+                "scope_role": "full",
+                "project_id": "p1",
+            }
+            result = _resolve_caller(authorization=None, x_api_key="ok_" + "x" * 40)
+        assert result["is_admin"] is False
+        assert result["api_key_project_id"] == "p1"
+
+
+class TestApiKeyScopeGuards:
+    """Tenant vs project path alignment for API keys (GH-129)."""
+
+    def test_tenant_permission_rejects_project_scoped_api_key(self):
+        dep = require_tenant_permission("project:read")
+        caller = {"auth_method": "api_key", "api_key_project_id": "p1"}
+        with pytest.raises(HTTPException) as exc_info:
+            dep("t1", caller)
+        assert exc_info.value.status_code == 403
+
+    def test_project_permission_rejects_wrong_project(self):
+        dep = require_project_permission("version:read")
+        caller = {"auth_method": "api_key", "api_key_project_id": "p-expected"}
+        with pytest.raises(HTTPException) as exc_info:
+            dep("t1", "other-project", caller)
+        assert exc_info.value.status_code == 403
+
+    def test_tenant_admin_rejects_project_scoped_api_key(self):
+        caller = {
+            "auth_method": "api_key",
+            "api_key_project_id": "p1",
+            "is_admin": False,
+            "account_id": "a1",
+        }
+        with pytest.raises(HTTPException) as exc_info:
+            require_tenant_admin("t1", caller)
+        assert exc_info.value.status_code == 403
+
+
+class TestRequireAuthenticated:
+    """Tests for require_authenticated HTTP method guard (read-only API keys)."""
+
+    def test_read_only_api_key_post_raises_403(self):
+        request = MagicMock()
+        request.method = "POST"
+        caller = {"auth_method": "api_key", "api_key_scope_role": "read_only"}
+        with pytest.raises(HTTPException) as exc_info:
+            require_authenticated(request, caller)
+        assert exc_info.value.status_code == 403
+
+    def test_read_only_api_key_get_allowed(self):
+        request = MagicMock()
+        request.method = "GET"
+        caller = {"auth_method": "api_key", "api_key_scope_role": "read_only"}
+        assert require_authenticated(request, caller) == caller
+
 
 class TestIsPlatformAdmin:
     """Tests for _is_platform_admin function."""
@@ -322,15 +420,32 @@ class TestRequireAdmin:
         result = require_admin(caller)
         assert result == caller
 
-    def test_require_admin_api_key(self):
-        """Test require_admin with API key (always admin)."""
+    def test_require_admin_api_key_tenant_wide_full(self):
+        """Tenant-wide full API keys are rejected by require_admin (platform admin endpoints only)."""
         caller = {
             "auth_method": "api_key",
-            "is_admin": True,
+            "is_admin": False,
+            "is_api_key_admin": True,
         }
 
-        result = require_admin(caller)
-        assert result == caller
+        with pytest.raises(HTTPException) as exc_info:
+            require_admin(caller)
+
+        assert exc_info.value.status_code == 403
+        assert "platform admin" in exc_info.value.detail
+
+    def test_require_admin_api_key_read_only_denied(self):
+        """Read-only API keys are not admin and cannot satisfy require_admin."""
+        caller = {
+            "auth_method": "api_key",
+            "is_admin": False,
+            "account_id": "a1",
+        }
+
+        with pytest.raises(HTTPException) as exc_info:
+            require_admin(caller)
+
+        assert exc_info.value.status_code == 403
 
     def test_require_admin_jwt_user_is_platform_admin(self):
         """Test require_admin with JWT user who is platform admin."""

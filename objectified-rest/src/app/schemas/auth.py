@@ -1,9 +1,17 @@
 """Pydantic schemas for authentication: login and API key management."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
+
+
+class ApiKeyScopeRole(str, Enum):
+    """Access role for an API key (affects HTTP methods and RBAC bypass)."""
+
+    full = "full"
+    read_only = "read_only"
 
 
 class LoginRequest(BaseModel):
@@ -32,10 +40,30 @@ class ApiKeyCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Human-readable label for this key")
     expires_at: Optional[datetime] = Field(default=None, description="Optional expiry datetime (UTC). Omit for non-expiring keys.")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Arbitrary metadata")
+    scope_role: ApiKeyScopeRole = Field(
+        default=ApiKeyScopeRole.full,
+        description=(
+            "``full``: read/write (subject to RBAC unless the key is tenant-wide full). "
+            "``read_only``: only GET, HEAD, and OPTIONS."
+        ),
+    )
+    project_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional project UUID. When set, the key may only access that project "
+            "within the tenant; tenant-wide API paths return 403."
+        ),
+    )
 
     model_config = {
         "json_schema_extra": {
-            "example": {"name": "CI/CD pipeline key", "expires_at": None, "metadata": {}}
+            "example": {
+                "name": "CI/CD pipeline key",
+                "expires_at": None,
+                "metadata": {},
+                "scope_role": "full",
+                "project_id": None,
+            }
         }
     }
 
@@ -48,6 +76,14 @@ class ApiKeySchema(BaseModel):
     account_id: str = Field(..., description="Creating account UUID")
     name: str = Field(..., description="Human-readable label")
     key_prefix: str = Field(..., description="First 8 characters of the raw key (for display)")
+    scope_role: ApiKeyScopeRole = Field(
+        default=ApiKeyScopeRole.full,
+        description="Key role: full access or read-only (safe HTTP methods only).",
+    )
+    project_id: Optional[str] = Field(
+        default=None,
+        description="When set, the key is restricted to this project within the tenant.",
+    )
     expires_at: Optional[datetime] = Field(default=None, description="Expiry datetime, or null for non-expiring")
     last_used: Optional[datetime] = Field(default=None, description="Timestamp of last successful use")
     enabled: bool = Field(..., description="Whether the key is active")
