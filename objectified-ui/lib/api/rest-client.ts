@@ -771,6 +771,98 @@ export async function removeTenantAdministrator(
 }
 
 // ---------------------------------------------------------------------------
+// Tenant SSO providers (OIDC / SAML)
+// ---------------------------------------------------------------------------
+
+export type SsoProviderType = 'oidc' | 'saml';
+
+export interface SsoProviderSchema {
+  id: string;
+  tenant_id: string;
+  provider_type: SsoProviderType;
+  name: string;
+  enabled: boolean;
+  oidc_discovery?: Record<string, unknown> | null;
+  saml_metadata_xml?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string | null;
+  deleted_at?: string | null;
+}
+
+export interface SsoProviderCreate {
+  tenant_id?: string | null;
+  provider_type: SsoProviderType;
+  name: string;
+  enabled?: boolean;
+  oidc_discovery?: Record<string, unknown> | null;
+  saml_metadata_xml?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SsoProviderUpdate {
+  name?: string | null;
+  enabled?: boolean | null;
+  oidc_discovery?: Record<string, unknown> | null;
+  saml_metadata_xml?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export async function listTenantSsoProviders(
+  tenantId: string,
+  options: RestClientOptions = {},
+  includeDeleted = false
+): Promise<SsoProviderSchema[]> {
+  const q = includeDeleted ? '?include_deleted=true' : '';
+  return request<SsoProviderSchema[]>(
+    'GET',
+    `/tenants/${tenantId}/sso/providers${q}`,
+    undefined,
+    options
+  );
+}
+
+export async function createTenantSsoProvider(
+  tenantId: string,
+  body: SsoProviderCreate,
+  options: RestClientOptions = {}
+): Promise<SsoProviderSchema> {
+  return request<SsoProviderSchema>(
+    'POST',
+    `/tenants/${tenantId}/sso/providers`,
+    { ...body, tenant_id: tenantId },
+    options
+  );
+}
+
+export async function updateTenantSsoProvider(
+  tenantId: string,
+  providerId: string,
+  body: SsoProviderUpdate,
+  options: RestClientOptions = {}
+): Promise<SsoProviderSchema> {
+  return request<SsoProviderSchema>(
+    'PUT',
+    `/tenants/${tenantId}/sso/providers/${encodeURIComponent(providerId)}`,
+    body,
+    options
+  );
+}
+
+export async function deleteTenantSsoProvider(
+  tenantId: string,
+  providerId: string,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/tenants/${tenantId}/sso/providers/${encodeURIComponent(providerId)}`,
+    undefined,
+    options
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Projects
 // ---------------------------------------------------------------------------
 

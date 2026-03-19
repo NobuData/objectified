@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { Loader2, Plus, Pencil, Building2, Trash2, Users, ShieldCheck } from 'lucide-react';
+import { Loader2, Plus, Pencil, Building2, Trash2, Users, ShieldCheck, KeyRound } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
@@ -256,6 +256,16 @@ export default function TenantsPage() {
                             <ShieldCheck className="h-4 w-4" />
                             Administrators
                           </Link>
+                          {isAdministrator && (
+                            <Link
+                              href={`/dashboard/tenants/${tenant.id}/sso`}
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                              aria-label={`Configure SSO for ${tenant.name}`}
+                            >
+                              <KeyRound className="h-4 w-4" />
+                              SSO
+                            </Link>
+                          )}
                           {!tenant.deleted_at && isAdministrator && (
                             <span className="inline-flex items-center gap-2">
                               <button
