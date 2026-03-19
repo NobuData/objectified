@@ -8,11 +8,14 @@ import userEvent from '@testing-library/user-event';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 
 const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve([]));
+const mockListVersionSnapshotsSchemaChanges = jest.fn(() => Promise.resolve([]));
 const mockDeleteVersion = jest.fn(() => Promise.resolve());
 
 jest.mock('@lib/api/rest-client', () => ({
   listVersionSnapshotsMetadata: (...args: unknown[]) =>
     mockListVersionSnapshotsMetadata(...args),
+  listVersionSnapshotsSchemaChanges: (...args: unknown[]) =>
+    mockListVersionSnapshotsSchemaChanges(...args),
   deleteVersion: (...args: unknown[]) => mockDeleteVersion(...args),
   rollbackVersion: jest.fn(() => Promise.resolve()),
   createVersionFromRevision: jest.fn(() => Promise.resolve({ id: 'new-v' })),
@@ -39,6 +42,7 @@ beforeEach(() => {
   mockConfirm.mockResolvedValue(true);
   mockDeleteVersion.mockResolvedValue(undefined);
   mockListVersionSnapshotsMetadata.mockResolvedValue([]);
+  mockListVersionSnapshotsSchemaChanges.mockResolvedValue([]);
 });
 
 describe('VersionHistoryDialog – delete version', () => {
@@ -167,5 +171,54 @@ describe('VersionHistoryDialog – delete version', () => {
     });
 
     expect(onDeleteSuccess).not.toHaveBeenCalled();
+  });
+});
+
+describe('VersionHistoryDialog – schema audit', () => {
+  it('loads and renders schema audit when toggled on', async () => {
+    mockListVersionSnapshotsMetadata.mockResolvedValue([
+      {
+        id: 'snap-1',
+        version_id: 'v1',
+        project_id: 'p1',
+        committed_by: 'user-1',
+        revision: 1,
+        label: 'initial',
+        description: 'first',
+        created_at: new Date().toISOString(),
+      },
+    ]);
+
+    mockListVersionSnapshotsSchemaChanges.mockResolvedValue([
+      {
+        id: 'snap-1',
+        version_id: 'v1',
+        project_id: 'p1',
+        committed_by: 'user-1',
+        revision: 1,
+        label: 'initial',
+        description: 'first',
+        created_at: new Date().toISOString(),
+        diff: {
+          added_class_names: ['Person'],
+          removed_class_names: [],
+          modified_classes: [],
+        },
+      },
+    ]);
+
+    render(<VersionHistoryDialog {...defaultProps} />);
+
+    const toggleButton = await waitFor(() =>
+      screen.getByRole('button', { name: /show schema audit/i })
+    );
+    await userEvent.click(toggleButton);
+
+    await waitFor(() => {
+      expect(mockListVersionSnapshotsSchemaChanges).toHaveBeenCalledWith('v1', {});
+    });
+
+    expect(await screen.findByText(/added:/i)).toBeInTheDocument();
+    expect(screen.getByText(/person/i)).toBeInTheDocument();
   });
 });

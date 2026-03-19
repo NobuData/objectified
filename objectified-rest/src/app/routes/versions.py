@@ -19,6 +19,9 @@ from app.schemas.version import (
     VersionSnapshotCreate,
     VersionSnapshotMetadataSchema,
     VersionSnapshotSchema,
+    VersionPullDiff,
+    VersionPullModifiedClass,
+    VersionSnapshotSchemaChangesAuditSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -735,6 +738,107 @@ def _capture_version_state(version_id: str) -> dict[str, Any]:
     return {"classes": classes}
 
 
+def _class_name_key(name: Optional[str]) -> str:
+    """Normalize class name for comparison (case-insensitive)."""
+    return (name or "").strip().lower()
+
+
+def _prop_name_key(prop: dict[str, Any]) -> str:
+    """Normalize property name for comparison (case-insensitive)."""
+    return (prop.get("name") or prop.get("property_name") or "").strip().lower()
+
+
+def _prop_unique_key(prop: dict[str, Any]) -> str:
+    """Composite key combining normalized name and property_id.
+
+    Using ``property_id`` as a tiebreaker prevents silent overwrites when a
+    class contains multiple properties whose normalized names collide (e.g.
+    same name under different parents or legitimate duplicates).  Matching
+    across snapshots is still correct because ``property_id`` is a stable
+    reference to the underlying property definition.
+    """
+    name_part = _prop_name_key(prop)
+    pid = prop.get("property_id")
+    if pid is not None:
+        return f"{name_part}:{pid}"
+    return name_part
+
+
+def _compute_schema_changes_diff(
+    old_classes: list[dict[str, Any]],
+    new_classes: list[dict[str, Any]],
+) -> VersionPullDiff:
+    """Compute diff between two version snapshot class/property lists.
+
+    Matching is by class name and property name (case-insensitive). A property
+    is considered "modified" when its join JSON schema (`data`) or join
+    description (`description`) changes.
+    """
+
+    old_by_name: dict[str, dict[str, Any]] = {}
+    for c in old_classes:
+        old_by_name[_class_name_key(c.get("name"))] = c
+
+    new_by_name: dict[str, dict[str, Any]] = {}
+    for c in new_classes:
+        new_by_name[_class_name_key(c.get("name"))] = c
+
+    added_class_names: list[str] = []
+    removed_class_names: list[str] = []
+    modified_classes: list[VersionPullModifiedClass] = []
+
+    def _prop_signature(prop: dict[str, Any]) -> dict[str, Any]:
+        data = prop.get("data")
+        data_norm = data if isinstance(data, dict) else {}
+        desc = prop.get("description")
+        return {"data": data_norm, "description": desc if desc is not None else ""}
+
+    for name_key, new_c in new_by_name.items():
+        class_display_name = (new_c.get("name") or name_key).strip() or name_key
+
+        if name_key not in old_by_name:
+            added_class_names.append(class_display_name)
+            continue
+
+        old_c = old_by_name[name_key]
+        old_props = {_prop_unique_key(p): p for p in (old_c.get("properties") or [])}
+        new_props = {_prop_unique_key(p): p for p in (new_c.get("properties") or [])}
+
+        added_props = [
+            (p.get("name") or k).strip() or k for k, p in new_props.items() if k not in old_props
+        ]
+        removed_props = [
+            (p.get("name") or k).strip() or k for k, p in old_props.items() if k not in new_props
+        ]
+        modified_props = [
+            (new_props[k].get("name") or k).strip() or k
+            for k in old_props
+            if k in new_props and _prop_signature(old_props[k]) != _prop_signature(new_props[k])
+        ]
+
+        if added_props or removed_props or modified_props:
+            modified_classes.append(
+                VersionPullModifiedClass(
+                    class_name=class_display_name,
+                    added_property_names=added_props,
+                    removed_property_names=removed_props,
+                    modified_property_names=modified_props,
+                )
+            )
+
+    for name_key, old_c in old_by_name.items():
+        if name_key not in new_by_name:
+            removed_class_names.append(
+                (old_c.get("name") or name_key).strip() or name_key
+            )
+
+    return VersionPullDiff(
+        added_class_names=added_class_names,
+        removed_class_names=removed_class_names,
+        modified_classes=modified_classes,
+    )
+
+
 @router.post(
     "/versions/{version_id}/snapshots",
     response_model=VersionSnapshotSchema,
@@ -858,6 +962,65 @@ def list_version_snapshots_metadata(
         (version_id,),
     )
     return [VersionSnapshotMetadataSchema(**dict(r)) for r in rows]
+
+
+@router.get(
+    "/versions/{version_id}/snapshots/schema-changes",
+    response_model=List[VersionSnapshotSchemaChangesAuditSchema],
+    summary="List schema change audit entries (per snapshot)",
+    description=(
+        "Return an optional audit-style summary of schema changes for each snapshot "
+        "revision of this version. For revision N, the diff is computed between snapshot "
+        "revisions N-1 and N (first revision is diffed against an empty state)."
+    ),
+)
+def list_version_snapshots_schema_changes(
+    version_id: str,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> List[VersionSnapshotSchemaChangesAuditSchema]:
+    """List per-snapshot schema change diffs."""
+    _assert_version_exists(version_id, include_deleted=True)
+
+    rows = db.execute_query(
+        f"""
+        SELECT
+            id,
+            version_id,
+            project_id,
+            committed_by,
+            revision,
+            label,
+            description,
+            snapshot,
+            created_at
+        FROM objectified.version_snapshot
+        WHERE version_id = %s
+        ORDER BY revision ASC
+        """,
+        (version_id,),
+    )
+
+    audit_rows: list[dict[str, Any]] = []
+    prev_classes: list[dict[str, Any]] = []
+
+    for row in rows:
+        row_dict = dict(row)
+        snapshot = row_dict.pop("snapshot") or {}
+        classes = snapshot.get("classes") if isinstance(snapshot, dict) else None
+        classes_list: list[dict[str, Any]] = classes if isinstance(classes, list) else []
+
+        diff = _compute_schema_changes_diff(prev_classes, classes_list)
+        audit_rows.append(
+            {
+                **row_dict,
+                "diff": diff,
+            }
+        )
+        prev_classes = classes_list
+
+    # Newest first (matches UI expectations / existing metadata endpoints).
+    audit_rows.reverse()
+    return [VersionSnapshotSchemaChangesAuditSchema(**r) for r in audit_rows]
 
 
 @router.get(

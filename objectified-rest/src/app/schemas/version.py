@@ -230,6 +230,26 @@ class VersionPullDiff(BaseModel):
     modified_classes: list[VersionPullModifiedClass] = Field(default_factory=list)
 
 
+class VersionSnapshotSchemaChangesAuditSchema(BaseModel):
+    """Audit summary of schema changes for a specific version snapshot revision.
+
+    The `diff` is computed between the snapshot at `revision-1` and this snapshot.
+    For the first revision, the "previous" state is treated as empty.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    version_id: str
+    project_id: str
+    committed_by: Optional[str] = None
+    revision: int
+    label: Optional[str] = None
+    description: Optional[str] = None
+    diff: VersionPullDiff = Field(default_factory=VersionPullDiff)
+    created_at: datetime
+
+
 class MergeConflict(BaseModel):
     """Describes a single merge conflict between local and remote state."""
 

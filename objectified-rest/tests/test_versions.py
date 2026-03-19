@@ -397,6 +397,246 @@ def test_list_version_snapshots_metadata_empty(client):
     assert r.json() == []
 
 
+def test_list_version_snapshots_schema_changes_returns_diff_summary(client):
+    """GET /v1/versions/{id}/snapshots/schema-changes returns per-snapshot schema diffs."""
+
+    snapshot_1 = {
+        **_SNAPSHOT_METADATA_ROW,
+        "snapshot": {"classes": []},
+    }
+    snapshot_2_classes = [
+        {
+            "id": "class-1",
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "Person class",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": _NOW,
+            "updated_at": None,
+            "properties": [
+                {
+                    "id": "cp-1",
+                    "class_id": "class-1",
+                    "property_id": "prop-1",
+                    "parent_id": None,
+                    "name": "first_name",
+                    "description": "First name",
+                    "data": {"type": "string"},
+                    "property_name": "first_name",
+                    "property_description": "First name",
+                    "property_data": {"type": "string"},
+                    "property_enabled": True,
+                }
+            ],
+        }
+    ]
+    snapshot_2 = {
+        **_SNAPSHOT_METADATA_ROW,
+        "id": "snap-2",
+        "revision": 2,
+        "label": "second",
+        "description": "Second snapshot",
+        "snapshot": {"classes": snapshot_2_classes},
+        "created_at": _NOW,
+    }
+
+    with mock_db_all() as mock_db:
+        # 1) _assert_version_exists
+        # 2) SELECT id, ..., snapshot, created_at FROM objectified.version_snapshot ORDER BY revision ASC
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [snapshot_1, snapshot_2],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/schema-changes")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 2
+    assert body[0]["revision"] == 2
+    assert body[0]["diff"]["added_class_names"] == ["Person"]
+    assert body[0]["diff"]["removed_class_names"] == []
+    assert body[0]["diff"]["modified_classes"] == []
+
+
+def test_list_version_snapshots_schema_changes_property_level_diff(client):
+    """schema-changes endpoint detects added/removed/modified properties within a class."""
+
+    def _make_prop(cp_id: str, prop_id: str, name: str, data: dict) -> dict:
+        return {
+            "id": cp_id,
+            "class_id": "class-1",
+            "property_id": prop_id,
+            "parent_id": None,
+            "name": name,
+            "description": None,
+            "data": data,
+            "property_name": name,
+            "property_description": None,
+            "property_data": data,
+            "property_enabled": True,
+        }
+
+    base_class = {
+        "id": "class-1",
+        "version_id": _VERSION_ID,
+        "name": "Order",
+        "description": None,
+        "schema": {},
+        "metadata": {},
+        "enabled": True,
+        "created_at": _NOW,
+        "updated_at": None,
+    }
+
+    snapshot_1 = {
+        **_SNAPSHOT_METADATA_ROW,
+        "revision": 1,
+        "snapshot": {
+            "classes": [
+                {
+                    **base_class,
+                    "properties": [
+                        _make_prop("cp-1", "prop-1", "amount", {"type": "number"}),
+                        _make_prop("cp-2", "prop-2", "currency", {"type": "string"}),
+                    ],
+                }
+            ]
+        },
+    }
+    snapshot_2 = {
+        **_SNAPSHOT_METADATA_ROW,
+        "id": "snap-2",
+        "revision": 2,
+        "label": "second",
+        "description": "Second snapshot",
+        "created_at": _NOW,
+        "snapshot": {
+            "classes": [
+                {
+                    **base_class,
+                    "properties": [
+                        # amount modified (type changed), currency removed, status added
+                        _make_prop("cp-1", "prop-1", "amount", {"type": "integer"}),
+                        _make_prop("cp-3", "prop-3", "status", {"type": "string"}),
+                    ],
+                }
+            ]
+        },
+    }
+
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [snapshot_1, snapshot_2],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/schema-changes")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 2
+    diff = body[0]["diff"]
+    assert diff["added_class_names"] == []
+    assert diff["removed_class_names"] == []
+    assert len(diff["modified_classes"]) == 1
+    mod = diff["modified_classes"][0]
+    assert mod["class_name"] == "Order"
+    assert mod["added_property_names"] == ["status"]
+    assert mod["removed_property_names"] == ["currency"]
+    assert mod["modified_property_names"] == ["amount"]
+
+
+def test_list_version_snapshots_schema_changes_duplicate_property_names(client):
+    """Duplicate normalized property names within a class are handled correctly.
+
+    Two properties sharing the same name but with different property_ids must
+    each get a unique composite key so neither silently overwrites the other.
+    """
+
+    def _make_prop(cp_id: str, prop_id: str, name: str) -> dict:
+        return {
+            "id": cp_id,
+            "class_id": "class-1",
+            "property_id": prop_id,
+            "parent_id": None,
+            "name": name,
+            "description": None,
+            "data": {"type": "string"},
+            "property_name": name,
+            "property_description": None,
+            "property_data": {"type": "string"},
+            "property_enabled": True,
+        }
+
+    base_class = {
+        "id": "class-1",
+        "version_id": _VERSION_ID,
+        "name": "Item",
+        "description": None,
+        "schema": {},
+        "metadata": {},
+        "enabled": True,
+        "created_at": _NOW,
+        "updated_at": None,
+    }
+
+    # Snapshot 1: two properties with normalized name "tag" but different property_ids
+    snapshot_1 = {
+        **_SNAPSHOT_METADATA_ROW,
+        "revision": 1,
+        "snapshot": {
+            "classes": [
+                {
+                    **base_class,
+                    "properties": [
+                        _make_prop("cp-1", "prop-1", "tag"),
+                        _make_prop("cp-2", "prop-2", "tag"),
+                    ],
+                }
+            ]
+        },
+    }
+    # Snapshot 2: only one "tag" property (prop-2 remains, prop-1 removed)
+    snapshot_2 = {
+        **_SNAPSHOT_METADATA_ROW,
+        "id": "snap-2",
+        "revision": 2,
+        "label": "second",
+        "description": "Second snapshot",
+        "created_at": _NOW,
+        "snapshot": {
+            "classes": [
+                {
+                    **base_class,
+                    "properties": [
+                        _make_prop("cp-2", "prop-2", "tag"),
+                    ],
+                }
+            ]
+        },
+    }
+
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [snapshot_1, snapshot_2],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/schema-changes")
+
+    assert r.status_code == 200
+    body = r.json()
+    diff = body[0]["diff"]
+    # The removal of prop-1 (tag) should be reflected as a modification
+    assert len(diff["modified_classes"]) == 1
+    mod = diff["modified_classes"][0]
+    assert mod["class_name"] == "Item"
+    # prop-1 "tag" was removed; prop-2 "tag" persisted unchanged
+    assert mod["removed_property_names"] == ["tag"]
+    assert mod["added_property_names"] == []
+    assert mod["modified_property_names"] == []
+
+
 def test_get_version_snapshot_by_revision_returns_snapshot(client):
     """GET /v1/versions/{id}/snapshots/{revision} returns snapshot."""
     with mock_db_all() as mock_db:

@@ -397,6 +397,18 @@ export interface VersionSnapshotMetadataSchema {
   created_at: string;
 }
 
+export interface VersionSnapshotSchemaChangesAuditSchema {
+  id: string;
+  version_id: string;
+  project_id: string;
+  committed_by?: string | null;
+  revision: number;
+  label?: string | null;
+  description?: string | null;
+  diff: VersionPullDiff;
+  created_at: string;
+}
+
 export interface VersionMergeRequest {
   source_version_id?: string | null;
   strategy?: 'additive' | 'override';
@@ -900,6 +912,18 @@ export async function listVersionSnapshotsMetadata(
   return request<VersionSnapshotMetadataSchema[]>(
     'GET',
     `/versions/${versionId}/snapshots/metadata`,
+    undefined,
+    options
+  );
+}
+
+export async function listVersionSnapshotsSchemaChanges(
+  versionId: string,
+  options: RestClientOptions = {}
+): Promise<VersionSnapshotSchemaChangesAuditSchema[]> {
+  return request<VersionSnapshotSchemaChangesAuditSchema[]>(
+    'GET',
+    `/versions/${versionId}/snapshots/schema-changes`,
     undefined,
     options
   );
