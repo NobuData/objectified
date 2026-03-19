@@ -17,7 +17,11 @@ export interface CompareSchemasResult {
   modified_classes: CompareSchemasModifiedClass[];
 }
 
-type ClassLike = { name?: string; properties?: Array<{ name?: string; data?: unknown; property_data?: unknown }> };
+/** Class shape accepted by compareSchemas (e.g. from version pull responses). */
+export type ClassLike = {
+  name?: string;
+  properties?: Array<{ name?: string; data?: unknown; property_data?: unknown }>;
+};
 
 function classKey(c: ClassLike): string {
   return (c.name ?? '').trim().toLowerCase();
