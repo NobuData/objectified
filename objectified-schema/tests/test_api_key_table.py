@@ -322,3 +322,50 @@ class TestApiKeyTableDataIntegrity:
         conn.execute("ROLLBACK TO SAVEPOINT before_bad_scope")
         conn.execute("RELEASE SAVEPOINT before_bad_scope")
 
+    def test_invalid_project_id_raises_foreign_key_violation(self, conn):
+        tenant_id = _insert_tenant(conn, "api-key-bad-project-tenant")
+        account_id = _insert_account(conn, "api-key-bad-project@example.com")
+        bogus_project_id = str(uuid.uuid4())
+        conn.execute("SAVEPOINT before_bad_project_fk")
+        with pytest.raises(psycopg2.errors.ForeignKeyViolation):
+            conn.execute(
+                """
+                INSERT INTO objectified.api_key
+                    (tenant_id, account_id, project_id, name, key_hash, key_prefix)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    tenant_id,
+                    account_id,
+                    bogus_project_id,
+                    "Bad project",
+                    "hash-badproj",
+                    "ok_badproj",
+                ),
+            )
+        conn.execute("ROLLBACK TO SAVEPOINT before_bad_project_fk")
+        conn.execute("RELEASE SAVEPOINT before_bad_project_fk")
+
+    def test_project_id_can_be_null(self, conn):
+        tenant_id = _insert_tenant(conn, "api-key-null-project-tenant")
+        account_id = _insert_account(conn, "api-key-null-project@example.com")
+        conn.execute(
+            """
+            INSERT INTO objectified.api_key
+                (tenant_id, account_id, project_id, name, key_hash, key_prefix)
+            VALUES (%s, %s, NULL, %s, %s, %s)
+            """,
+            (
+                tenant_id,
+                account_id,
+                "Null project",
+                "hash-nullproj",
+                "ok_nullproj",
+            ),
+        )
+        row = conn.fetchone(
+            "SELECT project_id FROM objectified.api_key WHERE key_hash = %s",
+            ("hash-nullproj",),
+        )
+        assert row["project_id"] is None
+

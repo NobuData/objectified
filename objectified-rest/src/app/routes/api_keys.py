@@ -67,7 +67,7 @@ def list_api_keys(
     _assert_caller_api_key_tenant(caller, tenant_id)
     _reject_project_scoped_api_key_on_tenant_route(caller)
 
-    is_admin = bool(caller.get("is_admin")) if caller else False
+    is_admin = bool(caller.get("is_admin") or caller.get("is_api_key_admin")) if caller else False
     account_id = (caller.get("user_id") or caller.get("account_id")) if caller else None
 
     # Non-admins must be a member of the tenant to list its keys
@@ -250,7 +250,7 @@ def revoke_api_key(
 
     # Only the owning account or a tenant admin may revoke a key
     account_id = (caller.get("user_id") or caller.get("account_id")) if caller else None
-    is_admin = caller.get("is_admin", False) if caller else False
+    is_admin = (caller.get("is_admin", False) or caller.get("is_api_key_admin", False)) if caller else False
     key_owner = str(rows[0]["account_id"])
     if not is_admin and account_id != key_owner:
         raise HTTPException(
