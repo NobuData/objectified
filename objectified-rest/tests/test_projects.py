@@ -21,6 +21,7 @@ _ACCOUNT_ID = "00000000-0000-0000-0000-000000000011"
 _PROJECT_ID = "00000000-0000-0000-0000-000000000012"
 
 _CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
+_MEMBER_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
 
 _TENANT_ROW: dict[str, Any] = {
     "id": _TENANT_ID,
@@ -70,6 +71,14 @@ def anon_client():
     """FastAPI test client with no auth override."""
     app.dependency_overrides.clear()
     return TestClient(app)
+
+
+@pytest.fixture
+def member_client():
+    """FastAPI test client with non-admin tenant-member caller."""
+    app.dependency_overrides[require_authenticated] = lambda: _MEMBER_CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -560,4 +569,48 @@ def test_list_deleted_projects_returns_only_deleted(client):
     assert len(data) == 1
     assert data[0]["id"] == _PROJECT_ID
     assert data[0]["deleted_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# RBAC: non-admin caller permission checks
+# ---------------------------------------------------------------------------
+
+
+def test_list_projects_non_member_returns_403(member_client):
+    """GET /v1/tenants/{id}/projects returns 403 when caller is not a tenant member."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [],  # _is_tenant_admin → not admin
+            [],  # _is_tenant_member → not a member → 403
+        ]
+        r = member_client.get(f"/v1/tenants/{_TENANT_ID}/projects")
+    assert r.status_code == 403
+
+
+def test_list_projects_member_returns_200(member_client):
+    """GET /v1/tenants/{id}/projects returns 200 for a non-admin tenant member (project:read is implicit)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member; project:read is implicit → allowed
+            [{"id": _TENANT_ID}],  # _assert_tenant_exists
+            [_PROJECT_ROW],        # list projects
+        ]
+        r = member_client.get(f"/v1/tenants/{_TENANT_ID}/projects")
+    assert r.status_code == 200
+
+
+def test_create_project_member_without_write_permission_returns_403(member_client):
+    """POST /v1/tenants/{id}/projects returns 403 when caller lacks project:write permission."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member
+            [],                    # _has_rbac_permission → no project:write → 403
+        ]
+        r = member_client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects",
+            json={"name": "New Project", "slug": "new-project"},
+        )
+    assert r.status_code == 403
 

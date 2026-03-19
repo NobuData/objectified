@@ -406,6 +406,7 @@ def _has_rbac_permission(
           AND r.deleted_at IS NULL
           AND rp.deleted_at IS NULL
           AND p.deleted_at IS NULL
+          AND p.enabled = true
           AND (
             (ar.resource_type IS NULL AND ar.resource_id IS NULL)
             OR

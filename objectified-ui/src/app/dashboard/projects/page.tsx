@@ -119,6 +119,9 @@ export default function ProjectsPage() {
       setProjects([]);
       return;
     }
+    if (perms.loading) {
+      return;
+    }
     if (!canReadProjects) {
       setLoading(false);
       setProjects([]);
@@ -142,7 +145,7 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, selectedTenantId, session, showDeleted, canReadProjects]);
+  }, [status, selectedTenantId, session, showDeleted, canReadProjects, perms.loading]);
 
   useEffect(() => {
     if (status === 'loading') return;
