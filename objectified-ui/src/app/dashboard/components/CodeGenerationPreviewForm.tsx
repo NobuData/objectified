@@ -186,7 +186,11 @@ export default function CodeGenerationPreviewForm({
   }, [active, schemaSourceId, restOpts]);
 
   useEffect(() => {
-    if (schemaSourceId === 'canvas' || taggedVersionList.length === 0) return;
+    if (schemaSourceId === 'canvas') return;
+    if (taggedVersionList.length === 0) {
+      setSchemaSourceId('canvas');
+      return;
+    }
     const stillValid = taggedVersionList.some((v) => v.id === schemaSourceId);
     if (!stillValid) setSchemaSourceId('canvas');
   }, [taggedVersionList, schemaSourceId]);
@@ -354,7 +358,10 @@ export default function CodeGenerationPreviewForm({
             value={schemaSourceId}
             onValueChange={(v) => setSchemaSourceId(v)}
           >
-            <Select.Trigger className={`mt-1 ${selectTriggerClass}`}>
+            <Select.Trigger
+              className={`mt-1 ${selectTriggerClass}`}
+              data-testid="schema-source-select"
+            >
               <Select.Value />
               <Select.Icon />
             </Select.Trigger>

@@ -5881,7 +5881,9 @@ components:
         code_generation_tag:
           anyOf:
           - type: string
+            minLength: 1
             maxLength: 64
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$
           - type: 'null'
           title: Code Generation Tag
           description: Optional stable label for code generation; unique per project (case-insensitive).
@@ -6191,7 +6193,9 @@ components:
         code_generation_tag:
           anyOf:
           - type: string
+            minLength: 1
             maxLength: 64
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$
             description: Stable label for code generation (e.g. v1, api-v2). Empty string clears. Unique per project (case-insensitive).
           - type: 'null'
           title: Code Generation Tag

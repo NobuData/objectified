@@ -800,7 +800,7 @@
           "Classes"
         ],
         "summary": "Remove tag from class",
-        "description": "Remove a tag from the class's metadata.tags (GitHub",
+        "description": "Remove a tag from the class's metadata.tags (GitHub #103).",
         "operationId": "remove_tag_from_class_v1_versions__version_id__classes__class_id__tags__tag_name__delete",
         "parameters": [
           {
@@ -893,7 +893,7 @@
           "Classes"
         ],
         "summary": "Get tags for class",
-        "description": "Return tag names assigned to the class (GitHub",
+        "description": "Return tag names assigned to the class (GitHub #103).",
         "operationId": "get_tags_for_class_v1_versions__version_id__classes__class_id__tags_get",
         "parameters": [
           {
@@ -7934,7 +7934,7 @@
           }
         },
         "title": "ClassAssignTagRequest",
-        "description": "Request body for assigning a tag to a class (GitHub"
+        "description": "Request body for assigning a tag to a class (GitHub #103)."
       },
       "ClassTagsResponse": {
         "type": "object",
@@ -7948,7 +7948,7 @@
           }
         },
         "title": "ClassTagsResponse",
-        "description": "Response for get tags for class (GitHub"
+        "description": "Response for get tags for class (GitHub #103)."
       },
       "ClassWithPropertiesAndTags": {
         "properties": {
@@ -9453,7 +9453,9 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 64
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$"
               },
               {
                 "type": "null"
@@ -9948,7 +9950,9 @@
             "anyOf": [
               {
                 "type": "string",
+                "minLength": 1,
                 "maxLength": 64,
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$",
                 "description": "Stable label for code generation (e.g. v1, api-v2). Empty string clears. Unique per project (case-insensitive)."
               },
               {
