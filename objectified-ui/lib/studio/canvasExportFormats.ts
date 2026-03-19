@@ -308,6 +308,18 @@ function quoteSqlIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+/**
+ * Quote a PostgreSQL identifier that may be schema-qualified (e.g. "public.users").
+ * Each dot-separated segment is quoted independently so that schema and table
+ * names are treated as separate identifiers.
+ */
+function quoteSqlQualifiedIdent(name: string): string {
+  return name
+    .split('.')
+    .map((seg) => quoteSqlIdent(seg))
+    .join('.');
+}
+
 function mapJsonSchemaTypeToSql(typeVal: unknown): string {
   if (Array.isArray(typeVal)) {
     const nonNull = typeVal.filter((t) => t !== 'null');
@@ -411,7 +423,7 @@ export function exportAsSqlDdl(classes: StudioClass[]): string {
         const colName = colOverride || defaultFk;
         columnLines.push(`  ${quoteSqlIdent(colName)} uuid${required ? ' not null' : ''}`);
         if (targetTable) {
-          fkLines.push(`  foreign key (${quoteSqlIdent(colName)}) references ${quoteSqlIdent(targetTable)}(${quoteSqlIdent('id')})`);
+          fkLines.push(`  foreign key (${quoteSqlIdent(colName)}) references ${quoteSqlQualifiedIdent(targetTable)}(${quoteSqlIdent('id')})`);
         }
       } else {
         const baseCol = toSnakeCase(propName) || propName.toLowerCase();
@@ -428,7 +440,7 @@ export function exportAsSqlDdl(classes: StudioClass[]): string {
     }
 
     const allConstraints = [...columnLines, ...fkLines];
-    lines.push(`create table if not exists ${quoteSqlIdent(table)} (`);
+    lines.push(`create table if not exists ${quoteSqlQualifiedIdent(table)} (`);
     lines.push(allConstraints.join(',\n'));
     lines.push(');');
     lines.push('');

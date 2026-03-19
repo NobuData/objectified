@@ -383,7 +383,7 @@ export function generateGraphQL(classes: StudioClass[]): string {
     lines.push(`type ${safeName} {${nameComment}`);
     lines.push('  id: ID!');
     for (const f of m.fields) {
-      const gqlField = f.jsonName.replace(/[^a-zA-Z0-9_]/g, '_');
+      const gqlField = sanitizeIdentifier(f.jsonName);
       if (f.isRefId && f.refModelName && f.refModelSafeName) {
         const bang = f.optional ? '' : '!';
         lines.push(`  ${gqlField}: ID${bang}`);
@@ -421,6 +421,17 @@ export function generateGraphQL(classes: StudioClass[]): string {
   return lines.join('\n').trimEnd() + '\n';
 }
 
+/**
+ * Sanitize an arbitrary string into a safe identifier (no `$`, no leading digit).
+ * Used for both GraphQL field names and Go identifier segments derived from
+ * user-supplied column/serialization overrides.
+ */
+function sanitizeIdentifier(value: string): string {
+  let safe = (value ?? '').replace(/[^a-zA-Z0-9_]/g, '_');
+  if (/^[0-9]/.test(safe)) safe = `_${safe}`;
+  return safe || '_';
+}
+
 function goExportedField(snake: string): string {
   const parts = snake.split('_').filter(Boolean);
   return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');
@@ -450,7 +461,7 @@ export function generateGo(classes: StudioClass[]): string {
     for (const f of m.fields) {
       const jkey = f.jsonName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       if (f.isRefId && f.refModelName) {
-        const goName = goExportedField(f.dbColumn);
+        const goName = goExportedField(sanitizeIdentifier(f.dbColumn));
         const ptr = f.optional ? '*' : '';
         lines.push(`\t${goName} ${ptr}uuid.UUID \`json:"${jkey}"\``);
       } else {
@@ -473,7 +484,7 @@ export function generateGo(classes: StudioClass[]): string {
           default:
             goT = 'json.RawMessage';
         }
-        const goName = goExportedField(f.dbColumn);
+        const goName = goExportedField(sanitizeIdentifier(f.dbColumn));
         if (f.optional && goT !== 'json.RawMessage') {
           lines.push(`\t${goName} *${goT} \`json:"${jkey}"\``);
         } else {
