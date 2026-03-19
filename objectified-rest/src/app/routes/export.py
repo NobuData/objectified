@@ -7,7 +7,7 @@ from typing import Annotated, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from app.auth import require_authenticated
+from app.auth import require_authenticated, require_version_permission
 from app.database import db
 from app.generators.jsonschema_generator import generate_jsonschema_multi, generate_jsonschema_single
 from app.generators.openapi_generator import generate_openapi_spec
@@ -194,6 +194,7 @@ def export_openapi(
             "contact ({name, url, email}), license ({name, identifier, url})."
         ),
     ),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> JSONResponse:
     """Export a version as an OpenAPI 3.2.0 specification document."""
@@ -271,6 +272,7 @@ def export_jsonschema(
     description: Optional[str] = Query(
         None, description="Override the description in the generated document."
     ),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> JSONResponse:
     """Export a version as a JSON Schema 2020-12 document (multi or single class)."""
@@ -343,6 +345,7 @@ def export_validation_rules(
         None,
         description="Override the document title.",
     ),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> JSONResponse:
     """Export validation-oriented rules for one or all classes."""

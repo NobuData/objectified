@@ -31,6 +31,16 @@ jest.mock('@/app/components/providers/DialogProvider', () => ({
   })),
 }));
 
+jest.mock('@/app/hooks/useTenantPermissions', () => ({
+  useTenantPermissions: jest.fn(() => ({
+    loading: false,
+    error: null,
+    permissions: { permission_keys: ['project:read', 'project:write'] },
+    permissionKeys: new Set(['project:read', 'project:write']),
+    has: (key: string) => key === 'project:read' || key === 'project:write',
+  })),
+}));
+
 describe('ProjectsPage', () => {
   beforeEach(() => {
     const { useSession } = require('next-auth/react');

@@ -23,7 +23,10 @@ _CLASS_ID = "00000000-0000-0000-0000-000000000050"
 _PROP_ID = "00000000-0000-0000-0000-000000000060"
 _CP_ID = "00000000-0000-0000-0000-000000000070"
 
-_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
+_MEMBER_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+
+_SCOPE_ROW: dict[str, Any] = {"tenant_id": _TENANT_ID, "project_id": _PROJECT_ID}
 
 _VERSION_ROW: dict[str, Any] = {
     "id": _VERSION_ID,
@@ -131,6 +134,14 @@ _JSONSCHEMA_SINGLE_DOC: dict[str, Any] = {
 @pytest.fixture
 def client():
     app.dependency_overrides[require_authenticated] = lambda: _CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def member_client():
+    """FastAPI test client with non-admin tenant-member caller."""
+    app.dependency_overrides[require_authenticated] = lambda: _MEMBER_CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -581,3 +592,39 @@ def test_import_openapi_missing_info_version_returns_400(client):
     assert "version" in r.json()["detail"].lower()
 
 
+
+
+# ---------------------------------------------------------------------------
+# RBAC: non-admin caller permission checks
+# ---------------------------------------------------------------------------
+
+
+def test_import_openapi_non_member_returns_403(member_client):
+    """POST /v1/versions/{vid}/import/openapi returns 403 when caller is not a tenant member."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_SCOPE_ROW],  # _resolve_version_scope
+            [],             # _is_tenant_admin → not admin
+            [],             # _is_tenant_member → not a member → 403
+        ]
+        r = member_client.post(
+            f"/v1/versions/{_VERSION_ID}/import/openapi",
+            json=_OPENAPI_DOC,
+        )
+    assert r.status_code == 403
+
+
+def test_import_openapi_member_without_write_permission_returns_403(member_client):
+    """POST /v1/versions/{vid}/import/openapi returns 403 when caller lacks schema:write permission."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_SCOPE_ROW],          # _resolve_version_scope
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member
+            [],                    # _has_rbac_permission → no schema:write → 403
+        ]
+        r = member_client.post(
+            f"/v1/versions/{_VERSION_ID}/import/openapi",
+            json=_OPENAPI_DOC,
+        )
+    assert r.status_code == 403

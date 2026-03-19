@@ -17,7 +17,11 @@ from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_authenticated
+from app.auth import (
+    require_authenticated,
+    require_project_permission,
+    require_version_permission,
+)
 from app.database import db
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists
 from app.routes.merge_utils import merge_classes, merge_classes_three_way
@@ -565,6 +569,7 @@ def create_version_from_revision(
     tenant_id: str,
     project_id: str,
     payload: VersionCreateFromRevision,
+    _perm: Annotated[dict[str, Any], Depends(require_project_permission("version:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionSchema:
     """Create a new version branching from a source version's snapshot revision."""
@@ -673,6 +678,7 @@ def create_version_from_revision(
 def commit_version(
     version_id: str,
     payload: VersionCommitPayload,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionCommitResponse:
     """Commit a full version payload and create a snapshot."""
@@ -731,6 +737,7 @@ def push_version(
     target_version_id: str = Query(
         ..., description="The target version UUID to push changes into."
     ),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionCommitResponse:
     """Push a version payload to a target version."""
@@ -925,6 +932,7 @@ def _apply_snapshot_state(
 def rollback_version(
     version_id: str,
     payload: VersionRollbackRequest,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionCommitResponse:
     """Rollback version state to a snapshot revision and append a new snapshot to history."""
@@ -1012,6 +1020,7 @@ def pull_version(
         None,
         description="If set, include a diff of changes since this revision.",
     ),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionPullResponse:
     """Pull the full state of a version (latest or at a given revision); optionally include diff since a revision."""
@@ -1187,6 +1196,7 @@ def _compute_merge(
 def merge_version(
     version_id: str,
     payload: VersionMergeRequest,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionMergeResponse:
     """Merge changes from a source version into the current version."""
@@ -1259,6 +1269,7 @@ def merge_version(
 def merge_preview(
     version_id: str,
     payload: VersionMergeRequest,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionMergePreviewResponse:
     """Return merged state and conflicts without persisting."""
@@ -1285,6 +1296,7 @@ def merge_preview(
 def merge_resolve(
     version_id: str,
     payload: VersionMergeResolveRequest,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> VersionMergeResolveResponse:
     """Merge with explicit conflict resolutions; optionally persist."""

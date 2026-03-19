@@ -17,7 +17,8 @@ _PROJECT_ID = "00000000-0000-0000-0000-000000000020"
 _VERSION_ID = "00000000-0000-0000-0000-000000000030"
 _ACCOUNT_ID = "00000000-0000-0000-0000-000000000040"
 
-_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
+_MEMBER_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
 
 _PROJECT_ROW: dict[str, Any] = {"id": _PROJECT_ID, "tenant_id": _TENANT_ID}
 _VERSION_ROW: dict[str, Any] = {
@@ -60,6 +61,14 @@ def _version_lookup_row() -> dict[str, Any]:
 def client():
     """FastAPI test client with require_authenticated overridden."""
     app.dependency_overrides[require_authenticated] = lambda: _CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def member_client():
+    """FastAPI test client with non-admin tenant-member caller."""
+    app.dependency_overrides[require_authenticated] = lambda: _MEMBER_CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -812,7 +821,7 @@ def test_freeze_schema_version_not_found_returns_404(client):
 # 403 tests for endpoints requiring user authentication (JWT only)
 # ---------------------------------------------------------------------------
 
-_API_KEY_CALLER = {"auth_method": "api_key", "account_id": _ACCOUNT_ID}
+_API_KEY_CALLER = {"auth_method": "api_key", "account_id": _ACCOUNT_ID, "is_admin": True}
 
 
 @pytest.fixture
@@ -851,3 +860,49 @@ def test_freeze_schema_api_key_caller_returns_403(api_key_client):
     assert "user authentication" in r.json()["detail"].lower()
 
 
+
+
+
+# ---------------------------------------------------------------------------
+# RBAC: non-admin caller permission checks
+# ---------------------------------------------------------------------------
+
+
+def test_list_versions_non_member_returns_403(member_client):
+    """GET /v1/tenants/{tid}/projects/{pid}/versions returns 403 when caller is not a tenant member."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [],  # _is_tenant_admin → not admin
+            [],  # _is_tenant_member → not a member → 403
+        ]
+        r = member_client.get(f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/versions")
+    assert r.status_code == 403
+
+
+def test_list_versions_member_returns_200(member_client):
+    """GET /v1/tenants/{tid}/projects/{pid}/versions returns 200 for a non-admin tenant member (version:read is implicit)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member; version:read is implicit → allowed
+            [{"id": _TENANT_ID}],  # _assert_tenant_exists
+            [_PROJECT_ROW],        # _assert_project_exists
+            [_VERSION_ROW],        # list versions
+        ]
+        r = member_client.get(f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/versions")
+    assert r.status_code == 200
+
+
+def test_create_version_member_without_write_permission_returns_403(member_client):
+    """POST /v1/tenants/{tid}/projects/{pid}/versions returns 403 when caller lacks version:write permission."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member
+            [],                    # _has_rbac_permission → no version:write → 403
+        ]
+        r = member_client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/versions",
+            json={"name": "v2", "description": "Test", "change_log": "New version"},
+        )
+    assert r.status_code == 403

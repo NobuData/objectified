@@ -11,15 +11,20 @@ from app.main import app
 from tests.conftest import mock_db_all
 
 _NOW = datetime.now(timezone.utc)
+_TENANT_ID = "00000000-0000-0000-0000-000000000010"
+_PROJECT_ID = "00000000-0000-0000-0000-000000000020"
 _VERSION_ID = "00000000-0000-0000-0000-000000000030"
 _CLASS_ID = "00000000-0000-0000-0000-000000000060"
 _ACCOUNT_ID = "00000000-0000-0000-0000-000000000040"
 
-_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
+_MEMBER_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+
+_SCOPE_ROW: dict[str, Any] = {"tenant_id": _TENANT_ID, "project_id": _PROJECT_ID}
 
 _VERSION_ROW: dict[str, Any] = {
     "id": _VERSION_ID,
-    "project_id": "00000000-0000-0000-0000-000000000020",
+    "project_id": _PROJECT_ID,
     "source_version_id": None,
     "creator_id": _ACCOUNT_ID,
     "name": "v1",
@@ -57,6 +62,14 @@ def _version_lookup_row() -> dict[str, Any]:
 def client():
     """FastAPI test client with require_authenticated overridden."""
     app.dependency_overrides[require_authenticated] = lambda: _CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def member_client():
+    """FastAPI test client with non-admin tenant-member caller."""
+    app.dependency_overrides[require_authenticated] = lambda: _MEMBER_CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -506,3 +519,50 @@ def test_remove_tag_from_class_removes_tag(client):
         )
     assert r.status_code == 200
     assert r.json()["tags"] == ["a", "c"]
+
+
+# ---------------------------------------------------------------------------
+# RBAC: non-admin caller permission checks
+# ---------------------------------------------------------------------------
+
+
+def test_list_classes_non_member_returns_403(member_client):
+    """GET /v1/versions/{vid}/classes returns 403 when caller is not a tenant member."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_SCOPE_ROW],  # _resolve_version_scope
+            [],             # _is_tenant_admin → not admin
+            [],             # _is_tenant_member → not a member → 403
+        ]
+        r = member_client.get(f"/v1/versions/{_VERSION_ID}/classes")
+    assert r.status_code == 403
+
+
+def test_list_classes_member_returns_200(member_client):
+    """GET /v1/versions/{vid}/classes returns 200 for a non-admin tenant member (schema:read is implicit)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_SCOPE_ROW],          # _resolve_version_scope
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member; schema:read is implicit → allowed
+            [_VERSION_ROW],        # _assert_version_exists
+            [],                    # list classes (empty)
+        ]
+        r = member_client.get(f"/v1/versions/{_VERSION_ID}/classes")
+    assert r.status_code == 200
+
+
+def test_create_class_member_without_write_permission_returns_403(member_client):
+    """POST /v1/versions/{vid}/classes returns 403 when caller lacks schema:write permission."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_SCOPE_ROW],          # _resolve_version_scope
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member
+            [],                    # _has_rbac_permission → no schema:write → 403
+        ]
+        r = member_client.post(
+            f"/v1/versions/{_VERSION_ID}/classes",
+            json={"name": "NewClass", "description": "A new class"},
+        )
+    assert r.status_code == 403

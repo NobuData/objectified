@@ -39,6 +39,7 @@ from app.routes.export import router as _export_router
 from app.routes.import_routes import router as _import_router
 from app.routes.projects import router as _projects_router
 from app.routes.properties import router as _properties_router
+from app.routes.rbac import router as _rbac_router
 from app.routes.sso import router as _sso_router
 from app.routes.users import router as _users_router
 from app.routes.users import _hash_password, _verify_password  # noqa: F401 — re-export
@@ -56,6 +57,7 @@ router.include_router(_import_router)
 router.include_router(_users_router)
 router.include_router(_tenants_router)
 router.include_router(_sso_router)
+router.include_router(_rbac_router)
 router.include_router(_api_keys_router)
 router.include_router(_projects_router)
 router.include_router(_properties_router)

@@ -17,7 +17,8 @@ _PROJECT_ID = "00000000-0000-0000-0000-000000000111"
 _PROPERTY_ID = "00000000-0000-0000-0000-000000000112"
 _ACCOUNT_ID = "00000000-0000-0000-0000-000000000113"
 
-_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
+_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": True}
+_MEMBER_CALLER = {"auth_method": "jwt", "user_id": _ACCOUNT_ID, "is_admin": False}
 
 _TENANT_ROW: dict[str, Any] = {"id": _TENANT_ID}
 _PROJECT_ROW: dict[str, Any] = {"id": _PROJECT_ID, "tenant_id": _TENANT_ID}
@@ -38,6 +39,14 @@ _PROPERTY_ROW: dict[str, Any] = {
 def client():
     """FastAPI test client with require_authenticated overridden."""
     app.dependency_overrides[require_authenticated] = lambda: _CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def member_client():
+    """FastAPI test client with non-admin tenant-member caller."""
+    app.dependency_overrides[require_authenticated] = lambda: _MEMBER_CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -499,3 +508,48 @@ def test_create_property_then_class_then_class_properties_flow(client):
     assert len(rows[0]["properties"]) == 1
     assert rows[0]["properties"][0]["property_id"] == _PROPERTY_ID
 
+
+
+# ---------------------------------------------------------------------------
+# RBAC: non-admin caller permission checks
+# ---------------------------------------------------------------------------
+
+
+def test_list_properties_non_member_returns_403(member_client):
+    """GET /v1/tenants/{tid}/projects/{pid}/properties returns 403 when caller is not a tenant member."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [],  # _is_tenant_admin → not admin
+            [],  # _is_tenant_member → not a member → 403
+        ]
+        r = member_client.get(f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/properties")
+    assert r.status_code == 403
+
+
+def test_list_properties_member_returns_200(member_client):
+    """GET /v1/tenants/{tid}/projects/{pid}/properties returns 200 for non-admin tenant member (schema:read is implicit)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member; schema:read is implicit → allowed
+            [_TENANT_ROW],         # _assert_tenant_exists
+            [_PROJECT_ROW],        # _assert_project_exists
+            [_PROPERTY_ROW],       # list properties
+        ]
+        r = member_client.get(f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/properties")
+    assert r.status_code == 200
+
+
+def test_create_property_member_without_write_permission_returns_403(member_client):
+    """POST /v1/tenants/{tid}/projects/{pid}/properties returns 403 when caller lacks schema:write permission."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [],                    # _is_tenant_admin → not admin
+            [{"id": _TENANT_ID}],  # _is_tenant_member → member
+            [],                    # _has_rbac_permission → no schema:write → 403
+        ]
+        r = member_client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/properties",
+            json={"name": "Status", "description": "A status field", "data": {"type": "string"}},
+        )
+    assert r.status_code == 403

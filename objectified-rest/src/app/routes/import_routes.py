@@ -19,7 +19,7 @@ from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from app.auth import require_authenticated
+from app.auth import require_authenticated, require_version_permission
 from app.database import db
 from app.importers.jsonschema_importer import parse_jsonschema_doc
 from app.importers.models import ImportedClass, ImportedProperty
@@ -266,6 +266,7 @@ def _execute_import(
 def import_openapi(
     version_id: str,
     doc: dict[str, Any] = Body(..., description="OpenAPI 3.x document as JSON"),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ImportResult:
     """Import an OpenAPI 3.x document into the given version."""
@@ -325,6 +326,7 @@ def import_openapi(
 def import_jsonschema(
     version_id: str,
     doc: dict[str, Any] = Body(..., description="JSON Schema 2020-12 document as JSON"),
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:write"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> ImportResult:
     """Import a JSON Schema 2020-12 document into the given version."""

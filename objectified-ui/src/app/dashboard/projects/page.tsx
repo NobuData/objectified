@@ -34,6 +34,7 @@ import {
   type ProjectUpdate,
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
+import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -84,6 +85,10 @@ export default function ProjectsPage() {
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [permanentDeletingId, setPermanentDeletingId] = useState<string | null>(null);
 
+  const perms = useTenantPermissions(selectedTenantId);
+  const canReadProjects = perms.has('project:read');
+  const canWriteProjects = perms.has('project:write');
+
   const opts = getRestClientOptions(
     (session as { accessToken?: string } | null) ?? null
   );
@@ -114,6 +119,15 @@ export default function ProjectsPage() {
       setProjects([]);
       return;
     }
+    if (perms.loading) {
+      return;
+    }
+    if (!canReadProjects) {
+      setLoading(false);
+      setProjects([]);
+      setError('You do not have permission to view projects for this tenant.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -131,7 +145,7 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, selectedTenantId, session, showDeleted]);
+  }, [status, selectedTenantId, session, showDeleted, canReadProjects, perms.loading]);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -318,9 +332,15 @@ export default function ProjectsPage() {
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
-              disabled={!selectedTenantId}
+              disabled={!selectedTenantId || !canWriteProjects || perms.loading}
               className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
-              title={!selectedTenantId ? 'Select a tenant first' : 'Create project'}
+              title={
+                !selectedTenantId
+                  ? 'Select a tenant first'
+                  : !canWriteProjects
+                    ? 'You do not have permission to create projects'
+                    : 'Create project'
+              }
             >
               <Plus className="h-4 w-4" aria-hidden />
               New project
@@ -441,8 +461,15 @@ export default function ProjectsPage() {
                             >
                               {!project.deleted_at && (
                                 <DropdownMenu.Item
-                                  onSelect={() => setEditProject(project)}
-                                  className="rounded-md px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 flex items-center gap-2"
+                                  onSelect={() => {
+                                    if (canWriteProjects) setEditProject(project);
+                                  }}
+                                  disabled={!canWriteProjects}
+                                  className={`rounded-md px-3 py-2 text-sm outline-none flex items-center gap-2 ${
+                                    canWriteProjects
+                                      ? 'text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800'
+                                      : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-70'
+                                  }`}
                                 >
                                   <Pencil className="h-4 w-4 text-indigo-500" />
                                   Edit project
@@ -450,8 +477,15 @@ export default function ProjectsPage() {
                               )}
                               {!project.deleted_at && (
                                 <DropdownMenu.Item
-                                  onSelect={() => handleDelete(project)}
-                                  className="rounded-md px-3 py-2 text-sm text-red-700 dark:text-red-300 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 dark:focus:bg-red-900/20 flex items-center gap-2"
+                                  onSelect={() => {
+                                    if (canWriteProjects) void handleDelete(project);
+                                  }}
+                                  disabled={!canWriteProjects}
+                                  className={`rounded-md px-3 py-2 text-sm outline-none flex items-center gap-2 ${
+                                    canWriteProjects
+                                      ? 'text-red-700 dark:text-red-300 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 dark:focus:bg-red-900/20'
+                                      : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-70'
+                                  }`}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                   Delete project
@@ -460,16 +494,30 @@ export default function ProjectsPage() {
                               {project.deleted_at && (
                                 <>
                                   <DropdownMenu.Item
-                                    onSelect={() => handleRestore(project)}
-                                    className="rounded-md px-3 py-2 text-sm text-green-700 dark:text-green-300 outline-none cursor-pointer hover:bg-green-50 dark:hover:bg-green-900/20 focus:bg-green-50 dark:focus:bg-green-900/20 flex items-center gap-2"
+                                    onSelect={() => {
+                                      if (canWriteProjects) void handleRestore(project);
+                                    }}
+                                    disabled={!canWriteProjects}
+                                    className={`rounded-md px-3 py-2 text-sm outline-none flex items-center gap-2 ${
+                                      canWriteProjects
+                                        ? 'text-green-700 dark:text-green-300 cursor-pointer hover:bg-green-50 dark:hover:bg-green-900/20 focus:bg-green-50 dark:focus:bg-green-900/20'
+                                        : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-70'
+                                    }`}
                                   >
                                     <RotateCcw className="h-4 w-4" />
                                     Restore project
                                   </DropdownMenu.Item>
                                   <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
                                   <DropdownMenu.Item
-                                    onSelect={() => handlePermanentDelete(project)}
-                                    className="rounded-md px-3 py-2 text-sm text-red-700 dark:text-red-300 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 dark:focus:bg-red-900/20 flex items-center gap-2"
+                                    onSelect={() => {
+                                      if (canWriteProjects) void handlePermanentDelete(project);
+                                    }}
+                                    disabled={!canWriteProjects}
+                                    className={`rounded-md px-3 py-2 text-sm outline-none flex items-center gap-2 ${
+                                      canWriteProjects
+                                        ? 'text-red-700 dark:text-red-300 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 dark:focus:bg-red-900/20'
+                                        : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-70'
+                                    }`}
                                   >
                                     <Flame className="h-4 w-4" />
                                     Permanently delete
