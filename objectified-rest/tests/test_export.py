@@ -775,3 +775,93 @@ def test_export_openapi_invalid_json_param_returns_400(client):
     assert r.status_code == 400
 
 
+# ---------------------------------------------------------------------------
+# Validation rules export (GitHub #122)
+# ---------------------------------------------------------------------------
+
+
+def test_export_validation_rules_returns_200(client):
+    """GET /v1/versions/{id}/export/validation-rules returns structured JSON."""
+    prop_rich = {
+        **_PROP_ROW,
+        "data": {
+            "type": "string",
+            "format": "email",
+            "minLength": 3,
+            "required": True,
+        },
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [_CLASS_ROW],
+            [prop_rich],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/export/validation-rules")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["exportKind"] == "objectified.validation-rules"
+    assert body["schemaVersion"] == "1.0.0"
+    assert body["versionId"] == _VERSION_ID
+    assert len(body["classes"]) == 1
+    name_rules = body["classes"][0]["properties"]["name"]
+    assert name_rules["required"] is True
+    assert name_rules["format"] == "email"
+    assert name_rules["minLength"] == 3
+
+
+def test_export_validation_rules_single_class(client):
+    """class_id query limits export to one class."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [_CLASS_ROW],
+            [_PROP_ROW],
+        ]
+        r = client.get(
+            f"/v1/versions/{_VERSION_ID}/export/validation-rules",
+            params={"class_id": _CLASS_ID},
+        )
+    assert r.status_code == 200
+    assert len(r.json()["classes"]) == 1
+    assert "content-disposition" in r.headers
+    assert _CLASS_ID in r.headers["content-disposition"]
+
+
+def test_export_validation_rules_version_not_found(client):
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.get(f"/v1/versions/{_VERSION_ID}/export/validation-rules")
+    assert r.status_code == 404
+
+
+def test_validation_rules_export_module_unit():
+    """Generator strips non-validation noise from resolved schema."""
+    from app.generators.validation_rules_export import generate_validation_rules_export
+
+    classes = [
+        {
+            "name": "Item",
+            "description": "An item",
+            "schema": {"type": "object"},
+            "properties": [
+                {
+                    "id": "p1",
+                    "parent_id": None,
+                    "name": "qty",
+                    "description": "Quantity",
+                    "data": {"type": "integer", "minimum": 0, "maximum": 100},
+                },
+            ],
+        }
+    ]
+    doc = generate_validation_rules_export(
+        classes, version_id="abc", version_name="v1", title="T"
+    )
+    qty = doc["classes"][0]["properties"]["qty"]
+    assert qty["type"] == "integer"
+    assert qty["minimum"] == 0
+    assert qty["maximum"] == 100
+    assert "description" not in qty
+
+

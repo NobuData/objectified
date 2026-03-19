@@ -14,7 +14,8 @@ Routes are split across focused modules:
                                    /v1/versions/{version_id}/classes/{class_id}/with-properties-tags
   - app.routes.class_properties  → /v1/versions/{version_id}/classes/{class_id}/properties
   - app.routes.export            → /v1/versions/{version_id}/export/openapi,
-                                   /v1/versions/{version_id}/export/jsonschema
+                                   /v1/versions/{version_id}/export/jsonschema,
+                                   /v1/versions/{version_id}/export/validation-rules
   - app.routes.import_routes     → /v1/versions/{version_id}/import/openapi,
                                    /v1/versions/{version_id}/import/jsonschema
   - app.routes.version_commits   → /v1/versions/{version_id}/commit,

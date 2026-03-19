@@ -161,6 +161,32 @@ describe('generateFromBuiltinTemplate', () => {
     expect(out).toContain('create table');
     expect(out.toLowerCase()).toContain('user');
   });
+
+  it('returns validation-rules JSON (GitHub #122)', () => {
+    const classes: StudioClass[] = [
+      {
+        id: 'c1',
+        name: 'Widget',
+        properties: [
+          {
+            id: 'p1',
+            name: 'sku',
+            property_data: { type: 'string', pattern: '^[A-Z0-9]+$' },
+            data: { 'x-required': true, minLength: 2 },
+          },
+        ],
+      },
+    ];
+    const out = generateFromBuiltinTemplate('validation-rules', classes);
+    const doc = JSON.parse(out) as {
+      exportKind: string;
+      classes: Array<{ name: string; properties: Record<string, { required?: boolean; pattern?: string; minLength?: number }> }>;
+    };
+    expect(doc.exportKind).toBe('objectified.validation-rules');
+    expect(doc.classes[0].properties.sku.required).toBe(true);
+    expect(doc.classes[0].properties.sku.pattern).toBe('^[A-Z0-9]+$');
+    expect(doc.classes[0].properties.sku.minLength).toBe(2);
+  });
 });
 
 describe('toSafeIdentifier', () => {

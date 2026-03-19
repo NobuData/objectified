@@ -15,6 +15,7 @@ import {
   generatePydantic,
   generateSqlDdl,
 } from './codeGenerationEngine';
+import { formatValidationRulesJson } from './validationRulesExport';
 
 export type BuiltinTemplateId =
   | 'typescript'
@@ -22,7 +23,8 @@ export type BuiltinTemplateId =
   | 'graphql'
   | 'go'
   | 'pydantic'
-  | 'sql-ddl';
+  | 'sql-ddl'
+  | 'validation-rules';
 
 export interface BuiltinTemplateMeta {
   id: BuiltinTemplateId;
@@ -76,6 +78,14 @@ export const BUILTIN_CODE_TEMPLATES: BuiltinTemplateMeta[] = [
     language: 'sql',
     fileHint: 'schema.sql',
   },
+  {
+    id: 'validation-rules',
+    label: 'Validation rules (JSON)',
+    description:
+      'required, type, format, pattern, bounds, enum — for validators & docs (GitHub #122)',
+    language: 'json',
+    fileHint: 'validation-rules.json',
+  },
 ];
 
 const BUILTIN_GENERATORS: Record<BuiltinTemplateId, (classes: StudioClass[]) => string> = {
@@ -85,6 +95,7 @@ const BUILTIN_GENERATORS: Record<BuiltinTemplateId, (classes: StudioClass[]) => 
   go: generateGo,
   pydantic: generatePydantic,
   'sql-ddl': generateSqlDdl,
+  'validation-rules': (classes) => formatValidationRulesJson(classes),
 };
 
 export function generateFromBuiltinTemplate(

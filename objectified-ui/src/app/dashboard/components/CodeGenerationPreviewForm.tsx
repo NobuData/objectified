@@ -597,7 +597,9 @@ export default function CodeGenerationPreviewForm({
         >
           <Editor
             height={isPanel ? '100%' : previewEditorHeight}
-            language={previewLang === 'prisma' ? 'sql' : previewLang}
+            language={
+              previewLang === 'prisma' ? 'sql' : previewLang === 'json' ? 'json' : previewLang
+            }
             theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
             value={preview}
             options={{
