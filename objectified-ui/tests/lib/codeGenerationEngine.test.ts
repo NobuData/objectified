@@ -114,7 +114,7 @@ describe('generateFromBuiltinTemplate', () => {
             id: 'p1',
             name: 'sku',
             property_data: { type: 'string', pattern: '^[A-Z0-9]+$' },
-            data: { required: true, minLength: 2 },
+            data: { 'x-required': true, minLength: 2 },
           },
         ],
       },
@@ -122,7 +122,7 @@ describe('generateFromBuiltinTemplate', () => {
     const out = generateFromBuiltinTemplate('validation-rules', classes);
     const doc = JSON.parse(out) as {
       exportKind: string;
-      classes: Array<{ name: string; properties: Record<string, { required?: boolean; pattern?: string }> }>;
+      classes: Array<{ name: string; properties: Record<string, { required?: boolean; pattern?: string; minLength?: number }> }>;
     };
     expect(doc.exportKind).toBe('objectified.validation-rules');
     expect(doc.classes[0].properties.sku.required).toBe(true);

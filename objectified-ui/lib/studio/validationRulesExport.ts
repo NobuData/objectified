@@ -114,10 +114,12 @@ function toPropertyRow(p: StudioClassProperty): Record<string, unknown> {
 
 function buildPropertySchema(
   prop: Record<string, unknown>,
-  allProperties: Record<string, unknown>[]
+  childrenMap: Map<string, Record<string, unknown>[]>
 ): Record<string, unknown> {
   const propData = parseData(prop.data);
-  const selfRequired = propData.required;
+  // The UI stores the required flag as x-required (not as boolean `required`).
+  const selfRequired = propData['x-required'] === true;
+  delete propData['x-required'];
 
   if (prop.description) {
     propData.description = prop.description;
@@ -130,16 +132,14 @@ function buildPropertySchema(
   }
 
   const propId = String(prop.id ?? '');
-  const children = allProperties.filter(
-    (x) => String(x.parent_id ?? '') === propId
-  );
+  const children = childrenMap.get(propId) ?? [];
 
   if (propData.type === 'object' && !propData.$ref) {
     if (children.length > 0) {
       const nestedProperties: Record<string, unknown> = {};
       const nestedRequired: string[] = [];
       for (const child of children) {
-        const childSchema = buildPropertySchema(child, allProperties);
+        const childSchema = buildPropertySchema(child, childrenMap);
         if (childSchema.required === true) {
           nestedRequired.push(String(child.name ?? ''));
           delete childSchema.required;
@@ -173,7 +173,7 @@ function buildPropertySchema(
       const nestedProperties: Record<string, unknown> = {};
       const nestedRequired: string[] = [];
       for (const child of children) {
-        const childSchema = buildPropertySchema(child, allProperties);
+        const childSchema = buildPropertySchema(child, childrenMap);
         if (childSchema.required === true) {
           nestedRequired.push(String(child.name ?? ''));
           delete childSchema.required;
@@ -198,12 +198,9 @@ function buildPropertySchema(
     }
   }
 
-  if (selfRequired === true) {
+  if (selfRequired) {
     propData.required = true;
-  } else if (
-    selfRequired === false &&
-    !Array.isArray(propData.required)
-  ) {
+  } else if (!Array.isArray(propData.required)) {
     propData.required = false;
   }
 
@@ -222,9 +219,17 @@ function buildClassSchemaFromStudio(cls: StudioClass): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
   const required: string[] = [];
 
+  // Precompute parent_id → children map once (O(n)) to avoid O(n²) filtering.
+  const childrenMap = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    const parentKey = String(row.parent_id ?? '');
+    if (!childrenMap.has(parentKey)) childrenMap.set(parentKey, []);
+    childrenMap.get(parentKey)!.push(row);
+  }
+
   const topLevel = rows.filter((r) => !r.parent_id);
   for (const prop of topLevel) {
-    const propSchema = buildPropertySchema(prop, rows);
+    const propSchema = buildPropertySchema(prop, childrenMap);
     if (propSchema.required === true) {
       required.push(String(prop.name ?? ''));
       delete propSchema.required;
