@@ -322,12 +322,13 @@ function escapeMarkdown(s: string): string {
     .replaceAll('\\', '\\\\')
     .replaceAll('*', '\\*')
     .replaceAll('_', '\\_')
-    .replaceAll('`', '\\`');
+    .replaceAll('`', '\\`')
+    .replaceAll('|', '\\|')
+    .replace(/[\r\n]+/g, ' ');
 }
 
 function safeText(v: unknown): string {
   if (v == null) return '';
-  if (typeof v === 'string') return v;
   return JSON.stringify(v, null, 2);
 }
 
@@ -411,21 +412,20 @@ export function exportAsDocsMarkdown(
     if (propNames.length === 0) {
       lines.push('_No properties._');
       lines.push('');
-      continue;
+    } else {
+      lines.push('| Property | Type | Required | Description |');
+      lines.push('| --- | --- | --- | --- |');
+      for (const pn of propNames) {
+        const ps = props[pn];
+        const ty = propertyTypeString(ps);
+        const req = required.has(pn) ? 'yes' : 'no';
+        const pd = typeof ps?.description === 'string' ? ps.description : '';
+        lines.push(
+          `| \`${escapeMarkdown(pn)}\` | \`${escapeMarkdown(ty || '-')}\` | ${req} | ${escapeMarkdown(pd || '')} |`
+        );
+      }
+      lines.push('');
     }
-
-    lines.push('| Property | Type | Required | Description |');
-    lines.push('| --- | --- | --- | --- |');
-    for (const pn of propNames) {
-      const ps = props[pn];
-      const ty = propertyTypeString(ps);
-      const req = required.has(pn) ? 'yes' : 'no';
-      const pd = typeof ps?.description === 'string' ? ps.description : '';
-      lines.push(
-        `| \`${escapeMarkdown(pn)}\` | \`${escapeMarkdown(ty || '-')}\` | ${req} | ${escapeMarkdown(pd || '')} |`
-      );
-    }
-    lines.push('');
 
     const exampleValue =
       schema?.example != null
@@ -516,8 +516,9 @@ export function exportAsDocsHtml(
     })
     .join('\n');
 
-  const headerBrand = logoUrl
-    ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(brandName || title)} logo" />`
+  const safeLogoUrl = /^https?:\/\//i.test(logoUrl) ? logoUrl : '';
+  const headerBrand = safeLogoUrl
+    ? `<img class="logo" src="${escapeHtml(safeLogoUrl)}" alt="${escapeHtml(brandName || title)} logo" />`
     : '';
 
   return `<!doctype html>

@@ -167,6 +167,64 @@ describe('canvasExportFormats', () => {
       expect(out).toContain('| Property | Type | Required | Description |');
       expect(out).toContain('`customer`');
     });
+
+    it('escapes pipe characters in description table cells', () => {
+      const classes: StudioClass[] = [
+        {
+          id: 'c1',
+          name: 'PipeTest',
+          properties: [
+            { name: 'val', data: { type: 'string', description: 'A | B option' } },
+          ],
+        },
+      ];
+      const out = exportAsDocsMarkdown(classes);
+      expect(out).toContain('A \\| B option');
+      expect(out).not.toMatch(/(?<!\\)\|[^|]*A \| B/);
+    });
+
+    it('emits valid JSON in example fenced blocks for string values', () => {
+      const classes: StudioClass[] = [
+        {
+          id: 'c1',
+          name: 'ExampleTest',
+          schema: { example: 'hello world' },
+          properties: [],
+        },
+      ];
+      const out = exportAsDocsMarkdown(classes);
+      expect(out).toContain('```json');
+      expect(out).toContain('"hello world"');
+    });
+
+    it('emits valid JSON in example fenced blocks for object values', () => {
+      const classes: StudioClass[] = [
+        {
+          id: 'c1',
+          name: 'ObjExample',
+          schema: { example: { id: 1, name: 'Alice' } },
+          properties: [],
+        },
+      ];
+      const out = exportAsDocsMarkdown(classes);
+      expect(out).toContain('```json');
+      expect(out).toContain('"id": 1');
+    });
+
+    it('normalizes newlines in table cells', () => {
+      const classes: StudioClass[] = [
+        {
+          id: 'c1',
+          name: 'NewlineTest',
+          properties: [
+            { name: 'val', data: { type: 'string', description: 'Line one\nLine two' } },
+          ],
+        },
+      ];
+      const out = exportAsDocsMarkdown(classes);
+      expect(out).not.toContain('\nLine two');
+      expect(out).toContain('Line one Line two');
+    });
   });
 
   describe('exportAsDocsHtml', () => {
@@ -182,6 +240,44 @@ describe('canvasExportFormats', () => {
       expect(out).toContain('--primary: #123456');
       expect(out).toContain('schema-Order');
       expect(out).toContain('customer');
+    });
+
+    it('renders logo img for https logoUrl', () => {
+      const out = exportAsDocsHtml(classesWithRef, {
+        title: 'Docs',
+        version: '1.0.0',
+        logoUrl: 'https://example.com/logo.png',
+        brandName: 'Acme',
+      });
+      expect(out).toContain('<img class="logo" src="https://example.com/logo.png"');
+    });
+
+    it('omits logo img for non-http logoUrl schemes', () => {
+      const unsafeUrls = [
+        'javascript:alert(1)',
+        'data:image/png;base64,abc',
+        'file:///etc/passwd',
+        'ftp://example.com/logo.png',
+      ];
+      for (const logoUrl of unsafeUrls) {
+        const out = exportAsDocsHtml(classesWithRef, {
+          title: 'Docs',
+          version: '1.0.0',
+          logoUrl,
+          brandName: 'Acme',
+        });
+        expect(out).not.toContain('<img class="logo"');
+      }
+    });
+
+    it('renders logo img for http logoUrl', () => {
+      const out = exportAsDocsHtml(classesWithRef, {
+        title: 'Docs',
+        version: '1.0.0',
+        logoUrl: 'http://example.com/logo.png',
+        brandName: 'Acme',
+      });
+      expect(out).toContain('<img class="logo" src="http://example.com/logo.png"');
     });
   });
 
