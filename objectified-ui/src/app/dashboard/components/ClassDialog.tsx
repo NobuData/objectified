@@ -17,6 +17,7 @@ import {
   initialClassFormSchemaState,
   type ClassFormSchemaState,
 } from '@/app/dashboard/utils/classFormSchema';
+import { mergeClassSchemaForSave } from '@/app/dashboard/utils/classCodegenAnnotations';
 
 export interface ClassFormData {
   name: string;
@@ -328,11 +329,21 @@ export default function ClassDialog({
       return;
     }
     setForm((f) => ({ ...f, error: '' }));
-    const builtSchema = schemaMode === 'openapi' ? buildSchemaFromForm(schema) : undefined;
+    const structural =
+      schemaMode === 'openapi' ? buildSchemaFromForm(schema) : undefined;
+    const merged = mergeClassSchemaForSave({
+      initialSchema:
+        mode === 'edit' && initial?.schema
+          ? (initial.schema as Record<string, unknown>)
+          : {},
+      structural,
+      schemaMode,
+      codegenRows: schema.codegenAnnotations,
+    });
     onSave({
       name: trimmed,
       description: description.trim(),
-      ...(builtSchema ? { schema: builtSchema } : {}),
+      ...(merged ? { schema: merged } : {}),
       tags,
     });
   };
@@ -375,6 +386,29 @@ export default function ClassDialog({
 
   const removeExample = (index: number) => {
     setSchema({ examples: schema.examples.filter((_, i) => i !== index) });
+  };
+
+  const addCodegenAnnotation = () => {
+    setSchema({
+      codegenAnnotations: [...schema.codegenAnnotations, { key: '', value: '' }],
+    });
+  };
+
+  const setCodegenAnnotation = (
+    index: number,
+    field: 'key' | 'value',
+    value: string
+  ) => {
+    const next = [...schema.codegenAnnotations];
+    if (!next[index]) return;
+    next[index] = { ...next[index], [field]: value };
+    setSchema({ codegenAnnotations: next });
+  };
+
+  const removeCodegenAnnotation = (index: number) => {
+    setSchema({
+      codegenAnnotations: schema.codegenAnnotations.filter((_, i) => i !== index),
+    });
   };
 
   return (
@@ -449,6 +483,54 @@ export default function ClassDialog({
                         inputId="class-tags"
                         aria-label="Class tags"
                       />
+                    </div>
+                    <div className="space-y-2 border-t border-slate-200 dark:border-slate-700 pt-4">
+                      <h4 className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                        Codegen annotations
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <code className="text-[11px]">x-*</code> keys (OpenAPI extensions) drive SQL export, Mustache
+                        templates, and built-in generators — e.g.{' '}
+                        <code className="text-[11px]">x-db-table</code>,{' '}
+                        <code className="text-[11px]">x-orm-model</code>. Values may be JSON or plain text.
+                      </p>
+                      {schema.codegenAnnotations.map((row, i) => (
+                        <div key={i} className="flex gap-2 items-start">
+                          <input
+                            type="text"
+                            value={row.key}
+                            onChange={(e) => setCodegenAnnotation(i, 'key', e.target.value)}
+                            placeholder="x-db-table"
+                            aria-label={`Codegen key ${i + 1}`}
+                            className="w-36 shrink-0 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-mono"
+                          />
+                          <input
+                            type="text"
+                            value={row.value}
+                            onChange={(e) => setCodegenAnnotation(i, 'value', e.target.value)}
+                            placeholder='e.g. users or {"hint":"sqlalchemy"}'
+                            aria-label={`Codegen value ${i + 1}`}
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeCodegenAnnotation(i)}
+                            className="text-slate-400 hover:text-red-600 shrink-0 p-1"
+                            aria-label={`Remove annotation ${i + 1}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={addCodegenAnnotation}
+                          className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          <Plus className="h-3 w-3" /> Add x-* annotation
+                        </button>
+                      </div>
                     </div>
                     {schemaMode === 'openapi' ? (
                       <div className="space-y-3">

@@ -78,6 +78,64 @@ describe('buildCodegenMustacheView', () => {
     const post = view.classes.find((c) => c.name === 'BlogPost');
     expect(post?.properties.some((p) => p.column === 'author_id')).toBe(true);
   });
+
+  it('includes dbTable, jsonName, and annotationRows (GH-123)', () => {
+    const classes: StudioClass[] = [
+      {
+        id: 'c1',
+        name: 'Item',
+        schema: { 'x-db-table': 'inventory_items', 'x-foo': 'bar' },
+        properties: [
+          {
+            name: 'skuCode',
+            property_data: { type: 'string' },
+            data: {
+              'x-serialization-name': 'sku',
+              'x-db-column': 'sku_text',
+              'x-required': true,
+            },
+          },
+        ],
+      },
+    ];
+    const view = buildCodegenMustacheView(classes) as {
+      classes: Array<{
+        dbTable: string;
+        annotationRows: Array<{ key: string; value: string }>;
+        properties: Array<{
+          column: string;
+          jsonName: string;
+          annotationRows: Array<{ key: string; value: string }>;
+        }>;
+      }>;
+    };
+    const c = view.classes[0];
+    expect(c.dbTable).toBe('inventory_items');
+    expect(c.annotationRows.some((r) => r.key === 'x-foo' && r.value === 'bar')).toBe(true);
+    expect(c.properties[0].column).toBe('sku_text');
+    expect(c.properties[0].jsonName).toBe('sku');
+  });
+});
+
+describe('generateTypeScript (GH-123 annotations)', () => {
+  it('uses x-serialization-name for interface property names', () => {
+    const classes: StudioClass[] = [
+      {
+        id: 'c1',
+        name: 'Widget',
+        properties: [
+          {
+            name: 'internalKey',
+            property_data: { type: 'string' },
+            data: { 'x-serialization-name': 'publicKey', 'x-required': true },
+          },
+        ],
+      },
+    ];
+    const out = generateTypeScript(classes);
+    expect(out).toContain('publicKey: string');
+    expect(out).not.toMatch(/\binternalKey\b/);
+  });
 });
 
 describe('renderCustomMustacheTemplate', () => {

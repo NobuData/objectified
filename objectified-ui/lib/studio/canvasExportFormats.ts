@@ -349,12 +349,22 @@ export function exportAsSqlDdl(classes: StudioClass[]): string {
     const clsId = getStableClassId(cls);
     const clsName = (cls.name ?? '').trim();
     if (!clsName) continue;
-    const table = toSnakeCase(clsName) || clsName.toLowerCase();
-    if (seenTableNames.has(table)) {
-      console.warn(`[exportAsSqlDdl] Duplicate table name "${table}" derived from class "${clsName}" – skipping.`);
+    const sch = (cls.schema ?? {}) as Record<string, unknown>;
+    const customTable =
+      (typeof sch['x-db-table'] === 'string' && sch['x-db-table'].trim()
+        ? sch['x-db-table'].trim()
+        : typeof sch['x-table-name'] === 'string' && sch['x-table-name'].trim()
+          ? sch['x-table-name'].trim()
+          : '') || '';
+    const table = customTable || toSnakeCase(clsName) || clsName.toLowerCase();
+    const tableKey = table.toLowerCase();
+    if (seenTableNames.has(tableKey)) {
+      console.warn(
+        `[exportAsSqlDdl] Duplicate table name "${table}" for class "${clsName}" – skipping.`
+      );
       continue;
     }
-    seenTableNames.add(table);
+    seenTableNames.add(tableKey);
     if (clsId) idToTable.set(clsId, table);
     nameToTable.set(clsName.toLowerCase(), table);
   }
@@ -391,15 +401,29 @@ export function exportAsSqlDdl(classes: StudioClass[]): string {
           (refClassId ? idToTable.get(refClassId) : undefined) ??
           (refClassName ? nameToTable.get(refClassName.toLowerCase()) : undefined);
         const baseCol = toSnakeCase(propName) || propName.toLowerCase();
-        const colName = baseCol.endsWith('_id') ? baseCol : `${baseCol}_id`;
+        const defaultFk = baseCol.endsWith('_id') ? baseCol : `${baseCol}_id`;
+        const colOverride =
+          typeof propSchema['x-db-column'] === 'string' && propSchema['x-db-column'].trim()
+            ? propSchema['x-db-column'].trim()
+            : typeof propSchema['x-column-name'] === 'string' && propSchema['x-column-name'].trim()
+              ? propSchema['x-column-name'].trim()
+              : '';
+        const colName = colOverride || defaultFk;
         columnLines.push(`  ${quoteSqlIdent(colName)} uuid${required ? ' not null' : ''}`);
         if (targetTable) {
           fkLines.push(`  foreign key (${quoteSqlIdent(colName)}) references ${quoteSqlIdent(targetTable)}(${quoteSqlIdent('id')})`);
         }
       } else {
         const baseCol = toSnakeCase(propName) || propName.toLowerCase();
+        const colOverride =
+          typeof propSchema['x-db-column'] === 'string' && propSchema['x-db-column'].trim()
+            ? propSchema['x-db-column'].trim()
+            : typeof propSchema['x-column-name'] === 'string' && propSchema['x-column-name'].trim()
+              ? propSchema['x-column-name'].trim()
+              : '';
+        const colName = colOverride || baseCol;
         const sqlType = mapJsonSchemaTypeToSql(propSchema.type);
-        columnLines.push(`  ${quoteSqlIdent(baseCol)} ${sqlType}${required ? ' not null' : ''}`);
+        columnLines.push(`  ${quoteSqlIdent(colName)} ${sqlType}${required ? ' not null' : ''}`);
       }
     }
 
