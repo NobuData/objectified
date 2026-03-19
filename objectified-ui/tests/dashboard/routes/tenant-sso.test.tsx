@@ -40,7 +40,7 @@ jest.mock('@/app/components/providers/DialogProvider', () => ({
 const _OIDC_PROVIDER = {
   id: 'provider-1',
   tenant_id: 'tenant-123',
-  provider_type: 'oidc' as const,
+  provider_type: 'oidc',
   name: 'Okta',
   enabled: true,
   oidc_discovery: { issuer: 'https://idp.example.com' },

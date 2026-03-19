@@ -42,11 +42,12 @@ def client():
 
 @pytest.fixture
 def member_client():
+    def _raise_forbidden():
+        raise HTTPException(status_code=403, detail="Admin privileges required.")
+
     app.dependency_overrides[require_authenticated] = lambda: _MEMBER_CALLER
     # Intentionally do NOT grant admin here; member_client is a non-privileged user.
-    app.dependency_overrides[require_admin] = lambda: (_ for _ in ()).throw(
-        HTTPException(status_code=403, detail="Admin privileges required.")
-    )
+    app.dependency_overrides[require_admin] = _raise_forbidden
     yield TestClient(app)
     app.dependency_overrides.clear()
 
