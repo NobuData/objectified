@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Annotated, Any, List, Optional
+from typing import Annotated, Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_admin, require_authenticated
+from app.auth import require_admin, require_authenticated, _is_platform_admin
 from app.database import db
 from app.routes.helpers import _assert_tenant_exists, _not_found
 from app.schemas.sso import (
@@ -57,6 +57,10 @@ def _assert_admin_or_member(
     user_id = caller.get("user_id")
     if not user_id:
         raise HTTPException(status_code=403, detail="This endpoint requires JWT authentication.")
+    # Apply the same platform-admin DB fallback used by require_admin so that
+    # a platform admin without an explicit is_admin JWT claim is still permitted.
+    if caller.get("auth_method") == "jwt" and _is_platform_admin(user_id):
+        return
     rows = db.execute_query(
         """
         SELECT 1
@@ -80,6 +84,10 @@ def _assert_admin_or_member(
         "List configured SSO providers (OIDC/SAML) for a tenant. "
         "Requires authentication and tenant membership; platform admins may access any tenant."
     ),
+    responses={
+        403: {"description": "Authenticated but not a tenant member or platform admin"},
+        404: {"description": "Tenant not found"},
+    },
 )
 def list_sso_providers(
     tenant_id: str,
@@ -111,11 +119,23 @@ def list_sso_providers(
     summary="Create an SSO provider for a tenant",
     description="Create an OIDC or SAML SSO provider configuration for a tenant. **Admin only.**",
     dependencies=[Depends(require_admin)],
+    responses={
+        400: {"description": "tenant_id in payload does not match path"},
+        403: {"description": "Admin privileges required"},
+        404: {"description": "Tenant not found"},
+        409: {"description": "SSO provider name already exists for this tenant and type"},
+    },
 )
 def create_sso_provider(tenant_id: str, payload: SsoProviderCreate) -> SsoProviderSchema:
     _assert_tenant_exists(tenant_id)
     if payload.tenant_id and payload.tenant_id != tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id in payload must match path.")
+
+    # Normalize name up-front so the uniqueness check and the insert use the same value.
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="SSO provider name must not be empty.")
+
     _validate_sso_payload(payload.provider_type, payload.oidc_discovery, payload.saml_metadata_xml)
 
     existing = db.execute_query(
@@ -128,7 +148,7 @@ def create_sso_provider(tenant_id: str, payload: SsoProviderCreate) -> SsoProvid
           AND deleted_at IS NULL
         LIMIT 1
         """,
-        (tenant_id, payload.provider_type.value, payload.name),
+        (tenant_id, payload.provider_type.value, name),
     )
     if existing:
         raise HTTPException(status_code=409, detail="SSO provider name already exists for this tenant and type.")
@@ -146,7 +166,7 @@ def create_sso_provider(tenant_id: str, payload: SsoProviderCreate) -> SsoProvid
         (
             tenant_id,
             payload.provider_type.value,
-            payload.name.strip(),
+            name,
             payload.enabled,
             json.dumps(payload.oidc_discovery) if payload.oidc_discovery is not None else None,
             payload.saml_metadata_xml,
@@ -164,6 +184,10 @@ def create_sso_provider(tenant_id: str, payload: SsoProviderCreate) -> SsoProvid
     response_model=SsoProviderSchema,
     summary="Get SSO provider by ID",
     description="Get a single SSO provider configuration by ID for a tenant.",
+    responses={
+        403: {"description": "Authenticated but not a tenant member or platform admin"},
+        404: {"description": "Tenant or SSO provider not found"},
+    },
 )
 def get_sso_provider(
     tenant_id: str,
@@ -198,6 +222,12 @@ def get_sso_provider(
     summary="Update an SSO provider",
     description="Update an existing SSO provider configuration. **Admin only.**",
     dependencies=[Depends(require_admin)],
+    responses={
+        400: {"description": "No fields to update"},
+        403: {"description": "Admin privileges required"},
+        404: {"description": "Tenant or SSO provider not found"},
+        409: {"description": "SSO provider name already exists for this tenant and type"},
+    },
 )
 def update_sso_provider(tenant_id: str, provider_id: str, payload: SsoProviderUpdate) -> SsoProviderSchema:
     _assert_tenant_exists(tenant_id)
@@ -221,8 +251,27 @@ def update_sso_provider(tenant_id: str, provider_id: str, payload: SsoProviderUp
     params: list[Any] = []
 
     if payload.name is not None:
+        normalized_name = payload.name.strip()
+        if not normalized_name:
+            raise HTTPException(status_code=422, detail="SSO provider name must not be empty.")
+        # Guard against renaming to an existing name for the same tenant+type.
+        dup = db.execute_query(
+            """
+            SELECT id
+            FROM objectified.sso_provider
+            WHERE tenant_id = %s
+              AND provider_type = %s
+              AND LOWER(name) = LOWER(%s)
+              AND id != %s
+              AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (tenant_id, provider_type.value, normalized_name, provider_id),
+        )
+        if dup:
+            raise HTTPException(status_code=409, detail="SSO provider name already exists for this tenant and type.")
         updates.append("name = %s")
-        params.append(payload.name.strip())
+        params.append(normalized_name)
     if payload.enabled is not None:
         updates.append("enabled = %s")
         params.append(payload.enabled)
@@ -263,6 +312,10 @@ def update_sso_provider(tenant_id: str, provider_id: str, payload: SsoProviderUp
     summary="Delete (soft-delete) an SSO provider",
     description="Soft-delete an SSO provider configuration. **Admin only.**",
     dependencies=[Depends(require_admin)],
+    responses={
+        403: {"description": "Admin privileges required"},
+        404: {"description": "Tenant or SSO provider not found"},
+    },
 )
 def delete_sso_provider(tenant_id: str, provider_id: str) -> None:
     _assert_tenant_exists(tenant_id)
