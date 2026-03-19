@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.11
+  version: 1.0.12
 paths:
   /v1/auth/login:
     post:
@@ -1031,6 +1031,73 @@ paths:
       responses:
         '200':
           description: JSON Schema 2020-12 document
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Version or class not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/export/validation-rules:
+    get:
+      tags:
+      - Export
+      summary: Export validation rules as structured JSON
+      description: Returns validation constraints (required, type, format, pattern,
+        numeric and array bounds, enum, $ref, nested properties) for all active classes
+        in the version. Suitable for client validators, code generation, and documentation.
+        Same resolution rules as OpenAPI export.
+      operationId: export_validation_rules_v1_versions__version_id__export_validation_rules_get
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: class_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Optional class UUID; export only this class.
+          title: Class Id
+        description: Optional class UUID; export only this class.
+      - name: title
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Override the document title.
+          title: Title
+        description: Override the document title.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Validation rules document (exportKind objectified.validation-rules)
           content:
             application/json:
               schema: {}
