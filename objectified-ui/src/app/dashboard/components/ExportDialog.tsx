@@ -63,7 +63,7 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
   const workspace = useWorkspaceOptional();
   const tenantId = workspace?.tenant?.id ? String(workspace.tenant.id) : '';
   const brandingStorageKey = useMemo(
-    () => (tenantId ? `objectified.docs.branding.${tenantId}` : 'objectified.docs.branding'),
+    () => (tenantId ? `objectified:docs:branding:${tenantId}` : 'objectified:docs:branding'),
     [tenantId]
   );
   const [step, setStep] = useState(1);
@@ -463,10 +463,11 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                     </div>
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <Label.Root htmlFor="docs-title" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                           Title
                         </Label.Root>
                         <input
+                          id="docs-title"
                           type="text"
                           value={docsTitle}
                           onChange={(e) => setDocsTitle(e.target.value)}
@@ -475,10 +476,11 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                         />
                       </div>
                       <div>
-                        <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <Label.Root htmlFor="docs-version" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                           Version
                         </Label.Root>
                         <input
+                          id="docs-version"
                           type="text"
                           value={docsVersion}
                           onChange={(e) => setDocsVersion(e.target.value)}
@@ -487,10 +489,11 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                         />
                       </div>
                       <div className="md:col-span-2">
-                        <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <Label.Root htmlFor="docs-description" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                           Description (optional)
                         </Label.Root>
                         <input
+                          id="docs-description"
                           type="text"
                           value={docsDescription}
                           onChange={(e) => setDocsDescription(e.target.value)}
@@ -499,10 +502,11 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                         />
                       </div>
                       <div>
-                        <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <Label.Root htmlFor="docs-brand-name" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                           Brand name (optional)
                         </Label.Root>
                         <input
+                          id="docs-brand-name"
                           type="text"
                           value={docsBrandName}
                           onChange={(e) => setDocsBrandName(e.target.value)}
@@ -511,10 +515,11 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                         />
                       </div>
                       <div>
-                        <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <Label.Root htmlFor="docs-primary-color" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                           Primary color (optional)
                         </Label.Root>
                         <input
+                          id="docs-primary-color"
                           type="text"
                           value={docsPrimaryColor}
                           onChange={(e) => setDocsPrimaryColor(e.target.value)}
@@ -523,10 +528,11 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                         />
                       </div>
                       <div className="md:col-span-2">
-                        <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                          Logo URL (optional)
+                        <Label.Root htmlFor="docs-logo-url" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Logo URL (optional, http/https only)
                         </Label.Root>
                         <input
+                          id="docs-logo-url"
                           type="text"
                           value={docsLogoUrl}
                           onChange={(e) => setDocsLogoUrl(e.target.value)}
