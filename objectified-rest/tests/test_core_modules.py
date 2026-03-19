@@ -291,7 +291,7 @@ class TestResolveCaller:
         pass  # Placeholder for documentation
 
     def test_resolve_caller_api_key_tenant_wide_full_is_admin(self):
-        """Tenant-wide full API key gets is_admin for RBAC bypass."""
+        """Tenant-wide full API key gets is_api_key_admin=True (not is_admin) for RBAC bypass."""
         fake = {
             "key_id": "k1",
             "tenant_id": "t1",
@@ -303,7 +303,8 @@ class TestResolveCaller:
         }
         with patch("app.auth.db.validate_api_key", return_value=fake):
             result = _resolve_caller(authorization=None, x_api_key="ok_" + "x" * 40)
-        assert result["is_admin"] is True
+        assert result["is_admin"] is False
+        assert result["is_api_key_admin"] is True
         assert result["api_key_scope_role"] == "full"
         assert result["api_key_project_id"] is None
 
@@ -420,14 +421,18 @@ class TestRequireAdmin:
         assert result == caller
 
     def test_require_admin_api_key_tenant_wide_full(self):
-        """Tenant-wide full API keys bypass require_admin like platform admins."""
+        """Tenant-wide full API keys are rejected by require_admin (platform admin endpoints only)."""
         caller = {
             "auth_method": "api_key",
-            "is_admin": True,
+            "is_admin": False,
+            "is_api_key_admin": True,
         }
 
-        result = require_admin(caller)
-        assert result == caller
+        with pytest.raises(HTTPException) as exc_info:
+            require_admin(caller)
+
+        assert exc_info.value.status_code == 403
+        assert "platform admin" in exc_info.value.detail
 
     def test_require_admin_api_key_read_only_denied(self):
         """Read-only API keys are not admin and cannot satisfy require_admin."""

@@ -171,7 +171,8 @@ def validate_authentication(
         return {
             **api_key_data,
             "auth_method": "api_key",
-            "is_admin": tenant_wide_full,
+            "is_admin": False,
+            "is_api_key_admin": tenant_wide_full,
             "api_key_scope_role": scope_role,
             "api_key_project_id": project_id_str,
         }
@@ -207,7 +208,8 @@ def _resolve_caller(
     Returns a dict with at least:
         auth_method: "jwt" | "api_key"
         user_id: str | None  (set for JWT; None for API key)
-        is_admin: bool        (True if JWT payload has is_admin=true or API key is internal)
+        is_admin: bool        (True only for JWT callers: explicit claim or DB platform-admin role)
+        is_api_key_admin: bool (True if API key is tenant-wide and full-access; always False for JWT)
 
     Raises:
         HTTPException 401 if no valid credential is presented.
@@ -252,7 +254,8 @@ def _resolve_caller(
         return {
             **api_key_data,
             "auth_method": "api_key",
-            "is_admin": tenant_wide_full,
+            "is_admin": False,
+            "is_api_key_admin": tenant_wide_full,
             "account_id": api_key_data.get("account_id"),
             "api_key_scope_role": scope_role,
             "api_key_project_id": project_id,
@@ -321,6 +324,21 @@ def _assert_api_key_project_matches(
         )
 
 
+def _assert_api_key_tenant_matches(
+    caller: dict[str, Any],
+    tenant_id: str,
+) -> None:
+    """Ensure an API key is only used against its own tenant (path alignment)."""
+    if not caller or caller.get("auth_method") != "api_key":
+        return
+    api_key_tenant_id = caller.get("tenant_id")
+    if api_key_tenant_id and str(api_key_tenant_id) != str(tenant_id):
+        raise HTTPException(
+            status_code=403,
+            detail="API key is not authorized for this tenant.",
+        )
+
+
 def require_authenticated(
     request: Request,
     caller: Annotated[dict[str, Any], Depends(_resolve_caller)],
@@ -352,14 +370,22 @@ def require_admin(
     Admin is determined by:
       1. ``is_admin: true`` in the JWT payload, OR
       2. The account holds ``access_level = 'administrator'`` in at least
-         one active tenant (platform-wide admin proxy), OR
-      3. A valid tenant-wide ``full`` API key (not project-scoped and not
-         read-only); such keys bypass RBAC like platform admins.
+         one active tenant (platform-wide admin proxy).
+
+    API keys are explicitly rejected — they are tenant-scoped credentials
+    and cannot be used for platform-wide admin endpoints.
 
     Raises:
         HTTPException 401 if unauthenticated.
         HTTPException 403 if authenticated but not an admin.
     """
+    # API keys are tenant-scoped and cannot access platform admin endpoints.
+    if caller.get("auth_method") == "api_key":
+        raise HTTPException(
+            status_code=403,
+            detail="API keys cannot access platform admin endpoints.",
+        )
+
     if caller.get("is_admin"):
         return caller
 
@@ -494,11 +520,15 @@ def _require_permission_or_403(
 ) -> dict[str, Any]:
     if not caller:
         raise HTTPException(status_code=401, detail="Authentication required.")
-    # Platform admins / internal API keys are treated as full access.
+    # Platform admins have unrestricted access.
     if caller.get("is_admin"):
         return caller
+    # Tenant-wide full API keys are treated as full-access for their own tenant.
+    if caller.get("is_api_key_admin"):
+        _assert_api_key_tenant_matches(caller, tenant_id)
+        return caller
 
-    account_id = caller.get("account_id") or caller.get("user_id") or caller.get("account_id")
+    account_id = caller.get("account_id") or caller.get("user_id")
     if not account_id:
         raise HTTPException(status_code=401, detail="Authentication required.")
 
@@ -530,6 +560,7 @@ def require_tenant_permission(permission_key: PermissionKey) -> Callable[..., di
         tenant_id: str,
         caller: Annotated[dict[str, Any], Depends(require_authenticated)],
     ) -> dict[str, Any]:
+        _assert_api_key_tenant_matches(caller, tenant_id)
         _reject_project_scoped_api_key_on_tenant_route(caller)
         return _require_permission_or_403(
             caller=caller,
@@ -546,6 +577,7 @@ def require_project_permission(permission_key: PermissionKey) -> Callable[..., d
         project_id: str,
         caller: Annotated[dict[str, Any], Depends(require_authenticated)],
     ) -> dict[str, Any]:
+        _assert_api_key_tenant_matches(caller, tenant_id)
         _assert_api_key_project_matches(caller, project_id)
         return _require_permission_or_403(
             caller=caller,
@@ -581,9 +613,13 @@ def require_version_permission(permission_key: PermissionKey) -> Callable[..., d
         version_id: str,
         caller: Annotated[dict[str, Any], Depends(require_authenticated)],
     ) -> dict[str, Any]:
+        # JWT platform admins (is_admin=True) have unrestricted access across all tenants;
+        # tenant alignment checks do not apply.  API keys always have is_admin=False and
+        # proceed through scope resolution and alignment checks below.
         if caller and caller.get("is_admin"):
             return caller
         scope = _resolve_version_scope(version_id)
+        _assert_api_key_tenant_matches(caller, scope["tenant_id"])
         _assert_api_key_project_matches(caller, scope["project_id"])
         return _require_permission_or_403(
             caller=caller,
@@ -604,7 +640,8 @@ def require_tenant_admin(
     Require tenant administrator access for tenant-scoped configuration endpoints.
 
     Accepts platform-admin JWTs, tenant administrators, and tenant-wide ``full``
-    API keys (caller.is_admin). Project-scoped API keys are always rejected.
+    API keys (caller.is_api_key_admin) whose tenant matches the path. Project-scoped
+    API keys are always rejected.
     """
     if (
         caller
@@ -616,6 +653,10 @@ def require_tenant_admin(
             detail="Project-scoped API keys cannot perform tenant administration actions.",
         )
     if caller and caller.get("is_admin"):
+        return caller
+    # Tenant-wide full API keys may perform tenant administration actions for their tenant.
+    if caller and caller.get("is_api_key_admin"):
+        _assert_api_key_tenant_matches(caller, tenant_id)
         return caller
     account_id = caller.get("account_id") if caller else None
     if not account_id:

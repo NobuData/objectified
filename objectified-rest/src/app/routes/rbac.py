@@ -102,7 +102,7 @@ def get_my_effective_permissions(
     if not account_id:
         raise HTTPException(status_code=401, detail="Authentication required.")
 
-    tenant_admin = bool(caller.get("is_admin")) or _is_tenant_admin(tenant_id, account_id)
+    tenant_admin = bool(caller.get("is_admin") or caller.get("is_api_key_admin")) or _is_tenant_admin(tenant_id, account_id)
     if tenant_admin:
         # Use the permission registry as the source of truth.
         all_rows = db.execute_query(
