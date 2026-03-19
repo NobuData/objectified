@@ -6,10 +6,13 @@ import * as Dialog from '@radix-ui/react-dialog';
 import * as Label from '@radix-ui/react-label';
 import {
   listVersionSnapshotsMetadata,
+  listVersionSnapshotsSchemaChanges,
   rollbackVersion,
   createVersionFromRevision,
   deleteVersion,
   type VersionSnapshotMetadataSchema,
+  type VersionSnapshotSchemaChangesAuditSchema,
+  type VersionPullDiff,
   type VersionSchema,
   type RestClientOptions,
 } from '@lib/api/rest-client';
@@ -74,6 +77,13 @@ export default function VersionHistoryDialog({
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [auditEnabled, setAuditEnabled] = useState(false);
+  const [auditEntries, setAuditEntries] = useState<VersionSnapshotSchemaChangesAuditSchema[]>(
+    []
+  );
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
+
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [branchRevision, setBranchRevision] = useState<number | null>(null);
   const [branchName, setBranchName] = useState('');
@@ -100,9 +110,97 @@ export default function VersionHistoryDialog({
     if (open) {
       setSnapshots([]);
       setError(null);
+      setAuditEnabled(false);
+      setAuditEntries([]);
+      setAuditError(null);
+      setAuditLoading(false);
       fetchSnapshots();
     }
   }, [open, versionId, fetchSnapshots]);
+
+  const fetchAuditEntries = useCallback(async () => {
+    if (!versionId || !open) return;
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const entries = await listVersionSnapshotsSchemaChanges(versionId, options);
+      setAuditEntries(entries);
+    } catch (e) {
+      setAuditError(e instanceof Error ? e.message : 'Failed to load schema audit');
+      setAuditEntries([]);
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [versionId, open, options]);
+
+  useEffect(() => {
+    if (!open || !auditEnabled) return;
+    void fetchAuditEntries();
+  }, [open, auditEnabled, fetchAuditEntries]);
+
+  const truncateList = (items: string[], maxItems = 3): string => {
+    if (items.length <= maxItems) return items.join(', ');
+    return `${items.slice(0, maxItems).join(', ')}, ...`;
+  };
+
+  const renderDiffSummary = (diff: VersionPullDiff) => {
+    const added = diff.added_class_names ?? [];
+    const removed = diff.removed_class_names ?? [];
+    const modified = diff.modified_classes ?? [];
+
+    if (added.length === 0 && removed.length === 0 && modified.length === 0) {
+      return <span className="text-slate-500">No schema changes</span>;
+    }
+
+    const modifiedLines = modified
+      .slice(0, 3)
+      .map((mc) => {
+        const addedProps =
+          mc.added_property_names && mc.added_property_names.length > 0
+            ? `+${mc.added_property_names.join(', ')}`
+            : '';
+        const removedProps =
+          mc.removed_property_names && mc.removed_property_names.length > 0
+            ? `-${mc.removed_property_names.join(', ')}`
+            : '';
+        const modifiedProps =
+          mc.modified_property_names && mc.modified_property_names.length > 0
+            ? `~${mc.modified_property_names.join(', ')}`
+            : '';
+
+        const propParts = [addedProps, removedProps, modifiedProps].filter(Boolean);
+        return `${mc.class_name}: ${propParts.join(' ') || 'changed'}`;
+      });
+
+    return (
+      <div className="text-sm text-slate-700 dark:text-slate-300 space-y-1">
+        {added.length > 0 && (
+          <div>
+            <span className="font-medium text-emerald-700 dark:text-emerald-300">
+              Added:
+            </span>{' '}
+            {truncateList(added)}
+          </div>
+        )}
+        {removed.length > 0 && (
+          <div>
+            <span className="font-medium text-red-700 dark:text-red-300">
+              Removed:
+            </span>{' '}
+            {truncateList(removed)}
+          </div>
+        )}
+        {modified.length > 0 && (
+          <div>
+            <span className="font-medium text-slate-700 dark:text-slate-200">
+              Modified:
+            </span>{' '}
+            {modifiedLines.join(' | ')}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const handleRollback = useCallback(
     async (revision: number) => {
@@ -381,6 +479,79 @@ export default function VersionHistoryDialog({
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {snapshots.length > 0 && (
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Optional audit trail of schema diffs by revision.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAuditEnabled((v) => !v)}
+                  className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium transition-colors"
+                >
+                  {auditEnabled ? 'Hide schema audit' : 'Show schema audit'}
+                </button>
+              </div>
+            )}
+
+            {auditEnabled && (
+              <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                {auditLoading ? (
+                  <div className="flex items-center justify-center py-10">
+                    <Loader2 className="h-6 w-6 animate-spin text-slate-400 dark:text-slate-500" />
+                  </div>
+                ) : auditError ? (
+                  <div
+                    className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm"
+                    role="alert"
+                  >
+                    {auditError}
+                  </div>
+                ) : auditEntries.length === 0 ? (
+                  <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
+                    No schema audit entries.
+                  </p>
+                ) : (
+                  <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50">
+                      <tr>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          Revision
+                        </th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          Changed by
+                        </th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          What changed
+                        </th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          Date
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                      {auditEntries.map((entry) => (
+                        <tr key={entry.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                          <td className="px-4 py-2.5 font-mono text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {entry.revision}
+                          </td>
+                          <td className="px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 max-w-xs truncate">
+                            {entry.committed_by ?? '—'}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            {renderDiffSummary(entry.diff)}
+                          </td>
+                          <td className="px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300">
+                            {formatDateTime(entry.created_at)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
           </div>

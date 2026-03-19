@@ -397,6 +397,69 @@ def test_list_version_snapshots_metadata_empty(client):
     assert r.json() == []
 
 
+def test_list_version_snapshots_schema_changes_returns_diff_summary(client):
+    """GET /v1/versions/{id}/snapshots/schema-changes returns per-snapshot schema diffs."""
+
+    snapshot_1 = {
+        **_SNAPSHOT_METADATA_ROW,
+        "snapshot": {"classes": []},
+    }
+    snapshot_2_classes = [
+        {
+            "id": "class-1",
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "Person class",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": _NOW,
+            "updated_at": None,
+            "properties": [
+                {
+                    "id": "cp-1",
+                    "class_id": "class-1",
+                    "property_id": "prop-1",
+                    "parent_id": None,
+                    "name": "first_name",
+                    "description": "First name",
+                    "data": {"type": "string"},
+                    "property_name": "first_name",
+                    "property_description": "First name",
+                    "property_data": {"type": "string"},
+                    "property_enabled": True,
+                }
+            ],
+        }
+    ]
+    snapshot_2 = {
+        **_SNAPSHOT_METADATA_ROW,
+        "id": "snap-2",
+        "revision": 2,
+        "label": "second",
+        "description": "Second snapshot",
+        "snapshot": {"classes": snapshot_2_classes},
+        "created_at": _NOW,
+    }
+
+    with mock_db_all() as mock_db:
+        # 1) _assert_version_exists
+        # 2) SELECT id, ..., snapshot, created_at FROM objectified.version_snapshot ORDER BY revision ASC
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [snapshot_1, snapshot_2],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/schema-changes")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 2
+    assert body[0]["revision"] == 2
+    assert body[0]["diff"]["added_class_names"] == ["Person"]
+    assert body[0]["diff"]["removed_class_names"] == []
+    assert body[0]["diff"]["modified_classes"] == []
+
+
 def test_get_version_snapshot_by_revision_returns_snapshot(client):
     """GET /v1/versions/{id}/snapshots/{revision} returns snapshot."""
     with mock_db_all() as mock_db:

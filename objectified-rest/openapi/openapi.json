@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.11"
+    "version": "1.0.9"
   },
   "paths": {
     "/v1/auth/login": {
@@ -794,99 +794,6 @@
         }
       }
     },
-    "/v1/versions/{version_id}/classes/{class_id}/tags/{tag_name}": {
-      "delete": {
-        "tags": [
-          "Classes"
-        ],
-        "summary": "Remove tag from class",
-        "description": "Remove a tag from the class's metadata.tags (GitHub #103).",
-        "operationId": "remove_tag_from_class_v1_versions__version_id__classes__class_id__tags__tag_name__delete",
-        "parameters": [
-          {
-            "name": "version_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Version Id"
-            }
-          },
-          {
-            "name": "class_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Class Id"
-            }
-          },
-          {
-            "name": "tag_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Tag Name"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "X-API-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ClassTagsResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/versions/{version_id}/classes/{class_id}/tags": {
       "get": {
         "tags": [
@@ -923,7 +830,8 @@
               "description": "Include soft-deleted class",
               "default": false,
               "title": "Include Deleted"
-            }
+            },
+            "description": "Include soft-deleted class"
           },
           {
             "name": "authorization",
@@ -1050,6 +958,99 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassTagsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/classes/{class_id}/tags/{tag_name}": {
+      "delete": {
+        "tags": [
+          "Classes"
+        ],
+        "summary": "Remove tag from class",
+        "description": "Remove a tag from the class's metadata.tags (GitHub #103).",
+        "operationId": "remove_tag_from_class_v1_versions__version_id__classes__class_id__tags__tag_name__delete",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "class_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Class Id"
+            }
+          },
+          {
+            "name": "tag_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tag Name"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1686,6 +1687,118 @@
         "responses": {
           "200": {
             "description": "JSON Schema 2020-12 document",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Version or class not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/export/validation-rules": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "summary": "Export validation rules as structured JSON",
+        "description": "Returns validation constraints for all active classes in the version in a compact JSON shape (required, type, format, pattern, numeric/array bounds, enum, $ref, nested properties) suitable for client-side validators, code generation, and documentation. Derived from the same resolved schema as OpenAPI export.",
+        "operationId": "export_validation_rules_v1_versions__version_id__export_validation_rules_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "class_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional class UUID. When provided, export only this class\u2019s validation rules.",
+              "title": "Class Id"
+            },
+            "description": "Optional class UUID. When provided, export only this class\u2019s validation rules."
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override the document title.",
+              "title": "Title"
+            },
+            "description": "Override the document title."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validation rules document",
             "content": {
               "application/json": {
                 "schema": {}
@@ -6147,7 +6260,7 @@
           "Versions"
         ],
         "summary": "Update version metadata",
-        "description": "Update mutable metadata fields for a version (description, change_log).",
+        "description": "Update mutable metadata fields for a version (description, change_log, code_generation_tag). Omit fields to leave them unchanged; send code_generation_tag as empty string to clear. Tags are unique per project (case-insensitive).",
         "operationId": "update_version_metadata_v1_versions__version_id__put",
         "parameters": [
           {
@@ -6945,6 +7058,85 @@
         }
       }
     },
+    "/v1/versions/{version_id}/snapshots/schema-changes": {
+      "get": {
+        "tags": [
+          "Versions"
+        ],
+        "summary": "List schema change audit entries (per snapshot)",
+        "description": "Return an optional audit-style summary of schema changes for each snapshot revision of this version. For revision N, the diff is computed between snapshot revisions N-1 and N (first revision is diffed against an empty state).",
+        "operationId": "list_version_snapshots_schema_changes_v1_versions__version_id__snapshots_schema_changes_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VersionSnapshotSchemaChangesAuditSchema"
+                  },
+                  "title": "Response List Version Snapshots Schema Changes V1 Versions  Version Id  Snapshots Schema Changes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/versions/{version_id}/snapshots/{revision}": {
       "get": {
         "tags": [
@@ -7514,6 +7706,20 @@
         "title": "ApiKeySchema",
         "description": "Representation of a stored API key (never includes the raw secret)."
       },
+      "ClassAssignTagRequest": {
+        "properties": {
+          "tag": {
+            "type": "string",
+            "title": "Tag"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tag"
+        ],
+        "title": "ClassAssignTagRequest",
+        "description": "Request body for assigning a tag to a class (GitHub #103)."
+      },
       "ClassCanvasMetadata": {
         "properties": {
           "position": {
@@ -7847,6 +8053,20 @@
         "title": "ClassSchema",
         "description": "Response schema for objectified.class."
       },
+      "ClassTagsResponse": {
+        "properties": {
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          }
+        },
+        "type": "object",
+        "title": "ClassTagsResponse",
+        "description": "Response for get tags for class (GitHub #103)."
+      },
       "ClassUpdate": {
         "properties": {
           "name": {
@@ -7920,35 +8140,6 @@
         "type": "object",
         "title": "ClassUpdate",
         "description": "Update payload for objectified.class (metadata + canvas_metadata)."
-      },
-      "ClassAssignTagRequest": {
-        "type": "object",
-        "required": [
-          "tag"
-        ],
-        "properties": {
-          "tag": {
-            "type": "string",
-            "title": "Tag",
-            "description": "Tag name to assign to the class."
-          }
-        },
-        "title": "ClassAssignTagRequest",
-        "description": "Request body for assigning a tag to a class (GitHub #103)."
-      },
-      "ClassTagsResponse": {
-        "type": "object",
-        "properties": {
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Tags"
-          }
-        },
-        "title": "ClassTagsResponse",
-        "description": "Response for get tags for class (GitHub #103)."
       },
       "ClassWithPropertiesAndTags": {
         "properties": {
@@ -9310,8 +9501,7 @@
                 "type": "null"
               }
             ],
-            "title": "Parent Property Name",
-            "description": "Name of the parent class-property for nesting. Null or omitted means top-level."
+            "title": "Parent Property Name"
           }
         },
         "type": "object",
@@ -9452,17 +9642,13 @@
           "code_generation_tag": {
             "anyOf": [
               {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 64,
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Code Generation Tag",
-            "description": "Optional stable label for code generation; unique per project (case-insensitive)."
+            "title": "Code Generation Tag"
           },
           "description": {
             "type": "string",
@@ -9949,11 +10135,7 @@
           "code_generation_tag": {
             "anyOf": [
               {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 64,
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$",
-                "description": "Stable label for code generation (e.g. v1, api-v2). Empty string clears. Unique per project (case-insensitive)."
+                "type": "string"
               },
               {
                 "type": "null"
@@ -10168,15 +10350,13 @@
           "code_generation_tag": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 64
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Code Generation Tag",
-            "description": "Optional stable label for code generation; unique per project (case-insensitive)."
+            "title": "Code Generation Tag"
           },
           "description": {
             "type": "string",
@@ -10441,6 +10621,77 @@
         ],
         "title": "VersionSnapshotSchema",
         "description": "Response schema for objectified.version_snapshot."
+      },
+      "VersionSnapshotSchemaChangesAuditSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "version_id": {
+            "type": "string",
+            "title": "Version Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "committed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed By"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "diff": {
+            "$ref": "#/components/schemas/VersionPullDiff"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version_id",
+          "project_id",
+          "revision",
+          "created_at"
+        ],
+        "title": "VersionSnapshotSchemaChangesAuditSchema",
+        "description": "Audit summary of schema changes for a specific version snapshot revision.\n\nThe `diff` is computed between the snapshot at `revision-1` and this snapshot.\nFor the first revision, the \"previous\" state is treated as empty."
       },
       "VersionVisibility": {
         "type": "string",
