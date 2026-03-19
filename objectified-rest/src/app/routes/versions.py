@@ -748,6 +748,22 @@ def _prop_name_key(prop: dict[str, Any]) -> str:
     return (prop.get("name") or prop.get("property_name") or "").strip().lower()
 
 
+def _prop_unique_key(prop: dict[str, Any]) -> str:
+    """Composite key combining normalized name and property_id.
+
+    Using ``property_id`` as a tiebreaker prevents silent overwrites when a
+    class contains multiple properties whose normalized names collide (e.g.
+    same name under different parents or legitimate duplicates).  Matching
+    across snapshots is still correct because ``property_id`` is a stable
+    reference to the underlying property definition.
+    """
+    name_part = _prop_name_key(prop)
+    pid = prop.get("property_id")
+    if pid is not None:
+        return f"{name_part}:{pid}"
+    return name_part
+
+
 def _compute_schema_changes_diff(
     old_classes: list[dict[str, Any]],
     new_classes: list[dict[str, Any]],
@@ -785,8 +801,8 @@ def _compute_schema_changes_diff(
             continue
 
         old_c = old_by_name[name_key]
-        old_props = {_prop_name_key(p): p for p in (old_c.get("properties") or [])}
-        new_props = {_prop_name_key(p): p for p in (new_c.get("properties") or [])}
+        old_props = {_prop_unique_key(p): p for p in (old_c.get("properties") or [])}
+        new_props = {_prop_unique_key(p): p for p in (new_c.get("properties") or [])}
 
         added_props = [
             (p.get("name") or k).strip() or k for k, p in new_props.items() if k not in old_props
