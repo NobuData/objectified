@@ -4,11 +4,12 @@
  * Shared code generation preview: built-in targets, custom Mustache, copy/download.
  * Preview updates when studio classes change (schema).
  *
- * Reference: GitHub #120 — schema designer preview panel; #119 — templates.
+ * Reference: GitHub #120 — preview panel; #119 — templates; #121 — tagged schema source.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useSession } from 'next-auth/react';
 import { useTheme } from 'next-themes';
 import * as Label from '@radix-ui/react-label';
 import * as Select from '@radix-ui/react-select';
@@ -17,6 +18,14 @@ import { Copy, Download, Loader2, Save, Trash2 } from 'lucide-react';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
+import {
+  listVersions,
+  listClassesWithPropertiesAndTags,
+  getRestClientOptions,
+  type VersionSchema,
+} from '@lib/api/rest-client';
+import { classesAndPropertiesToState } from '@lib/studio/stateAdapter';
+import type { StudioClass } from '@lib/studio/types';
 import {
   BUILTIN_CODE_TEMPLATES,
   type BuiltinTemplateId,
@@ -58,6 +67,7 @@ export default function CodeGenerationPreviewForm({
 }: CodeGenerationPreviewFormProps) {
   const studio = useStudioOptional();
   const workspace = useWorkspaceOptional();
+  const { data: session } = useSession();
   const { resolvedTheme } = useTheme();
   const { confirm, alert: dialogAlert } = useDialog();
 
@@ -65,6 +75,17 @@ export default function CodeGenerationPreviewForm({
   const projectId = workspace?.project?.id ?? '';
   const versionId = studio?.state?.versionId ?? '';
   const classes = studio?.state?.classes ?? [];
+
+  const restOpts = useMemo(
+    () => getRestClientOptions((session as { accessToken?: string } | null) ?? null),
+    [(session as { accessToken?: string } | null)?.accessToken]
+  );
+
+  /** `canvas` = live studio state; else version UUID for a tagged version’s persisted schema. */
+  const [schemaSourceId, setSchemaSourceId] = useState<string>('canvas');
+  const [taggedVersionList, setTaggedVersionList] = useState<VersionSchema[]>([]);
+  const [taggedClasses, setTaggedClasses] = useState<StudioClass[] | null>(null);
+  const [taggedLoading, setTaggedLoading] = useState(false);
 
   const [tab, setTab] = useState<'builtin' | 'custom'>('builtin');
   const [builtinId, setBuiltinId] = useState<BuiltinTemplateId>('typescript');
@@ -80,6 +101,8 @@ export default function CodeGenerationPreviewForm({
   }, [tenantId, projectId, versionId]);
 
   const applyDialogOpenReset = useCallback(() => {
+    setSchemaSourceId('canvas');
+    setTaggedClasses(null);
     setTab('builtin');
     setBuiltinId('typescript');
     refreshCustom();
@@ -95,6 +118,8 @@ export default function CodeGenerationPreviewForm({
 
   useEffect(() => {
     if (!active || variant !== 'panel' || !resetVersionKey) return;
+    setSchemaSourceId('canvas');
+    setTaggedClasses(null);
     setTab('builtin');
     setBuiltinId('typescript');
     refreshCustom();
@@ -102,6 +127,86 @@ export default function CodeGenerationPreviewForm({
     setEditName('');
     setEditBody(DEFAULT_CUSTOM_BODY);
   }, [active, variant, resetVersionKey, refreshCustom]);
+
+  useEffect(() => {
+    if (!tenantId || !projectId) {
+      setTaggedVersionList([]);
+      return;
+    }
+    if (!active) {
+      return;
+    }
+    let cancelled = false;
+    void listVersions(tenantId, projectId, restOpts)
+      .then((vs) => {
+        if (!cancelled) {
+          setTaggedVersionList(
+            vs.filter((v) => v.code_generation_tag && String(v.code_generation_tag).trim() !== '')
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setTaggedVersionList([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, tenantId, projectId, restOpts]);
+
+  useEffect(() => {
+    if (!active || schemaSourceId === 'canvas') {
+      setTaggedClasses(null);
+      setTaggedLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setTaggedLoading(true);
+    setTaggedClasses(null);
+    void listClassesWithPropertiesAndTags(schemaSourceId, restOpts)
+      .then((raw) => {
+        if (cancelled) return;
+        const st = classesAndPropertiesToState(schemaSourceId, null, raw, []);
+        setTaggedClasses(st.classes);
+      })
+      .catch(async (e) => {
+        if (cancelled) return;
+        await dialogAlert({
+          title: 'Could not load tagged version',
+          message: e instanceof Error ? e.message : 'Failed to load classes for this tag.',
+          variant: 'error',
+        });
+        setSchemaSourceId('canvas');
+      })
+      .finally(() => {
+        if (!cancelled) setTaggedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, schemaSourceId, restOpts]);
+
+  useEffect(() => {
+    if (schemaSourceId === 'canvas') return;
+    if (taggedVersionList.length === 0) {
+      setSchemaSourceId('canvas');
+      return;
+    }
+    const stillValid = taggedVersionList.some((v) => v.id === schemaSourceId);
+    if (!stillValid) setSchemaSourceId('canvas');
+  }, [taggedVersionList, schemaSourceId]);
+
+  const effectiveClasses = useMemo(() => {
+    if (schemaSourceId === 'canvas') return classes;
+    return taggedClasses ?? [];
+  }, [schemaSourceId, classes, taggedClasses]);
+
+  const schemaSourceLabel = useMemo(() => {
+    if (schemaSourceId === 'canvas') return 'current canvas';
+    const v = taggedVersionList.find((x) => x.id === schemaSourceId);
+    return v?.code_generation_tag
+      ? `tag “${v.code_generation_tag}” (${v.name})`
+      : 'tagged version';
+  }, [schemaSourceId, taggedVersionList]);
 
   useEffect(() => {
     if (!selectedCustomId || customList.length === 0) return;
@@ -113,14 +218,28 @@ export default function CodeGenerationPreviewForm({
   }, [selectedCustomId, customList]);
 
   const builtinOutput = useMemo(() => {
-    if (!classes.length) return '// Add classes on the canvas to generate code.\n';
-    return generateFromBuiltinTemplate(builtinId, classes);
-  }, [builtinId, classes]);
+    if (taggedLoading) return '// Loading schema from tagged version…\n';
+    if (!effectiveClasses.length) {
+      return schemaSourceId === 'canvas'
+        ? '// Add classes on the canvas to generate code.\n'
+        : '// No classes in this tagged version.\n';
+    }
+    return generateFromBuiltinTemplate(builtinId, effectiveClasses);
+  }, [builtinId, effectiveClasses, schemaSourceId, taggedLoading]);
 
   const { customOutput, mustacheError } = useMemo(() => {
-    if (!classes.length) {
+    if (taggedLoading) {
       return {
-        customOutput: '// Add classes on the canvas to generate code.\n',
+        customOutput: '// Loading schema from tagged version…\n',
+        mustacheError: null as string | null,
+      };
+    }
+    if (!effectiveClasses.length) {
+      return {
+        customOutput:
+          schemaSourceId === 'canvas'
+            ? '// Add classes on the canvas to generate code.\n'
+            : '// No classes in this tagged version.\n',
         mustacheError: null as string | null,
       };
     }
@@ -129,14 +248,14 @@ export default function CodeGenerationPreviewForm({
     }
     try {
       return {
-        customOutput: renderCustomMustacheTemplate(editBody, classes),
+        customOutput: renderCustomMustacheTemplate(editBody, effectiveClasses),
         mustacheError: null,
       };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return { customOutput: `// Template error: ${msg}\n`, mustacheError: msg };
     }
-  }, [editBody, classes]);
+  }, [editBody, effectiveClasses, schemaSourceId, taggedLoading]);
 
   const preview = tab === 'builtin' ? builtinOutput : customOutput;
   const previewLang =
@@ -224,6 +343,53 @@ export default function CodeGenerationPreviewForm({
         <p className="text-sm text-amber-700 dark:text-amber-300 shrink-0">
           Open a version in the studio to generate code.
         </p>
+      )}
+
+      {!disabled && tenantId && projectId && (
+        <div className="shrink-0">
+          <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            Schema for generation
+          </Label.Root>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-1">
+            Use the live canvas, or a version tagged on the Dashboard → Versions page (e.g.{' '}
+            <span className="font-mono">api-v2</span>).
+          </p>
+          <Select.Root
+            value={schemaSourceId}
+            onValueChange={(v) => setSchemaSourceId(v)}
+          >
+            <Select.Trigger
+              className={`mt-1 ${selectTriggerClass}`}
+              data-testid="schema-source-select"
+            >
+              <Select.Value />
+              <Select.Icon />
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-lg z-[100]">
+                <Select.Viewport className="p-1 max-h-[min(50vh,280px)] overflow-y-auto">
+                  <Select.Item
+                    value="canvas"
+                    className="px-3 py-2 text-sm rounded cursor-pointer outline-none data-[highlighted]:bg-slate-100 dark:data-[highlighted]:bg-slate-700"
+                  >
+                    <Select.ItemText>Current working (canvas)</Select.ItemText>
+                  </Select.Item>
+                  {taggedVersionList.map((v) => (
+                    <Select.Item
+                      key={v.id}
+                      value={v.id}
+                      className="px-3 py-2 text-sm rounded cursor-pointer outline-none data-[highlighted]:bg-slate-100 dark:data-[highlighted]:bg-slate-700"
+                    >
+                      <Select.ItemText>
+                        Tag <span className="font-mono">{v.code_generation_tag}</span> — {v.name}
+                      </Select.ItemText>
+                    </Select.Item>
+                  ))}
+                </Select.Viewport>
+              </Select.Content>
+            </Select.Portal>
+          </Select.Root>
+        </div>
       )}
 
       <div className={isPanel ? 'shrink-0 space-y-3 overflow-y-auto max-h-[45vh]' : 'space-y-4'}>
@@ -389,9 +555,14 @@ export default function CodeGenerationPreviewForm({
         <div className="flex items-center justify-between mb-1 shrink-0">
           <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
             Preview
-            {versionId && classes.length > 0 && (
+            {schemaSourceId === 'canvas' && versionId && classes.length > 0 && (
               <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
                 (updates as you edit the schema)
+              </span>
+            )}
+            {schemaSourceId !== 'canvas' && !taggedLoading && (
+              <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
+                (from {schemaSourceLabel})
               </span>
             )}
           </Label.Root>

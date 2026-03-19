@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.10
+  version: 1.0.11
 paths:
   /v1/auth/login:
     post:
@@ -5878,6 +5878,15 @@ components:
         name:
           type: string
           title: Name
+        code_generation_tag:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 64
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$
+          - type: 'null'
+          title: Code Generation Tag
+          description: Optional stable label for code generation; unique per project (case-insensitive).
         description:
           type: string
           title: Description
@@ -6181,6 +6190,15 @@ components:
           - type: string
           - type: 'null'
           title: Change Log
+        code_generation_tag:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 64
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$
+            description: Stable label for code generation (e.g. v1, api-v2). Empty string clears. Unique per project (case-insensitive).
+          - type: 'null'
+          title: Code Generation Tag
       type: object
       title: VersionMetadataUpdate
       description: Metadata update payload for objectified.version.
@@ -6313,6 +6331,13 @@ components:
         name:
           type: string
           title: Name
+        code_generation_tag:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Code Generation Tag
+          description: Optional stable label for code generation; unique per project (case-insensitive).
         description:
           type: string
           title: Description

@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.8"
+    "version": "1.0.11"
   },
   "paths": {
     "/v1/auth/login": {
@@ -777,6 +777,286 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ClassWithPropertiesAndTags"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/classes/{class_id}/tags/{tag_name}": {
+      "delete": {
+        "tags": [
+          "Classes"
+        ],
+        "summary": "Remove tag from class",
+        "description": "Remove a tag from the class's metadata.tags (GitHub #103).",
+        "operationId": "remove_tag_from_class_v1_versions__version_id__classes__class_id__tags__tag_name__delete",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "class_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Class Id"
+            }
+          },
+          {
+            "name": "tag_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tag Name"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassTagsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/versions/{version_id}/classes/{class_id}/tags": {
+      "get": {
+        "tags": [
+          "Classes"
+        ],
+        "summary": "Get tags for class",
+        "description": "Return tag names assigned to the class (GitHub #103).",
+        "operationId": "get_tags_for_class_v1_versions__version_id__classes__class_id__tags_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "class_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Class Id"
+            }
+          },
+          {
+            "name": "include_deleted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include soft-deleted class",
+              "default": false,
+              "title": "Include Deleted"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassTagsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Classes"
+        ],
+        "summary": "Assign tag to class",
+        "description": "Add a tag to the class's metadata.tags (GitHub #103). Idempotent if already present.",
+        "operationId": "assign_tag_to_class_v1_versions__version_id__classes__class_id__tags_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "class_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Class Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassAssignTagRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassTagsResponse"
                 }
               }
             }
@@ -5709,6 +5989,85 @@
         }
       }
     },
+    "/v1/versions/{version_id}/tags": {
+      "get": {
+        "tags": [
+          "Versions"
+        ],
+        "summary": "List tags for version",
+        "description": "Return all tag names used by classes in this version (project tag list). GitHub #103.",
+        "operationId": "list_tags_for_version_v1_versions__version_id__tags_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Tags For Version V1 Versions  Version Id  Tags Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/versions/{version_id}": {
       "get": {
         "tags": [
@@ -7562,6 +7921,35 @@
         "title": "ClassUpdate",
         "description": "Update payload for objectified.class (metadata + canvas_metadata)."
       },
+      "ClassAssignTagRequest": {
+        "type": "object",
+        "required": [
+          "tag"
+        ],
+        "properties": {
+          "tag": {
+            "type": "string",
+            "title": "Tag",
+            "description": "Tag name to assign to the class."
+          }
+        },
+        "title": "ClassAssignTagRequest",
+        "description": "Request body for assigning a tag to a class (GitHub #103)."
+      },
+      "ClassTagsResponse": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          }
+        },
+        "title": "ClassTagsResponse",
+        "description": "Response for get tags for class (GitHub #103)."
+      },
       "ClassWithPropertiesAndTags": {
         "properties": {
           "id": {
@@ -8912,6 +9300,18 @@
               }
             ],
             "title": "Property Data"
+          },
+          "parent_property_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Property Name",
+            "description": "Name of the parent class-property for nesting. Null or omitted means top-level."
           }
         },
         "type": "object",
@@ -9048,6 +9448,21 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "code_generation_tag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Generation Tag",
+            "description": "Optional stable label for code generation; unique per project (case-insensitive)."
           },
           "description": {
             "type": "string",
@@ -9530,6 +9945,21 @@
               }
             ],
             "title": "Change Log"
+          },
+          "code_generation_tag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$",
+                "description": "Stable label for code generation (e.g. v1, api-v2). Empty string clears. Unique per project (case-insensitive)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Generation Tag"
           }
         },
         "type": "object",
@@ -9734,6 +10164,19 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "code_generation_tag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Generation Tag",
+            "description": "Optional stable label for code generation; unique per project (case-insensitive)."
           },
           "description": {
             "type": "string",

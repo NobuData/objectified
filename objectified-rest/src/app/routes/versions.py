@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,10 +25,31 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Versions"])
 
+_CODE_GENERATION_TAG_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$")
+
 _VERSION_COLUMNS = (
-    "id, project_id, source_version_id, creator_id, name, description, change_log, enabled, "
-    "published, visibility, metadata, created_at, updated_at, deleted_at, published_at"
+    "id, project_id, source_version_id, creator_id, name, code_generation_tag, description, "
+    "change_log, enabled, published, visibility, metadata, created_at, updated_at, "
+    "deleted_at, published_at"
 )
+
+
+def _normalize_code_generation_tag(raw: Optional[str]) -> Optional[str]:
+    """Return stripped tag or None to clear. Raises HTTP 400 if invalid when non-empty."""
+    if raw is None:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    if len(s) > 64 or not _CODE_GENERATION_TAG_PATTERN.match(s):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "code_generation_tag must be 1–64 characters, start with a letter or digit, "
+                "and contain only letters, digits, dots, underscores, and hyphens."
+            ),
+        )
+    return s
 
 
 def _qualify_columns(columns: str, alias: str) -> str:
@@ -75,6 +97,7 @@ def _insert_version_row(
     creator_id: str,
     name: str,
     description: str = "",
+    code_generation_tag: Optional[str] = None,
     change_log: Optional[str] = None,
     enabled: bool = True,
     published: bool = False,
@@ -88,14 +111,16 @@ def _insert_version_row(
     row = db.execute_mutation(
         f"""
         INSERT INTO objectified.version
-            (project_id, creator_id, name, description, change_log, enabled, published, visibility, metadata, source_version_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+            (project_id, creator_id, name, code_generation_tag, description, change_log, enabled,
+             published, visibility, metadata, source_version_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
         RETURNING {_VERSION_COLUMNS}
         """,
         (
             project_id,
             creator_id,
             name,
+            code_generation_tag,
             description,
             change_log,
             enabled,
@@ -185,18 +210,31 @@ def create_version(
                 detail="source_version_id must belong to the same project",
             )
 
-    row = _insert_version_row(
-        project_id=project_id,
-        creator_id=creator_id,
-        name=payload.name.strip(),
-        description=payload.description,
-        change_log=payload.change_log,
-        enabled=payload.enabled,
-        published=payload.published,
-        visibility=payload.visibility,
-        metadata=payload.metadata,
-        source_version_id=payload.source_version_id,
-    )
+    tag: Optional[str] = None
+    if "code_generation_tag" in payload.model_fields_set:
+        tag = _normalize_code_generation_tag(payload.code_generation_tag)
+
+    try:
+        row = _insert_version_row(
+            project_id=project_id,
+            creator_id=creator_id,
+            name=payload.name.strip(),
+            description=payload.description,
+            code_generation_tag=tag,
+            change_log=payload.change_log,
+            enabled=payload.enabled,
+            published=payload.published,
+            visibility=payload.visibility,
+            metadata=payload.metadata,
+            source_version_id=payload.source_version_id,
+        )
+    except Exception as exc:
+        if "23505" in str(exc) or "unique constraint" in str(exc).lower():
+            raise HTTPException(
+                status_code=409,
+                detail="code_generation_tag is already used by another version in this project.",
+            ) from exc
+        raise
     if not row:
         raise HTTPException(status_code=500, detail="Failed to create version")
 
@@ -266,7 +304,11 @@ def get_version(
     "/versions/{version_id}",
     response_model=VersionSchema,
     summary="Update version metadata",
-    description="Update mutable metadata fields for a version (description, change_log).",
+    description=(
+        "Update mutable metadata fields for a version (description, change_log, "
+        "code_generation_tag). Omit fields to leave them unchanged; send code_generation_tag "
+        "as empty string to clear. Tags are unique per project (case-insensitive)."
+    ),
 )
 def update_version_metadata(
     version_id: str,
@@ -278,30 +320,44 @@ def update_version_metadata(
 
     updates: list[str] = []
     params: list[Any] = []
+    fields_set = payload.model_fields_set
 
-    if payload.description is not None:
+    if "description" in fields_set and payload.description is not None:
         updates.append("description = %s")
         params.append(payload.description)
 
-    if payload.change_log is not None:
+    if "change_log" in fields_set:
         updates.append("change_log = %s")
         params.append(payload.change_log)
+
+    if "code_generation_tag" in fields_set:
+        tag = _normalize_code_generation_tag(payload.code_generation_tag)
+        updates.append("code_generation_tag = %s")
+        params.append(tag)
 
     if not updates:
         return VersionSchema(**old_row)
 
     params.append(version_id)
 
-    row = db.execute_mutation(
-        f"""
-        UPDATE objectified.version
-        SET {', '.join(updates)}
-        WHERE id = %s
-          AND deleted_at IS NULL
-        RETURNING {_VERSION_COLUMNS}
-        """,
-        tuple(params),
-    )
+    try:
+        row = db.execute_mutation(
+            f"""
+            UPDATE objectified.version
+            SET {', '.join(updates)}
+            WHERE id = %s
+              AND deleted_at IS NULL
+            RETURNING {_VERSION_COLUMNS}
+            """,
+            tuple(params),
+        )
+    except Exception as exc:
+        if "23505" in str(exc) or "unique constraint" in str(exc).lower():
+            raise HTTPException(
+                status_code=409,
+                detail="code_generation_tag is already used by another version in this project.",
+            ) from exc
+        raise
     if not row:
         raise _not_found("Version", version_id)
 

@@ -276,6 +276,20 @@ class TestVersionTableStructure:
         assert row["data_type"] == "timestamp without time zone"
         assert row["is_nullable"] == "YES"
 
+    def test_column_code_generation_tag_varchar64_nullable(self, conn):
+        row = conn.fetchone(
+            """
+            SELECT character_maximum_length, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'objectified'
+              AND table_name   = 'version'
+              AND column_name  = 'code_generation_tag'
+            """
+        )
+        assert row is not None, "Column 'code_generation_tag' is missing (run migrations)"
+        assert row["character_maximum_length"] == 64
+        assert row["is_nullable"] == "YES"
+
 
 # ---------------------------------------------------------------------------
 # Constraints
@@ -462,6 +476,7 @@ class TestVersionTableDataIntegrity:
         assert row["id"] is not None
         assert row["project_id"] == project_id
         assert row["creator_id"] == creator_id
+        assert row.get("code_generation_tag") is None
 
     def test_created_at_is_set_and_recent_on_insert(self, conn):
         from datetime import datetime, timezone, timedelta
@@ -680,3 +695,87 @@ class TestVersionTableDataIntegrity:
             ("11.0.0",),
         )
         assert row is not None, "Row should be visible within the same transaction"
+
+
+class TestVersionCodeGenerationTag:
+    """GH-121: code_generation_tag unique per project (case-insensitive)."""
+
+    def test_duplicate_tag_same_project_raises(self, conn):
+        project_id = _insert_project(conn, "cg-tag-dup-proj")
+        creator_a = _insert_account(conn, "cg-tag-dup-a@example.com")
+        creator_b = _insert_account(conn, "cg-tag-dup-b@example.com")
+        conn.execute(
+            """
+            INSERT INTO objectified.version
+                (project_id, creator_id, name, description, code_generation_tag)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (project_id, creator_a, "va", "d", "api-v1"),
+        )
+        conn.execute("SAVEPOINT before_dup_tag")
+        with pytest.raises(psycopg2.errors.UniqueViolation):
+            conn.execute(
+                """
+                INSERT INTO objectified.version
+                    (project_id, creator_id, name, description, code_generation_tag)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (project_id, creator_b, "vb", "d", "api-v1"),
+            )
+        conn.execute("ROLLBACK TO SAVEPOINT before_dup_tag")
+        conn.execute("RELEASE SAVEPOINT before_dup_tag")
+
+    def test_case_insensitive_duplicate_raises(self, conn):
+        project_id = _insert_project(conn, "cg-tag-ci-proj")
+        creator_a = _insert_account(conn, "cg-tag-ci-a@example.com")
+        creator_b = _insert_account(conn, "cg-tag-ci-b@example.com")
+        conn.execute(
+            """
+            INSERT INTO objectified.version
+                (project_id, creator_id, name, description, code_generation_tag)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (project_id, creator_a, "va", "d", "Api-V1"),
+        )
+        conn.execute("SAVEPOINT before_ci_dup")
+        with pytest.raises(psycopg2.errors.UniqueViolation):
+            conn.execute(
+                """
+                INSERT INTO objectified.version
+                    (project_id, creator_id, name, description, code_generation_tag)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (project_id, creator_b, "vb", "d", "API-V1"),
+            )
+        conn.execute("ROLLBACK TO SAVEPOINT before_ci_dup")
+        conn.execute("RELEASE SAVEPOINT before_ci_dup")
+
+    def test_same_tag_different_projects_allowed(self, conn):
+        p1 = _insert_project(conn, "cg-tag-p1")
+        p2 = _insert_project(conn, "cg-tag-p2")
+        c1 = _insert_account(conn, "cg-tag-same1@example.com")
+        c2 = _insert_account(conn, "cg-tag-same2@example.com")
+        conn.execute(
+            """
+            INSERT INTO objectified.version
+                (project_id, creator_id, name, description, code_generation_tag)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (p1, c1, "v1", "d", "stable"),
+        )
+        conn.execute(
+            """
+            INSERT INTO objectified.version
+                (project_id, creator_id, name, description, code_generation_tag)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (p2, c2, "v2", "d", "stable"),
+        )
+        n = conn.fetchone(
+            """
+            SELECT COUNT(*) AS n FROM objectified.version
+            WHERE LOWER(code_generation_tag) = LOWER(%s)
+            """,
+            ("stable",),
+        )
+        assert n["n"] == 2
