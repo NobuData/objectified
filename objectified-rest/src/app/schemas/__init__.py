@@ -29,6 +29,12 @@ from app.schemas.tenant_account import (
     TenantAccountUpdate,
     TenantAdministratorCreate,
 )
+from app.schemas.sso import (
+    SsoProviderCreate,
+    SsoProviderSchema,
+    SsoProviderType,
+    SsoProviderUpdate,
+)
 from app.schemas.version import (
     VersionCreate,
     VersionCreateFromRevision,
@@ -70,6 +76,10 @@ __all__ = [
     "TenantCreate",
     "TenantSchema",
     "TenantUpdate",
+    "SsoProviderCreate",
+    "SsoProviderSchema",
+    "SsoProviderType",
+    "SsoProviderUpdate",
     "VersionCreate",
     "VersionCreateFromRevision",
     "VersionHistorySchema",

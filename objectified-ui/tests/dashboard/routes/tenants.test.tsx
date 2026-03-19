@@ -27,6 +27,17 @@ jest.mock('@/app/components/providers/DialogProvider', () => ({
   })),
 }));
 
+const _TENANT = {
+  id: 'tenant-123',
+  name: 'Acme Corp',
+  slug: 'acme-corp',
+  description: '',
+  enabled: true,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: null,
+  deleted_at: null,
+};
+
 describe('TenantsPage', () => {
   beforeEach(() => {
     const { useSession } = require('next-auth/react');
@@ -69,5 +80,40 @@ describe('TenantsPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/you must be signed in/i)).toBeInTheDocument();
     });
+  });
+
+  it('shows SSO link for each tenant when user is an administrator', async () => {
+    const { useSession } = require('next-auth/react');
+    useSession.mockReturnValue({
+      status: 'authenticated',
+      data: {
+        user: { name: 'Admin', email: 'admin@example.com', is_administrator: true },
+        accessToken: 'token',
+      },
+    });
+    const { listMyTenants } = require('@lib/api/rest-client');
+    listMyTenants.mockResolvedValue([_TENANT]);
+    render(<TenantsPage />);
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /configure sso for acme corp/i })).toBeInTheDocument();
+    });
+  });
+
+  it('hides SSO link when user is not an administrator', async () => {
+    const { useSession } = require('next-auth/react');
+    useSession.mockReturnValue({
+      status: 'authenticated',
+      data: {
+        user: { name: 'Member', email: 'member@example.com', is_administrator: false },
+        accessToken: 'token',
+      },
+    });
+    const { listMyTenants } = require('@lib/api/rest-client');
+    listMyTenants.mockResolvedValue([_TENANT]);
+    render(<TenantsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('link', { name: /configure sso/i })).not.toBeInTheDocument();
   });
 });
