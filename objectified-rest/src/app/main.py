@@ -3,10 +3,12 @@
 from typing import Any
 
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
+from app.config import settings
+from app.database import db
 from app.v1_routes import router as v1_router
 
 app = FastAPI(
@@ -16,7 +18,7 @@ app = FastAPI(
         "Services are used by the platform and can be exposed externally; "
         "internal use is via a private API key."
     ),
-    version="1.0.14",
+    version="1.0.16",
     openapi_version="3.2.0",
     openapi_url="/openapi.yaml",
 )
@@ -109,6 +111,8 @@ async def root() -> dict[str, Any]:
         "docs": "/docs",
         "openapi": "/openapi.yaml",
         "openapi_json": "/openapi.json",
+        "health": "/health",
+        "ready": "/ready",
         "v1": {
             "users": "/v1/users",
             "tenants": "/v1/tenants",
@@ -118,7 +122,46 @@ async def root() -> dict[str, Any]:
     }
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["Operations"],
+    summary="Liveness probe",
+    description=(
+        "Lightweight liveness check for orchestrators and load balancers. "
+        "Does not verify external dependencies; use ``GET /ready`` for that."
+    ),
+    responses={200: {"description": "Process is alive"}},
+)
 async def health() -> dict[str, str]:
-    """Health check."""
+    """Kubernetes-style liveness: process is up."""
     return {"status": "ok"}
+
+
+@app.get(
+    "/ready",
+    tags=["Operations"],
+    summary="Readiness probe",
+    description=(
+        "Returns 200 when the service can handle traffic. By default runs a PostgreSQL "
+        "``SELECT 1`` check. Set environment variable ``READINESS_CHECK_DATABASE=false`` "
+        "to skip the database check (process-only readiness)."
+    ),
+    responses={
+        200: {"description": "Ready to accept traffic"},
+        503: {"description": "Not ready — dependency check failed"},
+    },
+)
+async def ready() -> Any:
+    """Readiness: optional database connectivity."""
+    checks: dict[str, str] = {}
+    if not settings.readiness_check_database:
+        checks["database"] = "skipped"
+        return {"status": "ready", "checks": checks}
+    if db.ping():
+        checks["database"] = "ok"
+        return {"status": "ready", "checks": checks}
+    checks["database"] = "unavailable"
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"status": "not_ready", "checks": checks},
+    )

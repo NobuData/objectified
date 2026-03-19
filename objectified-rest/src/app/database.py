@@ -47,6 +47,24 @@ class Database:
                 self._connection = None
         return self._connection
 
+    def ping(self) -> bool:
+        """Return True if the database accepts a trivial read-only query."""
+        conn = self.connect()
+        if conn is None:
+            return False
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                row = cursor.fetchone()
+                return row is not None
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception as rollback_err:
+                logger.exception("Rollback failed after ping error: %s", rollback_err)
+            logger.exception("Database ping failed")
+            return False
+
     def close(self) -> None:
         """Close database connection."""
         if self._connection and not getattr(self._connection, "closed", True):
