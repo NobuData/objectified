@@ -62,6 +62,7 @@ class Database:
                 conn.rollback()
             except Exception as rollback_err:
                 logger.exception("Rollback failed after ping error: %s", rollback_err)
+            self.close()
             logger.exception("Database ping failed")
             return False
 
@@ -72,7 +73,7 @@ class Database:
                 self._connection.close()
             except Exception:
                 pass
-            self._connection = None
+        self._connection = None
 
     def execute_query(
         self, query: str, params: Optional[tuple] = None

@@ -6,10 +6,18 @@ import yaml
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 
 from app.config import settings
 from app.database import db
 from app.v1_routes import router as v1_router
+
+
+class ReadinessResponse(BaseModel):
+    """Response model for the readiness probe endpoint."""
+
+    status: str
+    checks: dict[str, str]
 
 app = FastAPI(
     title="Objectified REST API",
@@ -146,6 +154,7 @@ async def health() -> dict[str, str]:
         "``SELECT 1`` check. Set environment variable ``READINESS_CHECK_DATABASE=false`` "
         "to skip the database check (process-only readiness)."
     ),
+    response_model=ReadinessResponse,
     responses={
         200: {"description": "Ready to accept traffic"},
         503: {"description": "Not ready — dependency check failed"},
