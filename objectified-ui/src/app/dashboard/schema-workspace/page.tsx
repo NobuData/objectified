@@ -32,7 +32,11 @@ import {
   type VersionPullResponse,
   type RestClientOptions,
 } from '@lib/api/rest-client';
-import { compareSchemas, type CompareSchemasResult } from '@/app/dashboard/utils/compareSchemas';
+import {
+  compareSchemas,
+  type ClassLike,
+  type CompareSchemasResult,
+} from '@/app/dashboard/utils/compareSchemas';
 
 const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300';
 const inputClass =
@@ -280,8 +284,8 @@ export default function SchemaWorkspacePage() {
   ]);
 
   const diffResult: CompareSchemasResult | null = useMemo(() => {
-    const leftClasses = getClasses(leftSlot) as { name?: string; properties?: unknown[] }[];
-    const rightClasses = getClasses(rightSlot) as { name?: string; properties?: unknown[] }[];
+    const leftClasses = getClasses(leftSlot) as ClassLike[];
+    const rightClasses = getClasses(rightSlot) as ClassLike[];
     if (leftClasses.length === 0 && rightClasses.length === 0) return null;
     return compareSchemas(leftClasses, rightClasses);
   }, [leftSlot.data, rightSlot.data]);
@@ -600,7 +604,7 @@ export default function SchemaWorkspacePage() {
                     <p className="text-sm text-slate-500 dark:text-slate-400">No classes</p>
                   ) : (
                     <ul className="space-y-1 text-sm font-mono text-slate-700 dark:text-slate-300">
-                      {(getClasses(leftSlot) as { name?: string; properties?: unknown[] }[]).map(
+                      {(getClasses(leftSlot) as ClassLike[]).map(
                         (c) => (
                           <li key={c.name ?? ''}>
                             {c.name ?? '—'}
@@ -628,7 +632,7 @@ export default function SchemaWorkspacePage() {
                     <p className="text-sm text-slate-500 dark:text-slate-400">No classes</p>
                   ) : (
                     <ul className="space-y-1 text-sm font-mono text-slate-700 dark:text-slate-300">
-                      {(getClasses(rightSlot) as { name?: string; properties?: unknown[] }[]).map(
+                      {(getClasses(rightSlot) as ClassLike[]).map(
                         (c) => (
                           <li key={c.name ?? ''}>
                             {c.name ?? '—'}
