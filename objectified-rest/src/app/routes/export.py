@@ -11,6 +11,7 @@ from app.auth import require_authenticated
 from app.database import db
 from app.generators.jsonschema_generator import generate_jsonschema_multi, generate_jsonschema_single
 from app.generators.openapi_generator import generate_openapi_spec
+from app.generators.validation_rules_export import generate_validation_rules_export
 from app.routes.classes import _CLASS_COLUMNS
 from app.routes.helpers import _not_found
 from app.routes.versions import _assert_version_exists
@@ -311,3 +312,72 @@ def export_jsonschema(
         },
     )
 
+
+@router.get(
+    "/versions/{version_id}/export/validation-rules",
+    summary="Export validation rules as structured JSON",
+    description=(
+        "Returns validation constraints for all active classes in the version in a compact "
+        "JSON shape (required, type, format, pattern, numeric/array bounds, enum, $ref, nested "
+        "properties) suitable for client-side validators, code generation, and documentation. "
+        "Derived from the same resolved schema as OpenAPI export."
+    ),
+    response_class=JSONResponse,
+    responses={
+        200: {
+            "description": "Validation rules document",
+            "content": {"application/json": {}},
+        },
+        404: {"description": "Version or class not found"},
+    },
+)
+def export_validation_rules(
+    version_id: str,
+    class_id: Optional[str] = Query(
+        None,
+        description=(
+            "Optional class UUID. When provided, export only this class’s validation rules."
+        ),
+    ),
+    title: Optional[str] = Query(
+        None,
+        description="Override the document title.",
+    ),
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> JSONResponse:
+    """Export validation-oriented rules for one or all classes."""
+    version = _assert_version_exists(version_id, include_deleted=False)
+    version_name = str(version.get("name") or "")
+
+    if class_id:
+        cls = _load_single_class_with_properties(version_id, class_id)
+        doc = generate_validation_rules_export(
+            [cls],
+            version_id=version_id,
+            version_name=version_name,
+            title=title,
+        )
+        filename = f"validation-rules-{class_id}.json"
+    else:
+        classes = _load_classes_with_properties(version_id)
+        doc = generate_validation_rules_export(
+            classes,
+            version_id=version_id,
+            version_name=version_name,
+            title=title,
+        )
+        filename = f"validation-rules-{version_id}.json"
+
+    logger.info(
+        "export_validation_rules: version %s class_id=%s",
+        version_id,
+        class_id or "<all>",
+    )
+
+    return JSONResponse(
+        content=doc,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
