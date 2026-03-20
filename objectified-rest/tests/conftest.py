@@ -3,6 +3,18 @@
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_request_logging_context():
+    """Avoid leaking contextvars between tests (auth helpers bind tenant/user)."""
+    from app.request_context import reset_request_context
+
+    reset_request_context()
+    yield
+    reset_request_context()
+
 
 @contextmanager
 def mock_db_all():
