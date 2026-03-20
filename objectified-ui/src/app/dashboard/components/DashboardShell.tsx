@@ -95,7 +95,6 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       if (pathname.endsWith('/members')) crumbs.push({ label: 'Members' });
       else if (pathname.endsWith('/administrators')) crumbs.push({ label: 'Administrators' });
       else if (pathname.endsWith('/sso')) crumbs.push({ label: 'SSO' });
-      else if (pathname === '/dashboard/tenants') crumbs.push({ label: 'Tenants' });
       return crumbs;
     }
 
