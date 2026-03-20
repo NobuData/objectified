@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 
 export interface DashboardSideNavProps {
-  isAdministrator?: boolean;
+  role?: 'admin' | 'tenant-admin' | 'member';
+  selectedTenantId?: string | null;
   onNavigate?: () => void;
   /** When true, render only icons (collapsed sidebar). */
   collapsed?: boolean;
@@ -25,28 +26,37 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
-  show?: boolean;
+  roles: Array<'admin' | 'tenant-admin' | 'member'>;
+  tenantScoped?: boolean;
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Profile', href: '/dashboard/profile', icon: User },
-  { label: 'Tenants', href: '/dashboard/tenants', icon: Building2 },
-  { label: 'Projects', href: '/dashboard/projects', icon: FolderKanban },
-  { label: 'Versions', href: '/dashboard/versions', icon: GitBranch },
-  { label: 'Schema Workspace', href: '/dashboard/schema-workspace', icon: Columns3 },
-  { label: 'Publish', href: '/dashboard/publish', icon: Upload },
-  { label: 'Published', href: '/dashboard/published', icon: BookOpen },
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['admin', 'tenant-admin', 'member'] },
+  { label: 'Profile', href: '/dashboard/profile', icon: User, roles: ['admin', 'tenant-admin', 'member'] },
+  { label: 'Projects', href: '/dashboard/projects', icon: FolderKanban, roles: ['admin', 'tenant-admin', 'member'] },
+  { label: 'Versions', href: '/dashboard/versions', icon: GitBranch, roles: ['admin', 'tenant-admin', 'member'] },
+  { label: 'Tenants', href: '/dashboard/tenants', icon: Building2, roles: ['admin'] },
+  {
+    label: 'Members',
+    href: '/dashboard/tenants',
+    icon: Users,
+    roles: ['tenant-admin'],
+    tenantScoped: true,
+  },
+  { label: 'Schema Workspace', href: '/dashboard/schema-workspace', icon: Columns3, roles: ['admin', 'tenant-admin'] },
+  { label: 'Publish', href: '/dashboard/publish', icon: Upload, roles: ['admin', 'tenant-admin'] },
+  { label: 'Published', href: '/dashboard/published', icon: BookOpen, roles: ['admin', 'tenant-admin'] },
   {
     label: 'Users',
     href: '/dashboard/users',
     icon: Users,
-    show: false,
+    roles: ['admin'],
   },
 ];
 
 export default function DashboardSideNav({
-  isAdministrator = false,
+  role = 'member',
+  selectedTenantId = null,
   onNavigate,
   collapsed = false,
 }: DashboardSideNavProps) {
@@ -63,10 +73,15 @@ export default function DashboardSideNav({
     return pathname?.startsWith(href) ?? false;
   };
 
-  const items = navItems.map((item) => ({
-    ...item,
-    show: item.show !== false || (item.label === 'Users' && isAdministrator),
-  }));
+  const items = navItems
+    .filter((item) => item.roles.includes(role))
+    .map((item) => ({
+      ...item,
+      href:
+        item.tenantScoped && selectedTenantId
+          ? `/dashboard/tenants/${encodeURIComponent(selectedTenantId)}/members`
+          : item.href,
+    }));
 
   return (
     <nav
@@ -83,9 +98,7 @@ export default function DashboardSideNav({
         </div>
       )}
       <ul className="mt-1 space-y-1 list-none p-0 m-0">
-        {items
-          .filter((item) => item.show)
-          .map((item) => {
+        {items.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
 

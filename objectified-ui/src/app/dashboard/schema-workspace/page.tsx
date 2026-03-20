@@ -37,6 +37,7 @@ import {
   type ClassLike,
   type CompareSchemasResult,
 } from '@/app/dashboard/utils/compareSchemas';
+import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
 
 const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300';
 const inputClass =
@@ -66,7 +67,7 @@ function slotLabel(slot: SchemaSlot): string {
 export default function SchemaWorkspacePage() {
   const { data: session, status } = useSession();
   const [tenants, setTenants] = useState<TenantSchema[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const { selectedTenantId, setSelectedTenantId } = usePersistedTenantSelection(tenants);
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionSchema[]>([]);
@@ -110,7 +111,6 @@ export default function SchemaWorkspacePage() {
     try {
       const data = await listMyTenants(opts);
       setTenants(data);
-      setSelectedTenantId((prev) => (prev ? prev : data.length > 0 ? data[0].id : null));
     } catch (e) {
       setError(
         isForbiddenError(e)

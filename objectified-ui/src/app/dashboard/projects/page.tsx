@@ -35,6 +35,7 @@ import {
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
+import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -74,7 +75,7 @@ export default function ProjectsPage() {
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
   const [tenants, setTenants] = useState<TenantSchema[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const { selectedTenantId, setSelectedTenantId } = usePersistedTenantSelection(tenants);
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,9 +100,6 @@ export default function ProjectsPage() {
     try {
       const data = await listMyTenants(opts);
       setTenants(data);
-      if (data.length > 0) {
-        setSelectedTenantId((cur) => cur ?? data[0].id);
-      }
     } catch (e) {
       setError(
         isForbiddenError(e)

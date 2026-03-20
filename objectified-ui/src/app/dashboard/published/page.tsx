@@ -13,6 +13,7 @@ import {
   type TenantSchema,
   type VersionSchema,
 } from '@lib/api/rest-client';
+import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
 
 function formatDateTime(dateString: string): string {
   const d = new Date(dateString);
@@ -39,7 +40,7 @@ interface PublishedVersionRow extends VersionSchema {
 export default function PublishedPage() {
   const { data: session, status } = useSession();
   const [tenants, setTenants] = useState<TenantSchema[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const { selectedTenantId, setSelectedTenantId } = usePersistedTenantSelection(tenants);
   const [publishedVersions, setPublishedVersions] = useState<PublishedVersionRow[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -60,10 +61,6 @@ export default function PublishedPage() {
     try {
       const data = await listMyTenants(opts);
       setTenants(data);
-      setSelectedTenantId((prev) => {
-        if (prev) return prev;
-        return data.length > 0 ? data[0].id : null;
-      });
     } catch (e) {
       setError(
         isForbiddenError(e)

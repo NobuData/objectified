@@ -18,7 +18,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 jest.mock('next-auth/react', () => ({
-  useSession: jest.fn(() => ({ data: { user: { name: 'Test User', email: 'test@example.com' } } })),
+  useSession: jest.fn(() => ({ status: 'authenticated', data: { user: { name: 'Test User', email: 'test@example.com' } } })),
   signOut: jest.fn(),
 }));
 
@@ -42,6 +42,19 @@ jest.mock('@/app/components/theme/ThemeSelector', () => {
   };
 });
 
+jest.mock('@lib/api/rest-client', () => ({
+  getRestClientOptions: jest.fn(() => ({})),
+  listMyTenants: jest.fn(async () => []),
+}));
+
+jest.mock('@/app/hooks/useTenantPermissions', () => ({
+  useTenantPermissions: jest.fn(() => ({
+    permissions: null,
+    loading: false,
+    has: jest.fn(() => false),
+  })),
+}));
+
 describe('DashboardShell', () => {
   it('renders header with Dashboard, Data Designer, and Account links', () => {
     render(
@@ -57,7 +70,7 @@ describe('DashboardShell', () => {
     expect(within(nav).getByRole('link', { name: /Account/i })).toHaveAttribute('href', '/dashboard/profile');
   });
 
-  it('renders dashboard sidebar with Dashboard home, Projects, Versions, Publish, Tenants, Profile', () => {
+  it('renders dashboard sidebar with member-visible links', () => {
     render(
       <DashboardShell>
         <div>Content</div>
@@ -69,15 +82,15 @@ describe('DashboardShell', () => {
     expect(within(sidebar).getByRole('link', { name: /^Dashboard$/i })).toHaveAttribute('href', '/dashboard');
     expect(within(sidebar).getByRole('link', { name: /Projects/i })).toHaveAttribute('href', '/dashboard/projects');
     expect(within(sidebar).getByRole('link', { name: /Versions/i })).toHaveAttribute('href', '/dashboard/versions');
-    expect(within(sidebar).getByRole('link', { name: 'Publish' })).toHaveAttribute('href', '/dashboard/publish');
-    expect(within(sidebar).getByRole('link', { name: 'Published' })).toHaveAttribute('href', '/dashboard/published');
-    expect(within(sidebar).getByRole('link', { name: /Tenants/i })).toHaveAttribute('href', '/dashboard/tenants');
     expect(within(sidebar).getByRole('link', { name: /Profile/i })).toHaveAttribute('href', '/dashboard/profile');
+    expect(within(sidebar).queryByRole('link', { name: /Users/i })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('link', { name: /Publish/i })).not.toBeInTheDocument();
   });
 
   it('shows Users link in sidebar when user is administrator', () => {
     const { useSession } = require('next-auth/react');
     useSession.mockReturnValue({
+      status: 'authenticated',
       data: {
         user: {
           name: 'Admin User',

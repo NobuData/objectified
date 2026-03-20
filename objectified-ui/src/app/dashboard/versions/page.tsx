@@ -38,6 +38,7 @@ import { useDialog } from '@/app/components/providers/DialogProvider';
 import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 import RelationshipGraphDialog from '@/app/dashboard/components/RelationshipGraphDialog';
+import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
 
 const inputClass =
   'w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
@@ -58,7 +59,7 @@ export default function VersionsPage() {
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
   const [tenants, setTenants] = useState<TenantSchema[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const { selectedTenantId, setSelectedTenantId } = usePersistedTenantSelection(tenants);
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionSchema[]>([]);
@@ -107,10 +108,6 @@ export default function VersionsPage() {
     try {
       const data = await listMyTenants(opts);
       setTenants(data);
-      setSelectedTenantId((prev) => {
-        if (prev) return prev;
-        return data.length > 0 ? data[0].id : null;
-      });
     } catch (e) {
       setError(
         isForbiddenError(e)

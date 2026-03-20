@@ -23,25 +23,31 @@ describe('DashboardSideNav', () => {
     expect(screen.getByText('Navigation')).toBeInTheDocument();
   });
 
-  it('renders Dashboard, Projects, Versions, Publish, Published, Tenants, and Profile links by default', () => {
-    render(<DashboardSideNav />);
+  it('renders member navigation links by default', () => {
+    render(<DashboardSideNav role="member" />);
     expect(screen.getByRole('link', { name: /Dashboard/i })).toHaveAttribute('href', '/dashboard');
     expect(screen.getByRole('link', { name: /Projects/i })).toHaveAttribute('href', '/dashboard/projects');
     expect(screen.getByRole('link', { name: /Versions/i })).toHaveAttribute('href', '/dashboard/versions');
-    expect(screen.getByRole('link', { name: 'Publish' })).toHaveAttribute('href', '/dashboard/publish');
-    expect(screen.getByRole('link', { name: 'Published' })).toHaveAttribute('href', '/dashboard/published');
-    expect(screen.getByRole('link', { name: /Tenants/i })).toHaveAttribute('href', '/dashboard/tenants');
     expect(screen.getByRole('link', { name: /Profile/i })).toHaveAttribute('href', '/dashboard/profile');
-  });
-
-  it('does not render Users link when isAdministrator is false', () => {
-    render(<DashboardSideNav isAdministrator={false} />);
     expect(screen.queryByRole('link', { name: /Users/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Publish/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Tenants/i })).not.toBeInTheDocument();
   });
 
-  it('renders Users link when isAdministrator is true', () => {
-    render(<DashboardSideNav isAdministrator={true} />);
+  it('renders Users and tenant links when role is admin', () => {
+    render(<DashboardSideNav role="admin" />);
     expect(screen.getByRole('link', { name: /Users/i })).toHaveAttribute('href', '/dashboard/users');
+    expect(screen.getByRole('link', { name: /Tenants/i })).toHaveAttribute('href', '/dashboard/tenants');
+    expect(screen.getByRole('link', { name: 'Publish' })).toHaveAttribute('href', '/dashboard/publish');
+  });
+
+  it('renders Members link for tenant-admin with selected tenant', () => {
+    render(<DashboardSideNav role="tenant-admin" selectedTenantId="tenant-123" />);
+    expect(screen.getByRole('link', { name: /Members/i })).toHaveAttribute(
+      'href',
+      '/dashboard/tenants/tenant-123/members'
+    );
+    expect(screen.queryByRole('link', { name: /Users/i })).not.toBeInTheDocument();
   });
 
   it('highlights Dashboard link when on /dashboard', () => {
@@ -67,14 +73,14 @@ describe('DashboardSideNav', () => {
 
   it('highlights only Publish (not Published) when on /dashboard/publish', () => {
     mockPathname = '/dashboard/publish';
-    render(<DashboardSideNav />);
+    render(<DashboardSideNav role="admin" />);
     expect(screen.getByRole('link', { name: 'Publish' }).className).toContain('border-indigo-500');
     expect(screen.getByRole('link', { name: 'Published' }).className).not.toContain('border-indigo-500');
   });
 
   it('highlights only Published (not Publish) when on /dashboard/published', () => {
     mockPathname = '/dashboard/published';
-    render(<DashboardSideNav />);
+    render(<DashboardSideNav role="admin" />);
     expect(screen.getByRole('link', { name: 'Published' }).className).toContain('border-indigo-500');
     expect(screen.getByRole('link', { name: 'Publish' }).className).not.toContain('border-indigo-500');
   });
@@ -87,20 +93,20 @@ describe('DashboardSideNav', () => {
   });
 
   it('hides link labels when collapsed=true', () => {
-    render(<DashboardSideNav collapsed />);
+    render(<DashboardSideNav collapsed role="admin" />);
     expect(screen.queryByText('Navigation')).not.toBeInTheDocument();
     expect(screen.queryByText('Projects')).not.toBeInTheDocument();
   });
 
   it('navigation links have aria-label when collapsed=true for screen-reader accessibility', () => {
-    render(<DashboardSideNav collapsed />);
+    render(<DashboardSideNav collapsed role="admin" />);
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/dashboard');
     expect(screen.getByRole('link', { name: 'Projects' })).toHaveAttribute('href', '/dashboard/projects');
     expect(screen.getByRole('link', { name: 'Tenants' })).toHaveAttribute('href', '/dashboard/tenants');
   });
 
   it('navigation links do not have aria-label when collapsed=false', () => {
-    render(<DashboardSideNav collapsed={false} />);
+    render(<DashboardSideNav collapsed={false} role="admin" />);
     // In non-collapsed mode, text labels are visible so aria-label is not needed
     const dashboardLink = screen.getByRole('link', { name: /Dashboard/i });
     const projectsLink = screen.getByRole('link', { name: /Projects/i });
