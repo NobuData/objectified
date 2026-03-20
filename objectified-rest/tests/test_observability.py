@@ -57,10 +57,57 @@ def test_rate_limit_returns_429(client):
         assert "detail" in body
 
 
+def test_rate_limit_429_includes_correlation_headers(client):
+    """429 responses include X-Request-ID and X-Trace-ID from RequestLoggingMiddleware."""
+    from app.config import settings
+
+    with (
+        patch.object(settings, "rate_limit_enabled", True),
+        patch.object(settings, "rate_limit_per_minute", 1),
+    ):
+        client.get("/")
+        r = client.get("/")
+        assert r.status_code == 429
+        assert r.headers.get("x-request-id"), "429 must carry X-Request-ID"
+        assert r.headers.get("x-trace-id"), "429 must carry X-Trace-ID"
+
+
+def test_rate_limit_retry_after_is_numeric(client):
+    """Retry-After header contains a positive integer, not a hard-coded value."""
+    from app.config import settings
+
+    with (
+        patch.object(settings, "rate_limit_enabled", True),
+        patch.object(settings, "rate_limit_per_minute", 1),
+    ):
+        client.get("/")
+        r = client.get("/")
+        assert r.status_code == 429
+        retry_after = int(r.headers["Retry-After"])
+        assert 1 <= retry_after <= 60
+
+
+def test_invalid_request_id_header_replaced(client):
+    """An X-Request-ID with unsafe characters is rejected and a fresh UUID is generated."""
+    r = client.get("/health", headers={"x-request-id": "bad<value>injection"})
+    assert r.status_code == 200
+    rid = r.headers.get("x-request-id")
+    assert rid
+    assert rid != "bad<value>injection"
+
+
+def test_oversized_request_id_header_replaced(client):
+    """An X-Request-ID longer than 128 characters is rejected and a UUID is generated."""
+    long_id = "a" * 200
+    r = client.get("/health", headers={"x-request-id": long_id})
+    assert r.status_code == 200
+    rid = r.headers.get("x-request-id")
+    assert rid
+    assert rid != long_id
+
+
 def test_access_log_is_json_when_configured(client):
     """HTTP access logs include request id, trace id, and http block when formatted as JSON."""
-    import logging
-
     from app.logging_setup import JsonContextFormatter
 
     log = logging.getLogger("app.http")

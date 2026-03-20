@@ -49,12 +49,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         limit = max(1, settings.rate_limit_per_minute)
         if len(bucket) >= limit:
+            # Compute how long until the oldest request in the window expires.
+            remaining = WINDOW_SECONDS - (now - bucket[0])
+            retry_after_seconds = max(1, int(remaining))
             return JSONResponse(
                 status_code=429,
                 content={
                     "detail": "Rate limit exceeded. Retry after a short interval.",
                 },
-                headers={"Retry-After": "60"},
+                headers={"Retry-After": str(retry_after_seconds)},
             )
 
         bucket.append(now)
