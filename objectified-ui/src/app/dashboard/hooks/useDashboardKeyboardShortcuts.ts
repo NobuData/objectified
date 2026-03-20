@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 
 type DashboardRouter = { push: (href: string) => void };
 
-const OPEN_GLOBAL_SEARCH = 'objectified:open-global-search';
+export const OPEN_GLOBAL_SEARCH = 'objectified:open-global-search';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!target || !(target instanceof HTMLElement)) return false;
@@ -22,6 +22,7 @@ export function useDashboardKeyboardShortcuts(
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
       if (!e.altKey || !e.shiftKey) return;
       if (e.metaKey || e.ctrlKey) return;
       if (isTypingTarget(e.target)) return;
