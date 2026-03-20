@@ -14,19 +14,18 @@ import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
-  listMyTenants,
   listProjects,
   listVersions,
   publishVersion,
   unpublishVersion,
   getRestClientOptions,
   isForbiddenError,
-  type TenantSchema,
   type ProjectSchema,
   type VersionSchema,
   type VersionPublishRequest,
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
+import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
 
 const inputClass =
   'w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
@@ -52,12 +51,10 @@ function getVisibilityLabel(visibility: string | null | undefined): string {
 export default function PublishPage() {
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
-  const [tenants, setTenants] = useState<TenantSchema[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const { tenants, tenantsLoading, selectedTenantId, setSelectedTenantId } = useTenantSelection();
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionSchema[]>([]);
-  const [tenantsLoading, setTenantsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,30 +72,6 @@ export default function PublishPage() {
       ),
     [(session as { accessToken?: string } | null)?.accessToken]
   );
-
-  const fetchTenants = useCallback(async () => {
-    if (status !== 'authenticated' || !session) return;
-    setError(null);
-    setTenantsLoading(true);
-    try {
-      const data = await listMyTenants(opts);
-      setTenants(data);
-      setSelectedTenantId((prev) => {
-        if (prev) return prev;
-        return data.length > 0 ? data[0].id : null;
-      });
-    } catch (e) {
-      setError(
-        isForbiddenError(e)
-          ? 'You do not have permission to view tenants.'
-          : e instanceof Error
-            ? e.message
-            : 'Failed to load tenants'
-      );
-    } finally {
-      setTenantsLoading(false);
-    }
-  }, [status, session, opts]);
 
   const fetchProjects = useCallback(async () => {
     if (status !== 'authenticated' || !selectedTenantId) {
@@ -149,10 +122,6 @@ export default function PublishPage() {
       setVersions([]);
     }
   }, [status, selectedTenantId, selectedProjectId, opts]);
-
-  useEffect(() => {
-    fetchTenants();
-  }, [fetchTenants]);
 
   useEffect(() => {
     fetchProjects();

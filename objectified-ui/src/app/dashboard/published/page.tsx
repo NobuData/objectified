@@ -5,14 +5,13 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Loader2, BookOpen, ExternalLink, Lock, LockOpen } from 'lucide-react';
 import {
-  listMyTenants,
   listProjects,
   listVersions,
   getRestClientOptions,
   isForbiddenError,
-  type TenantSchema,
   type VersionSchema,
 } from '@lib/api/rest-client';
+import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
 
 function formatDateTime(dateString: string): string {
   const d = new Date(dateString);
@@ -38,10 +37,8 @@ interface PublishedVersionRow extends VersionSchema {
 
 export default function PublishedPage() {
   const { data: session, status } = useSession();
-  const [tenants, setTenants] = useState<TenantSchema[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const { tenants, tenantsLoading, selectedTenantId, setSelectedTenantId } = useTenantSelection();
   const [publishedVersions, setPublishedVersions] = useState<PublishedVersionRow[]>([]);
-  const [tenantsLoading, setTenantsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,30 +49,6 @@ export default function PublishedPage() {
       ),
     [(session as { accessToken?: string } | null)?.accessToken]
   );
-
-  const fetchTenants = useCallback(async () => {
-    if (status !== 'authenticated' || !session) return;
-    setError(null);
-    setTenantsLoading(true);
-    try {
-      const data = await listMyTenants(opts);
-      setTenants(data);
-      setSelectedTenantId((prev) => {
-        if (prev) return prev;
-        return data.length > 0 ? data[0].id : null;
-      });
-    } catch (e) {
-      setError(
-        isForbiddenError(e)
-          ? 'You do not have permission to view tenants.'
-          : e instanceof Error
-            ? e.message
-            : 'Failed to load tenants'
-      );
-    } finally {
-      setTenantsLoading(false);
-    }
-  }, [status, session, opts]);
 
   const fetchPublishedVersions = useCallback(async () => {
     if (status !== 'authenticated' || !selectedTenantId) {
@@ -119,10 +92,6 @@ export default function PublishedPage() {
       setLoading(false);
     }
   }, [status, selectedTenantId, opts]);
-
-  useEffect(() => {
-    fetchTenants();
-  }, [fetchTenants]);
 
   useEffect(() => {
     if (selectedTenantId) {

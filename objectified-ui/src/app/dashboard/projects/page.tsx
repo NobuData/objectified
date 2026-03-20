@@ -19,7 +19,6 @@ import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
-  listMyTenants,
   listProjects,
   createProject,
   updateProject,
@@ -28,13 +27,13 @@ import {
   permanentDeleteProject,
   getRestClientOptions,
   isForbiddenError,
-  type TenantSchema,
   type ProjectSchema,
   type ProjectCreate,
   type ProjectUpdate,
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
+import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -73,8 +72,7 @@ function formatDateTime(dateString: string): string {
 export default function ProjectsPage() {
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
-  const [tenants, setTenants] = useState<TenantSchema[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const { tenants, selectedTenantId, setSelectedTenantId } = useTenantSelection();
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,26 +90,6 @@ export default function ProjectsPage() {
   const opts = getRestClientOptions(
     (session as { accessToken?: string } | null) ?? null
   );
-
-  const fetchTenants = useCallback(async () => {
-    if (status !== 'authenticated' || !session) return;
-    setError(null);
-    try {
-      const data = await listMyTenants(opts);
-      setTenants(data);
-      if (data.length > 0) {
-        setSelectedTenantId((cur) => cur ?? data[0].id);
-      }
-    } catch (e) {
-      setError(
-        isForbiddenError(e)
-          ? 'You do not have permission to view tenants.'
-          : e instanceof Error
-            ? e.message
-            : 'Failed to load tenants'
-      );
-    }
-  }, [status, session]);
 
   const fetchProjects = useCallback(async () => {
     if (status !== 'authenticated' || !selectedTenantId) {
@@ -146,15 +124,6 @@ export default function ProjectsPage() {
       setLoading(false);
     }
   }, [status, selectedTenantId, session, showDeleted, canReadProjects, perms.loading]);
-
-  useEffect(() => {
-    if (status === 'loading') return;
-    if (status !== 'authenticated') {
-      setLoading(false);
-      return;
-    }
-    fetchTenants();
-  }, [status, fetchTenants]);
 
   useEffect(() => {
     if (status !== 'authenticated' || !selectedTenantId) return;

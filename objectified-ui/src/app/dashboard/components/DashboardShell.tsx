@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
-import { User, UserCircle, PenTool, Menu, X, LayoutDashboard, Palette, Home, ChevronLeft, ChevronRight } from 'lucide-react';
+import { User, UserCircle, PenTool, Menu, X, LayoutDashboard, Palette, Home, ChevronLeft, ChevronRight, Building2, ChevronDown } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -13,6 +13,10 @@ import ThemeSelector from '@/app/components/theme/ThemeSelector';
 import { useTheme } from 'next-themes';
 import Breadcrumbs, { type BreadcrumbItem } from '@/app/components/Breadcrumbs';
 import GlobalSearchDialog from '@/app/components/GlobalSearchDialog';
+import { getRestClientOptions, listMyTenants, type TenantSchema } from '@lib/api/rest-client';
+import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
+import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
+import { TenantSelectionProvider } from '@/app/contexts/TenantSelectionContext';
 
 const SIDEBAR_WIDTH = 280;
 const SIDEBAR_COLLAPSED_WIDTH = 72;
@@ -21,13 +25,18 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = 'objectified:dashboard:sidebarCollapsed';
 type SessionUser = { is_administrator?: boolean };
 
 export default function DashboardShell({ children }: { children: ReactNode }) {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [tenants, setTenants] = useState<TenantSchema[]>([]);
+  const [tenantsLoading, setTenantsLoading] = useState(true);
   const { theme, resolvedTheme } = useTheme();
+  const { selectedTenantId, setSelectedTenantId } = usePersistedTenantSelection(tenants);
+  const tenantPermissions = useTenantPermissions(selectedTenantId);
+  const accessToken = (session as { accessToken?: string } | null)?.accessToken ?? null;
 
   useEffect(() => {
     setMounted(true);
@@ -68,6 +77,38 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const isAdministrator = Boolean(
     (session?.user as SessionUser | undefined)?.is_administrator
   );
+  const navRole: 'admin' | 'tenant-admin' | 'member' = isAdministrator
+    ? 'admin'
+    : tenantPermissions.permissions?.is_tenant_admin
+      ? 'tenant-admin'
+      : 'member';
+  const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId) ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTenants() {
+      if (status !== 'authenticated' || !session) {
+        if (!cancelled) { setTenants([]); setTenantsLoading(false); }
+        return;
+      }
+      if (!accessToken) {
+        if (!cancelled) { setTenants([]); setTenantsLoading(false); }
+        return;
+      }
+      if (!cancelled) setTenantsLoading(true);
+      try {
+        const opts = getRestClientOptions(accessToken ? { accessToken } : null);
+        const list = await listMyTenants(opts);
+        if (!cancelled) { setTenants(list); setTenantsLoading(false); }
+      } catch {
+        if (!cancelled) { setTenants([]); setTenantsLoading(false); }
+      }
+    }
+    void loadTenants();
+    return () => {
+      cancelled = true;
+    };
+  }, [status, accessToken]);
 
   const breadcrumbs = (() => {
     if (pathname === '/dashboard') return [{ label: 'Dashboard', href: '/dashboard' }] satisfies BreadcrumbItem[];
@@ -110,6 +151,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   }, []);
 
   return (
+    <TenantSelectionProvider value={{ tenants, tenantsLoading, selectedTenantId, setSelectedTenantId }}>
     <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:bg-white print:text-black">
       <header className="flex items-center justify-between h-14 px-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 print:hidden">
         <div className="flex items-center gap-4">
@@ -158,6 +200,45 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {tenants.length > 1 && (
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                  aria-label="Switch tenant"
+                >
+                  <Building2 className="h-4 w-4" />
+                  <span className="max-w-[160px] truncate">
+                    {selectedTenant?.name ?? 'Select tenant'}
+                  </span>
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  className="min-w-[220px] rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-lg p-1 z-50"
+                  sideOffset={6}
+                  align="end"
+                >
+                  <DropdownMenu.RadioGroup
+                    value={selectedTenantId ?? ''}
+                    onValueChange={(next) => setSelectedTenantId(next || null)}
+                  >
+                    {tenants.map((tenant) => (
+                      <DropdownMenu.RadioItem
+                        key={tenant.id}
+                        value={tenant.id}
+                        className="rounded-md px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800"
+                      >
+                        {tenant.name}
+                      </DropdownMenu.RadioItem>
+                    ))}
+                  </DropdownMenu.RadioGroup>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          )}
           <GlobalSearchDialog />
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
@@ -232,7 +313,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </div>
 
           <DashboardSideNav
-            isAdministrator={isAdministrator}
+            role={navRole}
+            selectedTenantId={selectedTenantId}
             collapsed={sidebarCollapsed}
           />
         </aside>
@@ -259,7 +341,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
                 </Dialog.Close>
               </div>
               <DashboardSideNav
-                isAdministrator={isAdministrator}
+                role={navRole}
+                selectedTenantId={selectedTenantId}
                 onNavigate={closeSidebar}
                 collapsed={false}
               />
@@ -278,5 +361,6 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         onClose={() => setShowThemeSelector(false)}
       />
     </div>
+    </TenantSelectionProvider>
   );
 }
