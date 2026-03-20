@@ -206,6 +206,27 @@ def test_tenant_catalog_visibility_filter(client):
         assert body["projects"][0]["versions"][0]["visibility"] == "public"
 
 
+def test_tenant_catalog_environment_filters_live_versions(client):
+    """When environment is set, only the live promoted version is returned."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_tenant_row()],
+            [_project_row()],
+            [_version_row()],
+            [_class_row()],
+        ]
+        r = client.get(f"/v1/catalog/tenants/{_TENANT_ID}?environment=dev")
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body["projects"]) == 1
+        assert len(body["projects"][0]["versions"]) == 1
+        assert body["projects"][0]["versions"][0]["id"] == _VERSION_ID
+
+        # Ensure the versions query included the environment value.
+        versions_call = mock_db.execute_query.call_args_list[2]
+        assert "dev" in versions_call[0][1]
+
+
 # ---------------------------------------------------------------------------
 # GET /v1/catalog/projects/{project_id}/versions
 # ---------------------------------------------------------------------------
@@ -259,6 +280,24 @@ def test_catalog_project_versions_pagination(client):
         # Verify pagination params were passed to the version query
         version_call = mock_db.execute_query.call_args_list[1]
         assert version_call[0][1] == (_PROJECT_ID, 5, 10)
+
+
+def test_catalog_project_versions_environment_filters_live_version(client):
+    """When environment is set, only the live promoted version is returned."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+            [_version_row()],
+            [_class_row()],
+        ]
+        r = client.get(f"/v1/catalog/projects/{_PROJECT_ID}/versions?environment=dev")
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) == 1
+        assert body[0]["id"] == _VERSION_ID
+
+        version_call = mock_db.execute_query.call_args_list[1]
+        assert "dev" in version_call[0][1]
 
 
 def test_tenant_catalog_invalid_visibility(client):

@@ -228,6 +228,49 @@ export function openApiOptionsToQuery(opts: OpenApiExportOptions): Record<string
   return q;
 }
 
+export type SchemaEnvironment = "dev" | "staging" | "prod";
+
+export interface SchemaPromotionPayload {
+  metadata?: Record<string, unknown>;
+  message?: string | null;
+}
+
+export interface SchemaPromotionResponse {
+  promotion: {
+    id: string;
+    project_id: string;
+    environment: SchemaEnvironment;
+    from_version_id?: string | null;
+    to_version_id?: string | null;
+    promoted_by?: string | null;
+    created_at: string;
+    metadata: Record<string, unknown>;
+  };
+  live_version: {
+    project_id: string;
+    environment: SchemaEnvironment;
+    version_id?: string | null;
+    promoted_by?: string | null;
+    promoted_at?: string | null;
+    metadata: Record<string, unknown>;
+  };
+}
+
+export async function promoteVersion(
+  cfg: CliConfig,
+  versionId: string,
+  environment: SchemaEnvironment,
+  payload: SchemaPromotionPayload
+): Promise<SchemaPromotionResponse> {
+  return apiJson<SchemaPromotionResponse>(
+    cfg,
+    "POST",
+    `/versions/${versionId}/promote`,
+    payload,
+    { environment }
+  );
+}
+
 export async function exportOpenApiDocument(
   cfg: CliConfig,
   versionId: string,

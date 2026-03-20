@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.21
+  version: 1.0.22
 paths:
   /v1/auth/login:
     post:
@@ -65,6 +65,16 @@ paths:
           default: 0
           title: Offset
         description: Number of results to skip
+      - name: environment
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/SchemaEnvironment'
+          - type: 'null'
+          description: 'Optional: only count tenants with a live schema in this environment.'
+          title: Environment
+        description: 'Optional: only count tenants with a live schema in this environment.'
       - name: authorization
         in: header
         required: false
@@ -127,6 +137,17 @@ paths:
           title: Visibility
         description: 'Filter versions by visibility: ''public'' or ''private''. Omit
           for all.'
+      - name: environment
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/SchemaEnvironment'
+          - type: 'null'
+          description: 'Optional: only include the live promoted version for this
+            environment.'
+          title: Environment
+        description: 'Optional: only include the live promoted version for this environment.'
       - name: authorization
         in: header
         required: false
@@ -192,6 +213,16 @@ paths:
           default: 0
           title: Offset
         description: Number of results to skip
+      - name: environment
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/SchemaEnvironment'
+          - type: 'null'
+          description: 'Optional: only return the live promoted version for this environment.'
+          title: Environment
+        description: 'Optional: only return the live promoted version for this environment.'
       - name: authorization
         in: header
         required: false
@@ -256,6 +287,17 @@ paths:
           default: 0
           title: Offset
         description: Number of tenant entries to skip
+      - name: environment
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/SchemaEnvironment'
+          - type: 'null'
+          description: 'Optional: only return the live promoted versions for this
+            environment.'
+          title: Environment
+        description: 'Optional: only return the live promoted versions for this environment.'
       responses:
         '200':
           description: Successful Response
@@ -4419,6 +4461,203 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/promote:
+    post:
+      tags:
+      - Schema Promotions
+      summary: Promote a version to an environment live target
+      description: Set the given (published) version as the live schema for an environment
+        (e.g. dev -> staging -> prod). Emits `schema.promoted` webhooks.
+      operationId: promote_version_v1_versions__version_id__promote_post
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: environment
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/SchemaEnvironment'
+          description: Target deployment environment.
+        description: Target deployment environment.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SchemaPromotionRequest'
+              default:
+                metadata: {}
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaPromoteResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/environments/{environment}/live-version:
+    get:
+      tags:
+      - Schema Promotions
+      summary: Get the live schema version for a project environment
+      description: Return the currently promoted live version for a project environment.
+      operationId: get_live_version_for_project_environment_v1_tenants__tenant_id__projects__project_id__environments__environment__live_version_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: environment
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/SchemaEnvironment'
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaLiveVersionDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/promotions:
+    get:
+      tags:
+      - Schema Promotions
+      summary: List schema promotions (metadata)
+      description: Return schema promotion records for a project, optionally filtered
+        by environment.
+      operationId: list_schema_promotions_v1_tenants__tenant_id__projects__project_id__promotions_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: environment
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/SchemaEnvironment'
+          - type: 'null'
+          description: Optional environment filter.
+          title: Environment
+        description: Optional environment filter.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          description: Max results to return
+          default: 50
+          title: Limit
+        description: Max results to return
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          description: Number of results to skip
+          default: 0
+          title: Offset
+        description: Number of results to skip
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SchemaPromotionSchema'
+                title: Response List Schema Promotions V1 Tenants  Tenant Id  Projects  Project
+                  Id  Promotions Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/validate/json-schema:
     post:
       tags:
@@ -7328,6 +7567,131 @@ components:
           title: Metadata
       type: object
       title: RoleUpdate
+    SchemaEnvironment:
+      type: string
+      enum:
+      - dev
+      - staging
+      - prod
+      title: SchemaEnvironment
+      description: Deployment environments for schema promotion.
+    SchemaLiveVersionDetail:
+      properties:
+        live_version:
+          $ref: '#/components/schemas/SchemaLiveVersionSchema'
+        version:
+          anyOf:
+          - $ref: '#/components/schemas/VersionSchema'
+          - type: 'null'
+      type: object
+      required:
+      - live_version
+      title: SchemaLiveVersionDetail
+      description: Live version detail including the resolved promoted Version payload.
+    SchemaLiveVersionSchema:
+      properties:
+        project_id:
+          type: string
+          title: Project Id
+        environment:
+          $ref: '#/components/schemas/SchemaEnvironment'
+        version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Version Id
+        promoted_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Promoted By
+        promoted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Promoted At
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - project_id
+      - environment
+      title: SchemaLiveVersionSchema
+      description: Response schema for objectified.schema_live_version.
+    SchemaPromoteResponse:
+      properties:
+        promotion:
+          $ref: '#/components/schemas/SchemaPromotionSchema'
+        live_version:
+          $ref: '#/components/schemas/SchemaLiveVersionSchema'
+      type: object
+      required:
+      - promotion
+      - live_version
+      title: SchemaPromoteResponse
+      description: Response model for POST /versions/{version_id}/promote.
+    SchemaPromotionRequest:
+      properties:
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Arbitrary promotion metadata stored with the live version and
+            promotion record.
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message
+          description: Optional human-readable message; stored into metadata under
+            the `message` key.
+      type: object
+      title: SchemaPromotionRequest
+      description: Request body for POST /versions/{version_id}/promote.
+    SchemaPromotionSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        project_id:
+          type: string
+          title: Project Id
+        environment:
+          $ref: '#/components/schemas/SchemaEnvironment'
+        from_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: From Version Id
+        to_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: To Version Id
+        promoted_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Promoted By
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - id
+      - project_id
+      - environment
+      - created_at
+      title: SchemaPromotionSchema
+      description: Response schema for objectified.schema_promotion.
     SchemaValidationRequest:
       properties:
         schema:

@@ -17,6 +17,7 @@ SCHEMA_WEBHOOK_EVENT_TYPES = frozenset(
     {
         "schema.committed",
         "schema.published",
+        "schema.promoted",
         "schema.branch_created",
     }
 )

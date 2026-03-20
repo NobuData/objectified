@@ -11,9 +11,11 @@ import {
   loadConfigFromEnv,
   normalizeBaseUrl,
   openApiOptionsToQuery,
+  promoteVersion,
   pullVersion,
   pushVersion,
   readJsonFile,
+  type SchemaPromotionPayload,
   type OpenApiExportOptions,
   type VersionCommitPayload,
 } from './client';
@@ -94,6 +96,44 @@ export function buildProgram(): Command {
         die(e);
       }
     });
+
+  program
+    .command('promote')
+    .description('POST /versions/{versionId}/promote — set live schema version for an environment')
+    .argument('<versionId>', 'Version UUID')
+    .requiredOption('--environment <env>', 'Target environment: dev|staging|prod')
+    .option('--metadata-file <path>', 'JSON file with promotion metadata')
+    .option('--message <text>', 'Optional promotion message (stored in metadata)')
+    .option('--api-url <url>', 'Override OBJECTIFIED_API_URL (base; /v1 added if missing)')
+    .action(
+      async (
+        versionId,
+        opts: {
+          apiUrl?: string;
+          environment: string;
+          metadataFile?: string;
+          message?: string;
+        }
+      ) => {
+        try {
+          const cfg = applyUrlOverride(loadConfigFromEnv(), opts.apiUrl);
+          const payload: SchemaPromotionPayload = {};
+
+          if (opts.metadataFile) {
+            const meta = readJsonFile(opts.metadataFile) as Record<string, unknown>;
+            payload.metadata = meta;
+          }
+          if (opts.message) {
+            payload.message = opts.message;
+          }
+
+          const res = await promoteVersion(cfg, versionId, opts.environment as any, payload);
+          writeJson(res, '-');
+        } catch (e) {
+          die(e);
+        }
+      }
+    );
 
   const exportCmd = program.command('export').description('Download generated documents from the API');
 

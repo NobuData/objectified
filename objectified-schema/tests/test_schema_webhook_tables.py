@@ -125,6 +125,32 @@ class TestSchemaWebhookTables:
                 (wid,),
             )
 
+    def test_delivery_schema_promoted_allowed(self, conn):
+        aid = _insert_account(conn, "prom")
+        tid = _insert_tenant(conn, "prom")
+        pid = _insert_project(conn, tid, aid, "prom")
+        wid = conn.fetchone(
+            """
+            INSERT INTO objectified.schema_webhook (project_id, url, events)
+            VALUES (%s, 'https://example.com/hook', ARRAY['schema.committed']::TEXT[])
+            RETURNING id
+            """,
+            (pid,),
+        )["id"]
+
+        # event_type constraint should allow 'schema.promoted'
+        did = conn.fetchone(
+            """
+            INSERT INTO objectified.schema_webhook_delivery
+                (webhook_id, event_type, payload, status)
+            VALUES (%s, 'schema.promoted', '{}'::jsonb, 'pending')
+            RETURNING id
+            """,
+            (wid,),
+        )["id"]
+
+        assert did is not None
+
     def test_delivery_processing_status_allowed(self, conn):
         aid = _insert_account(conn, "proc")
         tid = _insert_tenant(conn, "proc")
