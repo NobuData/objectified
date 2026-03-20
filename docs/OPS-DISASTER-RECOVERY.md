@@ -31,12 +31,19 @@ Other tables (`tenant`, `account`, `project`, `version`, `class`, `property`, `c
 Use a **custom-format** dump for flexibility and parallel restore. Replace connection parameters and paths for your environment.
 
 ```bash
-# Full cluster or single DB — example: single database containing the objectified schema
+# Single-database dump — pg_dump targets one database only.
+# Replace $DATABASE_URL with the connection string for the database that contains the objectified schema.
 pg_dump \
   --format=custom \
   --file="objectified-$(date -u +%Y%m%dT%H%M%SZ).dump" \
   --dbname="$DATABASE_URL"
 ```
+
+> **Full-cluster backup**: `pg_dump` backs up a **single database**. To back up all databases and roles in a cluster, use `pg_dumpall` instead:
+>
+> ```bash
+> pg_dumpall --file="objectified-cluster-$(date -u +%Y%m%dT%H%M%SZ).sql"
+> ```
 
 **Schedule** dumps according to your RPO (recovery point objective). Store artifacts in encrypted, replicated object storage.
 
