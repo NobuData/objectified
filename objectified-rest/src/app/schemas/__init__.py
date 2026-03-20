@@ -13,6 +13,14 @@ from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
 )
+from app.schemas.catalog import (
+    CatalogClassSummary,
+    CatalogProjectEntry,
+    CatalogProjectSummary,
+    CatalogTenantEntry,
+    CatalogTenantSummary,
+    CatalogVersionSummary,
+)
 from app.schemas.class_model import ClassCreate, ClassSchema, ClassUpdate
 from app.schemas.class_property import (
     ClassPropertyCreate,
@@ -103,4 +111,10 @@ __all__ = [
     "RolePermissionsUpdate",
     "AccountRoleAssignmentCreate",
     "EffectivePermissionsResponse",
+    "CatalogClassSummary",
+    "CatalogProjectEntry",
+    "CatalogProjectSummary",
+    "CatalogTenantEntry",
+    "CatalogTenantSummary",
+    "CatalogVersionSummary",
 ]

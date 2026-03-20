@@ -26,6 +26,10 @@ Routes are split across focused modules:
                                    schema-webhook-deliveries
   - app.routes.validate          → /v1/validate/json-schema,
                                    /v1/validate/openapi-document
+  - app.routes.catalog           → /v1/catalog/tenants,
+                                   /v1/catalog/tenants/{id},
+                                   /v1/catalog/projects/{id}/versions,
+                                   /v1/catalog/public
 
 This module assembles them under the /v1 prefix and re-exports the password
 helpers so that existing imports (e.g. in tests) continue to work.
@@ -35,6 +39,7 @@ from fastapi import APIRouter
 
 from app.routes.api_keys import router as _api_keys_router
 from app.routes.auth import router as _auth_router
+from app.routes.catalog import router as _catalog_router
 from app.routes.class_properties import router as _class_properties_router
 from app.routes.classes import router as _classes_router
 from app.routes.export import router as _export_router
@@ -53,6 +58,7 @@ from app.routes.versions import router as _versions_router
 
 router = APIRouter(prefix="/v1")
 router.include_router(_auth_router)
+router.include_router(_catalog_router)
 router.include_router(_class_properties_router)
 router.include_router(_classes_router)
 router.include_router(_export_router)
