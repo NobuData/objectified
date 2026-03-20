@@ -1,0 +1,32 @@
+{
+  "name": "objectified-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Developer CLI for Objectified: pull/push schema, export OpenAPI, CI codegen hooks",
+  "bin": {
+    "objectified": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "jest --verbose"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.2.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.3.3",
+    "jest": "^30.2.0",
+    "ts-jest": "29.4.6",
+    "typescript": "^5.9.3"
+  }
+}
