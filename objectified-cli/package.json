@@ -1,6 +1,6 @@
 {
   "name": "objectified-cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Developer CLI for Objectified: pull/push schema, export OpenAPI, CI codegen hooks",
   "bin": {
