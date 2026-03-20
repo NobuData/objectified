@@ -22,6 +22,8 @@ Routes are split across focused modules:
                                    /v1/versions/{version_id}/push,
                                    /v1/versions/{version_id}/pull,
                                    /v1/versions/{version_id}/merge
+  - app.routes.schema_webhooks   → /v1/tenants/{id}/projects/{id}/schema-webhooks,
+                                   schema-webhook-deliveries
   - app.routes.validate          → /v1/validate/json-schema,
                                    /v1/validate/openapi-document
 
@@ -40,10 +42,11 @@ from app.routes.import_routes import router as _import_router
 from app.routes.projects import router as _projects_router
 from app.routes.properties import router as _properties_router
 from app.routes.rbac import router as _rbac_router
+from app.routes.schema_webhooks import router as _schema_webhooks_router
 from app.routes.sso import router as _sso_router
-from app.routes.users import router as _users_router
-from app.routes.users import _hash_password, _verify_password  # noqa: F401 — re-export
 from app.routes.tenants import router as _tenants_router
+from app.routes.users import _hash_password, _verify_password  # noqa: F401 — re-export
+from app.routes.users import router as _users_router
 from app.routes.validate import router as _validate_router
 from app.routes.version_commits import router as _version_commits_router
 from app.routes.versions import router as _versions_router
@@ -61,6 +64,7 @@ router.include_router(_rbac_router)
 router.include_router(_api_keys_router)
 router.include_router(_projects_router)
 router.include_router(_properties_router)
+router.include_router(_schema_webhooks_router)
 router.include_router(_validate_router)
 router.include_router(_version_commits_router)
 router.include_router(_versions_router)

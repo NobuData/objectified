@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.19
+  version: 1.0.20
 paths:
   /v1/auth/login:
     post:
@@ -3782,6 +3782,405 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/schema-webhooks:
+    get:
+      tags:
+      - Schema Webhooks
+      summary: List schema webhooks for a project
+      description: Return active webhook endpoints configured for schema events on
+        this project.
+      operationId: list_schema_webhooks_v1_tenants__tenant_id__projects__project_id__schema_webhooks_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SchemaWebhookSchema'
+                title: Response List Schema Webhooks V1 Tenants  Tenant Id  Projects  Project
+                  Id  Schema Webhooks Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Schema Webhooks
+      summary: Create a schema webhook
+      description: Register a URL to receive POST requests when schema events occur
+        (commit, publish, branch). Optional ``secret`` enables HMAC-SHA256 signing
+        via the X-Objectified-Signature-256 header.
+      operationId: create_schema_webhook_v1_tenants__tenant_id__projects__project_id__schema_webhooks_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SchemaWebhookCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaWebhookSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/schema-webhooks/{webhook_id}:
+    get:
+      tags:
+      - Schema Webhooks
+      summary: Get a schema webhook
+      operationId: get_schema_webhook_v1_tenants__tenant_id__projects__project_id__schema_webhooks__webhook_id__get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: webhook_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Webhook Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaWebhookSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Schema Webhooks
+      summary: Update a schema webhook
+      operationId: patch_schema_webhook_v1_tenants__tenant_id__projects__project_id__schema_webhooks__webhook_id__patch
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: webhook_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Webhook Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SchemaWebhookUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaWebhookSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Schema Webhooks
+      summary: Delete a schema webhook
+      operationId: delete_schema_webhook_v1_tenants__tenant_id__projects__project_id__schema_webhooks__webhook_id__delete
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: webhook_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Webhook Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/schema-webhook-deliveries:
+    get:
+      tags:
+      - Schema Webhooks
+      summary: List recent schema webhook deliveries
+      description: Delivery queue and history for webhooks on this project (newest
+        first).
+      operationId: list_schema_webhook_deliveries_v1_tenants__tenant_id__projects__project_id__schema_webhook_deliveries_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SchemaWebhookDeliverySchema'
+                title: Response List Schema Webhook Deliveries V1 Tenants  Tenant
+                  Id  Projects  Project Id  Schema Webhook Deliveries Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/schema-webhook-deliveries/process:
+    post:
+      tags:
+      - Schema Webhooks
+      summary: Process pending schema webhook deliveries
+      description: Attempt HTTP delivery for pending rows (with retries and backoff).
+        Intended for periodic invocation by automation or a worker.
+      operationId: process_schema_webhook_deliveries_endpoint_v1_tenants__tenant_id__projects__project_id__schema_webhook_deliveries_process_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SchemaWebhookProcessRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaWebhookProcessResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/validate/json-schema:
     post:
       tags:
@@ -6570,6 +6969,242 @@ components:
       - errors
       title: SchemaValidationResponse
       description: Response body for schema validation endpoint.
+    SchemaWebhookCreate:
+      properties:
+        url:
+          type: string
+          minLength: 1
+          title: Url
+          description: HTTPS (or HTTP) URL to POST event payloads to.
+        secret:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Secret
+          description: Optional shared secret; when set, requests include X-Objectified-Signature-256
+            (sha256 HMAC of body).
+        events:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Events
+          description: Event types to receive. Defaults to all known schema events.
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+      type: object
+      required:
+      - url
+      title: SchemaWebhookCreate
+      description: Create a project-scoped schema webhook.
+    SchemaWebhookDeliverySchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        webhook_id:
+          type: string
+          title: Webhook Id
+        event_type:
+          type: string
+          title: Event Type
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        status:
+          type: string
+          title: Status
+        attempts:
+          type: integer
+          title: Attempts
+        max_attempts:
+          type: integer
+          title: Max Attempts
+        next_attempt_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Next Attempt At
+        last_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Error
+        http_status:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Http Status
+        delivered_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Delivered At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+      type: object
+      required:
+      - id
+      - webhook_id
+      - event_type
+      - payload
+      - status
+      - attempts
+      - max_attempts
+      - created_at
+      title: SchemaWebhookDeliverySchema
+      description: Queued or completed webhook delivery.
+    SchemaWebhookProcessRequest:
+      properties:
+        limit:
+          type: integer
+          maximum: 200.0
+          minimum: 1.0
+          title: Limit
+          description: Maximum deliveries to attempt in this call.
+          default: 25
+      type: object
+      title: SchemaWebhookProcessRequest
+      description: Request body for processing pending deliveries.
+    SchemaWebhookProcessResponse:
+      properties:
+        attempted:
+          type: integer
+          title: Attempted
+        delivered:
+          type: integer
+          title: Delivered
+        failed:
+          type: integer
+          title: Failed
+      type: object
+      required:
+      - attempted
+      - delivered
+      - failed
+      title: SchemaWebhookProcessResponse
+      description: Summary after processing pending deliveries.
+    SchemaWebhookSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        project_id:
+          type: string
+          title: Project Id
+        url:
+          type: string
+          title: Url
+        events:
+          items:
+            type: string
+          type: array
+          title: Events
+        enabled:
+          type: boolean
+          title: Enabled
+        has_secret:
+          type: boolean
+          title: Has Secret
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+      type: object
+      required:
+      - id
+      - project_id
+      - url
+      - events
+      - enabled
+      - has_secret
+      - created_at
+      title: SchemaWebhookSchema
+      description: Webhook configuration returned by the API (never includes raw secret).
+    SchemaWebhookUpdate:
+      properties:
+        url:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Url
+        secret:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Secret
+          description: Set a new secret, or pass an empty string to clear signing.
+        events:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Events
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+      type: object
+      title: SchemaWebhookUpdate
+      description: Patchable fields for a schema webhook.
     SsoProviderCreate:
       properties:
         tenant_id:
