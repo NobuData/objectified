@@ -108,7 +108,12 @@ def test_promote_version_creates_live_mapping_and_emits_webhook(client):
 
 def test_get_live_version_returns_null_when_unpromoted(client):
     with mock_db_all() as mock_db:
-        mock_db.execute_query.return_value = []
+        # Handler order: _assert_tenant_exists, _assert_project_exists, then live-version query.
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+            [],
+        ]
         r = client.get(
             f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/environments/dev/live-version"
         )
@@ -121,31 +126,34 @@ def test_get_live_version_returns_null_when_unpromoted(client):
 def test_get_live_version_returns_version_payload_when_present(client):
     with mock_db_all() as mock_db:
         vr = _version_row()
-        mock_db.execute_query.return_value = [
-            {
-                "project_id": _PROJECT_ID,
-                "environment": "dev",
-                "version_id": _VERSION_ID,
-                "promoted_by": _ACCOUNT_ID,
-                "promoted_at": _NOW,
-                "metadata": {},
-                "v_id": _VERSION_ID,
-                "v_project_id": _PROJECT_ID,
-                "creator_id": _ACCOUNT_ID,
-                "v_name": vr["name"],
-                "v_description": vr["description"],
-                "enabled": vr["enabled"],
-                "published": vr["published"],
-                "visibility": vr["visibility"],
-                "v_metadata": vr["metadata"],
-                "v_created_at": vr["created_at"].isoformat(),
-                "v_updated_at": vr["updated_at"],
-                "v_deleted_at": vr["deleted_at"],
-                "v_published_at": vr["published_at"].isoformat(),
-                "change_log": vr["change_log"] if "change_log" in vr else None,
-                "code_generation_tag": vr["code_generation_tag"],
-                "source_version_id": vr["source_version_id"],
-            }
+        join_row = {
+            "project_id": _PROJECT_ID,
+            "environment": "dev",
+            "version_id": _VERSION_ID,
+            "promoted_by": _ACCOUNT_ID,
+            "promoted_at": _NOW,
+            "metadata": {},
+            "v_id": _VERSION_ID,
+            "v_project_id": _PROJECT_ID,
+            "creator_id": _ACCOUNT_ID,
+            "v_name": vr["name"],
+            "v_description": vr["description"],
+            "enabled": vr["enabled"],
+            "published": vr["published"],
+            "visibility": vr["visibility"],
+            "v_metadata": vr["metadata"],
+            "v_created_at": vr["created_at"].isoformat(),
+            "v_updated_at": vr["updated_at"],
+            "v_deleted_at": vr["deleted_at"],
+            "v_published_at": vr["published_at"].isoformat(),
+            "change_log": vr["change_log"] if "change_log" in vr else None,
+            "code_generation_tag": vr["code_generation_tag"],
+            "source_version_id": vr["source_version_id"],
+        }
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+            [join_row],
         ]
 
         r = client.get(
