@@ -23,6 +23,7 @@ import { useCanvasSidebarActionsOptional } from '@/app/contexts/CanvasSidebarAct
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
 import { getStableClassId, type StudioClass } from '@lib/studio/types';
 import { getModifierLabel } from '@lib/studio/useUndoKeyboard';
+import { OPEN_GLOBAL_SEARCH } from '@/app/dashboard/hooks/useDashboardKeyboardShortcuts';
 
 type SearchProjectResult = {
   kind: 'project';
@@ -175,8 +176,8 @@ export default function GlobalSearchDialog({
 
   useEffect(() => {
     const openFromShortcut = () => setOpen(true);
-    window.addEventListener('objectified:open-global-search', openFromShortcut);
-    return () => window.removeEventListener('objectified:open-global-search', openFromShortcut);
+    window.addEventListener(OPEN_GLOBAL_SEARCH, openFromShortcut);
+    return () => window.removeEventListener(OPEN_GLOBAL_SEARCH, openFromShortcut);
   }, []);
 
   // Cmd/Ctrl + K opens the palette.

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as RadioGroup from '@radix-ui/react-radio-group';
 import { X, Check, Monitor, Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { themes } from '@/app/config/themes';
@@ -189,17 +190,21 @@ export default function ThemeSelector({ isOpen, onClose }: ThemeSelectorProps) {
                   Optional preference for animations and transitions
                 </p>
               </div>
-              <div className="space-y-2 pb-4">
+              <RadioGroup.Root
+                className="space-y-2 pb-4"
+                value={motion.motionPreference}
+                onValueChange={(v) => motion.setMotionPreference(v as MotionPreference)}
+                aria-label="Motion preference"
+              >
                 {motionOptions.map((option) => {
                   const selected = motion.motionPreference === option.id;
                   return (
-                    <button
+                    <RadioGroup.Item
                       key={option.id}
-                      type="button"
-                      onClick={() => motion.setMotionPreference(option.id)}
+                      value={option.id}
                       className={`
                         w-full p-3 rounded-xl border-2 transition-all text-left
-                        hover:shadow-md
+                        hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500
                         ${
                           selected
                             ? 'border-indigo-500 ring-2 ring-indigo-500/20'
@@ -214,10 +219,10 @@ export default function ThemeSelector({ isOpen, onClose }: ThemeSelectorProps) {
                       <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         {option.description}
                       </div>
-                    </button>
+                    </RadioGroup.Item>
                   );
                 })}
-              </div>
+              </RadioGroup.Root>
             </div>
           )}
 

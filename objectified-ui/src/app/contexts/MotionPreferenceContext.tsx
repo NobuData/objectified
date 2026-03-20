@@ -55,10 +55,10 @@ export function MotionPreferenceProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     applyReduceClass(motionPreference);
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || motionPreference !== 'system') return;
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     const onMq = () => {
-      if (motionPreference === 'system') applyReduceClass('system');
+      applyReduceClass('system');
     };
     mq.addEventListener('change', onMq);
     return () => mq.removeEventListener('change', onMq);
