@@ -49,32 +49,30 @@ def enqueue_schema_webhook_deliveries(project_id: str, event_type: str, payload:
         logger.warning("Unknown schema webhook event %s — ignored", event_type)
         return 0
 
-    webhooks = db.execute_query(
+    body = json.dumps(payload, default=str)
+    rows = db.execute_mutation(
         """
-        SELECT id
+        INSERT INTO objectified.schema_webhook_delivery
+            (webhook_id, event_type, payload, status)
+        SELECT
+            id AS webhook_id,
+            %s AS event_type,
+            %s::jsonb AS payload,
+            'pending' AS status
         FROM objectified.schema_webhook
         WHERE project_id = %s
           AND deleted_at IS NULL
           AND enabled = true
           AND %s = ANY(events)
+        RETURNING id
         """,
-        (project_id, event_type),
+        (event_type, body, project_id, event_type),
     )
-    n = 0
-    body = json.dumps(payload, default=str)
-    for wh in webhooks:
-        row = db.execute_mutation(
-            """
-            INSERT INTO objectified.schema_webhook_delivery
-                (webhook_id, event_type, payload, status)
-            VALUES (%s, %s, %s::jsonb, 'pending')
-            RETURNING id
-            """,
-            (str(wh["id"]), event_type, body),
-        )
-        if row:
-            n += 1
-    return n
+    if not rows:
+        return 0
+    if isinstance(rows, list):
+        return len(rows)
+    return 1
 
 
 def _post_delivery(
@@ -121,32 +119,64 @@ def process_pending_schema_webhook_deliveries(*, project_id: str, limit: int) ->
 
     Returns counts: attempted, delivered, failed (fail = one attempt finished without deliver).
     """
-    rows = db.execute_query(
+    rows = db.execute_mutation(
         """
-        SELECT d.id AS delivery_id,
-               d.event_type,
-               d.payload,
-               d.attempts,
-               d.max_attempts,
-               w.url,
-               w.secret,
-               w.project_id
-        FROM objectified.schema_webhook_delivery d
-        INNER JOIN objectified.schema_webhook w ON w.id = d.webhook_id
-        WHERE w.project_id = %s
-          AND w.deleted_at IS NULL
-          AND w.enabled = true
-          AND LOWER(d.status) = 'pending'
-          AND d.attempts < d.max_attempts
-          AND (
-              d.next_attempt_at IS NULL
-              OR d.next_attempt_at <= timezone('utc', clock_timestamp())
-          )
-        ORDER BY d.created_at ASC
-        LIMIT %s
+        WITH pending AS (
+            SELECT d.id AS delivery_id,
+                   d.event_type,
+                   d.payload,
+                   d.attempts,
+                   d.max_attempts,
+                   w.url,
+                   w.secret,
+                   w.project_id
+            FROM objectified.schema_webhook_delivery d
+            INNER JOIN objectified.schema_webhook w ON w.id = d.webhook_id
+            WHERE w.project_id = %s
+              AND w.deleted_at IS NULL
+              AND w.enabled = true
+              AND LOWER(d.status) = 'pending'
+              AND d.attempts < d.max_attempts
+              AND (
+                  d.next_attempt_at IS NULL
+                  OR d.next_attempt_at <= timezone('utc', clock_timestamp())
+              )
+            ORDER BY d.created_at ASC
+            FOR UPDATE OF d SKIP LOCKED
+            LIMIT %s
+        ),
+        claimed AS (
+            UPDATE objectified.schema_webhook_delivery d
+            SET status = 'processing'
+            FROM pending
+            WHERE d.id = pending.delivery_id
+            RETURNING
+                pending.delivery_id,
+                pending.event_type,
+                pending.payload,
+                pending.attempts,
+                pending.max_attempts,
+                pending.url,
+                pending.secret,
+                pending.project_id
+        )
+        SELECT
+            delivery_id,
+            event_type,
+            payload,
+            attempts,
+            max_attempts,
+            url,
+            secret,
+            project_id
+        FROM claimed
         """,
         (project_id, limit),
     )
+    if not rows:
+        rows = []
+    elif not isinstance(rows, list):
+        rows = [rows]
 
     attempted = 0
     delivered = 0

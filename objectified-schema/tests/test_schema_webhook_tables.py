@@ -102,3 +102,52 @@ class TestSchemaWebhookTables:
             (did,),
         )
         assert gone is None
+
+    def test_delivery_invalid_event_type_rejected(self, conn):
+        aid = _insert_account(conn, "evtp")
+        tid = _insert_tenant(conn, "evtp")
+        pid = _insert_project(conn, tid, aid, "evtp")
+        wid = conn.fetchone(
+            """
+            INSERT INTO objectified.schema_webhook (project_id, url, events)
+            VALUES (%s, 'https://example.com/hook', ARRAY['schema.committed']::TEXT[])
+            RETURNING id
+            """,
+            (pid,),
+        )["id"]
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            conn.execute(
+                """
+                INSERT INTO objectified.schema_webhook_delivery
+                    (webhook_id, event_type, payload, status)
+                VALUES (%s, 'unknown.event', '{}'::jsonb, 'pending')
+                """,
+                (wid,),
+            )
+
+    def test_delivery_processing_status_allowed(self, conn):
+        aid = _insert_account(conn, "proc")
+        tid = _insert_tenant(conn, "proc")
+        pid = _insert_project(conn, tid, aid, "proc")
+        wid = conn.fetchone(
+            """
+            INSERT INTO objectified.schema_webhook (project_id, url, events)
+            VALUES (%s, 'https://example.com/hook', ARRAY['schema.committed']::TEXT[])
+            RETURNING id
+            """,
+            (pid,),
+        )["id"]
+        did = conn.fetchone(
+            """
+            INSERT INTO objectified.schema_webhook_delivery
+                (webhook_id, event_type, payload, status)
+            VALUES (%s, 'schema.committed', '{}'::jsonb, 'processing')
+            RETURNING id
+            """,
+            (wid,),
+        )["id"]
+        row = conn.fetchone(
+            "SELECT status FROM objectified.schema_webhook_delivery WHERE id = %s",
+            (did,),
+        )
+        assert row["status"] == "processing"

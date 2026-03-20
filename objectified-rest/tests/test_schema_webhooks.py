@@ -68,6 +68,39 @@ def test_create_schema_webhook_invalid_url(client):
         assert r.status_code == 400
 
 
+def test_create_schema_webhook_private_ip_rejected(client):
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+        ]
+        import socket
+        private_addr = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("192.168.1.1", 0)),
+        ]
+        with patch("app.routes.schema_webhooks.socket.getaddrinfo", return_value=private_addr):
+            r = client.post(
+                f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/schema-webhooks",
+                json={"url": "https://internal.example.com/hook"},
+            )
+        assert r.status_code == 400
+        assert "private" in r.json()["detail"].lower() or "reserved" in r.json()["detail"].lower()
+
+
+def test_create_schema_webhook_credentials_in_url_rejected(client):
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+        ]
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/schema-webhooks",
+            json={"url": "https://user:pass@example.com/hook"},
+        )
+        assert r.status_code == 400
+        assert "credential" in r.json()["detail"].lower()
+
+
 def test_create_schema_webhook_201(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
@@ -75,10 +108,16 @@ def test_create_schema_webhook_201(client):
             [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
         ]
         mock_db.execute_mutation.return_value = _webhook_row()
-        r = client.post(
-            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/schema-webhooks",
-            json={"url": "https://example.com/hook", "events": ["schema.committed"]},
-        )
+        # Simulate DNS resolution returning a public IP (SSRF guard).
+        import socket
+        public_addr = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 0)),
+        ]
+        with patch("app.routes.schema_webhooks.socket.getaddrinfo", return_value=public_addr):
+            r = client.post(
+                f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/schema-webhooks",
+                json={"url": "https://example.com/hook", "events": ["schema.committed"], "secret": "mysecret"},
+            )
         assert r.status_code == 201
         body = r.json()
         assert body["url"] == "https://example.com/hook"
