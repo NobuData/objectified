@@ -37,14 +37,12 @@ class CatalogProjectSummary(BaseModel):
 class CatalogClassSummary(BaseModel):
     """Lightweight class info for catalog responses."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: str
     name: str
     description: str = ""
     schema_: Optional[dict[str, Any]] = Field(None, alias="schema")
-
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class CatalogVersionSummary(BaseModel):
