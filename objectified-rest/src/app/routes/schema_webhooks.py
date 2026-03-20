@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
+import socket
 from typing import Annotated, Any, List, Optional
 from urllib.parse import urlparse
 
@@ -30,6 +32,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Schema Webhooks"])
 
 
+def _is_unsafe_address(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True if the address should be blocked for SSRF prevention."""
+    return (
+        addr.is_loopback
+        or addr.is_private
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_unspecified
+    )
+
+
 def _normalize_webhook_url(url: str) -> str:
     u = url.strip()
     p = urlparse(u)
@@ -37,6 +50,33 @@ def _normalize_webhook_url(url: str) -> str:
         raise HTTPException(status_code=400, detail="Webhook url must use http or https")
     if not p.netloc:
         raise HTTPException(status_code=400, detail="Webhook url must include a host")
+    if p.username or p.password:
+        raise HTTPException(
+            status_code=400,
+            detail="Webhook url must not contain credentials",
+        )
+    hostname = p.hostname or ""
+    if not hostname:
+        raise HTTPException(status_code=400, detail="Webhook url must include a host")
+
+    # Resolve the hostname and reject private/loopback/link-local addresses (SSRF prevention).
+    try:
+        results = socket.getaddrinfo(hostname, None)
+    except OSError:
+        raise HTTPException(status_code=400, detail="Webhook url host could not be resolved")
+
+    for _family, _type, _proto, _canonname, sockaddr in results:
+        addr_str = sockaddr[0]
+        try:
+            addr = ipaddress.ip_address(addr_str)
+        except ValueError:
+            continue
+        if _is_unsafe_address(addr):
+            raise HTTPException(
+                status_code=400,
+                detail="Webhook url must not target a private, loopback, or reserved address",
+            )
+
     return u
 
 
@@ -297,7 +337,8 @@ def delete_schema_webhook(
     row = db.execute_mutation(
         """
         UPDATE objectified.schema_webhook
-        SET deleted_at = timezone('utc', clock_timestamp())
+        SET deleted_at = timezone('utc', clock_timestamp()),
+            enabled = false
         WHERE id = %s
           AND project_id = %s
           AND deleted_at IS NULL
