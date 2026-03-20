@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import DataDesignerPage from '../../src/app/data-designer/page';
 import { DialogProvider } from '../../src/app/components/providers/DialogProvider';
 
@@ -63,7 +63,9 @@ describe('DataDesignerPage', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/main navigation/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Data Designer/i)).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText(/main navigation/i)).getByRole('link', { name: /Data Designer/i })
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(/Select tenant/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Select project/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Select version/i)).toBeInTheDocument();

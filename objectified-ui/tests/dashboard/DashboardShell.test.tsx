@@ -24,6 +24,7 @@ jest.mock('next-auth/react', () => ({
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/dashboard/profile',
+  useRouter: () => ({ push: jest.fn() }),
 }));
 
 jest.mock('next-themes', () => ({

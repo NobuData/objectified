@@ -4,27 +4,53 @@ import type { ReactNode } from 'react';
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
-import { User, UserCircle, PenTool, Menu, X, LayoutDashboard, Palette, Home } from 'lucide-react';
+import { User, UserCircle, PenTool, Menu, X, LayoutDashboard, Palette, Home, ChevronLeft, ChevronRight } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import DashboardSideNav from './DashboardSideNav';
 import ThemeSelector from '@/app/components/theme/ThemeSelector';
 import { useTheme } from 'next-themes';
+import Breadcrumbs, { type BreadcrumbItem } from '@/app/components/Breadcrumbs';
+import GlobalSearchDialog from '@/app/components/GlobalSearchDialog';
 
 const SIDEBAR_WIDTH = 280;
+const SIDEBAR_COLLAPSED_WIDTH = 72;
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'objectified:dashboard:sidebarCollapsed';
 
 type SessionUser = { is_administrator?: boolean };
 
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const { data: session } = useSession();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { theme, resolvedTheme } = useTheme();
 
   useEffect(() => {
     setMounted(true);
+
+    try {
+      const raw = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+      setSidebarCollapsed(raw === '1');
+    } catch {
+      // Ignore localStorage errors (e.g. private browsing quota exceeded)
+    }
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    try {
+      localStorage.setItem(
+        SIDEBAR_COLLAPSED_STORAGE_KEY,
+        sidebarCollapsed ? '1' : '0'
+      );
+    } catch {
+      // Ignore localStorage errors.
+    }
+  }, [mounted, sidebarCollapsed]);
 
   const handleSignOut = () => {
     signOut({ callbackUrl: '/login' });
@@ -43,13 +69,50 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     (session?.user as SessionUser | undefined)?.is_administrator
   );
 
+  const breadcrumbs = (() => {
+    if (pathname === '/dashboard') return [{ label: 'Dashboard', href: '/dashboard' }] satisfies BreadcrumbItem[];
+    if (pathname === '/dashboard/profile') return [{ label: 'Account', href: '/dashboard/profile' }] satisfies BreadcrumbItem[];
+    if (pathname === '/dashboard/users')
+      return [{ label: 'Users', href: '/dashboard/users' }] satisfies BreadcrumbItem[];
+    if (pathname === '/dashboard/projects')
+      return [{ label: 'Projects', href: '/dashboard/projects' }] satisfies BreadcrumbItem[];
+    if (pathname === '/dashboard/versions')
+      return [{ label: 'Versions', href: '/dashboard/versions' }] satisfies BreadcrumbItem[];
+    if (pathname === '/dashboard/publish')
+      return [{ label: 'Publish', href: '/dashboard/publish' }] satisfies BreadcrumbItem[];
+    if (pathname === '/dashboard/published')
+      return [{ label: 'Published', href: '/dashboard/published' }] satisfies BreadcrumbItem[];
+    if (pathname === '/dashboard/schema-workspace')
+      return [
+        { label: 'Schema Workspace', href: '/dashboard/schema-workspace' },
+      ] satisfies BreadcrumbItem[];
+
+    if (pathname === '/dashboard/tenants' || pathname.startsWith('/dashboard/tenants/')) {
+      const crumbs: BreadcrumbItem[] = [
+        { label: 'Tenants', href: '/dashboard/tenants' },
+      ];
+
+      if (pathname.endsWith('/members')) crumbs.push({ label: 'Members' });
+      else if (pathname.endsWith('/administrators')) crumbs.push({ label: 'Administrators' });
+      else if (pathname.endsWith('/sso')) crumbs.push({ label: 'SSO' });
+      else if (pathname === '/dashboard/tenants') crumbs.push({ label: 'Tenants' });
+      return crumbs;
+    }
+
+    return [{ label: 'Dashboard', href: '/dashboard' }] satisfies BreadcrumbItem[];
+  })();
+
   const closeSidebar = useCallback(() => {
     setSidebarOpen(false);
   }, []);
 
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((v) => !v);
+  }, []);
+
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-      <header className="flex items-center justify-between h-14 px-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0">
+    <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:bg-white print:text-black">
+      <header className="flex items-center justify-between h-14 px-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 print:hidden">
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -96,6 +159,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <GlobalSearchDialog />
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button
@@ -142,13 +206,36 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
+      <div className="shrink-0 px-4 py-2 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 print:hidden">
+        <Breadcrumbs items={breadcrumbs} />
+      </div>
+
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <aside
-          className="hidden md:flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"
-          style={{ width: SIDEBAR_WIDTH }}
+          className="hidden md:flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 print:hidden"
+          style={{ width: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH }}
           aria-label="Dashboard navigation"
         >
-          <DashboardSideNav isAdministrator={isAdministrator} />
+          <div className="flex items-center justify-end gap-2 px-2 py-2 border-b border-slate-200 dark:border-slate-700 shrink-0">
+            <button
+              type="button"
+              onClick={toggleSidebarCollapsed}
+              className="p-2 rounded-lg text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+              aria-label={sidebarCollapsed ? 'Expand dashboard sidebar' : 'Collapse dashboard sidebar'}
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {sidebarCollapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+
+          <DashboardSideNav
+            isAdministrator={isAdministrator}
+            collapsed={sidebarCollapsed}
+          />
         </aside>
 
         <Dialog.Root open={sidebarOpen} onOpenChange={setSidebarOpen}>
@@ -175,12 +262,13 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
               <DashboardSideNav
                 isAdministrator={isAdministrator}
                 onNavigate={closeSidebar}
+                collapsed={false}
               />
             </Dialog.Content>
           </Dialog.Portal>
         </Dialog.Root>
 
-        <main className="flex-1 min-w-0 min-h-0 overflow-auto bg-transparent">
+        <main className="flex-1 min-w-0 min-h-0 overflow-auto bg-transparent print:overflow-visible">
           {children}
         </main>
       </div>
