@@ -261,14 +261,14 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 dashboard-print-area">
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <FolderKanban className="h-6 w-6 text-indigo-500" aria-hidden />
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2 print:text-black">
+            <FolderKanban className="h-6 w-6 text-indigo-500 print:text-slate-800" aria-hidden />
             Projects
           </h1>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap print:hidden">
             <label htmlFor="project-tenant-select" className="sr-only">
               Select tenant
             </label>
@@ -316,7 +316,7 @@ export default function ProjectsPage() {
             </button>
           </div>
         </div>
-        <p className="text-slate-600 dark:text-slate-400 text-sm">
+        <p className="text-slate-600 dark:text-slate-400 text-sm print:hidden">
           Manage projects for the selected tenant. Create projects with name,
           slug, description, and optional metadata.
         </p>
@@ -324,7 +324,7 @@ export default function ProjectsPage() {
 
       {error && (
         <div
-          className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm flex items-center gap-2"
+          className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm flex items-center gap-2 print:hidden"
           role="alert"
         >
           <AlertTriangle className="h-4 w-4 flex-shrink-0" />
@@ -344,7 +344,7 @@ export default function ProjectsPage() {
           />
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 print:border-slate-400 print:shadow-none">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left text-slate-700 dark:text-slate-200">
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400">

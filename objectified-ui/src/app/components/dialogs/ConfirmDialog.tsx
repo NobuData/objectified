@@ -55,7 +55,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={(open) => !open && onCancel()}>
+    <Dialog.Root modal open={open} onOpenChange={(open) => !open && onCancel()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
         <Dialog.Content

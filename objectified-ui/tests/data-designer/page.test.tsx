@@ -95,4 +95,17 @@ describe('DataDesignerPage', () => {
     });
     expect(screen.getByRole('tab', { name: /Classes/i })).toBeInTheDocument();
   });
+
+  it('renders skip link targeting the designer main landmark', async () => {
+    renderWithProviders(<DataDesignerPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/main navigation/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('link', { name: /skip to main content/i })).toHaveAttribute(
+      'href',
+      '#data-designer-main-content'
+    );
+    expect(screen.getByRole('main')).toHaveAttribute('id', 'data-designer-main-content');
+  });
 });

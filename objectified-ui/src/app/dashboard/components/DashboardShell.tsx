@@ -5,7 +5,7 @@ import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { User, UserCircle, PenTool, Menu, X, LayoutDashboard, Palette, Home, ChevronLeft, ChevronRight, Building2, ChevronDown } from 'lucide-react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import DashboardSideNav from './DashboardSideNav';
@@ -17,6 +17,7 @@ import { getRestClientOptions, listMyTenants, type TenantSchema } from '@lib/api
 import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
 import { TenantSelectionProvider } from '@/app/contexts/TenantSelectionContext';
+import { useDashboardKeyboardShortcuts } from '@/app/dashboard/hooks/useDashboardKeyboardShortcuts';
 
 const SIDEBAR_WIDTH = 280;
 const SIDEBAR_COLLAPSED_WIDTH = 72;
@@ -27,6 +28,7 @@ type SessionUser = { is_administrator?: boolean };
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const { data: session, status } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
@@ -39,6 +41,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const accessToken = (session as { accessToken?: string } | null)?.accessToken ?? null;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- gate theme label until client mount
     setMounted(true);
 
     try {
@@ -150,9 +153,19 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     setSidebarCollapsed((v) => !v);
   }, []);
 
+  const openMobileNav = useCallback(() => setSidebarOpen(true), []);
+
+  useDashboardKeyboardShortcuts(router, { onOpenMobileNav: openMobileNav });
+
   return (
     <TenantSelectionProvider value={{ tenants, tenantsLoading, selectedTenantId, setSelectedTenantId }}>
-    <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:bg-white print:text-black">
+    <div className="relative flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:bg-white print:text-black">
+      <a
+        href="#dashboard-main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:z-[100] focus:rounded-lg focus:bg-indigo-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+      >
+        Skip to main content
+      </a>
       <header className="flex items-center justify-between h-14 px-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 print:hidden">
         <div className="flex items-center gap-4">
           <button
@@ -170,6 +183,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
               <Link
                 href="/"
+                title="Home (Alt+Shift+H)"
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <Home className="h-4 w-4" />
@@ -177,6 +191,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
               </Link>
               <Link
                 href="/dashboard"
+                title="Dashboard (Alt+Shift+D)"
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <LayoutDashboard className="h-4 w-4" />
@@ -184,6 +199,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
               </Link>
               <Link
                 href="/data-designer"
+                title="Data Designer (Alt+Shift+E)"
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <PenTool className="h-4 w-4" />
@@ -191,6 +207,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
               </Link>
               <Link
                 href="/dashboard/profile"
+                title="Account (Alt+Shift+A)"
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <UserCircle className="h-4 w-4" />
@@ -327,9 +344,9 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
               aria-describedby={undefined}
             >
               <div className="flex items-center justify-between h-14 px-4 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <Dialog.Title className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                   Menu
-                </span>
+                </Dialog.Title>
                 <Dialog.Close asChild>
                   <button
                     type="button"
@@ -350,7 +367,11 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </Dialog.Portal>
         </Dialog.Root>
 
-        <main className="flex-1 min-w-0 min-h-0 overflow-auto bg-transparent print:overflow-visible">
+        <main
+          id="dashboard-main-content"
+          tabIndex={-1}
+          className="flex-1 min-w-0 min-h-0 overflow-auto bg-transparent print:overflow-visible focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-inset dark:focus-visible:ring-offset-slate-900"
+        >
           {children}
         </main>
       </div>

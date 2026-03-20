@@ -550,3 +550,47 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/*
+  Reduced motion: the MotionPreferenceProvider toggles .reduce-motion on <html>
+  (system setting, user “Reduce motion”, or “Full motion” override).
+*/
+html.reduce-motion,
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Dashboard list print layout (projects, versions, etc.) */
+@media print {
+  .dashboard-print-area {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .dashboard-print-area table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11pt;
+  }
+
+  .dashboard-print-area thead {
+    display: table-header-group;
+  }
+
+  .dashboard-print-area tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .dashboard-print-area th,
+  .dashboard-print-area td {
+    border: 1px solid #ccc;
+    padding: 0.35rem 0.5rem;
+    vertical-align: top;
+  }
+}
+

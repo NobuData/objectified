@@ -23,6 +23,7 @@ import { useCanvasSidebarActionsOptional } from '@/app/contexts/CanvasSidebarAct
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
 import { getStableClassId, type StudioClass } from '@lib/studio/types';
 import { getModifierLabel } from '@lib/studio/useUndoKeyboard';
+import { OPEN_GLOBAL_SEARCH } from '@/app/dashboard/hooks/useDashboardKeyboardShortcuts';
 
 type SearchProjectResult = {
   kind: 'project';
@@ -173,6 +174,12 @@ export default function GlobalSearchDialog({
     return () => window.clearTimeout(t);
   }, [open]);
 
+  useEffect(() => {
+    const openFromShortcut = () => setOpen(true);
+    window.addEventListener(OPEN_GLOBAL_SEARCH, openFromShortcut);
+    return () => window.removeEventListener(OPEN_GLOBAL_SEARCH, openFromShortcut);
+  }, []);
+
   // Cmd/Ctrl + K opens the palette.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -239,7 +246,7 @@ export default function GlobalSearchDialog({
         triggerClassName ?? ''
       }`}
       aria-label="Global search"
-      title="Global search (Cmd/Ctrl+K)"
+      title="Global search (⌘/Ctrl+K or Alt+Shift+K)"
     >
       <Search className="h-4 w-4" aria-hidden />
       <span className="hidden sm:inline">Search</span>
@@ -312,7 +319,7 @@ export default function GlobalSearchDialog({
               />
             </div>
             <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Tip: use {modLabel}+K anytime.
+              Tip: use {modLabel}+K or Alt+Shift+K anytime.
             </div>
           </div>
 
