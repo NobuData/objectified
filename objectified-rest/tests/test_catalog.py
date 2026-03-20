@@ -214,8 +214,8 @@ def test_tenant_catalog_visibility_filter(client):
 def test_catalog_project_versions(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
-            # 1. project check
-            [{"id": _PROJECT_ID}],
+            # 1. project check (now includes tenant_id)
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
             # 2. version rows
             [_version_row()],
             # 3. class rows
@@ -239,7 +239,7 @@ def test_catalog_project_versions_not_found(client):
 def test_catalog_project_versions_empty(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
-            [{"id": _PROJECT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
             [],  # no published versions
         ]
         r = client.get(f"/v1/catalog/projects/{_PROJECT_ID}/versions")
@@ -250,7 +250,7 @@ def test_catalog_project_versions_empty(client):
 def test_catalog_project_versions_pagination(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
-            [{"id": _PROJECT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
             [_version_row()],
             [_class_row()],
         ]
@@ -259,6 +259,12 @@ def test_catalog_project_versions_pagination(client):
         # Verify pagination params were passed to the version query
         version_call = mock_db.execute_query.call_args_list[1]
         assert version_call[0][1] == (_PROJECT_ID, 5, 10)
+
+
+def test_tenant_catalog_invalid_visibility(client):
+    """An invalid visibility value must return 422."""
+    r = client.get(f"/v1/catalog/tenants/{_TENANT_ID}?visibility=invalid_value")
+    assert r.status_code == 422
 
 
 # ---------------------------------------------------------------------------

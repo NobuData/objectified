@@ -6,11 +6,16 @@ or API gateways.
 """
 
 import logging
-from typing import Annotated, Any, List, Optional
+from typing import Annotated, Any, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
-from app.auth import require_authenticated
+from app.auth import (
+    _assert_api_key_project_matches,
+    _assert_api_key_tenant_matches,
+    _require_permission_or_403,
+    require_authenticated,
+)
 from app.database import db
 from app.routes.helpers import _not_found
 from app.schemas.catalog import (
@@ -112,6 +117,7 @@ def list_catalog_tenants(
         JOIN objectified.version v ON v.project_id = p.id AND v.deleted_at IS NULL
         WHERE t.deleted_at IS NULL
           AND t.enabled = true
+          AND p.enabled = true
           AND v.published = true
         ORDER BY t.name ASC
         LIMIT %s OFFSET %s
@@ -132,13 +138,21 @@ def list_catalog_tenants(
 )
 def get_tenant_catalog(
     tenant_id: str,
-    visibility: Optional[str] = Query(
+    visibility: Optional[Literal["public", "private"]] = Query(
         None,
         description="Filter versions by visibility: 'public' or 'private'. Omit for all.",
     ),
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> CatalogTenantEntry:
     """Return full catalog for a single tenant."""
+    # Enforce tenant-scoped authorization: caller must be a platform admin,
+    # a tenant-wide API key for this tenant, or a tenant member with schema:read.
+    _assert_api_key_tenant_matches(caller, tenant_id)
+    _require_permission_or_403(
+        caller=caller,
+        tenant_id=tenant_id,
+        permission_key="schema:read",
+    )
     # Verify tenant exists
     tenant_rows = db.execute_query(
         f"SELECT {_TENANT_CATALOG_COLUMNS} FROM objectified.tenant "
@@ -166,7 +180,7 @@ def get_tenant_catalog(
     params: list[Any] = list(project_ids)
     placeholders = ", ".join(["%s"] * len(project_ids))
 
-    if visibility and visibility.lower() in ("public", "private"):
+    if visibility:
         visibility_clause = "AND LOWER(v.visibility) = LOWER(%s)"
         params.append(visibility)
 
@@ -230,13 +244,27 @@ def list_catalog_project_versions(
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[CatalogVersionSummary]:
     """List published versions for a project with classes."""
-    # Verify project exists
+    # Verify project exists and retrieve its tenant_id for authorization
     project_check = db.execute_query(
-        "SELECT id FROM objectified.project WHERE id = %s AND deleted_at IS NULL",
+        "SELECT id, tenant_id FROM objectified.project WHERE id = %s AND deleted_at IS NULL",
         (project_id,),
     )
     if not project_check:
         raise _not_found("Project", project_id)
+
+    project_record = dict(project_check[0])
+    raw_tenant_id = project_record.get("tenant_id")
+    project_tenant_id = str(raw_tenant_id) if raw_tenant_id is not None else ""
+
+    # Enforce that the caller is authorized for the project's tenant
+    _assert_api_key_tenant_matches(caller, project_tenant_id)
+    _assert_api_key_project_matches(caller, project_id)
+    _require_permission_or_403(
+        caller=caller,
+        tenant_id=project_tenant_id,
+        permission_key="schema:read",
+        project_id=project_id,
+    )
 
     version_rows = db.execute_query(
         f"""
