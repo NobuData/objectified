@@ -85,6 +85,30 @@ describe('DashboardSideNav', () => {
     fireEvent.click(screen.getByRole('link', { name: /Projects/i }));
     expect(onNavigate).toHaveBeenCalled();
   });
+
+  it('hides link labels when collapsed=true', () => {
+    render(<DashboardSideNav collapsed />);
+    expect(screen.queryByText('Navigation')).not.toBeInTheDocument();
+    expect(screen.queryByText('Projects')).not.toBeInTheDocument();
+  });
+
+  it('navigation links have aria-label when collapsed=true for screen-reader accessibility', () => {
+    render(<DashboardSideNav collapsed />);
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/dashboard');
+    expect(screen.getByRole('link', { name: 'Projects' })).toHaveAttribute('href', '/dashboard/projects');
+    expect(screen.getByRole('link', { name: 'Tenants' })).toHaveAttribute('href', '/dashboard/tenants');
+  });
+
+  it('navigation links do not have aria-label when collapsed=false', () => {
+    render(<DashboardSideNav collapsed={false} />);
+    // In non-collapsed mode, text labels are visible so aria-label is not needed
+    const dashboardLink = screen.getByRole('link', { name: /Dashboard/i });
+    const projectsLink = screen.getByRole('link', { name: /Projects/i });
+    const tenantsLink = screen.getByRole('link', { name: /Tenants/i });
+    expect(dashboardLink).not.toHaveAttribute('aria-label');
+    expect(projectsLink).not.toHaveAttribute('aria-label');
+    expect(tenantsLink).not.toHaveAttribute('aria-label');
+  });
 });
 
 

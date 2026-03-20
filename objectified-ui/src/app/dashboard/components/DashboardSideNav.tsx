@@ -114,6 +114,7 @@ export default function DashboardSideNav({
                         }
                   }
                   title={collapsed ? item.label : undefined}
+                  aria-label={collapsed ? item.label : undefined}
                 >
                   <Icon
                     size={20}

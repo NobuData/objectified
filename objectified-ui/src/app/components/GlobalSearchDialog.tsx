@@ -16,7 +16,6 @@ import {
   listVersions,
   type ProjectSchema,
   type VersionSchema,
-  type TenantSchema,
 } from '@lib/api/rest-client';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
@@ -65,7 +64,6 @@ export default function GlobalSearchDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [tenants, setTenants] = useState<TenantSchema[]>([]);
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [versions, setVersions] = useState<VersionSchema[]>([]);
 
@@ -132,13 +130,11 @@ export default function GlobalSearchDialog({
         ]);
         setProjects(projList);
         setVersions(verList);
-        setTenants([]);
         return;
       }
 
       // Fallback: no workspace context (e.g. dashboard pages) — use the first tenant.
       const tenantList = await listMyTenants(opts);
-      setTenants(tenantList);
       const fallbackTenant = tenantList[0] ?? null;
       if (!fallbackTenant) {
         setProjects([]);
@@ -158,7 +154,6 @@ export default function GlobalSearchDialog({
       setError(e instanceof Error ? e.message : 'Search failed');
       setProjects([]);
       setVersions([]);
-      setTenants([]);
     } finally {
       setLoading(false);
     }
@@ -278,7 +273,9 @@ export default function GlobalSearchDialog({
         <Dialog.Content
           className="fixed left-1/2 top-[20%] -translate-x-1/2 z-[10051] w-[95vw] max-w-2xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl overflow-hidden"
           aria-label="Global search dialog"
+          aria-describedby={undefined}
         >
+          <Dialog.Title className="sr-only">Global search</Dialog.Title>
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-2 min-w-0">
               <Search className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
