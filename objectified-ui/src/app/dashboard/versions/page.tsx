@@ -319,22 +319,22 @@ export default function VersionsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 dashboard-print-area">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-400/10 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-400/10 flex items-center justify-center print:hidden">
             <GitBranch className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100 print:text-black">
               Versions
             </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-sm text-slate-500 dark:text-slate-400 print:hidden">
               Manage specification versions by project
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 print:hidden">
           <select
             value={selectedTenantId ?? ''}
             onChange={(e) => {
@@ -381,7 +381,7 @@ export default function VersionsPage() {
 
       {error && (
         <div
-          className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm"
+          className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm print:hidden"
           role="alert"
         >
           {error}
@@ -411,7 +411,7 @@ export default function VersionsPage() {
           </button>
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden print:border-slate-400 print:shadow-none">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-800/50">

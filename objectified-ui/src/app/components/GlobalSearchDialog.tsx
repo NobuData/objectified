@@ -173,6 +173,12 @@ export default function GlobalSearchDialog({
     return () => window.clearTimeout(t);
   }, [open]);
 
+  useEffect(() => {
+    const openFromShortcut = () => setOpen(true);
+    window.addEventListener('objectified:open-global-search', openFromShortcut);
+    return () => window.removeEventListener('objectified:open-global-search', openFromShortcut);
+  }, []);
+
   // Cmd/Ctrl + K opens the palette.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -239,7 +245,7 @@ export default function GlobalSearchDialog({
         triggerClassName ?? ''
       }`}
       aria-label="Global search"
-      title="Global search (Cmd/Ctrl+K)"
+      title="Global search (⌘/Ctrl+K or Alt+Shift+K)"
     >
       <Search className="h-4 w-4" aria-hidden />
       <span className="hidden sm:inline">Search</span>
@@ -312,7 +318,7 @@ export default function GlobalSearchDialog({
               />
             </div>
             <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Tip: use {modLabel}+K anytime.
+              Tip: use {modLabel}+K or Alt+Shift+K anytime.
             </div>
           </div>
 

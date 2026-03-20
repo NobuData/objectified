@@ -33,9 +33,11 @@ jest.mock('next-auth/react', () => ({
   signOut: jest.fn(),
 }));
 
+const mockPush = jest.fn();
+
 jest.mock('next/navigation', () => ({
   usePathname: () => '/dashboard/profile',
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockPush }),
 }));
 
 jest.mock('next-themes', () => ({
@@ -73,6 +75,7 @@ describe('DashboardShell', () => {
     useSession.mockReturnValue(mockDefaultSession);
     listMyTenants.mockResolvedValue([]);
     localStorage.clear();
+    mockPush.mockClear();
   });
 
   it('renders header with Dashboard, Data Designer, and Account links', () => {
@@ -137,6 +140,20 @@ describe('DashboardShell', () => {
     );
 
     expect(screen.getByTestId('dashboard-child')).toHaveTextContent('Content');
+  });
+
+  it('renders skip link targeting the main landmark', () => {
+    render(
+      <DashboardShell>
+        <div>Content</div>
+      </DashboardShell>
+    );
+
+    expect(screen.getByRole('link', { name: /skip to main content/i })).toHaveAttribute(
+      'href',
+      '#dashboard-main-content'
+    );
+    expect(screen.getByRole('main')).toHaveAttribute('id', 'dashboard-main-content');
   });
 
   it('does not render tenant switcher when there is only one tenant', async () => {

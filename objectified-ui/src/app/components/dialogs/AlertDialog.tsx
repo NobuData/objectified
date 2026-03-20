@@ -51,7 +51,7 @@ const AlertDialog: React.FC<AlertDialogProps> = ({
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={(open) => !open && onClose()}>
+    <Dialog.Root modal open={open} onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
         <Dialog.Content

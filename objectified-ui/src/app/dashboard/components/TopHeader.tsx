@@ -64,6 +64,7 @@ export default function TopHeader() {
           <nav className="flex items-center gap-1" aria-label="Main navigation">
             <Link
               href="/"
+              title="Home (Alt+Shift+H)"
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <Home className="h-4 w-4" />
@@ -71,6 +72,7 @@ export default function TopHeader() {
             </Link>
             <Link
               href="/dashboard"
+              title="Dashboard (Alt+Shift+D)"
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <LayoutDashboard className="h-4 w-4" />
@@ -78,6 +80,7 @@ export default function TopHeader() {
             </Link>
             <Link
               href="/data-designer"
+              title="Data Designer (Alt+Shift+E)"
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <PenTool className="h-4 w-4" />
@@ -85,6 +88,7 @@ export default function TopHeader() {
             </Link>
             <Link
               href="/dashboard/profile"
+              title="Account (Alt+Shift+A)"
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <UserCircle className="h-4 w-4" />

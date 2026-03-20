@@ -8,6 +8,7 @@ import ThemeRegistry from "@/app/components/theme/ThemeRegistry";
 import { DialogProvider } from "@/app/components/providers/DialogProvider";
 import { ThemeProvider } from "next-themes";
 import { Theme as RadixTheme } from "@radix-ui/themes";
+import { MotionPreferenceProvider } from "@/app/contexts/MotionPreferenceContext";
 
 const inter = Inter({
   subsets: ['latin'],
@@ -39,21 +40,23 @@ export default function RootLayout({
           enableSystem
           storageKey="theme"
         >
-          <RadixTheme
-            accentColor="indigo"
-            grayColor="slate"
-            panelBackground="solid"
-            radius="medium"
-            scaling="100%"
-          >
-            <ThemeRegistry>
-              <SessionWrapper>
-                <DialogProvider>
-                  {children}
-                </DialogProvider>
-              </SessionWrapper>
-            </ThemeRegistry>
-          </RadixTheme>
+          <MotionPreferenceProvider>
+            <RadixTheme
+              accentColor="indigo"
+              grayColor="slate"
+              panelBackground="solid"
+              radius="medium"
+              scaling="100%"
+            >
+              <ThemeRegistry>
+                <SessionWrapper>
+                  <DialogProvider>
+                    {children}
+                  </DialogProvider>
+                </SessionWrapper>
+              </ThemeRegistry>
+            </RadixTheme>
+          </MotionPreferenceProvider>
         </ThemeProvider>
       </body>
     </html>
