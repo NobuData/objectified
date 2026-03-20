@@ -10,6 +10,8 @@ real CRUD/database operations, use a connection pool (e.g.
 psycopg2.pool.ThreadedConnectionPool or async psycopg/asyncpg).
 """
 
+import datetime
+import hashlib
 import logging
 from contextlib import contextmanager
 from typing import Any, Generator, Optional
@@ -160,20 +162,23 @@ class Database:
                 logger.exception("Transaction rollback failed: %s", rollback_err)
             raise
 
-    def validate_api_key(self, api_key: str) -> Optional[dict[str, Any]]:
+    def validate_api_key(
+        self,
+        api_key: str,
+        *,
+        record_usage: bool = True,
+    ) -> Optional[dict[str, Any]]:
         """
         Validate an API key and return tenant and account information.
 
         Looks up the SHA-256 hash of the raw key in objectified.api_key.
         Returns None if the key is unknown, expired, disabled, or revoked.
 
-        On success, records the last_used timestamp and returns a dict with:
+        On success, optionally records last_used and returns a dict with:
             tenant_id, tenant_slug, tenant_name, account_id, key_id,
-            scope_role, project_id (optional UUID string)
+            scope_role, project_id (optional UUID string),
+            rate_limit_requests_per_minute (optional int: key override or tenant default)
         """
-        import hashlib
-        import datetime
-
         if not api_key or len(api_key) < 12:
             return None
 
@@ -188,6 +193,8 @@ class Database:
                    ak.expires_at,
                    ak.scope_role,
                    ak.project_id,
+                   ak.rate_limit_requests_per_minute AS api_key_rate_limit_rpm,
+                   t.rate_limit_requests_per_minute AS tenant_rate_limit_rpm,
                    t.slug AS tenant_slug,
                    t.name AS tenant_name
             FROM objectified.api_key ak
@@ -216,23 +223,34 @@ class Database:
             if now > expires_at:
                 return None
 
-        # Best-effort update of last_used; do not fail validation on error
-        try:
-            self.execute_mutation(
-                """
-                UPDATE objectified.api_key
-                SET last_used = timezone('utc', clock_timestamp())
-                WHERE id = %s
-                """,
-                (row["key_id"],),
-                returning=False,
-            )
-        except Exception:
-            logger.warning("validate_api_key: failed to update last_used for key %s", row["key_id"])
+        if record_usage:
+            # Best-effort update of last_used; do not fail validation on error
+            try:
+                self.execute_mutation(
+                    """
+                    UPDATE objectified.api_key
+                    SET last_used = timezone('utc', clock_timestamp())
+                    WHERE id = %s
+                    """,
+                    (row["key_id"],),
+                    returning=False,
+                )
+            except Exception:
+                logger.warning(
+                    "validate_api_key: failed to update last_used for key %s", row["key_id"]
+                )
 
         scope_role_raw = row.get("scope_role") or "full"
         scope_role = str(scope_role_raw).lower()
         proj = row.get("project_id")
+        key_rpm = row.get("api_key_rate_limit_rpm")
+        tenant_rpm = row.get("tenant_rate_limit_rpm")
+        if key_rpm is not None:
+            eff_rpm: Optional[int] = int(key_rpm)
+        elif tenant_rpm is not None:
+            eff_rpm = int(tenant_rpm)
+        else:
+            eff_rpm = None
         return {
             "key_id": str(row["key_id"]),
             "tenant_id": str(row["tenant_id"]),
@@ -241,6 +259,7 @@ class Database:
             "account_id": str(row["account_id"]),
             "scope_role": scope_role,
             "project_id": str(proj) if proj is not None else None,
+            "rate_limit_requests_per_minute": eff_rpm,
         }
 
 

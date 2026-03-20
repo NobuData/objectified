@@ -71,14 +71,24 @@ When **`OTEL_EXPORTER_OTLP_ENDPOINT`** is set to an OTLP **HTTP** traces URL (fo
 
 If the endpoint is set but the `otel` group is not installed, a warning is logged at startup.
 
-### Rate limiting (optional)
+### Rate limiting and quotas (optional)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RATE_LIMIT_ENABLED` | `false` | Enable in-process sliding-window limits per client IP. |
-| `RATE_LIMIT_PER_MINUTE` | `120` | Max requests per IP per rolling 60 seconds. |
+| `RATE_LIMIT_ENABLED` | `false` | Enable in-process sliding-window limits (see below). |
+| `RATE_LIMIT_PER_MINUTE` | `120` | Default max requests per rolling 60s when no tenant/API-key override applies. |
 
-`GET /health`, `GET /ready`, and `/docs` are never rate-limited. On limit, responses use **429** and a `Retry-After: 60` header.
+When `RATE_LIMIT_ENABLED=true`:
+
+- **API key** requests (`X-API-Key`): limit is `api_key.rate_limit_requests_per_minute`, else `tenant.rate_limit_requests_per_minute`, else `RATE_LIMIT_PER_MINUTE`.
+- **JWT** requests: if the path starts with `/v1/tenants/{tenant_id}/` and the user is a member of that tenant, the tenant RPM column applies (otherwise this default). Other JWT routes use `RATE_LIMIT_PER_MINUTE` per user (`sub`).
+- **Anonymous** requests: per client IP using `RATE_LIMIT_PER_MINUTE`.
+
+`GET /health`, `GET /ready`, `/docs`, `/openapi.json`, and `/openapi.yaml` are not rate-limited. On limit, responses use **429** with a `Retry-After` header (seconds until the oldest event in the window expires).
+
+**Quotas** (optional, schema migration `20260319-182829.sql`): `tenant.max_projects` and `tenant.max_versions_per_project` cap new projects and new versions per project. Over-quota creates return **403** with a clear message. Set via `PUT /v1/tenants/{id}` (platform admin) using `max_projects` / `max_versions_per_project`; send JSON `null` to clear a cap.
+
+**Operations notes**: Apply the migration before using new columns. Tune `RATE_LIMIT_PER_MINUTE` as a global default; tighten per integration with API-key RPM or per-tenant RPM. Monitor **429** rates and quota **403**s in access logs (`request_completed` includes status). Horizontal scaling does not share in-memory counters—use a shared store (e.g. Redis) if you need cluster-wide limits.
 
 ## Tests
 

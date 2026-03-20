@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Tenants"])
 
+_TENANT_ROW_COLUMNS = (
+    "id, name, description, slug, enabled, metadata, "
+    "rate_limit_requests_per_minute, max_projects, max_versions_per_project, "
+    "created_at, updated_at, deleted_at"
+)
+
 
 # ---------------------------------------------------------------------------
 # Tenant CRUD
@@ -44,15 +50,15 @@ def list_tenants(
 ) -> List[TenantSchema]:
     """List tenants."""
     if include_deleted:
-        query = """
-            SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+        query = f"""
+            SELECT {_TENANT_ROW_COLUMNS}
             FROM objectified.tenant
             ORDER BY created_at ASC
         """
         rows = db.execute_query(query)
     else:
-        query = """
-            SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+        query = f"""
+            SELECT {_TENANT_ROW_COLUMNS}
             FROM objectified.tenant
             WHERE deleted_at IS NULL
             ORDER BY created_at ASC
@@ -86,7 +92,7 @@ def list_my_tenants(
     ids = [t["id"] for t in tenant_refs]
     placeholders = ",".join(["%s"] * len(ids))
     query = f"""
-        SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+        SELECT {_TENANT_ROW_COLUMNS}
         FROM objectified.tenant
         WHERE id IN ({placeholders}) AND deleted_at IS NULL
         ORDER BY name ASC
@@ -108,8 +114,8 @@ def get_tenant(
     """Get a tenant by ID."""
     if include_deleted:
         rows = db.execute_query(
-            """
-            SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            f"""
+            SELECT {_TENANT_ROW_COLUMNS}
             FROM objectified.tenant
             WHERE id = %s
             """,
@@ -117,8 +123,8 @@ def get_tenant(
         )
     else:
         rows = db.execute_query(
-            """
-            SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            f"""
+            SELECT {_TENANT_ROW_COLUMNS}
             FROM objectified.tenant
             WHERE id = %s AND deleted_at IS NULL
             """,
@@ -161,14 +167,14 @@ def create_tenant(
             WITH inserted_tenant AS (
                 INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
                 VALUES (%s, %s, %s, %s, %s::jsonb)
-                RETURNING id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+                RETURNING {_TENANT_ROW_COLUMNS}
             ),
             inserted_admin AS (
                 INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
                 SELECT id, %s, 'administrator', true
                 FROM inserted_tenant
             )
-            SELECT id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            SELECT {_TENANT_ROW_COLUMNS}
             FROM inserted_tenant
             """,
             (
@@ -182,10 +188,10 @@ def create_tenant(
         )
     else:
         row = db.execute_mutation(
-            """
+            f"""
             INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
             VALUES (%s, %s, %s, %s, %s::jsonb)
-            RETURNING id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+            RETURNING {_TENANT_ROW_COLUMNS}
             """,
             (payload.name, payload.description, payload.slug, payload.enabled, json.dumps(payload.metadata)),
         )
@@ -236,6 +242,15 @@ def update_tenant(tenant_id: str, payload: TenantUpdate) -> TenantSchema:
     if payload.metadata is not None:
         updates.append("metadata = %s::jsonb")
         params.append(json.dumps(payload.metadata))
+    if "rate_limit_requests_per_minute" in payload.model_fields_set:
+        updates.append("rate_limit_requests_per_minute = %s")
+        params.append(payload.rate_limit_requests_per_minute)
+    if "max_projects" in payload.model_fields_set:
+        updates.append("max_projects = %s")
+        params.append(payload.max_projects)
+    if "max_versions_per_project" in payload.model_fields_set:
+        updates.append("max_versions_per_project = %s")
+        params.append(payload.max_versions_per_project)
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -246,7 +261,7 @@ def update_tenant(tenant_id: str, payload: TenantUpdate) -> TenantSchema:
         UPDATE objectified.tenant
         SET {", ".join(updates)}
         WHERE id = %s AND deleted_at IS NULL
-        RETURNING id, name, description, slug, enabled, metadata, created_at, updated_at, deleted_at
+        RETURNING {_TENANT_ROW_COLUMNS}
         """,
         tuple(params),
     )

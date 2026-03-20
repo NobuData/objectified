@@ -702,11 +702,8 @@ class TestDatabase:
 
     def test_database_validate_api_key_success(self):
         """Test successful API key validation."""
-        import hashlib
-
         db = Database()
         api_key = "valid_api_key_1234567890"
-        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
         row = {
             "key_id": 1,
@@ -716,6 +713,10 @@ class TestDatabase:
             "account_id": "acc1",
             "enabled": True,
             "expires_at": None,
+            "scope_role": "full",
+            "project_id": None,
+            "api_key_rate_limit_rpm": None,
+            "tenant_rate_limit_rpm": 60,
         }
 
         with patch.object(db, "execute_query", return_value=[row]):
@@ -724,6 +725,7 @@ class TestDatabase:
 
         assert result["tenant_slug"] == "acme"
         assert result["key_id"] == "1"
+        assert result["rate_limit_requests_per_minute"] == 60
 
     def test_database_validate_api_key_short_key(self):
         """Test API key validation with short key."""
@@ -783,8 +785,6 @@ class TestDatabase:
 
     def test_database_validate_api_key_last_used_update_fails(self):
         """Test API key validation when last_used update fails."""
-        import hashlib
-
         db = Database()
         api_key = "valid_api_key_1234567890"
 
@@ -796,6 +796,10 @@ class TestDatabase:
             "account_id": "acc1",
             "enabled": True,
             "expires_at": None,
+            "scope_role": "full",
+            "project_id": None,
+            "api_key_rate_limit_rpm": None,
+            "tenant_rate_limit_rpm": None,
         }
 
         with patch.object(db, "execute_query", return_value=[row]):
@@ -804,6 +808,28 @@ class TestDatabase:
 
         # Should still return valid result even if last_used update fails
         assert result is not None
+
+    def test_database_validate_api_key_record_usage_skips_mutation(self):
+        """When record_usage=False, last_used is not updated."""
+        db = Database()
+        api_key = "valid_api_key_1234567890"
+        row = {
+            "key_id": 1,
+            "tenant_id": "t1",
+            "tenant_slug": "acme",
+            "tenant_name": "Acme Corp",
+            "account_id": "acc1",
+            "enabled": True,
+            "expires_at": None,
+            "scope_role": "full",
+            "project_id": None,
+            "api_key_rate_limit_rpm": None,
+            "tenant_rate_limit_rpm": None,
+        }
+        with patch.object(db, "execute_query", return_value=[row]):
+            with patch.object(db, "execute_mutation") as mock_mut:
+                db.validate_api_key(api_key, record_usage=False)
+        mock_mut.assert_not_called()
 
 
 # ============================================================================

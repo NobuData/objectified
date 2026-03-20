@@ -80,6 +80,7 @@ class TestApiKeyTableStructure:
             ("metadata", "jsonb", "NO"),
             ("scope_role", "character varying", "NO"),
             ("project_id", "uuid", "YES"),
+            ("rate_limit_requests_per_minute", "integer", "YES"),
             ("created_at", "timestamp without time zone", "NO"),
             ("updated_at", "timestamp without time zone", "YES"),
             ("deleted_at", "timestamp without time zone", "YES"),

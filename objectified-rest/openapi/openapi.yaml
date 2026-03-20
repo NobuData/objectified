@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.17
+  version: 1.0.18
 paths:
   /v1/auth/login:
     post:
@@ -5320,6 +5320,15 @@ components:
           title: Project Id
           description: Optional project UUID. When set, the key may only access that
             project within the tenant; tenant-wide API paths return 403.
+        rate_limit_requests_per_minute:
+          anyOf:
+          - type: integer
+            maximum: 1000000.0
+            minimum: 1.0
+          - type: 'null'
+          title: Rate Limit Requests Per Minute
+          description: Optional RPM override for this key; omit to inherit tenant
+            and global defaults.
       type: object
       required:
       - name
@@ -5362,6 +5371,13 @@ components:
           title: Project Id
           description: When set, the key is restricted to this project within the
             tenant.
+        rate_limit_requests_per_minute:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Rate Limit Requests Per Minute
+          description: RPM override for this key when rate limiting is enabled; null
+            inherits tenant/global.
         expires_at:
           anyOf:
           - type: string
@@ -5454,6 +5470,13 @@ components:
           title: Project Id
           description: When set, the key is restricted to this project within the
             tenant.
+        rate_limit_requests_per_minute:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Rate Limit Requests Per Minute
+          description: RPM override for this key when rate limiting is enabled; null
+            inherits tenant/global.
         expires_at:
           anyOf:
           - type: string
@@ -6874,6 +6897,25 @@ components:
           additionalProperties: true
           type: object
           title: Metadata
+        rate_limit_requests_per_minute:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Rate Limit Requests Per Minute
+          description: RPM override for authenticated access on this tenant's routes;
+            null uses global default.
+        max_projects:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Projects
+          description: Optional cap on active projects; null means unlimited.
+        max_versions_per_project:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Versions Per Project
+          description: Optional cap on active versions per project; null means unlimited.
         created_at:
           type: string
           format: date-time
@@ -6931,6 +6973,30 @@ components:
             type: object
           - type: 'null'
           title: Metadata
+        rate_limit_requests_per_minute:
+          anyOf:
+          - type: integer
+            maximum: 1000000.0
+            minimum: 1.0
+          - type: 'null'
+          title: Rate Limit Requests Per Minute
+          description: Tenant RPM override; omit to leave unchanged.
+        max_projects:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Max Projects
+          description: Cap on active projects; omit to leave unchanged; use null in
+            API to clear.
+        max_versions_per_project:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Max Versions Per Project
+          description: Cap on active versions per project; omit to leave unchanged;
+            use null to clear.
       type: object
       title: TenantUpdate
       description: Update payload for objectified.tenant.

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_authenticated, require_tenant_permission
 from app.database import db
+from app.quotas import ensure_project_quota_allows_create
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schemas.project import ProjectCreate, ProjectHistorySchema, ProjectSchema, ProjectUpdate
 
@@ -153,6 +154,7 @@ def create_project(
 ) -> ProjectSchema:
     """Create a new project."""
     _assert_tenant_exists(tenant_id)
+    ensure_project_quota_allows_create(tenant_id)
 
     if not payload.name or not payload.name.strip():
         raise HTTPException(status_code=400, detail="Project name is required")

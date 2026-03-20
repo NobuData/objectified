@@ -26,6 +26,18 @@ class TenantSchema(BaseModel):
     slug: str
     enabled: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
+    rate_limit_requests_per_minute: Optional[int] = Field(
+        default=None,
+        description="RPM override for authenticated access on this tenant's routes; null uses global default.",
+    )
+    max_projects: Optional[int] = Field(
+        default=None,
+        description="Optional cap on active projects; null means unlimited.",
+    )
+    max_versions_per_project: Optional[int] = Field(
+        default=None,
+        description="Optional cap on active versions per project; null means unlimited.",
+    )
     created_at: datetime
     updated_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
@@ -57,5 +69,21 @@ class TenantUpdate(BaseModel):
     )
     enabled: Optional[bool] = None
     metadata: Optional[dict[str, Any]] = None
+    rate_limit_requests_per_minute: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=1_000_000,
+        description="Tenant RPM override; omit to leave unchanged.",
+    )
+    max_projects: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Cap on active projects; omit to leave unchanged; use null in API to clear.",
+    )
+    max_versions_per_project: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Cap on active versions per project; omit to leave unchanged; use null to clear.",
+    )
 
 

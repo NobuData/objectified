@@ -112,6 +112,48 @@ class TestTenantTableStructure:
         assert row["data_type"] == "jsonb"
         assert row["is_nullable"] == "NO"
 
+    def test_column_rate_limit_requests_per_minute_integer_nullable(self, conn):
+        row = conn.fetchone(
+            """
+            SELECT data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'objectified'
+              AND table_name   = 'tenant'
+              AND column_name  = 'rate_limit_requests_per_minute'
+            """
+        )
+        assert row is not None
+        assert row["data_type"] == "integer"
+        assert row["is_nullable"] == "YES"
+
+    def test_column_max_projects_integer_nullable(self, conn):
+        row = conn.fetchone(
+            """
+            SELECT data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'objectified'
+              AND table_name   = 'tenant'
+              AND column_name  = 'max_projects'
+            """
+        )
+        assert row is not None
+        assert row["data_type"] == "integer"
+        assert row["is_nullable"] == "YES"
+
+    def test_column_max_versions_per_project_integer_nullable(self, conn):
+        row = conn.fetchone(
+            """
+            SELECT data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'objectified'
+              AND table_name   = 'tenant'
+              AND column_name  = 'max_versions_per_project'
+            """
+        )
+        assert row is not None
+        assert row["data_type"] == "integer"
+        assert row["is_nullable"] == "YES"
+
     def test_column_created_at_timestamp_no_tz_not_null(self, conn):
         row = conn.fetchone(
             """
