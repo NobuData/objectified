@@ -9,6 +9,7 @@ import {
   exportOpenApiDocument,
   exportValidationRulesDocument,
   loadConfigFromEnv,
+  normalizeBaseUrl,
   openApiOptionsToQuery,
   pullVersion,
   pushVersion,
@@ -35,14 +36,13 @@ function readPkgVersion(): string {
 
 function applyUrlOverride(cfg: ReturnType<typeof loadConfigFromEnv>, apiUrl?: string) {
   if (!apiUrl) return cfg;
-  const normalized = apiUrl.replace(/\/$/, '');
   return {
     ...cfg,
-    baseUrl: normalized.endsWith('/v1') ? normalized : `${normalized}/v1`,
+    baseUrl: normalizeBaseUrl(apiUrl),
   };
 }
 
-async function main(): Promise<void> {
+export function buildProgram(): Command {
   const program = new Command();
   program
     .name('objectified')
@@ -251,7 +251,14 @@ async function main(): Promise<void> {
       }
     );
 
+  return program;
+}
+
+async function main(): Promise<void> {
+  const program = buildProgram();
   await program.parseAsync(process.argv);
 }
 
-main().catch(die);
+if (require.main === module) {
+  main().catch(die);
+}

@@ -18,7 +18,7 @@ export class CliApiError extends Error {
   }
 }
 
-function normalizeBaseUrl(raw: string): string {
+export function normalizeBaseUrl(raw: string): string {
   const s = raw.replace(/\/$/, '');
   if (s.endsWith('/v1')) return s;
   return `${s}/v1`;
@@ -93,12 +93,19 @@ export async function apiJson<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
+  const trimmedText = text.trim();
   let parsed: unknown = null;
-  if (text) {
+  if (trimmedText) {
     try {
-      parsed = JSON.parse(text);
+      parsed = JSON.parse(trimmedText);
     } catch {
-      parsed = null;
+      if (res.ok) {
+        throw new CliApiError(
+          `Invalid JSON response from server (HTTP ${res.status})`,
+          res.status,
+          { body: text }
+        );
+      }
     }
   }
   if (!res.ok) {

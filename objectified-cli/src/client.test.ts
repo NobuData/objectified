@@ -5,6 +5,7 @@ import {
   loadConfigFromEnv,
   openApiOptionsToQuery,
   pullVersion,
+  apiJson,
 } from './client';
 
 describe('openApiOptionsToQuery', () => {
@@ -48,9 +49,17 @@ describe('loadConfigFromEnv', () => {
   });
 });
 
+const originalFetch = global.fetch;
+
 describe('pullVersion', () => {
   afterEach(() => {
     jest.restoreAllMocks();
+    if (originalFetch !== undefined) {
+      global.fetch = originalFetch;
+    } else {
+      // @ts-expect-error - restore to undefined if it was originally undefined
+      delete global.fetch;
+    }
   });
 
   it('GETs pull URL and parses JSON', async () => {
@@ -79,5 +88,21 @@ describe('pullVersion', () => {
     expect(url).toBe('http://x/v1/versions/vid/pull?since_revision=2');
     expect(init.method).toBe('GET');
     expect((init.headers as Record<string, string>)['X-API-Key']).toBe('k');
+  });
+
+  it('throws CliApiError when ok response body is non-empty but invalid JSON', async () => {
+    const fetchMock = jest.fn().mockImplementation(async () =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        text: async () => 'not-json',
+      } as Response)
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const cfg = { baseUrl: 'http://x/v1', apiKey: 'k' };
+    await expect(apiJson(cfg, 'GET', '/versions/vid/pull')).rejects.toThrow(CliApiError);
+    await expect(apiJson(cfg, 'GET', '/versions/vid/pull')).rejects.toThrow(
+      'Invalid JSON response from server (HTTP 200)'
+    );
   });
 });
