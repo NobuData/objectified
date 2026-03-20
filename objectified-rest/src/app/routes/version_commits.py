@@ -23,6 +23,7 @@ from app.auth import (
     require_version_permission,
 )
 from app.database import db
+from app.quotas import ensure_version_quota_allows_create
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists
 from app.routes.merge_utils import merge_classes, merge_classes_three_way
 from app.routes.versions import (
@@ -575,6 +576,7 @@ def create_version_from_revision(
     """Create a new version branching from a source version's snapshot revision."""
     _assert_tenant_exists(tenant_id)
     _assert_project_exists(project_id, tenant_id)
+    ensure_version_quota_allows_create(tenant_id, project_id)
 
     if not payload.name or not payload.name.strip():
         raise HTTPException(status_code=400, detail="Version name is required")

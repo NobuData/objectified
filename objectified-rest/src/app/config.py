@@ -41,12 +41,18 @@ class Settings(BaseSettings):
 
     rate_limit_enabled: bool = Field(
         default=False,
-        description="If True, enforce per-IP sliding-window rate limits.",
+        description=(
+            "If True, enforce sliding-window RPM limits: API keys and JWTs use tenant/key "
+            "settings when set; otherwise this value. Unauthenticated clients are limited per IP."
+        ),
     )
     rate_limit_per_minute: int = Field(
         default=120,
         ge=1,
-        description="Max requests per client IP per rolling 60s window when rate limiting is on.",
+        description=(
+            "Default max requests per rolling 60s window (anonymous per IP; JWT without "
+            "tenant route match; or when tenant/API key has no RPM override)."
+        ),
     )
 
     otel_exporter_otlp_endpoint: Optional[str] = Field(

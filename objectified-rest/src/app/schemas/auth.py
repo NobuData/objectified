@@ -38,7 +38,10 @@ class ApiKeyCreate(BaseModel):
     """Request body for POST /v1/tenants/{tenant_id}/api-keys."""
 
     name: str = Field(..., min_length=1, max_length=255, description="Human-readable label for this key")
-    expires_at: Optional[datetime] = Field(default=None, description="Optional expiry datetime (UTC). Omit for non-expiring keys.")
+    expires_at: Optional[datetime] = Field(
+        default=None,
+        description="Optional expiry datetime (UTC). Omit for non-expiring keys.",
+    )
     metadata: dict[str, Any] = Field(default_factory=dict, description="Arbitrary metadata")
     scope_role: ApiKeyScopeRole = Field(
         default=ApiKeyScopeRole.full,
@@ -53,6 +56,12 @@ class ApiKeyCreate(BaseModel):
             "Optional project UUID. When set, the key may only access that project "
             "within the tenant; tenant-wide API paths return 403."
         ),
+    )
+    rate_limit_requests_per_minute: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=1_000_000,
+        description="Optional RPM override for this key; omit to inherit tenant and global defaults.",
     )
 
     model_config = {
@@ -83,6 +92,10 @@ class ApiKeySchema(BaseModel):
     project_id: Optional[str] = Field(
         default=None,
         description="When set, the key is restricted to this project within the tenant.",
+    )
+    rate_limit_requests_per_minute: Optional[int] = Field(
+        default=None,
+        description="RPM override for this key when rate limiting is enabled; null inherits tenant/global.",
     )
     expires_at: Optional[datetime] = Field(default=None, description="Expiry datetime, or null for non-expiring")
     last_used: Optional[datetime] = Field(default=None, description="Timestamp of last successful use")

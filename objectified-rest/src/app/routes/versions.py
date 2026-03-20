@@ -13,18 +13,19 @@ from app.auth import (
     require_version_permission,
 )
 from app.database import db
+from app.quotas import ensure_version_quota_allows_create
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schemas.version import (
     VersionCreate,
     VersionHistorySchema,
     VersionMetadataUpdate,
     VersionPublishRequest,
+    VersionPullDiff,
+    VersionPullModifiedClass,
     VersionSchema,
     VersionSnapshotCreate,
     VersionSnapshotMetadataSchema,
     VersionSnapshotSchema,
-    VersionPullDiff,
-    VersionPullModifiedClass,
     VersionSnapshotSchemaChangesAuditSchema,
 )
 
@@ -187,6 +188,7 @@ def create_version(
     """Create a version for a project."""
     _assert_tenant_exists(tenant_id)
     _assert_project_exists(project_id, tenant_id)
+    ensure_version_quota_allows_create(tenant_id, project_id)
 
     if payload.project_id is not None and payload.project_id != project_id:
         raise HTTPException(
@@ -1001,7 +1003,7 @@ def list_version_snapshots_schema_changes(
     _assert_version_exists(version_id, include_deleted=True)
 
     rows = db.execute_query(
-        f"""
+        """
         SELECT
             id,
             version_id,
@@ -1096,7 +1098,10 @@ def _record_history(
                 %s AS version_id,
                 %s AS project_id,
                 %s AS changed_by,
-                COALESCE((SELECT MAX(revision) FROM objectified.version_history WHERE version_id = %s), 0) + 1 AS revision,
+                COALESCE(
+                    (SELECT MAX(revision) FROM objectified.version_history WHERE version_id = %s),
+                    0
+                ) + 1 AS revision,
                 %s AS operation,
                 %s::jsonb AS old_data,
                 %s::jsonb AS new_data

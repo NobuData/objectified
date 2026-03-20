@@ -48,6 +48,9 @@ _TENANT_ROW: dict[str, Any] = {
     "slug": "acme",
     "enabled": True,
     "metadata": {},
+    "rate_limit_requests_per_minute": None,
+    "max_projects": None,
+    "max_versions_per_project": None,
     "created_at": _NOW,
     "updated_at": None,
     "deleted_at": None,
@@ -61,6 +64,7 @@ _API_KEY_ROW: dict[str, Any] = {
     "key_prefix": "ok_abcde",
     "scope_role": "full",
     "project_id": None,
+    "rate_limit_requests_per_minute": None,
     "expires_at": None,
     "last_used": None,
     "enabled": True,
@@ -556,6 +560,8 @@ class TestValidateApiKey:
             "expires_at": datetime.now(timezone.utc) - timedelta(seconds=1),
             "scope_role": "full",
             "project_id": None,
+            "api_key_rate_limit_rpm": None,
+            "tenant_rate_limit_rpm": None,
             "tenant_slug": "acme",
             "tenant_name": "Acme",
         }
@@ -576,6 +582,8 @@ class TestValidateApiKey:
             "expires_at": None,
             "scope_role": "full",
             "project_id": None,
+            "api_key_rate_limit_rpm": None,
+            "tenant_rate_limit_rpm": None,
             "tenant_slug": "acme",
             "tenant_name": "Acme",
         }
@@ -587,5 +595,6 @@ class TestValidateApiKey:
         assert result["account_id"] == _ACCOUNT_ID
         assert result["scope_role"] == "full"
         assert result["project_id"] is None
+        assert result["rate_limit_requests_per_minute"] is None
 
 

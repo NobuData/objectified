@@ -100,7 +100,7 @@ def list_api_keys(
         rows = db.execute_query(
             """
             SELECT id, tenant_id, account_id, name, key_prefix,
-                   scope_role, project_id,
+                   scope_role, project_id, rate_limit_requests_per_minute,
                    expires_at, last_used, enabled, metadata,
                    created_at, updated_at, deleted_at
             FROM objectified.api_key
@@ -113,7 +113,7 @@ def list_api_keys(
         rows = db.execute_query(
             """
             SELECT id, tenant_id, account_id, name, key_prefix,
-                   scope_role, project_id,
+                   scope_role, project_id, rate_limit_requests_per_minute,
                    expires_at, last_used, enabled, metadata,
                    created_at, updated_at, deleted_at
             FROM objectified.api_key
@@ -190,10 +190,10 @@ def create_api_key(
         """
         INSERT INTO objectified.api_key
             (tenant_id, account_id, name, key_hash, key_prefix, expires_at, enabled,
-             metadata, scope_role, project_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+             metadata, scope_role, project_id, rate_limit_requests_per_minute)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
         RETURNING id, tenant_id, account_id, name, key_prefix,
-                  scope_role, project_id,
+                  scope_role, project_id, rate_limit_requests_per_minute,
                   expires_at, last_used, enabled, metadata,
                   created_at, updated_at, deleted_at
         """,
@@ -208,6 +208,7 @@ def create_api_key(
             json.dumps(payload.metadata),
             payload.scope_role.value,
             payload.project_id,
+            payload.rate_limit_requests_per_minute,
         ),
     )
     if not row:
