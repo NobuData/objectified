@@ -8,11 +8,12 @@ Uses objectified schema: objectified.tenant, objectified.tenant_account.
 import logging
 from typing import Annotated, Any, Callable, Optional
 
-from fastapi import Depends, Header, HTTPException, Request
 import jwt
+from fastapi import Depends, Header, HTTPException, Request
 
 from app.config import settings
 from app.database import db
+from app.request_context import bind_auth_context
 
 logger = logging.getLogger(__name__)
 
@@ -144,13 +145,15 @@ def validate_authentication(
                 detail="User does not have access to tenant: %s"
                 % tenant_slug,
             )
-        return {
+        result = {
             **tenant_data,
             "auth_method": "jwt",
             "user_id": user_id,
             "user_email": jwt_payload.get("email"),
             "user_name": jwt_payload.get("name"),
         }
+        bind_auth_context(result)
+        return result
 
     if x_api_key:
         api_key_data = db.validate_api_key(x_api_key)
@@ -168,7 +171,7 @@ def validate_authentication(
         scope_role = str(api_key_data.get("scope_role") or "full").lower()
         project_id_str = api_key_data.get("project_id")
         tenant_wide_full = scope_role == "full" and not project_id_str
-        return {
+        result = {
             **api_key_data,
             "auth_method": "api_key",
             "is_admin": False,
@@ -176,6 +179,8 @@ def validate_authentication(
             "api_key_scope_role": scope_role,
             "api_key_project_id": project_id_str,
         }
+        bind_auth_context(result)
+        return result
 
     raise HTTPException(
         status_code=401,
@@ -358,6 +363,7 @@ def require_authenticated(
                 status_code=403,
                 detail="Read-only API keys may only use GET, HEAD, or OPTIONS.",
             )
+    bind_auth_context(caller)
     return caller
 
 
@@ -387,6 +393,7 @@ def require_admin(
         )
 
     if caller.get("is_admin"):
+        bind_auth_context(caller)
         return caller
 
     # For JWT callers without an explicit is_admin claim, check the DB.
@@ -394,6 +401,7 @@ def require_admin(
         user_id = caller.get("user_id")
         if user_id and _is_platform_admin(user_id):
             caller["is_admin"] = True
+            bind_auth_context(caller)
             return caller
 
     raise HTTPException(

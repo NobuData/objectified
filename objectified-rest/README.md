@@ -41,6 +41,45 @@ To run readiness without a database check (e.g. bootstrap or custom probes), set
 READINESS_CHECK_DATABASE=false
 ```
 
+## Observability (logging, tracing, rate limits)
+
+### Structured logs
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_FORMAT` | `text` | Set to `json` for one JSON object per line (good for aggregators). |
+| `LOG_LEVEL` | `INFO` | Root log level. |
+| `LOG_HTTP_REQUESTS` | `true` | One access log per request (`request_completed`). Probes `GET /health` and `GET /ready` are omitted to reduce noise. |
+
+JSON lines include `request_id`, `trace_id`, and after authentication `tenant_slug`, `user_id`, and `auth_method` when known. Application code can use the standard `logging` module; those fields are merged from request context when present.
+
+### Request and trace correlation
+
+- **X-Request-ID**: Echoed on every response. If the client sends `X-Request-ID`, that value is kept; otherwise the server generates a UUID.
+- **traceparent** (W3C): If present, the trace id is parsed and echoed as **X-Trace-ID** (32-char hex).
+- **X-Trace-ID**: Used when `traceparent` is absent; if neither is sent, a new trace id is generated.
+
+### OpenTelemetry (optional)
+
+Install OTLP export support:
+
+```bash
+uv sync --group otel
+```
+
+When **`OTEL_EXPORTER_OTLP_ENDPOINT`** is set to an OTLP **HTTP** traces URL (for example `http://localhost:4318/v1/traces`), the app registers FastAPI tracing and exports spans. Optional: **`OTEL_SERVICE_NAME`** overrides the default service name (`objectified-rest` is used via settings).
+
+If the endpoint is set but the `otel` group is not installed, a warning is logged at startup.
+
+### Rate limiting (optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RATE_LIMIT_ENABLED` | `false` | Enable in-process sliding-window limits per client IP. |
+| `RATE_LIMIT_PER_MINUTE` | `120` | Max requests per IP per rolling 60 seconds. |
+
+`GET /health`, `GET /ready`, and `/docs` are never rate-limited. On limit, responses use **429** and a `Retry-After: 60` header.
+
 ## Tests
 
 ```bash

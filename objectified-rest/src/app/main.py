@@ -10,7 +10,13 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.database import db
+from app.logging_setup import configure_logging
+from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.request_logging import RequestLoggingMiddleware
+from app.otel_setup import instrument_app
 from app.v1_routes import router as v1_router
+
+configure_logging(settings)
 
 
 class ReadinessResponse(BaseModel):
@@ -26,7 +32,7 @@ app = FastAPI(
         "Services are used by the platform and can be exposed externally; "
         "internal use is via a private API key."
     ),
-    version="1.0.16",
+    version="1.0.17",
     openapi_version="3.2.0",
     openapi_url="/openapi.yaml",
 )
@@ -106,6 +112,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(v1_router)
 
@@ -174,3 +182,6 @@ async def ready() -> Any:
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"status": "not_ready", "checks": checks},
     )
+
+
+instrument_app(app)

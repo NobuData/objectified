@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.16"
+    "version": "1.0.17"
   },
   "paths": {
     "/v1/auth/login": {
@@ -8436,7 +8436,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Ready Ready Get"
+                  "$ref": "#/components/schemas/ReadinessResponse"
                 }
               }
             }
@@ -10322,6 +10322,28 @@
         "type": "object",
         "title": "PropertyUpdate",
         "description": "Update payload for objectified.property."
+      },
+      "ReadinessResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "checks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessResponse",
+        "description": "Response model for the readiness probe endpoint."
       },
       "RoleCreate": {
         "properties": {
