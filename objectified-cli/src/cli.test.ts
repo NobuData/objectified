@@ -201,6 +201,68 @@ describe('export validation-rules command', () => {
   });
 });
 
+describe('promote command', () => {
+  let promoteSpy: ReturnType<typeof jest.spyOn>;
+  let writeJsonSpy: ReturnType<typeof jest.spyOn>;
+  let exitSpy: ReturnType<typeof jest.spyOn>;
+  let consoleErrorSpy: ReturnType<typeof jest.spyOn>;
+
+  beforeEach(() => {
+    promoteSpy = jest
+      .spyOn(clientModule, 'promoteVersion')
+      .mockResolvedValue({
+        promotion: { id: 'p1', project_id: 'proj', environment: 'staging', created_at: '2020-01-01T00:00:00Z', metadata: {} },
+        live_version: { project_id: 'proj', environment: 'staging', metadata: {} },
+      } as clientModule.SchemaPromotionResponse);
+    writeJsonSpy = jest.spyOn(ioModule, 'writeJson').mockImplementation(() => undefined);
+    exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('calls promoteVersion with valid environment and writes to stdout', async () => {
+    process.env.OBJECTIFIED_API_KEY = 'k';
+    await parseProgram(runArgv('promote', 'vid', '--environment', 'staging'));
+    expect(promoteSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'k' }),
+      'vid',
+      'staging',
+      {}
+    );
+    expect(writeJsonSpy).toHaveBeenCalled();
+    delete process.env.OBJECTIFIED_API_KEY;
+  });
+
+  it('exits with error for invalid environment value', async () => {
+    process.env.OBJECTIFIED_API_KEY = 'k';
+    await parseProgram(runArgv('promote', 'vid', '--environment', 'production'));
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('dev|staging|prod')
+    );
+    expect(promoteSpy).not.toHaveBeenCalled();
+    delete process.env.OBJECTIFIED_API_KEY;
+  });
+
+  it('accepts dev, staging, and prod as valid environments', async () => {
+    process.env.OBJECTIFIED_API_KEY = 'k';
+    for (const env of ['dev', 'staging', 'prod'] as const) {
+      jest.clearAllMocks();
+      await parseProgram(runArgv('promote', 'vid', '--environment', env));
+      expect(promoteSpy).toHaveBeenCalledWith(
+        expect.anything(),
+        'vid',
+        env,
+        expect.anything()
+      );
+    }
+    delete process.env.OBJECTIFIED_API_KEY;
+  });
+});
+
 describe('codegen command', () => {
   let pullSpy: ReturnType<typeof jest.spyOn>;
   let writeJsonSpy: ReturnType<typeof jest.spyOn>;

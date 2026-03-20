@@ -15,6 +15,7 @@ import {
   pullVersion,
   pushVersion,
   readJsonFile,
+  type SchemaEnvironment,
   type SchemaPromotionPayload,
   type OpenApiExportOptions,
   type VersionCommitPayload,
@@ -117,6 +118,13 @@ export function buildProgram(): Command {
       ) => {
         try {
           const cfg = applyUrlOverride(loadConfigFromEnv(), opts.apiUrl);
+
+          const validEnvironments: SchemaEnvironment[] = ['dev', 'staging', 'prod'];
+          if (!validEnvironments.includes(opts.environment as SchemaEnvironment)) {
+            throw new Error(`--environment must be one of: ${validEnvironments.join('|')} (got "${opts.environment}")`);
+          }
+          const environment = opts.environment as SchemaEnvironment;
+
           const payload: SchemaPromotionPayload = {};
 
           if (opts.metadataFile) {
@@ -127,7 +135,7 @@ export function buildProgram(): Command {
             payload.message = opts.message;
           }
 
-          const res = await promoteVersion(cfg, versionId, opts.environment as any, payload);
+          const res = await promoteVersion(cfg, versionId, environment, payload);
           writeJson(res, '-');
         } catch (e) {
           die(e);

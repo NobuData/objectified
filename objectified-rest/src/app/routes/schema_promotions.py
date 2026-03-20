@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_authenticated, require_project_permission, require_version_permission
 from app.database import db
-from app.routes.helpers import _not_found
+from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schema_webhook_service import build_schema_webhook_payload, try_emit_schema_webhook
 from app.schemas.schema_promotions import (
     SchemaEnvironment,
@@ -75,7 +75,7 @@ def _load_project_for_webhook(project_id: str) -> Optional[dict[str, Any]]:
 def promote_version(
     version_id: str,
     environment: SchemaEnvironment = Query(..., description="Target deployment environment."),
-    payload: SchemaPromotionRequest = SchemaPromotionRequest(),
+    payload: SchemaPromotionRequest | None = None,
     _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:promote"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> SchemaPromoteResponse:
@@ -103,9 +103,11 @@ def promote_version(
     )
     from_version_id = str(live_old_rows[0]["version_id"]) if live_old_rows and live_old_rows[0].get("version_id") else None
 
+    payload = payload or SchemaPromotionRequest()
     meta = dict(payload.metadata or {})
     if payload.message:
-        meta.setdefault("message", payload.message)
+        # Explicit message field takes precedence over metadata["message"].
+        meta["message"] = payload.message
     meta_json = json.dumps(meta, default=str)
 
     promoted_sql = """
@@ -164,6 +166,13 @@ def promote_version(
         raise HTTPException(status_code=500, detail="Failed to record schema promotion")
 
     project_for_hook = _load_project_for_webhook(project_id)
+    logger.info(
+        "Schema version %s promoted to %s for project %s (actor=%s)",
+        version_id,
+        env,
+        project_id,
+        actor_id,
+    )
     if project_for_hook:
         # Build webhook payload using the promoted version.
         hook_payload = build_schema_webhook_payload(
@@ -218,6 +227,8 @@ def get_live_version_for_project_environment(
     environment: SchemaEnvironment,
     _perm: Annotated[dict[str, Any], Depends(require_project_permission("schema:read"))] = None,
 ) -> SchemaLiveVersionDetail:
+    _assert_tenant_exists(tenant_id)
+    _assert_project_exists(project_id, tenant_id)
     live_rows = db.execute_query(
         """
         SELECT
@@ -320,6 +331,8 @@ def list_schema_promotions(
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     _perm: Annotated[dict[str, Any], Depends(require_project_permission("schema:read"))] = None,
 ) -> list[SchemaPromotionSchema]:
+    _assert_tenant_exists(tenant_id)
+    _assert_project_exists(project_id, tenant_id)
     params: list[Any] = [project_id]
     env_clause = ""
     if environment:
