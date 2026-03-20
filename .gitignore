@@ -4,3 +4,4 @@ objectified-commercial
 
 node_modules
 **/.turbo
+objectified-cli/dist/
