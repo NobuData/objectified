@@ -16,6 +16,7 @@ import GlobalSearchDialog from '@/app/components/GlobalSearchDialog';
 import { getRestClientOptions, listMyTenants, type TenantSchema } from '@lib/api/rest-client';
 import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
+import { TenantSelectionProvider } from '@/app/contexts/TenantSelectionContext';
 
 const SIDEBAR_WIDTH = 280;
 const SIDEBAR_COLLAPSED_WIDTH = 72;
@@ -31,6 +32,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [tenants, setTenants] = useState<TenantSchema[]>([]);
+  const [tenantsLoading, setTenantsLoading] = useState(true);
   const { theme, resolvedTheme } = useTheme();
   const { selectedTenantId, setSelectedTenantId } = usePersistedTenantSelection(tenants);
   const tenantPermissions = useTenantPermissions(selectedTenantId);
@@ -86,19 +88,20 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     let cancelled = false;
     async function loadTenants() {
       if (status !== 'authenticated' || !session) {
-        if (!cancelled) setTenants([]);
+        if (!cancelled) { setTenants([]); setTenantsLoading(false); }
         return;
       }
       if (!accessToken) {
-        if (!cancelled) setTenants([]);
+        if (!cancelled) { setTenants([]); setTenantsLoading(false); }
         return;
       }
+      if (!cancelled) setTenantsLoading(true);
       try {
-        const opts = getRestClientOptions({ accessToken });
+        const opts = getRestClientOptions(accessToken ? { accessToken } : null);
         const list = await listMyTenants(opts);
-        if (!cancelled) setTenants(list);
+        if (!cancelled) { setTenants(list); setTenantsLoading(false); }
       } catch {
-        if (!cancelled) setTenants([]);
+        if (!cancelled) { setTenants([]); setTenantsLoading(false); }
       }
     }
     void loadTenants();
@@ -148,6 +151,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   }, []);
 
   return (
+    <TenantSelectionProvider value={{ tenants, tenantsLoading, selectedTenantId, setSelectedTenantId }}>
     <div className="flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:bg-white print:text-black">
       <header className="flex items-center justify-between h-14 px-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 print:hidden">
         <div className="flex items-center gap-4">
@@ -357,5 +361,6 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         onClose={() => setShowThemeSelector(false)}
       />
     </div>
+    </TenantSelectionProvider>
   );
 }

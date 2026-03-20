@@ -18,14 +18,12 @@ import {
   FileCode,
 } from 'lucide-react';
 import {
-  listMyTenants,
   listProjects,
   listVersions,
   pullVersion,
   listVersionSnapshotsMetadata,
   getRestClientOptions,
   isForbiddenError,
-  type TenantSchema,
   type ProjectSchema,
   type VersionSchema,
   type VersionSnapshotMetadataSchema,
@@ -37,7 +35,7 @@ import {
   type ClassLike,
   type CompareSchemasResult,
 } from '@/app/dashboard/utils/compareSchemas';
-import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
+import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
 
 const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300';
 const inputClass =
@@ -66,12 +64,10 @@ function slotLabel(slot: SchemaSlot): string {
 
 export default function SchemaWorkspacePage() {
   const { data: session, status } = useSession();
-  const [tenants, setTenants] = useState<TenantSchema[]>([]);
-  const { selectedTenantId, setSelectedTenantId } = usePersistedTenantSelection(tenants);
+  const { tenants, tenantsLoading, selectedTenantId, setSelectedTenantId } = useTenantSelection();
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionSchema[]>([]);
-  const [tenantsLoading, setTenantsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,26 +99,6 @@ export default function SchemaWorkspacePage() {
     () => getRestClientOptions((session as { accessToken?: string } | null) ?? null),
     [(session as { accessToken?: string } | null)?.accessToken]
   );
-
-  const fetchTenants = useCallback(async () => {
-    if (status !== 'authenticated' || !session) return;
-    setError(null);
-    setTenantsLoading(true);
-    try {
-      const data = await listMyTenants(opts);
-      setTenants(data);
-    } catch (e) {
-      setError(
-        isForbiddenError(e)
-          ? 'You do not have permission to view tenants.'
-          : e instanceof Error
-            ? e.message
-            : 'Failed to load tenants'
-      );
-    } finally {
-      setTenantsLoading(false);
-    }
-  }, [status, session, opts]);
 
   const fetchProjects = useCallback(async () => {
     if (status !== 'authenticated' || !selectedTenantId) {
@@ -170,10 +146,6 @@ export default function SchemaWorkspacePage() {
       setVersions([]);
     }
   }, [status, selectedTenantId, selectedProjectId, opts]);
-
-  useEffect(() => {
-    fetchTenants();
-  }, [fetchTenants]);
 
   useEffect(() => {
     fetchProjects();

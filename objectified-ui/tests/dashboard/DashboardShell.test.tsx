@@ -1,6 +1,17 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import DashboardShell from '../../src/app/dashboard/components/DashboardShell';
+
+// Stable session constants (must start with 'mock' to be accessible in jest.mock factories).
+const mockDefaultSession = {
+  status: 'authenticated' as const,
+  data: { user: { name: 'Test User', email: 'test@example.com' } },
+};
+const mockSessionWithToken = {
+  status: 'authenticated' as const,
+  data: { user: { name: 'Test User', email: 'test@example.com' }, accessToken: 'test-token' },
+};
 
 // Mock window.matchMedia for jsdom
 Object.defineProperty(window, 'matchMedia', {
@@ -18,7 +29,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 jest.mock('next-auth/react', () => ({
-  useSession: jest.fn(() => ({ status: 'authenticated', data: { user: { name: 'Test User', email: 'test@example.com' } } })),
+  useSession: jest.fn(() => mockDefaultSession),
   signOut: jest.fn(),
 }));
 
@@ -56,6 +67,14 @@ jest.mock('@/app/hooks/useTenantPermissions', () => ({
 }));
 
 describe('DashboardShell', () => {
+  beforeEach(() => {
+    const { useSession } = require('next-auth/react');
+    const { listMyTenants } = require('@lib/api/rest-client');
+    useSession.mockReturnValue(mockDefaultSession);
+    listMyTenants.mockResolvedValue([]);
+    localStorage.clear();
+  });
+
   it('renders header with Dashboard, Data Designer, and Account links', () => {
     render(
       <DashboardShell>
@@ -118,5 +137,71 @@ describe('DashboardShell', () => {
     );
 
     expect(screen.getByTestId('dashboard-child')).toHaveTextContent('Content');
+  });
+
+  it('does not render tenant switcher when there is only one tenant', async () => {
+    const { useSession } = require('next-auth/react');
+    const { listMyTenants } = require('@lib/api/rest-client');
+    useSession.mockReturnValue(mockSessionWithToken);
+    listMyTenants.mockResolvedValue([{ id: 'tenant-1', name: 'Only Tenant' }]);
+
+    render(
+      <DashboardShell>
+        <div>Content</div>
+      </DashboardShell>
+    );
+
+    await waitFor(() => expect(listMyTenants).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /switch tenant/i })).not.toBeInTheDocument();
+  });
+
+  it('renders tenant switcher when multiple tenants are available', async () => {
+    const { useSession } = require('next-auth/react');
+    const { listMyTenants } = require('@lib/api/rest-client');
+    useSession.mockReturnValue(mockSessionWithToken);
+    listMyTenants.mockResolvedValue([
+      { id: 'tenant-1', name: 'Tenant One' },
+      { id: 'tenant-2', name: 'Tenant Two' },
+    ]);
+
+    render(
+      <DashboardShell>
+        <div>Content</div>
+      </DashboardShell>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /switch tenant/i })).toBeInTheDocument()
+    );
+    expect(screen.getByRole('button', { name: /switch tenant/i })).toHaveTextContent('Tenant One');
+  });
+
+  it('persists tenant selection to localStorage when tenant is switched', async () => {
+    const { useSession } = require('next-auth/react');
+    const { listMyTenants } = require('@lib/api/rest-client');
+    const user = userEvent.setup();
+    useSession.mockReturnValue(mockSessionWithToken);
+    listMyTenants.mockResolvedValue([
+      { id: 'tenant-1', name: 'Tenant One' },
+      { id: 'tenant-2', name: 'Tenant Two' },
+    ]);
+
+    render(
+      <DashboardShell>
+        <div>Content</div>
+      </DashboardShell>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /switch tenant/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole('button', { name: /switch tenant/i }));
+    const tenantTwoOption = await screen.findByRole('menuitemradio', { name: 'Tenant Two' });
+    await user.click(tenantTwoOption);
+
+    await waitFor(() =>
+      expect(localStorage.getItem('objectified:dashboard:selectedTenantId')).toBe('tenant-2')
+    );
   });
 });

@@ -13,8 +13,11 @@ jest.mock('next-auth/react', () => ({
   })),
 }));
 
+jest.mock('@/app/contexts/TenantSelectionContext', () => ({
+  useTenantSelection: jest.fn(),
+}));
+
 jest.mock('@lib/api/rest-client', () => ({
-  listMyTenants: jest.fn(),
   listProjects: jest.fn(),
   listVersions: jest.fn(),
   createVersion: jest.fn(),
@@ -57,11 +60,15 @@ describe('VersionsPage', () => {
         accessToken: 'token',
       },
     });
-    const { listMyTenants, listProjects, listVersions } =
+    const { useTenantSelection } = require('@/app/contexts/TenantSelectionContext');
+    useTenantSelection.mockReturnValue({
+      tenants: [{ id: 't1', name: 'Tenant One', slug: 'tenant-one' }],
+      tenantsLoading: false,
+      selectedTenantId: 't1',
+      setSelectedTenantId: jest.fn(),
+    });
+    const { listProjects, listVersions } =
       require('@lib/api/rest-client');
-    listMyTenants.mockResolvedValue([
-      { id: 't1', name: 'Tenant One', slug: 'tenant-one' },
-    ]);
     listProjects.mockResolvedValue([
       { id: 'p1', name: 'Project One', project_id: 'p1', description: '' },
     ]);

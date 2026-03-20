@@ -12,8 +12,11 @@ jest.mock('next-auth/react', () => ({
   })),
 }));
 
+jest.mock('@/app/contexts/TenantSelectionContext', () => ({
+  useTenantSelection: jest.fn(),
+}));
+
 jest.mock('@lib/api/rest-client', () => ({
-  listMyTenants: jest.fn(),
   listProjects: jest.fn(),
   listVersions: jest.fn(),
   publishVersion: jest.fn(),
@@ -40,11 +43,15 @@ describe('PublishPage', () => {
         accessToken: 'token',
       },
     });
-    const { listMyTenants, listProjects, listVersions } =
+    const { useTenantSelection } = require('@/app/contexts/TenantSelectionContext');
+    useTenantSelection.mockReturnValue({
+      tenants: [{ id: 't1', name: 'Tenant One', slug: 'tenant-one' }],
+      tenantsLoading: false,
+      selectedTenantId: 't1',
+      setSelectedTenantId: jest.fn(),
+    });
+    const { listProjects, listVersions } =
       require('@lib/api/rest-client');
-    listMyTenants.mockResolvedValue([
-      { id: 't1', name: 'Tenant One', slug: 'tenant-one' },
-    ]);
     listProjects.mockResolvedValue([
       { id: 'p1', name: 'Project One', project_id: 'p1', description: '' },
     ]);
@@ -85,15 +92,7 @@ describe('PublishPage', () => {
     });
   });
 
-  it('calls listMyTenants on mount', async () => {
-    const { listMyTenants } = require('@lib/api/rest-client');
-    render(<PublishPage />);
-    await waitFor(() => {
-      expect(listMyTenants).toHaveBeenCalled();
-    });
-  });
-
-  it('calls listProjects when tenant is selected', async () => {
+  it('calls listProjects when tenant is selected from context', async () => {
     const { listProjects } = require('@lib/api/rest-client');
     render(<PublishPage />);
     await waitFor(() => {

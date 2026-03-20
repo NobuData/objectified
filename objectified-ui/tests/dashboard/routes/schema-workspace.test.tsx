@@ -13,8 +13,11 @@ jest.mock('next-auth/react', () => ({
   })),
 }));
 
+jest.mock('@/app/contexts/TenantSelectionContext', () => ({
+  useTenantSelection: jest.fn(),
+}));
+
 jest.mock('@lib/api/rest-client', () => ({
-  listMyTenants: jest.fn(),
   listProjects: jest.fn(),
   listVersions: jest.fn(),
   pullVersion: jest.fn(),
@@ -63,11 +66,15 @@ describe('SchemaWorkspacePage', () => {
         accessToken: 'token',
       },
     });
-    const { listMyTenants, listProjects, listVersions, listVersionSnapshotsMetadata } =
+    const { useTenantSelection } = require('@/app/contexts/TenantSelectionContext');
+    useTenantSelection.mockReturnValue({
+      tenants: [{ id: 't1', name: 'Tenant One', slug: 'tenant-one' }],
+      tenantsLoading: false,
+      selectedTenantId: 't1',
+      setSelectedTenantId: jest.fn(),
+    });
+    const { listProjects, listVersions, listVersionSnapshotsMetadata } =
       require('@lib/api/rest-client');
-    listMyTenants.mockResolvedValue([
-      { id: 't1', name: 'Tenant One', slug: 'tenant-one' },
-    ]);
     listProjects.mockResolvedValue([
       { id: 'p1', name: 'Project One', project_id: 'p1', description: '' },
     ]);
@@ -90,15 +97,7 @@ describe('SchemaWorkspacePage', () => {
     });
   });
 
-  it('calls listMyTenants on mount', async () => {
-    const { listMyTenants } = require('@lib/api/rest-client');
-    render(<SchemaWorkspacePage />);
-    await waitFor(() => {
-      expect(listMyTenants).toHaveBeenCalledWith(expect.anything());
-    });
-  });
-
-  it('calls listProjects when tenant selected', async () => {
+  it('calls listProjects when tenant selected from context', async () => {
     const { listProjects } = require('@lib/api/rest-client');
     render(<SchemaWorkspacePage />);
     await waitFor(() => {
@@ -188,8 +187,13 @@ describe('SchemaWorkspacePage', () => {
   });
 
   it('shows no-tenant message when there are no tenants', async () => {
-    const { listMyTenants } = require('@lib/api/rest-client');
-    listMyTenants.mockResolvedValue([]);
+    const { useTenantSelection } = require('@/app/contexts/TenantSelectionContext');
+    useTenantSelection.mockReturnValue({
+      tenants: [],
+      tenantsLoading: false,
+      selectedTenantId: null,
+      setSelectedTenantId: jest.fn(),
+    });
     render(<SchemaWorkspacePage />);
     await waitFor(() => {
       expect(screen.getByText(/select a tenant to compare schemas/i)).toBeInTheDocument();
