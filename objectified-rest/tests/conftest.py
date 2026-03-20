@@ -47,6 +47,7 @@ def mock_db_all():
         patch("app.routes.import_routes.db", mock),
         patch("app.routes.version_commits.db", mock),
         patch("app.routes.schema_webhooks.db", mock),
+        patch("app.routes.catalog.db", mock),
         patch("app.schema_webhook_service.db", mock),
         patch("app.database.db", mock),
     ):
