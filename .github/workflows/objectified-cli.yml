@@ -1,0 +1,53 @@
+# Build and test objectified-cli (TypeScript CLI).
+# Runs on push/PR when files under objectified-cli/ change.
+# Uses Node.js LTS and Yarn workspaces (install from repository root).
+
+name: Objectified CLI
+
+on:
+  push:
+    paths:
+      - 'objectified-cli/**'
+  pull_request:
+    paths:
+      - 'objectified-cli/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Enable Corepack and set Yarn version
+        run: |
+          corepack enable
+          corepack prepare yarn@stable --activate
+
+      - name: Get Yarn cache directory
+        id: yarn-cache-dir
+        run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
+
+      - name: Cache Yarn dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.yarn-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-yarn-cli-${{ hashFiles('yarn.lock', 'objectified-cli/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-cli-
+            ${{ runner.os }}-yarn-
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build
+        run: yarn workspace objectified-cli run build
+
+      - name: Run tests
+        run: yarn workspace objectified-cli run test --ci
