@@ -15,6 +15,12 @@ from app.auth import (
 from app.database import db
 from app.quotas import ensure_version_quota_allows_create
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
+from app.schema_webhook_service import (
+    build_schema_webhook_payload,
+    load_project_row,
+    load_version_row,
+    try_emit_schema_webhook,
+)
 from app.schemas.version import (
     VersionCreate,
     VersionHistorySchema,
@@ -548,6 +554,25 @@ def publish_version(
         old_data=old_row,
         new_data=dict(row),
     )
+
+    pid = str(row["project_id"])
+    prow = load_project_row(pid)
+    if prow:
+        vrow = load_version_row(version_id) or dict(row)
+        hook_payload = build_schema_webhook_payload(
+            tenant_id=str(prow["tenant_id"]),
+            event_type="schema.published",
+            project_row=prow,
+            version_row=vrow,
+            actor_user_id=user_id,
+            snapshot_row=None,
+            extra={"visibility": row.get("visibility")},
+        )
+        try_emit_schema_webhook(
+            project_id=pid,
+            event_type="schema.published",
+            payload=hook_payload,
+        )
 
     return VersionSchema(**dict(row))
 

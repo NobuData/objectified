@@ -79,6 +79,43 @@ def _version_lookup_row(version_row: dict[str, Any] | None = None) -> dict[str, 
     return {**row, "project_deleted_at": None}
 
 
+_PROJECT_HOOK = {"id": _PROJECT_ID, "tenant_id": _TENANT_ID, "name": "proj", "slug": "test-proj"}
+
+
+def _version_row_for_webhook(
+    row: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Columns matching load_version_row (schema webhook payload)."""
+    v = row or _VERSION_ROW
+    return {
+        "id": v["id"],
+        "project_id": v["project_id"],
+        "name": v.get("name"),
+        "description": v.get("description"),
+        "published": v.get("published"),
+        "visibility": v.get("visibility"),
+        "published_at": v.get("published_at"),
+        "code_generation_tag": v.get("code_generation_tag"),
+        "source_version_id": v.get("source_version_id"),
+    }
+
+
+def _webhook_followup(
+    *,
+    version_row: dict[str, Any] | None = None,
+    snapshot_lookup_row: list[dict[str, Any]] | None = None,
+) -> list[Any]:
+    """Extra execute_query results after successful commit/push/branch (project, version, …)."""
+    tail: list[Any] = [
+        [_PROJECT_HOOK],
+        [_version_row_for_webhook(version_row)],
+    ]
+    if snapshot_lookup_row is not None:
+        tail.append(snapshot_lookup_row)
+    tail.append([])  # no webhooks configured
+    return tail
+
+
 @pytest.fixture
 def client():
     """FastAPI test client with require_authenticated overridden."""
@@ -110,6 +147,7 @@ class TestCommitVersion:
                 [_version_lookup_row()],  # _assert_version_exists
                 [],  # _capture_version_state: no classes
                 [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
+                *_webhook_followup(),
             ]
             mock_db.execute_mutation.side_effect = [_SNAPSHOT_ROW, None]
             r = client.post(
@@ -151,6 +189,7 @@ class TestCommitVersion:
                 [],  # _upsert_class_properties: cp not found (will create)
                 [],  # _capture_version_state: class query
                 [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
+                *_webhook_followup(),
             ]
             mock_db.execute_mutation.side_effect = [
                 {"id": _CLASS_ID},  # INSERT class
@@ -173,6 +212,7 @@ class TestCommitVersion:
                 [_version_lookup_row()],  # _assert_version_exists
                 [],  # _capture_version_state: no classes
                 [{"metadata": {"canvas_metadata": {"layout": "grid"}}}],  # _create_snapshot
+                *_webhook_followup(),
             ]
             mock_db.execute_mutation.side_effect = [
                 None,  # UPDATE version metadata (returning=False)
@@ -213,6 +253,7 @@ class TestPushVersion:
                 ],
                 [],  # _capture_version_state: no classes
                 [{"metadata": {}}],  # _create_snapshot: version metadata for canvas_metadata
+                *_webhook_followup(version_row=_TARGET_VERSION_ROW),
             ]
             mock_db.execute_mutation.side_effect = [_SNAPSHOT_ROW, None]
             r = client.post(
@@ -634,6 +675,17 @@ class TestCreateVersionFromRevision:
                 [],  # _apply_snapshot_state: current classes (none)
                 [],  # _create_snapshot / _capture_version_state: classes (none)
                 [{"metadata": {}}],  # _create_snapshot: version metadata
+                *_webhook_followup(
+                    version_row=_NEW_VERSION_ROW,
+                    snapshot_lookup_row=[
+                        {
+                            "id": "00000000-0000-0000-0000-0000000000a2",
+                            "revision": 1,
+                            "label": "branch",
+                            "created_at": _NOW,
+                        }
+                    ],
+                ),
             ]
             mock_db.execute_mutation.side_effect = [
                 _NEW_VERSION_ROW,  # _insert_version_row

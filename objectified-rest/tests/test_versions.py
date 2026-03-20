@@ -57,6 +57,31 @@ def _version_lookup_row() -> dict[str, Any]:
     return {**_VERSION_ROW, "project_deleted_at": None}
 
 
+_PROJECT_HOOK = {"id": _PROJECT_ID, "tenant_id": _TENANT_ID, "name": "proj", "slug": "test-proj"}
+
+
+def _version_row_for_webhook(version_row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": version_row["id"],
+        "project_id": version_row["project_id"],
+        "name": version_row.get("name"),
+        "description": version_row.get("description"),
+        "published": version_row.get("published"),
+        "visibility": version_row.get("visibility"),
+        "published_at": version_row.get("published_at"),
+        "code_generation_tag": version_row.get("code_generation_tag"),
+        "source_version_id": version_row.get("source_version_id"),
+    }
+
+
+def _publish_webhook_queries(published_row: dict[str, Any]) -> list[Any]:
+    return [
+        [_PROJECT_HOOK],
+        [_version_row_for_webhook(published_row)],
+        [],
+    ]
+
+
 @pytest.fixture
 def client():
     """FastAPI test client with require_authenticated overridden."""
@@ -682,6 +707,7 @@ def test_publish_version_returns_200(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
+            *_publish_webhook_queries(published_row),
         ]
         mock_db.execute_mutation.side_effect = [published_row, None]
         r = client.post(
@@ -700,6 +726,7 @@ def test_publish_version_with_public_visibility(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
+            *_publish_webhook_queries(published_row),
         ]
         mock_db.execute_mutation.side_effect = [published_row, None]
         r = client.post(
@@ -736,6 +763,7 @@ def test_publish_version_no_body_defaults_to_private(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
+            *_publish_webhook_queries(published_row),
         ]
         mock_db.execute_mutation.side_effect = [published_row, None]
         r = client.post(f"/v1/versions/{_VERSION_ID}/publish")

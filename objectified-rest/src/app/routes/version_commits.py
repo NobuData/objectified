@@ -34,6 +34,12 @@ from app.routes.versions import (
     _record_history,
 )
 from app.schema_validation import validate_json_schema_object
+from app.schema_webhook_service import (
+    build_schema_webhook_payload,
+    load_project_row,
+    load_version_row,
+    try_emit_schema_webhook,
+)
 from app.schemas.version import (
     MergeConflict,
     VersionCommitPayload,
@@ -659,6 +665,39 @@ def create_version_from_revision(
             _conn=conn,
         )
 
+    branch_from = payload
+    prow = load_project_row(project_id)
+    if prow:
+        vrow = load_version_row(new_version_id)
+        snap_rows = db.execute_query(
+            """
+            SELECT id, revision, label, created_at
+            FROM objectified.version_snapshot
+            WHERE version_id = %s
+            ORDER BY revision DESC
+            LIMIT 1
+            """,
+            (new_version_id,),
+        )
+        snap = dict(snap_rows[0]) if snap_rows else None
+        hook_payload = build_schema_webhook_payload(
+            tenant_id=str(prow["tenant_id"]),
+            event_type="schema.branch_created",
+            project_row=prow,
+            version_row=vrow or dict(row),
+            actor_user_id=user_id,
+            snapshot_row=snap,
+            extra={
+                "source_version_id": str(branch_from.source_version_id),
+                "source_revision": branch_from.source_revision,
+            },
+        )
+        try_emit_schema_webhook(
+            project_id=project_id,
+            event_type="schema.branch_created",
+            payload=hook_payload,
+        )
+
     return VersionSchema(**dict(row))
 
 
@@ -707,6 +746,23 @@ def commit_version(
         old_data=None,
         new_data=snapshot_row.get("snapshot"),
     )
+
+    prow = load_project_row(project_id)
+    if prow:
+        vrow = load_version_row(version_id) or dict(version)
+        hook_payload = build_schema_webhook_payload(
+            tenant_id=str(prow["tenant_id"]),
+            event_type="schema.committed",
+            project_row=prow,
+            version_row=vrow,
+            actor_user_id=user_id,
+            snapshot_row=snapshot_row,
+        )
+        try_emit_schema_webhook(
+            project_id=project_id,
+            event_type="schema.committed",
+            payload=hook_payload,
+        )
 
     return VersionCommitResponse(
         revision=snapshot_row["revision"],
@@ -806,6 +862,24 @@ def push_version(
         old_data=None,
         new_data=snapshot_row.get("snapshot"),
     )
+
+    prow = load_project_row(target_project)
+    if prow:
+        vrow = load_version_row(target_version_id) or dict(target_version)
+        hook_payload = build_schema_webhook_payload(
+            tenant_id=str(prow["tenant_id"]),
+            event_type="schema.committed",
+            project_row=prow,
+            version_row=vrow,
+            actor_user_id=user_id,
+            snapshot_row=snapshot_row,
+            extra={"source_version_id": str(version_id), "operation": "push"},
+        )
+        try_emit_schema_webhook(
+            project_id=target_project,
+            event_type="schema.committed",
+            payload=hook_payload,
+        )
 
     return VersionCommitResponse(
         revision=snapshot_row["revision"],
