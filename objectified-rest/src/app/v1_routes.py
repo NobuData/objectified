@@ -48,6 +48,7 @@ from app.routes.projects import router as _projects_router
 from app.routes.properties import router as _properties_router
 from app.routes.rbac import router as _rbac_router
 from app.routes.schema_webhooks import router as _schema_webhooks_router
+from app.routes.schema_promotions import router as _schema_promotions_router
 from app.routes.sso import router as _sso_router
 from app.routes.tenants import router as _tenants_router
 from app.routes.users import _hash_password, _verify_password  # noqa: F401 — re-export
@@ -71,6 +72,7 @@ router.include_router(_api_keys_router)
 router.include_router(_projects_router)
 router.include_router(_properties_router)
 router.include_router(_schema_webhooks_router)
+router.include_router(_schema_promotions_router)
 router.include_router(_validate_router)
 router.include_router(_version_commits_router)
 router.include_router(_versions_router)

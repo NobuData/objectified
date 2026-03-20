@@ -26,6 +26,7 @@ from app.schemas.catalog import (
     CatalogTenantSummary,
     CatalogVersionSummary,
 )
+from app.schemas.schema_promotions import SchemaEnvironment
 
 logger = logging.getLogger(__name__)
 
@@ -106,24 +107,51 @@ def _build_version_summaries(
 def list_catalog_tenants(
     limit: int = Query(100, ge=1, le=500, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
+    environment: Optional[SchemaEnvironment] = Query(
+        None,
+        description="Optional: only count tenants with a live schema in this environment.",
+    ),
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[CatalogTenantSummary]:
     """List tenants that have published content."""
-    rows = db.execute_query(
-        f"""
-        SELECT DISTINCT t.{_TENANT_CATALOG_COLUMNS.replace(', ', ', t.')}
-        FROM objectified.tenant t
-        JOIN objectified.project p ON p.tenant_id = t.id AND p.deleted_at IS NULL
-        JOIN objectified.version v ON v.project_id = p.id AND v.deleted_at IS NULL
-        WHERE t.deleted_at IS NULL
-          AND t.enabled = true
-          AND p.enabled = true
-          AND v.published = true
-        ORDER BY t.name ASC
-        LIMIT %s OFFSET %s
-        """,
-        (limit, offset),
-    )
+    if environment is None:
+        rows = db.execute_query(
+            f"""
+            SELECT DISTINCT t.{_TENANT_CATALOG_COLUMNS.replace(', ', ', t.')}
+            FROM objectified.tenant t
+            JOIN objectified.project p ON p.tenant_id = t.id AND p.deleted_at IS NULL
+            JOIN objectified.version v ON v.project_id = p.id AND v.deleted_at IS NULL
+            WHERE t.deleted_at IS NULL
+              AND t.enabled = true
+              AND p.enabled = true
+              AND v.published = true
+            ORDER BY t.name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+    else:
+        rows = db.execute_query(
+            f"""
+            SELECT DISTINCT t.{_TENANT_CATALOG_COLUMNS.replace(', ', ', t.')}
+            FROM objectified.tenant t
+            JOIN objectified.project p ON p.tenant_id = t.id AND p.deleted_at IS NULL
+            JOIN objectified.schema_live_version lv
+              ON lv.project_id = p.id
+             AND lv.version_id IS NOT NULL
+             AND lv.environment = %s::objectified.schema_environment
+            JOIN objectified.version v
+              ON v.id = lv.version_id
+             AND v.deleted_at IS NULL
+            WHERE t.deleted_at IS NULL
+              AND t.enabled = true
+              AND p.enabled = true
+              AND v.published = true
+            ORDER BY t.name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (environment.value, limit, offset),
+        )
     return [CatalogTenantSummary(**dict(r)) for r in rows]
 
 
@@ -141,6 +169,10 @@ def get_tenant_catalog(
     visibility: Optional[Literal["public", "private"]] = Query(
         None,
         description="Filter versions by visibility: 'public' or 'private'. Omit for all.",
+    ),
+    environment: Optional[SchemaEnvironment] = Query(
+        None,
+        description="Optional: only include the live promoted version for this environment.",
     ),
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> CatalogTenantEntry:
@@ -175,7 +207,6 @@ def get_tenant_catalog(
 
     project_ids = [str(dict(r)["id"]) for r in project_rows]
 
-    # Load published versions for these projects
     visibility_clause = ""
     params: list[Any] = list(project_ids)
     placeholders = ", ".join(["%s"] * len(project_ids))
@@ -184,18 +215,39 @@ def get_tenant_catalog(
         visibility_clause = "AND LOWER(v.visibility) = LOWER(%s)"
         params.append(visibility)
 
-    version_rows = db.execute_query(
-        f"""
-        SELECT {_VERSION_CATALOG_COLUMNS}, v.project_id
-        FROM objectified.version v
-        WHERE v.project_id IN ({placeholders})
-          AND v.deleted_at IS NULL
-          AND v.published = true
-          {visibility_clause}
-        ORDER BY v.published_at DESC NULLS LAST, v.name ASC
-        """,
-        tuple(params),
-    )
+    if environment is None:
+        # Load published versions for these projects.
+        version_rows = db.execute_query(
+            f"""
+            SELECT {_VERSION_CATALOG_COLUMNS}, v.project_id
+            FROM objectified.version v
+            WHERE v.project_id IN ({placeholders})
+              AND v.deleted_at IS NULL
+              AND v.published = true
+              {visibility_clause}
+            ORDER BY v.published_at DESC NULLS LAST, v.name ASC
+            """,
+            tuple(params),
+        )
+    else:
+        # Load only the live promoted version for this environment.
+        # (one live version per project+environment)
+        version_rows = db.execute_query(
+            f"""
+            SELECT {_VERSION_CATALOG_COLUMNS}, v.project_id
+            FROM objectified.schema_live_version lv
+            JOIN objectified.version v
+              ON v.id = lv.version_id
+             AND v.deleted_at IS NULL
+            WHERE lv.project_id IN ({placeholders})
+              AND lv.environment = %s::objectified.schema_environment
+              AND lv.version_id IS NOT NULL
+              AND v.published = true
+              {visibility_clause}
+            ORDER BY lv.promoted_at DESC NULLS LAST, v.name ASC
+            """,
+            tuple(params[: len(project_ids)] + [environment.value] + (params[len(project_ids):])),
+        )
 
     # Group versions by project
     versions_by_project: dict[str, list[dict[str, Any]]] = {}
@@ -241,6 +293,10 @@ def list_catalog_project_versions(
     project_id: str,
     limit: int = Query(100, ge=1, le=500, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
+    environment: Optional[SchemaEnvironment] = Query(
+        None,
+        description="Optional: only return the live promoted version for this environment.",
+    ),
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[CatalogVersionSummary]:
     """List published versions for a project with classes."""
@@ -266,18 +322,36 @@ def list_catalog_project_versions(
         project_id=project_id,
     )
 
-    version_rows = db.execute_query(
-        f"""
-        SELECT {_VERSION_CATALOG_COLUMNS}
-        FROM objectified.version
-        WHERE project_id = %s
-          AND deleted_at IS NULL
-          AND published = true
-        ORDER BY published_at DESC NULLS LAST, name ASC
-        LIMIT %s OFFSET %s
-        """,
-        (project_id, limit, offset),
-    )
+    if environment is None:
+        version_rows = db.execute_query(
+            f"""
+            SELECT {_VERSION_CATALOG_COLUMNS}
+            FROM objectified.version
+            WHERE project_id = %s
+              AND deleted_at IS NULL
+              AND published = true
+            ORDER BY published_at DESC NULLS LAST, name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (project_id, limit, offset),
+        )
+    else:
+        version_rows = db.execute_query(
+            f"""
+            SELECT {_VERSION_CATALOG_COLUMNS}
+            FROM objectified.schema_live_version lv
+            JOIN objectified.version v
+              ON v.id = lv.version_id
+             AND v.deleted_at IS NULL
+            WHERE lv.project_id = %s
+              AND lv.environment = %s::objectified.schema_environment
+              AND lv.version_id IS NOT NULL
+              AND v.published = true
+            ORDER BY lv.promoted_at DESC NULLS LAST, v.name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (project_id, environment.value, limit, offset),
+        )
     if not version_rows:
         return []
 
@@ -306,46 +380,96 @@ def list_catalog_project_versions(
 def list_public_catalog(
     limit: int = Query(100, ge=1, le=500, description="Max tenant entries to return"),
     offset: int = Query(0, ge=0, description="Number of tenant entries to skip"),
+    environment: Optional[SchemaEnvironment] = Query(
+        None,
+        description="Optional: only return the live promoted versions for this environment.",
+    ),
 ) -> List[CatalogTenantEntry]:
     """Return the public catalog — only public-visibility published versions."""
-    # Load tenants that have public published versions
-    tenant_rows = db.execute_query(
-        f"""
-        SELECT DISTINCT t.{_TENANT_CATALOG_COLUMNS.replace(', ', ', t.')}
-        FROM objectified.tenant t
-        JOIN objectified.project p ON p.tenant_id = t.id AND p.deleted_at IS NULL
-        JOIN objectified.version v ON v.project_id = p.id AND v.deleted_at IS NULL
-        WHERE t.deleted_at IS NULL
-          AND t.enabled = true
-          AND p.enabled = true
-          AND v.published = true
-          AND LOWER(v.visibility) = LOWER('public')
-        ORDER BY t.name ASC
-        LIMIT %s OFFSET %s
-        """,
-        (limit, offset),
-    )
+    # Load tenants that have public published versions (or live versions in env mode).
+    if environment is None:
+        tenant_rows = db.execute_query(
+            f"""
+            SELECT DISTINCT t.{_TENANT_CATALOG_COLUMNS.replace(', ', ', t.')}
+            FROM objectified.tenant t
+            JOIN objectified.project p ON p.tenant_id = t.id AND p.deleted_at IS NULL
+            JOIN objectified.version v ON v.project_id = p.id AND v.deleted_at IS NULL
+            WHERE t.deleted_at IS NULL
+              AND t.enabled = true
+              AND p.enabled = true
+              AND v.published = true
+              AND LOWER(v.visibility) = LOWER('public')
+            ORDER BY t.name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+    else:
+        tenant_rows = db.execute_query(
+            f"""
+            SELECT DISTINCT t.{_TENANT_CATALOG_COLUMNS.replace(', ', ', t.')}
+            FROM objectified.tenant t
+            JOIN objectified.project p ON p.tenant_id = t.id AND p.deleted_at IS NULL
+            JOIN objectified.schema_live_version lv
+              ON lv.project_id = p.id
+             AND lv.version_id IS NOT NULL
+             AND lv.environment = %s::objectified.schema_environment
+            JOIN objectified.version v
+              ON v.id = lv.version_id
+             AND v.deleted_at IS NULL
+            WHERE t.deleted_at IS NULL
+              AND t.enabled = true
+              AND p.enabled = true
+              AND v.published = true
+              AND LOWER(v.visibility) = LOWER('public')
+            ORDER BY t.name ASC
+            LIMIT %s OFFSET %s
+            """,
+            (environment.value, limit, offset),
+        )
     if not tenant_rows:
         return []
 
     tenant_ids = [str(dict(r)["id"]) for r in tenant_rows]
     t_placeholders = ", ".join(["%s"] * len(tenant_ids))
 
-    # Load projects under these tenants with public published versions
-    project_rows = db.execute_query(
-        f"""
-        SELECT DISTINCT p.{_PROJECT_CATALOG_COLUMNS.replace(', ', ', p.')}, p.tenant_id
-        FROM objectified.project p
-        JOIN objectified.version v ON v.project_id = p.id AND v.deleted_at IS NULL
-        WHERE p.tenant_id IN ({t_placeholders})
-          AND p.deleted_at IS NULL
-          AND p.enabled = true
-          AND v.published = true
-          AND LOWER(v.visibility) = LOWER('public')
-        ORDER BY p.name ASC
-        """,
-        tuple(tenant_ids),
-    )
+    if environment is None:
+        # Load projects under these tenants with public published versions
+        project_rows = db.execute_query(
+            f"""
+            SELECT DISTINCT p.{_PROJECT_CATALOG_COLUMNS.replace(', ', ', p.')}, p.tenant_id
+            FROM objectified.project p
+            JOIN objectified.version v ON v.project_id = p.id AND v.deleted_at IS NULL
+            WHERE p.tenant_id IN ({t_placeholders})
+              AND p.deleted_at IS NULL
+              AND p.enabled = true
+              AND v.published = true
+              AND LOWER(v.visibility) = LOWER('public')
+            ORDER BY p.name ASC
+            """,
+            tuple(tenant_ids),
+        )
+    else:
+        project_rows = db.execute_query(
+            f"""
+            SELECT DISTINCT p.{_PROJECT_CATALOG_COLUMNS.replace(', ', ', p.')}, p.tenant_id
+            FROM objectified.project p
+            JOIN objectified.schema_live_version lv
+              ON lv.project_id = p.id
+             AND lv.version_id IS NOT NULL
+             AND lv.environment = %s::objectified.schema_environment
+            JOIN objectified.version v
+              ON v.id = lv.version_id
+             AND v.deleted_at IS NULL
+            WHERE p.tenant_id IN ({t_placeholders})
+              AND p.deleted_at IS NULL
+              AND p.enabled = true
+              AND v.published = true
+              AND LOWER(v.visibility) = LOWER('public')
+            ORDER BY p.name ASC
+            """,
+            tuple([environment.value, *tenant_ids]),
+        )
 
     project_ids = [str(dict(r)["id"]) for r in project_rows]
     projects_by_tenant: dict[str, list[dict[str, Any]]] = {}
@@ -360,20 +484,39 @@ def list_public_catalog(
             for tr in tenant_rows
         ]
 
-    # Load public published versions
     p_placeholders = ", ".join(["%s"] * len(project_ids))
-    version_rows = db.execute_query(
-        f"""
-        SELECT {_VERSION_CATALOG_COLUMNS}, v.project_id
-        FROM objectified.version v
-        WHERE v.project_id IN ({p_placeholders})
-          AND v.deleted_at IS NULL
-          AND v.published = true
-          AND LOWER(v.visibility) = LOWER('public')
-        ORDER BY v.published_at DESC NULLS LAST, v.name ASC
-        """,
-        tuple(project_ids),
-    )
+
+    if environment is None:
+        # Load public published versions
+        version_rows = db.execute_query(
+            f"""
+            SELECT {_VERSION_CATALOG_COLUMNS}, v.project_id
+            FROM objectified.version v
+            WHERE v.project_id IN ({p_placeholders})
+              AND v.deleted_at IS NULL
+              AND v.published = true
+              AND LOWER(v.visibility) = LOWER('public')
+            ORDER BY v.published_at DESC NULLS LAST, v.name ASC
+            """,
+            tuple(project_ids),
+        )
+    else:
+        version_rows = db.execute_query(
+            f"""
+            SELECT {_VERSION_CATALOG_COLUMNS}, v.project_id
+            FROM objectified.schema_live_version lv
+            JOIN objectified.version v
+              ON v.id = lv.version_id
+             AND v.deleted_at IS NULL
+            WHERE v.project_id IN ({p_placeholders})
+              AND lv.environment = %s::objectified.schema_environment
+              AND lv.version_id IS NOT NULL
+              AND v.published = true
+              AND LOWER(v.visibility) = LOWER('public')
+            ORDER BY lv.promoted_at DESC NULLS LAST, v.name ASC
+            """,
+            tuple([*project_ids, environment.value]),
+        )
 
     versions_by_project: dict[str, list[dict[str, Any]]] = {}
     version_ids: list[str] = []

@@ -61,6 +61,14 @@ from app.schemas.rbac import (
     RoleSchema,
     RoleUpdate,
 )
+from app.schemas.schema_promotions import (
+    SchemaEnvironment,
+    SchemaLiveVersionDetail,
+    SchemaLiveVersionSchema,
+    SchemaPromotionRequest,
+    SchemaPromotionSchema,
+    SchemaPromoteResponse,
+)
 
 __all__ = [
     "AccountCreate",
@@ -110,6 +118,12 @@ __all__ = [
     "RoleUpdate",
     "RolePermissionsUpdate",
     "AccountRoleAssignmentCreate",
+    "SchemaEnvironment",
+    "SchemaPromotionRequest",
+    "SchemaLiveVersionSchema",
+    "SchemaPromotionSchema",
+    "SchemaPromoteResponse",
+    "SchemaLiveVersionDetail",
     "EffectivePermissionsResponse",
     "CatalogClassSummary",
     "CatalogProjectEntry",

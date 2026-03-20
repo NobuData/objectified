@@ -82,7 +82,7 @@ class TestRbacSeeds:
               AND key IN (
                 'project:read', 'project:write',
                 'version:read', 'version:write', 'version:publish',
-                'schema:read', 'schema:write',
+                'schema:read', 'schema:write', 'schema:promote',
                 'audit:read'
               )
             ORDER BY key ASC
@@ -93,6 +93,7 @@ class TestRbacSeeds:
             "audit:read",
             "project:read",
             "project:write",
+            "schema:promote",
             "schema:read",
             "schema:write",
             "version:publish",
