@@ -1,13 +1,17 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { Loader2 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import { Flex, Text } from '@radix-ui/themes';
 import { getMe, updateMe, type MeProfile } from '@lib/api/rest-client';
+import { useUserAppearanceOptional } from '@/app/contexts/UserAppearanceContext';
 
 export default function ProfilePage() {
+  const appearance = useUserAppearanceOptional();
+  const appearanceRef = useRef(appearance);
+  appearanceRef.current = appearance;
   const { status } = useSession();
   const [profile, setProfile] = useState<MeProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,6 +32,7 @@ export default function ProfilePage() {
     try {
       const data = await getMe();
       setProfile(data);
+      appearanceRef.current?.ingestServerMetadata(data.metadata ?? {});
       setName(data.name);
       setMetadataJson(
         JSON.stringify(data.metadata ?? {}, null, 2)
@@ -67,6 +72,7 @@ export default function ProfilePage() {
         { name: name.trim() || undefined, metadata: parsedMetadata }
       );
       setProfile(data);
+      appearance?.ingestServerMetadata(data.metadata ?? {});
       setMetadataJson(JSON.stringify(data.metadata ?? {}, null, 2));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);

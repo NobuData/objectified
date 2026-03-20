@@ -2,11 +2,15 @@
 
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
-import { useMemo } from 'react';
-import { LayoutDashboard, User, Building2, UserCircle, PenTool, Home } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { LayoutDashboard, User, Building2, UserCircle, PenTool, Home, Palette } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import Breadcrumbs from '@/app/components/Breadcrumbs';
 import GlobalSearchDialog from '@/app/components/GlobalSearchDialog';
+import ThemeSelector from '@/app/components/theme/ThemeSelector';
+import TenantBrandingEffects from '@/app/components/theme/TenantBrandingEffects';
+import { parseTenantBrandingFromMetadata } from '@lib/ui/tenantBrandingMetadata';
+import { useTheme } from 'next-themes';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
@@ -17,6 +21,27 @@ export default function TopHeader() {
   const workspace = useWorkspaceOptional();
   const studio = useStudioOptional();
   const focusMode = useCanvasFocusModeOptional();
+  const [showThemeSelector, setShowThemeSelector] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { theme, resolvedTheme } = useTheme();
+
+  const tenantBranding = useMemo(
+    () => parseTenantBrandingFromMetadata(workspace?.tenant?.metadata),
+    [workspace?.tenant?.metadata]
+  );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const themeLabel = useMemo(() => {
+    if (!mounted) return '';
+    if (theme === 'system') {
+      return `System (${resolvedTheme === 'dark' ? 'Dark' : 'Light'})`;
+    }
+    if (theme === 'dark') return 'Dark';
+    return 'Light';
+  }, [mounted, theme, resolvedTheme]);
 
   const focusedClassName = useMemo(() => {
     const focusNodeId = focusMode?.state.focusNodeId;
@@ -55,9 +80,20 @@ export default function TopHeader() {
   };
 
   return (
+    <>
+    <TenantBrandingEffects tenant={workspace?.tenant ?? null} />
+    <ThemeSelector isOpen={showThemeSelector} onClose={() => setShowThemeSelector(false)} />
     <header className="flex items-start justify-between px-4 py-2 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 gap-3">
       <div className="flex flex-col gap-1 min-w-0">
         <div className="flex items-center gap-6">
+          {tenantBranding.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- tenant URLs are external/dynamic
+            <img
+              src={tenantBranding.logoUrl}
+              alt=""
+              className="h-8 w-auto max-w-[140px] object-contain hidden sm:block"
+            />
+          ) : null}
           <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
             v0.1.0
           </span>
@@ -103,7 +139,9 @@ export default function TopHeader() {
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm hidden md:flex">
           <Building2 className="h-4 w-4" />
-          <span>Default Tenant</span>
+          <span className="max-w-[200px] truncate">
+            {workspace?.tenant?.name ?? 'Tenant'}
+          </span>
         </div>
         <GlobalSearchDialog />
         <DropdownMenu.Root>
@@ -128,6 +166,19 @@ export default function TopHeader() {
               align="end"
             >
               <DropdownMenu.Item
+                onSelect={() => setShowThemeSelector(true)}
+                className="rounded-md px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">
+                  <Palette className="h-4 w-4" />
+                  Theme
+                </span>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                  {themeLabel}
+                </span>
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
+              <DropdownMenu.Item
                 onSelect={handleSignOut}
                 className="rounded-md px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800"
               >
@@ -138,5 +189,6 @@ export default function TopHeader() {
         </DropdownMenu.Root>
       </div>
     </header>
+    </>
   );
 }

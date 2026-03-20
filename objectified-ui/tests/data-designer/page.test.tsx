@@ -80,7 +80,7 @@ describe('DataDesignerPage', () => {
     renderWithProviders(<DataDesignerPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Default Tenant/i)).toBeInTheDocument();
+      expect(screen.getByText(/^Tenant$/i)).toBeInTheDocument();
     });
     expect(screen.getByLabelText(/Profile menu/i)).toBeInTheDocument();
   });
