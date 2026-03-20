@@ -112,6 +112,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# In Starlette, add_middleware stacks middlewares such that the LAST call becomes the
+# outermost layer (processes requests first, responses last).  RequestLoggingMiddleware
+# must be outermost so that ALL responses — including 429s from RateLimitMiddleware —
+# receive X-Request-ID / X-Trace-ID headers and are counted in access logs.
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 

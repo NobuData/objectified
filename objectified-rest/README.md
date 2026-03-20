@@ -55,9 +55,9 @@ JSON lines include `request_id`, `trace_id`, and after authentication `tenant_sl
 
 ### Request and trace correlation
 
-- **X-Request-ID**: Echoed on every response. If the client sends `X-Request-ID`, that value is kept; otherwise the server generates a UUID.
-- **traceparent** (W3C): If present, the trace id is parsed and echoed as **X-Trace-ID** (32-char hex).
-- **X-Trace-ID**: Used when `traceparent` is absent; if neither is sent, a new trace id is generated.
+- **X-Request-ID**: Echoed on all successful and handled error responses. If the client sends `X-Request-ID`, that value is kept (provided it passes validation); otherwise the server generates a UUID. On unhandled 5xx errors generated outside the normal middleware pipeline this header may be missing.
+- **traceparent** (W3C): If present, the trace id is parsed and echoed as **X-Trace-ID** (32-char hex) on successful and handled responses.
+- **X-Trace-ID**: Used when `traceparent` is absent; if neither is sent, a new trace id is generated and echoed on successful and handled responses. On unhandled 5xx errors this header may be missing.
 
 ### OpenTelemetry (optional)
 
