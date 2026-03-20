@@ -59,6 +59,10 @@ make test
 
 ---
 
+## Backup and disaster recovery
+
+Database backup, restore, and optional application-level schema export/import are documented in [**docs/OPS-DISASTER-RECOVERY.md**](../docs/OPS-DISASTER-RECOVERY.md) in this monorepo.
+
 ## Guidelines
 
 Creating new tables or updating existing tables should keep the following in mind:
