@@ -90,6 +90,12 @@ When `RATE_LIMIT_ENABLED=true`:
 
 **Operations notes**: Apply the migration before using new columns. Tune `RATE_LIMIT_PER_MINUTE` as a global default; tighten per integration with API-key RPM or per-tenant RPM. Monitor **429** rates and quota **403**s in access logs (`request_completed` includes status). Horizontal scaling does not share in-memory counters—use a shared store (e.g. Redis) if you need cluster-wide limits.
 
+## Disaster recovery, backup, and logical export
+
+For **PostgreSQL backup/restore** (including `version_history`, `version_snapshot`, and `project_history`), **failover** checks using `/health` and `/ready`, and **optional** REST **export/import** of schema documents for DR supplementation, see the operations runbook:
+
+- [**docs/OPS-DISASTER-RECOVERY.md**](../docs/OPS-DISASTER-RECOVERY.md)
+
 ## Tests
 
 ```bash
