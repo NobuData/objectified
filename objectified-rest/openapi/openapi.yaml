@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.27
+  version: 1.0.28
 paths:
   /v1/auth/login:
     post:
@@ -1989,6 +1989,8 @@ paths:
       - Tenants
       summary: List tenants
       description: List all tenants. Soft-deleted tenants are excluded by default.
+        Optional search matches name, slug, and description (case-insensitive substring).
+        Use archived_only for archived tenants only.
       operationId: list_tenants_v1_tenants_get
       parameters:
       - name: include_deleted
@@ -2000,6 +2002,23 @@ paths:
           default: false
           title: Include Deleted
         description: Include soft-deleted tenants
+      - name: archived_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Return only archived (soft-deleted) tenants
+          default: false
+          title: Archived Only
+        description: Return only archived (soft-deleted) tenants
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+          title: Search
+        description: Case-insensitive substring on name, slug, and description
       responses:
         '200':
           description: Successful Response
@@ -2066,9 +2085,19 @@ paths:
       - Tenants
       summary: List current user's tenants
       description: List tenants the authenticated user is a member of (requires JWT).
-        Returns full tenant details. Soft-deleted tenants are excluded.
+        Returns full tenant details. Soft-deleted tenants are excluded unless include_archived
+        is true.
       operationId: list_my_tenants_v1_tenants_me_get
       parameters:
+      - name: include_archived
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include soft-deleted tenants where membership still exists
+          default: false
+          title: Include Archived
+        description: Include soft-deleted tenants where membership still exists
       - name: authorization
         in: header
         required: false
@@ -2220,6 +2249,144 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/restore:
+    post:
+      tags:
+      - Tenants
+      summary: Restore archived tenant
+      description: Clear soft-delete (deleted_at) and re-enable the tenant. **Admin
+        only** (JWT platform administrators).
+      operationId: restore_tenant_v1_tenants__tenant_id__restore_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/activity-summary:
+    get:
+      tags:
+      - Tenants
+      summary: Tenant activity summary
+      description: Project, member, and version counts plus optional dashboard page
+        visit counts (last 7 days). Requires tenant membership or platform admin.
+      operationId: get_tenant_activity_summary_v1_tenants__tenant_id__activity_summary_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantActivitySummarySchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/appearance:
+    put:
+      tags:
+      - Tenants
+      summary: Update tenant appearance
+      description: Merge branding and default UI theme into tenant metadata. Tenant
+        administrators or platform admins. Send JSON null for a field to clear it.
+      operationId: update_tenant_appearance_v1_tenants__tenant_id__appearance_put
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantAppearanceUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantSchema'
         '422':
           description: Validation Error
           content:
@@ -8699,7 +8866,8 @@ components:
           title: Metadata
           description: 'Optional ``metadata.branding`` for the dashboard: ``logoUrl``,
             ``faviconUrl`` (http/https), ``primaryColor`` (``#RGB`` / ``#RRGGBB`` / ``#RRGGBBAA``)
-            (GitHub #187).'
+            (GitHub #187). Optional ``metadata.defaultTheme``: ``light``, ``dark``, or ``system``
+            (GitHub #192).'
         rate_limit_requests_per_minute:
           anyOf:
           - type: integer
@@ -8744,6 +8912,71 @@ components:
       - created_at
       title: TenantSchema
       description: Response schema for objectified.tenant.
+    TenantActivitySummarySchema:
+      properties:
+        active_project_count:
+          type: integer
+          minimum: 0.0
+          title: Active Project Count
+          description: Non-deleted projects for this tenant.
+        active_member_count:
+          type: integer
+          minimum: 0.0
+          title: Active Member Count
+          description: Active tenant_account memberships.
+        schema_version_count:
+          type: integer
+          minimum: 0.0
+          title: Schema Version Count
+          description: Non-deleted schema versions across projects in the tenant.
+        dashboard_page_visits_last_7_days:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Dashboard Page Visits Last 7 Days
+          description: Optional count from dashboard_page_visit when available.
+      type: object
+      required:
+      - active_project_count
+      - active_member_count
+      - schema_version_count
+      title: TenantActivitySummarySchema
+      description: Aggregated counts for dashboard tenant overview (GitHub #192).
+    TenantAppearanceUpdate:
+      properties:
+        logo_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Logo Url
+          description: HTTPS (or HTTP) logo URL; stored as metadata.branding.logoUrl.
+        favicon_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Favicon Url
+          description: HTTPS (or HTTP) favicon URL; stored as metadata.branding.faviconUrl.
+        primary_color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Color
+          description: Hex color; stored as metadata.branding.primaryColor.
+        default_theme:
+          anyOf:
+          - type: string
+            enum:
+            - light
+            - dark
+            - system
+          - type: 'null'
+          title: Default Theme
+          description: Stored as metadata.defaultTheme.
+      type: object
+      title: TenantAppearanceUpdate
+      description: Partial update for tenant branding and default UI theme (GitHub
+        #192).
     TenantUpdate:
       properties:
         name:

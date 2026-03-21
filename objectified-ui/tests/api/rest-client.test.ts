@@ -204,7 +204,7 @@ describe('auth headers via request()', () => {
 
   it('constructs URL with include_deleted query param', async () => {
     mockFetch.mockResolvedValue(makeFetchResponse([]));
-    await listTenants({}, true);
+    await listTenants({}, { includeDeleted: true });
     const [url] = mockFetch.mock.calls[0];
     expect(url).toBe(`${baseUrl}/tenants?include_deleted=true`);
   });

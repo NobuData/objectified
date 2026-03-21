@@ -621,7 +621,7 @@ wheels = [
 
 [[package]]
 name = "objectified-rest"
-version = "1.0.13"
+version = "1.0.14"
 source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },

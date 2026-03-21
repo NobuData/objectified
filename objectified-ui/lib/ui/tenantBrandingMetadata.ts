@@ -5,6 +5,10 @@
 
 export const TENANT_BRANDING_METADATA_KEY = 'branding';
 
+export const TENANT_DEFAULT_THEME_KEY = 'defaultTheme';
+
+export type TenantDefaultTheme = 'light' | 'dark' | 'system';
+
 export interface TenantBranding {
   logoUrl: string | null;
   faviconUrl: string | null;
@@ -49,4 +53,15 @@ export function parseTenantBrandingFromMetadata(
     faviconUrl: safeHttpUrl(b.faviconUrl),
     primaryColor: safeColor(b.primaryColor),
   };
+}
+
+export function parseTenantDefaultTheme(
+  metadata: Record<string, unknown> | null | undefined
+): TenantDefaultTheme | null {
+  if (!metadata || !isRecord(metadata)) return null;
+  const raw = metadata[TENANT_DEFAULT_THEME_KEY];
+  if (typeof raw !== 'string') return null;
+  const v = raw.trim();
+  if (v === 'light' || v === 'dark' || v === 'system') return v;
+  return null;
 }

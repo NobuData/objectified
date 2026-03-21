@@ -48,21 +48,25 @@ def decode_jwt(token: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def get_user_tenants(user_id: str) -> list[dict[str, Any]]:
+def get_user_tenants(
+    user_id: str, *, include_archived: bool = False
+) -> list[dict[str, Any]]:
     """
     Get all tenants that a user belongs to (objectified schema).
 
     Args:
         user_id: The user's ID (account id)
+        include_archived: When True, include soft-deleted tenants the user still belongs to.
 
     Returns:
         List of tenant dicts with id, slug, name
     """
-    query = """
+    tenant_active = "" if include_archived else "AND t.deleted_at IS NULL"
+    query = f"""
         SELECT t.id, t.slug, t.name
         FROM objectified.tenant t
         JOIN objectified.tenant_account tu ON t.id = tu.tenant_id
-        WHERE tu.account_id = %s AND t.deleted_at IS NULL AND tu.deleted_at IS NULL
+        WHERE tu.account_id = %s {tenant_active} AND tu.deleted_at IS NULL
     """
     return db.execute_query(query, (user_id,))
 

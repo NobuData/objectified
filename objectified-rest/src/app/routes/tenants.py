@@ -2,11 +2,17 @@
 
 import json
 import logging
-from typing import Annotated, Any, List
+from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import get_user_tenants, require_admin, require_authenticated
+from app.auth import (
+    get_user_tenants,
+    require_admin,
+    require_authenticated,
+    require_tenant_admin,
+    require_tenant_permission,
+)
 from app.database import db
 from app.routes.helpers import (
     _assert_tenant_exists,
@@ -19,7 +25,9 @@ from app.schemas import (
     TenantAccountCreate,
     TenantAccountSchema,
     TenantAccountUpdate,
+    TenantActivitySummarySchema,
     TenantAdministratorCreate,
+    TenantAppearanceUpdate,
     TenantBulkInviteResultEntry,
     TenantCreate,
     TenantMembersBulkInvite,
@@ -47,27 +55,52 @@ _TENANT_ROW_COLUMNS = (
     "/tenants",
     response_model=List[TenantSchema],
     summary="List tenants",
-    description="List all tenants. Soft-deleted tenants are excluded by default.",
+    description=(
+        "List all tenants. Soft-deleted tenants are excluded by default. "
+        "Use ``archived_only=true`` for archived tenants only; optional ``search`` "
+        "filters by case-insensitive substring on name, slug, and description."
+    ),
 )
 def list_tenants(
     include_deleted: bool = Query(False, description="Include soft-deleted tenants"),
+    archived_only: bool = Query(
+        False,
+        description="When true, return only archived (soft-deleted) tenants.",
+    ),
+    search: Optional[str] = Query(
+        None,
+        max_length=200,
+        description="Case-insensitive substring match on name, slug, and description.",
+    ),
 ) -> List[TenantSchema]:
-    """List tenants."""
-    if include_deleted:
-        query = f"""
-            SELECT {_TENANT_ROW_COLUMNS}
-            FROM objectified.tenant
-            ORDER BY created_at ASC
-        """
-        rows = db.execute_query(query)
-    else:
-        query = f"""
-            SELECT {_TENANT_ROW_COLUMNS}
-            FROM objectified.tenant
-            WHERE deleted_at IS NULL
-            ORDER BY created_at ASC
-        """
-        rows = db.execute_query(query)
+    """List tenants with optional archive filter and search."""
+    wheres: list[str] = []
+    params: list[Any] = []
+
+    if archived_only:
+        wheres.append("deleted_at IS NOT NULL")
+    elif not include_deleted:
+        wheres.append("deleted_at IS NULL")
+
+    term = (search or "").strip().lower()
+    if term:
+        wheres.append(
+            "("
+            "POSITION(%s IN LOWER(name)) > 0 OR "
+            "POSITION(%s IN LOWER(slug)) > 0 OR "
+            "POSITION(%s IN LOWER(COALESCE(description, ''))) > 0"
+            ")"
+        )
+        params.extend([term, term, term])
+
+    where_sql = " AND ".join(wheres) if wheres else "TRUE"
+    query = f"""
+        SELECT {_TENANT_ROW_COLUMNS}
+        FROM objectified.tenant
+        WHERE {where_sql}
+        ORDER BY created_at ASC
+    """
+    rows = db.execute_query(query, tuple(params) if params else None)
     return [TenantSchema(**dict(r)) for r in rows]
 
 
@@ -77,11 +110,16 @@ def list_tenants(
     summary="List current user's tenants",
     description=(
         "List tenants the authenticated user is a member of (requires JWT). "
-        "Returns full tenant details. Soft-deleted tenants are excluded."
+        "Returns full tenant details. Soft-deleted tenants are excluded unless "
+        "``include_archived=true``."
     ),
 )
 def list_my_tenants(
     caller: Annotated[dict[str, Any], Depends(require_authenticated)],
+    include_archived: bool = Query(
+        False,
+        description="Include tenants that are soft-deleted (archived) but still have membership rows.",
+    ),
 ) -> List[TenantSchema]:
     """List tenants for the current user (JWT only)."""
     user_id = caller.get("user_id")
@@ -90,15 +128,16 @@ def list_my_tenants(
             status_code=403,
             detail="This endpoint requires JWT authentication.",
         )
-    tenant_refs = get_user_tenants(user_id)
+    tenant_refs = get_user_tenants(user_id, include_archived=include_archived)
     if not tenant_refs:
         return []
     ids = [t["id"] for t in tenant_refs]
     placeholders = ",".join(["%s"] * len(ids))
+    deleted_filter = "" if include_archived else "AND deleted_at IS NULL"
     query = f"""
         SELECT {_TENANT_ROW_COLUMNS}
         FROM objectified.tenant
-        WHERE id IN ({placeholders}) AND deleted_at IS NULL
+        WHERE id IN ({placeholders}) {deleted_filter}
         ORDER BY name ASC
     """
     rows = db.execute_query(query, tuple(ids))
@@ -167,7 +206,7 @@ def create_tenant(
         # Atomically create the tenant and assign the creator as administrator using a CTE.
         # If either INSERT fails the whole transaction is rolled back.
         row = db.execute_mutation(
-            """
+            f"""
             WITH inserted_tenant AS (
                 INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
                 VALUES (%s, %s, %s, %s, %s::jsonb)
@@ -302,6 +341,218 @@ def deactivate_tenant(tenant_id: str) -> None:
         (tenant_id,),
         returning=False,
     )
+
+
+@router.post(
+    "/tenants/{tenant_id}/restore",
+    response_model=TenantSchema,
+    summary="Restore archived tenant",
+    description=(
+        "Clear soft-delete (``deleted_at``) and re-enable the tenant. "
+        "**Admin only** (JWT platform administrators)."
+    ),
+    dependencies=[Depends(require_admin)],
+)
+def restore_tenant(tenant_id: str) -> TenantSchema:
+    """Restore a soft-deleted tenant."""
+    rows = db.execute_query(
+        """
+        SELECT id FROM objectified.tenant
+        WHERE id = %s AND deleted_at IS NOT NULL
+        """,
+        (tenant_id,),
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail="Tenant is not archived or does not exist.",
+        )
+    row = db.execute_mutation(
+        f"""
+        UPDATE objectified.tenant
+        SET deleted_at = NULL, enabled = true
+        WHERE id = %s AND deleted_at IS NOT NULL
+        RETURNING {_TENANT_ROW_COLUMNS}
+        """,
+        (tenant_id,),
+    )
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail="Tenant is not archived or does not exist.",
+        )
+    return TenantSchema(**dict(row))
+
+
+@router.get(
+    "/tenants/{tenant_id}/activity-summary",
+    response_model=TenantActivitySummarySchema,
+    summary="Tenant activity summary",
+    description=(
+        "Return project, member, and schema version counts for the tenant, plus an optional "
+        "count of dashboard page visits in the last 7 days when the audit table exists. "
+        "Requires tenant membership or platform admin."
+    ),
+)
+def get_tenant_activity_summary(
+    tenant_id: str,
+    _authz: Annotated[
+        dict[str, Any],
+        Depends(require_tenant_permission("project:read")),
+    ],
+) -> TenantActivitySummarySchema:
+    """Aggregated counts for tenant overview (dashboard)."""
+    exists = db.execute_query(
+        "SELECT id FROM objectified.tenant WHERE id = %s",
+        (tenant_id,),
+    )
+    if not exists:
+        raise _not_found("Tenant", tenant_id)
+
+    summary_rows = db.execute_query(
+        """
+        SELECT
+            (
+                SELECT COUNT(*)::int
+                FROM objectified.project p
+                WHERE p.tenant_id = %s AND p.deleted_at IS NULL
+            ) AS active_project_count,
+            (
+                SELECT COUNT(*)::int
+                FROM objectified.tenant_account ta
+                WHERE ta.tenant_id = %s AND ta.deleted_at IS NULL
+            ) AS active_member_count,
+            (
+                SELECT COUNT(*)::int
+                FROM objectified.version v
+                JOIN objectified.project p ON p.id = v.project_id
+                WHERE p.tenant_id = %s
+                  AND v.deleted_at IS NULL
+                  AND p.deleted_at IS NULL
+            ) AS schema_version_count
+        """,
+        (tenant_id, tenant_id, tenant_id),
+    )
+    if not summary_rows:
+        return TenantActivitySummarySchema(
+            active_project_count=0,
+            active_member_count=0,
+            schema_version_count=0,
+            dashboard_page_visits_last_7_days=None,
+        )
+    srow = dict(summary_rows[0])
+
+    visit_count: Optional[int] = None
+    try:
+        vrows = db.execute_query(
+            """
+            SELECT COUNT(*)::int AS c
+            FROM objectified.dashboard_page_visit
+            WHERE tenant_id = %s::uuid
+              AND visited_at >= (timezone('utc', clock_timestamp()) - interval '7 days')
+            """,
+            (tenant_id,),
+        )
+        if vrows:
+            visit_count = int(vrows[0]["c"])
+    except Exception:
+        logger.exception(
+            "get_tenant_activity_summary: dashboard_page_visit query failed for tenant %s",
+            tenant_id,
+        )
+
+    return TenantActivitySummarySchema(
+        active_project_count=int(srow["active_project_count"] or 0),
+        active_member_count=int(srow["active_member_count"] or 0),
+        schema_version_count=int(srow["schema_version_count"] or 0),
+        dashboard_page_visits_last_7_days=visit_count,
+    )
+
+
+def _merge_tenant_appearance_metadata(
+    existing: dict[str, Any],
+    payload: TenantAppearanceUpdate,
+) -> dict[str, Any]:
+    meta = dict(existing)
+    branding: dict[str, Any]
+    raw_b = meta.get("branding")
+    if isinstance(raw_b, dict):
+        branding = dict(raw_b)
+    else:
+        branding = {}
+
+    if "logo_url" in payload.model_fields_set:
+        if payload.logo_url is None:
+            branding.pop("logoUrl", None)
+        else:
+            branding["logoUrl"] = payload.logo_url
+    if "favicon_url" in payload.model_fields_set:
+        if payload.favicon_url is None:
+            branding.pop("faviconUrl", None)
+        else:
+            branding["faviconUrl"] = payload.favicon_url
+    if "primary_color" in payload.model_fields_set:
+        if payload.primary_color is None:
+            branding.pop("primaryColor", None)
+        else:
+            branding["primaryColor"] = payload.primary_color
+
+    if branding:
+        meta["branding"] = branding
+    else:
+        meta.pop("branding", None)
+
+    if "default_theme" in payload.model_fields_set:
+        if payload.default_theme is None:
+            meta.pop("defaultTheme", None)
+        else:
+            meta["defaultTheme"] = payload.default_theme
+
+    return meta
+
+
+@router.put(
+    "/tenants/{tenant_id}/appearance",
+    response_model=TenantSchema,
+    summary="Update tenant appearance",
+    description=(
+        "Merge branding (logo, favicon, primary color) and default UI theme into ``metadata``. "
+        "Send JSON ``null`` for a field to clear it. **Tenant administrators** or **platform admins**."
+    ),
+)
+def update_tenant_appearance(
+    tenant_id: str,
+    payload: TenantAppearanceUpdate,
+    _admin: Annotated[dict[str, Any], Depends(require_tenant_admin)],
+) -> TenantSchema:
+    """Update tenant branding/theme metadata (tenant or platform administrators)."""
+    if not payload.model_fields_set:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    rows = db.execute_query(
+        "SELECT metadata FROM objectified.tenant WHERE id = %s",
+        (tenant_id,),
+    )
+    if not rows:
+        raise _not_found("Tenant", tenant_id)
+
+    existing_meta = rows[0].get("metadata")
+    if not isinstance(existing_meta, dict):
+        existing_meta = {}
+
+    merged = _merge_tenant_appearance_metadata(existing_meta, payload)
+    row = db.execute_mutation(
+        f"""
+        UPDATE objectified.tenant
+        SET metadata = %s::jsonb
+        WHERE id = %s
+        RETURNING {_TENANT_ROW_COLUMNS}
+        """,
+        (json.dumps(merged), tenant_id),
+    )
+    if not row:
+        raise _not_found("Tenant", tenant_id)
+    return TenantSchema(**dict(row))
 
 
 # ---------------------------------------------------------------------------
