@@ -18,11 +18,13 @@ jest.mock('@/app/contexts/TenantSelectionContext', () => ({
 
 jest.mock('@lib/api/rest-client', () => ({
   listProjects: jest.fn(),
+  listVersions: jest.fn(),
   createProject: jest.fn(),
   updateProject: jest.fn(),
   deleteProject: jest.fn(),
   restoreProject: jest.fn(),
   permanentDeleteProject: jest.fn(),
+  getUser: jest.fn(),
   getRestClientOptions: jest.fn(() => ({})),
   isForbiddenError: jest.fn(() => false),
 }));
@@ -61,8 +63,10 @@ describe('ProjectsPage', () => {
       selectedTenantId: 't1',
       setSelectedTenantId: jest.fn(),
     });
-    const { listProjects } = require('@lib/api/rest-client');
+    const { listProjects, listVersions, getUser } = require('@lib/api/rest-client');
     listProjects.mockResolvedValue([]);
+    listVersions.mockResolvedValue([]);
+    getUser.mockResolvedValue({ name: 'User', email: 'user@example.com' });
   });
 
   it('renders projects heading', async () => {
