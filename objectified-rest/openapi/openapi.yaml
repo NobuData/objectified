@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.22
+  version: 1.0.24
 paths:
   /v1/auth/login:
     post:
@@ -1556,9 +1556,11 @@ paths:
       tags:
       - Users
       summary: Update current user profile
-      description: Update the authenticated user's name and/or metadata (requires
+      description: 'Update the authenticated user''s name and/or metadata (requires
         JWT). Only ``name`` and ``metadata`` can be updated; use admin endpoints for
-        other fields.
+        other fields. Optional UI keys under ``metadata.ui``: ``theme`` (``light``,
+        ``dark``, ``system``) and ``highContrast`` (boolean) are used by the dashboard
+        for appearance (GitHub #187).'
       operationId: update_me_v1_me_patch
       parameters:
       - name: authorization
@@ -6127,7 +6129,8 @@ components:
       - email
       - created_at
       title: AccountSchema
-      description: Response schema for objectified.account.
+      description: 'Response schema for objectified.account. Clients may store UI preferences
+        under ``metadata.ui`` (e.g. ``theme``, ``highContrast``; see PATCH /me).'
     AccountUpdate:
       properties:
         name:
@@ -7169,7 +7172,9 @@ components:
           title: Metadata
       type: object
       title: ProfileUpdate
-      description: Update payload for current user profile (name and metadata only).
+      description: 'Update payload for current user profile (name and metadata only).
+        When sending ``metadata``, include a full merge of existing keys; optional
+        ``metadata.ui`` supports ``theme`` and ``highContrast`` (GitHub #187).'
     ProjectCreate:
       properties:
         tenant_id:
@@ -8282,6 +8287,9 @@ components:
           additionalProperties: true
           type: object
           title: Metadata
+          description: 'Optional ``metadata.branding`` for the dashboard: ``logoUrl``,
+            ``faviconUrl`` (http/https), ``primaryColor`` (``#RGB`` / ``#RRGGBB`` / ``#RRGGBBAA``)
+            (GitHub #187).'
         rate_limit_requests_per_minute:
           anyOf:
           - type: integer

@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { User, UserCircle, PenTool, Menu, X, LayoutDashboard, Palette, Home, ChevronLeft, ChevronRight, Building2, ChevronDown } from 'lucide-react';
@@ -18,6 +18,8 @@ import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
 import { TenantSelectionProvider } from '@/app/contexts/TenantSelectionContext';
 import { useDashboardKeyboardShortcuts } from '@/app/dashboard/hooks/useDashboardKeyboardShortcuts';
+import TenantBrandingEffects from '@/app/components/theme/TenantBrandingEffects';
+import { parseTenantBrandingFromMetadata } from '@lib/ui/tenantBrandingMetadata';
 
 const SIDEBAR_WIDTH = 280;
 const SIDEBAR_COLLAPSED_WIDTH = 72;
@@ -86,6 +88,10 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       ? 'tenant-admin'
       : 'member';
   const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId) ?? null;
+  const tenantBranding = useMemo(
+    () => parseTenantBrandingFromMetadata(selectedTenant?.metadata),
+    [selectedTenant?.metadata]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +165,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
 
   return (
     <TenantSelectionProvider value={{ tenants, tenantsLoading, selectedTenantId, setSelectedTenantId }}>
+    <TenantBrandingEffects tenant={selectedTenant} />
     <div className="relative flex flex-col h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 print:bg-white print:text-black">
       <a
         href="#dashboard-main-content"
@@ -177,6 +184,14 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-6">
+            {tenantBranding.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- tenant URLs are external/dynamic
+              <img
+                src={tenantBranding.logoUrl}
+                alt={selectedTenant?.name || 'Tenant logo'}
+                className="h-8 w-auto max-w-[140px] object-contain hidden sm:block"
+              />
+            ) : null}
             <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
               v0.1.0
             </span>

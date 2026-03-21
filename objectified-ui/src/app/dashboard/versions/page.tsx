@@ -411,7 +411,7 @@ export default function VersionsPage() {
           </button>
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden print:border-slate-400 print:shadow-none">
+        <div className="dashboard-print-area rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden print:border-slate-400 print:shadow-none">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-800/50">
@@ -431,7 +431,7 @@ export default function VersionsPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider print:hidden">
                     Actions
                   </th>
                 </tr>
@@ -499,7 +499,7 @@ export default function VersionsPage() {
                     <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
                       {formatDateTime(v.created_at)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right print:hidden">
                       <DropdownMenu.Root>
                         <DropdownMenu.Trigger asChild>
                           <button

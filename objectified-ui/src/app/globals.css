@@ -6,6 +6,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Tenant primary accent; overridden when tenant.metadata.branding.primaryColor is set */
+  --tenant-primary: #6366f1;
 }
 
 /*
@@ -562,6 +564,20 @@ html.reduce-motion *::after {
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
+}
+
+/* Optional high-contrast / accessibility mode (user preference, persisted in account metadata) */
+html.high-contrast {
+  --foreground: #0a0a0a;
+}
+
+html.high-contrast.dark {
+  --foreground: #fafafa;
+}
+
+html.high-contrast :where(button, a[href], input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--tenant-primary, #2563eb);
+  outline-offset: 2px;
 }
 
 /* Dashboard list print layout (projects, versions, etc.) */

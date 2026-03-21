@@ -3,13 +3,16 @@
 import React, { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as RadioGroup from '@radix-ui/react-radio-group';
-import { X, Check, Monitor, Sun, Moon } from 'lucide-react';
+import * as Switch from '@radix-ui/react-switch';
+import { X, Check, Monitor, Sun, Moon, Contrast } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { themes } from '@/app/config/themes';
 import {
   useMotionPreferenceOptional,
   type MotionPreference,
 } from '@/app/contexts/MotionPreferenceContext';
+import { useUserAppearanceOptional } from '@/app/contexts/UserAppearanceContext';
+import type { UserThemePreference } from '@lib/ui/userAppearanceMetadata';
 
 interface ThemeSelectorProps {
   isOpen: boolean;
@@ -55,13 +58,31 @@ export default function ThemeSelector({ isOpen, onClose }: ThemeSelectorProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const motion = useMotionPreferenceOptional();
+  const appearance = useUserAppearanceOptional();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const handleThemeSelect = (themeId: string) => {
+  useEffect(() => {
+    if (isOpen) appearance?.clearPersistError();
+  }, [isOpen, appearance]);
+
+  const handleThemeSelect = async (themeId: string) => {
     setTheme(themeId);
+
+    if (
+      appearance &&
+      (themeId === 'light' || themeId === 'dark' || themeId === 'system')
+    ) {
+      try {
+        await appearance.persistTheme(themeId as UserThemePreference);
+      } catch {
+        /* persistError set in context; keep dialog open so error is visible */
+        return;
+      }
+    }
+
     onClose();
   };
 
@@ -179,6 +200,39 @@ export default function ThemeSelector({ isOpen, onClose }: ThemeSelectorProps) {
               })}
             </div>
           </div>
+
+          {appearance && (
+            <div className="px-6 pb-2 border-t border-slate-200 dark:border-slate-700">
+              <div className="pt-5 pb-1 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <Contrast className="w-5 h-5 shrink-0" aria-hidden />
+                    High contrast
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    Stronger focus outlines and borders for readability
+                  </p>
+                </div>
+                <Switch.Root
+                  checked={appearance.highContrast}
+                  onCheckedChange={(v) => void appearance.setHighContrast(v)}
+                  className="shrink-0 w-11 h-6 rounded-full bg-slate-200 dark:bg-slate-700 relative transition-colors data-[state=checked]:bg-[color:var(--tenant-primary,#6366f1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--tenant-primary,#6366f1)] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
+                  aria-label="High contrast mode"
+                >
+                  <Switch.Thumb className="block w-5 h-5 my-0.5 ml-0.5 rounded-full bg-white shadow transition-transform will-change-transform data-[state=checked]:translate-x-5" />
+                </Switch.Root>
+              </div>
+            </div>
+          )}
+
+          {appearance?.persistError && (
+            <div
+              className="mx-6 mb-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm"
+              role="alert"
+            >
+              {appearance.persistError}
+            </div>
+          )}
 
           {motion && (
             <div className="px-6 pb-2 border-t border-slate-200 dark:border-slate-700">

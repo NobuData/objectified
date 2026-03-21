@@ -344,7 +344,7 @@ export default function ProjectsPage() {
           />
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 print:border-slate-400 print:shadow-none">
+        <div className="dashboard-print-area rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 print:border-slate-400 print:shadow-none">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left text-slate-700 dark:text-slate-200">
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400">
@@ -355,7 +355,7 @@ export default function ProjectsPage() {
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Created</th>
                   <th className="px-4 py-3 font-medium">Updated</th>
-                  <th className="px-4 py-3 font-medium text-right w-24">Actions</th>
+                  <th className="px-4 py-3 font-medium text-right w-24 print:hidden">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -406,7 +406,7 @@ export default function ProjectsPage() {
                           ? formatDateTime(project.updated_at)
                           : '—'}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right print:hidden">
                         <DropdownMenu.Root>
                           <DropdownMenu.Trigger asChild>
                             <button
