@@ -986,9 +986,9 @@ def test_update_tenant_member_success(admin_client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_TENANT_ACCOUNT_ROW],
-            [{"primary_admin_account_id": _OTHER_ACCOUNT_ID}],
+            [],  # fetch_workspace_roles_for_members (tenant-wide roles)
         ]
-        mock_db.execute_mutation.side_effect = [updated, None]
+        mock_db.execute_mutation.side_effect = [updated, None, None]
         r = admin_client.put(
             f"/v1/tenants/{_TENANT_ROW['id']}/members/{_ACCOUNT_ROW['id']}",
             json={"access_level": "administrator"},
@@ -1460,14 +1460,9 @@ _AUDIT_EVENT_ROW: dict[str, Any] = {
 def test_add_tenant_administrator_success(admin_client):
     """POST /v1/tenants/{id}/administrators adds a new administrator (admin)."""
     with mock_db_all() as mock_db:
-        # tenant exists, account exists, existing membership check, primary lookup for audit fill
-        mock_db.execute_query.side_effect = [
-            [_TENANT_ROW],
-            [_ACCOUNT_ROW],
-            [],
-            [{"primary_admin_account_id": _OTHER_ACCOUNT_ID}],
-        ]
-        mock_db.execute_mutation.side_effect = [_TENANT_ADMIN_ROW, None]
+        # tenant exists, account exists, existing membership check
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], []]
+        mock_db.execute_mutation.side_effect = [_TENANT_ADMIN_ROW, None, None]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
             json={"account_id": _ACCOUNT_ROW["id"]},
@@ -1540,13 +1535,8 @@ def test_add_tenant_administrator_promotes_existing_member(admin_client):
     member_row = {**_TENANT_ACCOUNT_ROW, "access_level": "member"}
     promoted_row = {**_TENANT_ACCOUNT_ROW, "access_level": "administrator"}
     with mock_db_all() as mock_db:
-        mock_db.execute_query.side_effect = [
-            [_TENANT_ROW],
-            [_ACCOUNT_ROW],
-            [member_row],  # existing member row
-            [{"primary_admin_account_id": _OTHER_ACCOUNT_ID}],
-        ]
-        mock_db.execute_mutation.side_effect = [promoted_row, None]
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], [member_row]]
+        mock_db.execute_mutation.side_effect = [promoted_row, None, None]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
             json={"account_id": _ACCOUNT_ROW["id"]},
@@ -1575,13 +1565,8 @@ def test_add_tenant_administrator_promote_server_error(admin_client):
 def test_add_tenant_administrator_server_error(admin_client):
     """POST /v1/tenants/{id}/administrators returns 500 when insert mutation returns None."""
     with mock_db_all() as mock_db:
-        mock_db.execute_query.side_effect = [
-            [_TENANT_ROW],
-            [_ACCOUNT_ROW],
-            [],
-            [{"primary_admin_account_id": _OTHER_ACCOUNT_ID}],
-        ]
-        mock_db.execute_mutation.side_effect = [None, None]
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], []]
+        mock_db.execute_mutation.side_effect = [None]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
             json={"account_id": _ACCOUNT_ROW["id"]},
@@ -1593,13 +1578,8 @@ def test_add_tenant_administrator_by_email_success(admin_client):
     """POST /v1/tenants/{id}/administrators with email resolves account and adds administrator."""
     email_lookup_row = {"id": _ACCOUNT_ROW["id"]}
     with mock_db_all() as mock_db:
-        mock_db.execute_query.side_effect = [
-            [_TENANT_ROW],
-            [email_lookup_row],
-            [],
-            [{"primary_admin_account_id": _OTHER_ACCOUNT_ID}],
-        ]
-        mock_db.execute_mutation.side_effect = [_TENANT_ADMIN_ROW, None]
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [email_lookup_row], []]
+        mock_db.execute_mutation.side_effect = [_TENANT_ADMIN_ROW, None, None]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
             json={"email": _ACCOUNT_ROW["email"]},
