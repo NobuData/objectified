@@ -26,6 +26,7 @@ from app.schemas import (
     TenantAccountSchema,
     TenantAccountUpdate,
     TenantActivitySummarySchema,
+    TenantAdminAuditEventSchema,
     TenantAdministratorCreate,
     TenantAppearanceUpdate,
     TenantBulkInviteResultEntry,
@@ -38,6 +39,7 @@ from app.schemas import (
     TenantMembersBulkInvite,
     TenantMembersBulkInviteResponse,
     TenantMembersBulkRemove,
+    TenantPrimaryAdminTransfer,
     TenantSchema,
     TenantUpdate,
 )
@@ -55,8 +57,94 @@ router = APIRouter(tags=["Tenants"])
 _TENANT_ROW_COLUMNS = (
     "id, name, description, slug, enabled, metadata, "
     "rate_limit_requests_per_minute, max_projects, max_versions_per_project, "
+    "primary_admin_account_id, "
     "created_at, updated_at, deleted_at"
 )
+
+
+def _actor_account_id(caller: Optional[dict[str, Any]]) -> Optional[str]:
+    if not caller:
+        return None
+    return caller.get("account_id") or caller.get("user_id")
+
+
+def _get_primary_admin_account_id(tenant_id: str) -> Optional[str]:
+    rows = db.execute_query(
+        """
+        SELECT primary_admin_account_id
+        FROM objectified.tenant
+        WHERE id = %s AND deleted_at IS NULL
+        """,
+        (tenant_id,),
+    )
+    if not rows:
+        return None
+    val = rows[0].get("primary_admin_account_id")
+    return str(val) if val is not None else None
+
+
+def _log_tenant_admin_audit_event(
+    tenant_id: str,
+    event_type: str,
+    *,
+    actor_account_id: Optional[str],
+    target_account_id: Optional[str] = None,
+    previous_primary_account_id: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> None:
+    db.execute_mutation(
+        """
+        INSERT INTO objectified.tenant_admin_audit_event (
+            tenant_id, event_type, actor_account_id, target_account_id,
+            previous_primary_account_id, metadata
+        )
+        VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+        """,
+        (
+            tenant_id,
+            event_type,
+            actor_account_id,
+            target_account_id,
+            previous_primary_account_id,
+            json.dumps(metadata or {}),
+        ),
+        returning=False,
+    )
+
+
+def _maybe_fill_primary_admin(tenant_id: str, account_id: str) -> None:
+    """If the tenant has no primary administrator, assign the given account."""
+    rows = db.execute_query(
+        """
+        SELECT primary_admin_account_id
+        FROM objectified.tenant
+        WHERE id = %s AND deleted_at IS NULL
+        """,
+        (tenant_id,),
+    )
+    if not rows or rows[0].get("primary_admin_account_id") is not None:
+        return
+    db.execute_mutation(
+        """
+        UPDATE objectified.tenant
+        SET primary_admin_account_id = %s
+        WHERE id = %s AND deleted_at IS NULL
+        """,
+        (account_id, tenant_id),
+        returning=False,
+    )
+
+
+def _assert_not_primary_admin_before_leave(tenant_id: str, account_id: str) -> None:
+    primary = _get_primary_admin_account_id(tenant_id)
+    if primary and primary == account_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This account is the designated primary administrator. "
+                "Transfer that role to another administrator first."
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -220,8 +308,10 @@ def create_tenant(
         row = db.execute_mutation(
             f"""
             WITH inserted_tenant AS (
-                INSERT INTO objectified.tenant (name, description, slug, enabled, metadata)
-                VALUES (%s, %s, %s, %s, %s::jsonb)
+                INSERT INTO objectified.tenant (
+                    name, description, slug, enabled, metadata, primary_admin_account_id
+                )
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s)
                 RETURNING {_TENANT_ROW_COLUMNS}
             ),
             inserted_admin AS (
@@ -238,6 +328,7 @@ def create_tenant(
                 payload.slug,
                 payload.enabled,
                 json.dumps(payload.metadata),
+                user_id,
                 user_id,
             ),
         )
@@ -1018,6 +1109,13 @@ def bulk_invite_tenant_members(
                             )
                         )
                     else:
+                        _log_tenant_admin_audit_event(
+                            tenant_id,
+                            "admin_promoted",
+                            actor_account_id=invited_by,
+                            target_account_id=account_id,
+                        )
+                        _maybe_fill_primary_admin(tenant_id, account_id)
                         results.append(
                             TenantBulkInviteResultEntry(
                                 email=email, status="promoted", account_id=account_id
@@ -1048,6 +1146,14 @@ def bulk_invite_tenant_members(
         else:
             if not want_admin and payload.member_role_id:
                 assign_workspace_role(tenant_id, account_id, payload.member_role_id)
+            if want_admin:
+                _log_tenant_admin_audit_event(
+                    tenant_id,
+                    "admin_added",
+                    actor_account_id=invited_by,
+                    target_account_id=account_id,
+                )
+                _maybe_fill_primary_admin(tenant_id, account_id)
             results.append(
                 TenantBulkInviteResultEntry(email=email, status="added", account_id=account_id)
             )
@@ -1066,7 +1172,9 @@ def bulk_invite_tenant_members(
     dependencies=[Depends(require_admin)],
 )
 def bulk_remove_tenant_members(
-    tenant_id: str, payload: TenantMembersBulkRemove
+    tenant_id: str,
+    payload: TenantMembersBulkRemove,
+    caller: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> None:
     _assert_tenant_exists(tenant_id)
     seen: set[str] = set()
@@ -1081,6 +1189,29 @@ def bulk_remove_tenant_members(
     if not account_ids:
         return
 
+    primary = _get_primary_admin_account_id(tenant_id)
+    if primary and primary in account_ids:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Cannot bulk-remove the designated primary administrator. "
+                "Transfer that role first, or omit that account from the request."
+            ),
+        )
+
+    admin_targets = db.execute_query(
+        """
+        SELECT account_id
+        FROM objectified.tenant_account
+        WHERE tenant_id = %s
+          AND account_id = ANY(%s)
+          AND access_level = 'administrator'
+          AND deleted_at IS NULL
+        """,
+        (tenant_id, account_ids),
+    )
+    actor = _actor_account_id(caller)
+
     db.execute_mutation(
         """
         UPDATE objectified.tenant_account
@@ -1092,6 +1223,14 @@ def bulk_remove_tenant_members(
         (tenant_id, account_ids),
         returning=False,
     )
+
+    for r in admin_targets:
+        _log_tenant_admin_audit_event(
+            tenant_id,
+            "admin_removed",
+            actor_account_id=actor,
+            target_account_id=str(r["account_id"]),
+        )
 
 
 @router.post(
@@ -1106,7 +1245,11 @@ def bulk_remove_tenant_members(
     ),
     dependencies=[Depends(require_admin)],
 )
-def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantMemberListEntrySchema:
+def add_tenant_member(
+    tenant_id: str,
+    payload: TenantAccountCreate,
+    caller: Annotated[dict[str, Any], Depends(require_admin)],
+) -> TenantMemberListEntrySchema:
     """Add a member to a tenant by account_id or email."""
     _assert_tenant_exists(tenant_id)
     _validate_payload_tenant_id(payload.tenant_id, tenant_id)
@@ -1142,6 +1285,14 @@ def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantMem
         and payload.member_role_id
     ):
         assign_workspace_role(tenant_id, resolved_account_id, payload.member_role_id)
+    if payload.access_level == TenantAccessLevel.ADMINISTRATOR:
+        _log_tenant_admin_audit_event(
+            tenant_id,
+            "admin_added",
+            actor_account_id=_actor_account_id(caller),
+            target_account_id=resolved_account_id,
+        )
+        _maybe_fill_primary_admin(tenant_id, resolved_account_id)
     return _tenant_member_list_entry(tenant_id, dict(row))
 
 
@@ -1152,17 +1303,25 @@ def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantMem
     description="Remove (soft-delete) an account from a tenant. **Admin only.**",
     dependencies=[Depends(require_admin)],
 )
-def remove_tenant_member(tenant_id: str, account_id: str) -> None:
+def remove_tenant_member(
+    tenant_id: str,
+    account_id: str,
+    caller: Annotated[dict[str, Any], Depends(require_admin)],
+) -> None:
     """Remove a member from a tenant (soft-delete)."""
     rows = db.execute_query(
         """
-        SELECT id FROM objectified.tenant_account
+        SELECT id, access_level FROM objectified.tenant_account
         WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
         """,
         (tenant_id, account_id),
     )
     if not rows:
         raise HTTPException(status_code=404, detail="Member not found in this tenant")
+
+    was_admin = rows[0].get("access_level") == "administrator"
+    if was_admin:
+        _assert_not_primary_admin_before_leave(tenant_id, account_id)
 
     db.execute_mutation(
         """
@@ -1173,6 +1332,14 @@ def remove_tenant_member(tenant_id: str, account_id: str) -> None:
         (tenant_id, account_id),
         returning=False,
     )
+
+    if was_admin:
+        _log_tenant_admin_audit_event(
+            tenant_id,
+            "admin_removed",
+            actor_account_id=_actor_account_id(caller),
+            target_account_id=account_id,
+        )
 
 
 @router.put(
@@ -1186,12 +1353,15 @@ def remove_tenant_member(tenant_id: str, account_id: str) -> None:
     dependencies=[Depends(require_admin)],
 )
 def update_tenant_member(
-    tenant_id: str, account_id: str, payload: TenantAccountUpdate
+    tenant_id: str,
+    account_id: str,
+    payload: TenantAccountUpdate,
+    caller: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> TenantMemberListEntrySchema:
     """Update a tenant member's access level, enabled status, or workspace roles."""
     rows = db.execute_query(
         """
-        SELECT id FROM objectified.tenant_account
+        SELECT id, access_level FROM objectified.tenant_account
         WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
         """,
         (tenant_id, account_id),
@@ -1199,11 +1369,16 @@ def update_tenant_member(
     if not rows:
         raise HTTPException(status_code=404, detail="Member not found in this tenant")
 
+    prior_level = rows[0].get("access_level")
+    actor = _actor_account_id(caller)
+
     raw = payload.model_dump(exclude_unset=True)
     updates: list[str] = []
     params: list = []
 
     if payload.access_level is not None:
+        if prior_level == "administrator" and payload.access_level == TenantAccessLevel.MEMBER:
+            _assert_not_primary_admin_before_leave(tenant_id, account_id)
         updates.append("access_level = %s")
         params.append(payload.access_level.value)
     if payload.enabled is not None:
@@ -1253,6 +1428,24 @@ def update_tenant_member(
     if not updates and "member_role_id" not in raw:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    final_level = dict(row).get("access_level")
+    if payload.access_level is not None:
+        if prior_level == "administrator" and final_level == "member":
+            _log_tenant_admin_audit_event(
+                tenant_id,
+                "admin_demoted",
+                actor_account_id=actor,
+                target_account_id=account_id,
+            )
+        elif prior_level == "member" and final_level == "administrator":
+            _log_tenant_admin_audit_event(
+                tenant_id,
+                "admin_promoted",
+                actor_account_id=actor,
+                target_account_id=account_id,
+            )
+            _maybe_fill_primary_admin(tenant_id, account_id)
+
     return _tenant_member_list_entry(tenant_id, dict(row))
 
 
@@ -1261,12 +1454,155 @@ def update_tenant_member(
 # ---------------------------------------------------------------------------
 
 @router.get(
+    "/tenants/{tenant_id}/administrator-audit-events",
+    response_model=List[TenantAdminAuditEventSchema],
+    summary="List tenant administrator audit events",
+    description=(
+        "Return recent append-only audit entries for administrator membership changes "
+        "and primary-administrator transfers. **Tenant administrators** and **platform "
+        "administrators** may access this list."
+    ),
+)
+def list_tenant_administrator_audit_events(
+    tenant_id: str,
+    _caller: Annotated[dict[str, Any], Depends(require_tenant_admin)],
+    limit: int = Query(50, ge=1, le=100, description="Maximum rows to return (most recent first)."),
+) -> List[TenantAdminAuditEventSchema]:
+    """List administrator audit events for a tenant."""
+    _assert_tenant_exists(tenant_id)
+    rows = db.execute_query(
+        """
+        SELECT id, tenant_id, event_type, actor_account_id, target_account_id,
+               previous_primary_account_id, metadata, created_at
+        FROM objectified.tenant_admin_audit_event
+        WHERE tenant_id = %s
+        ORDER BY created_at DESC
+        LIMIT %s
+        """,
+        (tenant_id, limit),
+    )
+    result: list[TenantAdminAuditEventSchema] = []
+    for r in rows:
+        d = dict(r)
+        for key in ("actor_account_id", "target_account_id", "previous_primary_account_id"):
+            if d.get(key) is not None:
+                d[key] = str(d[key])
+        if not isinstance(d.get("metadata"), dict):
+            d["metadata"] = {}
+        result.append(TenantAdminAuditEventSchema(**d))
+    return result
+
+
+@router.post(
+    "/tenants/{tenant_id}/primary-administrator",
+    response_model=TenantSchema,
+    summary="Transfer primary tenant administrator",
+    description=(
+        "Designate another active administrator as the primary (ownership) administrator. "
+        "Requires **tenant administrator** access. Only the **current primary** or a "
+        "**platform administrator** may transfer when a primary is already set. "
+        "``confirm_tenant_slug`` must match the tenant slug exactly (case-sensitive)."
+    ),
+)
+def transfer_tenant_primary_administrator(
+    tenant_id: str,
+    payload: TenantPrimaryAdminTransfer,
+    caller: Annotated[dict[str, Any], Depends(require_tenant_admin)],
+) -> TenantSchema:
+    """Transfer designated primary administrator (GitHub #194)."""
+    _assert_tenant_exists(tenant_id)
+    trows = db.execute_query(
+        """
+        SELECT slug, primary_admin_account_id
+        FROM objectified.tenant
+        WHERE id = %s AND deleted_at IS NULL
+        """,
+        (tenant_id,),
+    )
+    if not trows:
+        raise _not_found("Tenant", tenant_id)
+    slug = trows[0]["slug"]
+    if payload.confirm_tenant_slug != slug:
+        raise HTTPException(
+            status_code=422,
+            detail="confirm_tenant_slug does not match this tenant's slug.",
+        )
+
+    cur = trows[0].get("primary_admin_account_id")
+    current_s = str(cur) if cur is not None else None
+    actor = _actor_account_id(caller)
+    is_platform = bool(caller.get("is_admin"))
+
+    if current_s:
+        if not is_platform and actor != current_s:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Only the current primary administrator or a platform administrator "
+                    "can transfer the primary administrator role."
+                ),
+            )
+
+    adm = db.execute_query(
+        """
+        SELECT 1
+        FROM objectified.tenant_account
+        WHERE tenant_id = %s
+          AND account_id = %s
+          AND access_level = 'administrator'
+          AND deleted_at IS NULL
+          AND enabled = true
+        LIMIT 1
+        """,
+        (tenant_id, payload.new_primary_account_id),
+    )
+    if not adm:
+        raise HTTPException(
+            status_code=422,
+            detail="new_primary_account_id must be an active tenant administrator.",
+        )
+
+    if current_s and current_s == payload.new_primary_account_id:
+        raise HTTPException(
+            status_code=422,
+            detail="The selected account is already the primary administrator.",
+        )
+
+    row = db.execute_mutation(
+        f"""
+        UPDATE objectified.tenant
+        SET primary_admin_account_id = %s
+        WHERE id = %s AND deleted_at IS NULL
+        RETURNING {_TENANT_ROW_COLUMNS}
+        """,
+        (payload.new_primary_account_id, tenant_id),
+    )
+    if not row:
+        raise _not_found("Tenant", tenant_id)
+
+    _log_tenant_admin_audit_event(
+        tenant_id,
+        "primary_admin_transferred",
+        actor_account_id=actor,
+        target_account_id=payload.new_primary_account_id,
+        previous_primary_account_id=current_s,
+    )
+    return TenantSchema(**dict(row))
+
+
+@router.get(
     "/tenants/{tenant_id}/administrators",
     response_model=List[TenantAccountSchema],
     summary="List tenant administrators",
-    description="List all active members with access_level=administrator for a tenant.",
+    description=(
+        "List all active members with access_level=administrator for a tenant. "
+        "Requires **tenant administrator** or **platform administrator** authentication."
+    ),
 )
-def list_tenant_administrators(tenant_id: str) -> List[TenantAccountSchema]:
+def list_tenant_administrators(
+    tenant_id: str,
+    _caller: Annotated[dict[str, Any], Depends(require_tenant_admin)],
+) -> List[TenantAccountSchema]:
     """List administrators of a tenant."""
     _assert_tenant_exists(tenant_id)
     rows = db.execute_query(
@@ -1296,12 +1632,15 @@ def list_tenant_administrators(tenant_id: str) -> List[TenantAccountSchema]:
     dependencies=[Depends(require_admin)],
 )
 def add_tenant_administrator(
-    tenant_id: str, payload: TenantAdministratorCreate
+    tenant_id: str,
+    payload: TenantAdministratorCreate,
+    caller: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> TenantAccountSchema:
     """Add or promote an administrator in a tenant (admin only)."""
     _assert_tenant_exists(tenant_id)
     _validate_payload_tenant_id(payload.tenant_id, tenant_id)
     resolved_account_id = _resolve_account_id(payload.account_id, payload.email)
+    actor = _actor_account_id(caller)
 
     existing_rows = db.execute_query(
         """
@@ -1328,6 +1667,13 @@ def add_tenant_administrator(
         )
         if not row:
             raise HTTPException(status_code=500, detail="Failed to promote member to administrator")
+        _log_tenant_admin_audit_event(
+            tenant_id,
+            "admin_promoted",
+            actor_account_id=actor,
+            target_account_id=resolved_account_id,
+        )
+        _maybe_fill_primary_admin(tenant_id, resolved_account_id)
         return TenantAccountSchema(**dict(row))
 
     row = db.execute_mutation(
@@ -1340,6 +1686,13 @@ def add_tenant_administrator(
     )
     if not row:
         raise HTTPException(status_code=500, detail="Failed to add administrator")
+    _log_tenant_admin_audit_event(
+        tenant_id,
+        "admin_added",
+        actor_account_id=actor,
+        target_account_id=resolved_account_id,
+    )
+    _maybe_fill_primary_admin(tenant_id, resolved_account_id)
     return TenantAccountSchema(**dict(row))
 
 
@@ -1349,11 +1702,16 @@ def add_tenant_administrator(
     summary="Remove tenant administrator",
     description=(
         "Soft-delete the administrator tenant_account row for the given account. "
+        "Cannot remove the designated primary administrator until that role is transferred. "
         "**Admin only.**"
     ),
     dependencies=[Depends(require_admin)],
 )
-def remove_tenant_administrator(tenant_id: str, account_id: str) -> None:
+def remove_tenant_administrator(
+    tenant_id: str,
+    account_id: str,
+    caller: Annotated[dict[str, Any], Depends(require_admin)],
+) -> None:
     """Remove an administrator from a tenant (admin only)."""
     rows = db.execute_query(
         """
@@ -1366,6 +1724,8 @@ def remove_tenant_administrator(tenant_id: str, account_id: str) -> None:
     if not rows:
         raise HTTPException(status_code=404, detail="Administrator not found in this tenant")
 
+    _assert_not_primary_admin_before_leave(tenant_id, account_id)
+
     db.execute_mutation(
         """
         UPDATE objectified.tenant_account
@@ -1375,5 +1735,11 @@ def remove_tenant_administrator(tenant_id: str, account_id: str) -> None:
         """,
         (tenant_id, account_id),
         returning=False,
+    )
+    _log_tenant_admin_audit_event(
+        tenant_id,
+        "admin_removed",
+        actor_account_id=_actor_account_id(caller),
+        target_account_id=account_id,
     )
 

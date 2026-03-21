@@ -12,9 +12,12 @@ import {
   Users,
   ShieldCheck,
   ArrowDownToLine,
+  Crown,
+  ChevronDown,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as Collapsible from '@radix-ui/react-collapsible';
 import {
   getTenant,
   listTenantAdministrators,
@@ -22,14 +25,35 @@ import {
   removeTenantAdministrator,
   updateTenantMember,
   listUsers,
+  listTenantAdministratorAuditEvents,
+  transferTenantPrimaryAdministrator,
   getRestClientOptions,
   isForbiddenError,
+  isConflictError,
   type TenantSchema,
   type TenantAccountSchema,
   type TenantAdministratorCreate,
+  type TenantAdminAuditEventSchema,
   type AccountSchema,
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
+
+function formatTenantAdminAuditSummary(eventType: string): string {
+  switch (eventType) {
+    case 'admin_added':
+      return 'Administrator added';
+    case 'admin_removed':
+      return 'Administrator removed';
+    case 'admin_demoted':
+      return 'Administrator demoted to member';
+    case 'admin_promoted':
+      return 'Member promoted to administrator';
+    case 'primary_admin_transferred':
+      return 'Primary administrator transferred';
+    default:
+      return eventType.replace(/_/g, ' ');
+  }
+}
 
 export default function TenantAdministratorsPage() {
   const params = useParams();
@@ -47,6 +71,13 @@ export default function TenantAdministratorsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [demotingId, setDemotingId] = useState<string | null>(null);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditEntries, setAuditEntries] = useState<TenantAdminAuditEventSchema[]>(
+    []
+  );
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   type SessionUser = { is_administrator?: boolean };
   const isAdministrator = Boolean(
@@ -54,6 +85,18 @@ export default function TenantAdministratorsPage() {
   );
 
   const currentAccountId = (session?.user as { id?: string } | undefined)?.id;
+
+  const primaryAdminId = tenant?.primary_admin_account_id ?? null;
+  const transferTargetAdmins = administrators.filter(
+    (a) => a.enabled && (!primaryAdminId || a.account_id !== primaryAdminId)
+  );
+  const mayOpenTransfer =
+    Boolean(tenant && session) &&
+    (isAdministrator ||
+      primaryAdminId == null ||
+      (currentAccountId != null && currentAccountId === primaryAdminId));
+  const showTransferPrimary =
+    mayOpenTransfer && transferTargetAdmins.length > 0;
 
   const fetchTenant = useCallback(async () => {
     if (!tenantId || status !== 'authenticated' || !session) return null;
@@ -127,9 +170,42 @@ export default function TenantAdministratorsPage() {
     };
   }, [tenantId, status, fetchTenant, fetchAdministrators]);
 
+  const fetchAuditEntries = useCallback(async () => {
+    if (!tenantId || status !== 'authenticated' || !session) return;
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const rows = await listTenantAdministratorAuditEvents(
+        tenantId,
+        getRestClientOptions(
+          (session as { accessToken?: string } | null) ?? null
+        )
+      );
+      setAuditEntries(rows);
+    } catch (e) {
+      setAuditEntries([]);
+      setAuditError(
+        e instanceof Error ? e.message : 'Failed to load administrator audit'
+      );
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [tenantId, status, session]);
+
+  useEffect(() => {
+    if (!auditOpen || !tenantId) return;
+    void fetchAuditEntries();
+  }, [auditOpen, tenantId, fetchAuditEntries]);
+
+  const refreshAfterAdminChange = useCallback(() => {
+    void fetchTenant();
+    void fetchAdministrators();
+    if (auditOpen) void fetchAuditEntries();
+  }, [fetchTenant, fetchAdministrators, auditOpen, fetchAuditEntries]);
+
   const handleAddSuccess = () => {
     setAddOpen(false);
-    fetchAdministrators();
+    refreshAfterAdminChange();
   };
 
   const handleRemove = async (admin: TenantAccountSchema) => {
@@ -156,14 +232,16 @@ export default function TenantAdministratorsPage() {
         admin.account_id,
         getRestClientOptions((session as { accessToken?: string } | null) ?? null)
       );
-      await fetchAdministrators();
+      await refreshAfterAdminChange();
     } catch (e) {
       setError(
-        isForbiddenError(e)
-          ? 'Admin privileges required to remove an administrator.'
-          : e instanceof Error
-            ? e.message
-            : 'Failed to remove administrator'
+        isConflictError(e)
+          ? 'Cannot remove the designated primary administrator until that role is transferred to someone else.'
+          : isForbiddenError(e)
+            ? 'Admin privileges required to remove an administrator.'
+            : e instanceof Error
+              ? e.message
+              : 'Failed to remove administrator'
       );
     } finally {
       setRemovingId(null);
@@ -196,14 +274,16 @@ export default function TenantAdministratorsPage() {
         { access_level: 'member' },
         getRestClientOptions((session as { accessToken?: string } | null) ?? null)
       );
-      await fetchAdministrators();
+      await refreshAfterAdminChange();
     } catch (e) {
       setError(
-        isForbiddenError(e)
-          ? 'Admin privileges required to demote an administrator.'
-          : e instanceof Error
-            ? e.message
-            : 'Failed to demote administrator'
+        isConflictError(e)
+          ? 'Cannot demote the designated primary administrator until that role is transferred to someone else.'
+          : isForbiddenError(e)
+            ? 'Admin privileges required to demote an administrator.'
+            : e instanceof Error
+              ? e.message
+              : 'Failed to demote administrator'
       );
     } finally {
       setDemotingId(null);
@@ -259,7 +339,8 @@ export default function TenantAdministratorsPage() {
     return (
       <div className="p-6">
         <p className="text-slate-600 dark:text-slate-400 mb-4">
-          Only platform administrators can view and manage tenant administrators.
+          You need tenant administrator or platform administrator access to view
+          this page.
         </p>
         <div className="flex flex-wrap gap-3">
           <Link
@@ -306,6 +387,16 @@ export default function TenantAdministratorsPage() {
               <Users className="h-4 w-4" aria-hidden />
               Members
             </Link>
+            {tenant && showTransferPrimary && (
+              <button
+                type="button"
+                onClick={() => setTransferOpen(true)}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-amber-500/60 text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors"
+              >
+                <Crown className="h-4 w-4" aria-hidden />
+                Transfer primary role
+              </button>
+            )}
             {tenant && isAdministrator && (
               <button
                 type="button"
@@ -343,6 +434,7 @@ export default function TenantAdministratorsPage() {
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3 font-medium">Administrator</th>
+                  <th className="px-4 py-3 font-medium">Designation</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Added</th>
                   <th className="px-4 py-3 font-medium text-right">Actions</th>
@@ -352,7 +444,7 @@ export default function TenantAdministratorsPage() {
                 {administrators.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={4}
+                      colSpan={5}
                       className="px-4 py-8 text-center text-slate-500 dark:text-slate-400"
                     >
                       No administrators yet. Add an administrator by user ID or
@@ -385,6 +477,19 @@ export default function TenantAdministratorsPage() {
                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                               {displayEmail ?? admin.account_id}
                             </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {primaryAdminId &&
+                          admin.account_id === primaryAdminId ? (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                              <Crown className="h-3 w-3" aria-hidden />
+                              Primary
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-500 text-xs">
+                              —
+                            </span>
                           )}
                         </td>
                         <td className="px-4 py-3">
@@ -457,6 +562,86 @@ export default function TenantAdministratorsPage() {
         </div>
       )}
 
+      <Collapsible.Root open={auditOpen} onOpenChange={setAuditOpen} className="mt-6">
+        <Collapsible.Trigger className="flex items-center gap-2 w-full py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 text-left text-sm font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 transition-transform ${auditOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+          Administrator audit trail
+        </Collapsible.Trigger>
+        <Collapsible.Content className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
+          {auditLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-indigo-500" aria-hidden />
+            </div>
+          ) : auditError ? (
+            <div className="p-4 text-sm text-red-700 dark:text-red-300" role="alert">
+              {auditError}
+            </div>
+          ) : auditEntries.length === 0 ? (
+            <div className="p-4 text-sm text-slate-500 dark:text-slate-400">
+              No administrator audit events yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto max-h-72 overflow-y-auto">
+              <table className="w-full text-sm text-left text-slate-700 dark:text-slate-200">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wide">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">When</th>
+                    <th className="px-3 py-2 font-medium">Event</th>
+                    <th className="px-3 py-2 font-medium">Actor</th>
+                    <th className="px-3 py-2 font-medium">Target</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditEntries.map((ev) => (
+                    <tr
+                      key={ev.id}
+                      className="border-t border-slate-100 dark:border-slate-800"
+                    >
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-500 dark:text-slate-400">
+                        {new Date(ev.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2">
+                        {formatTenantAdminAuditSummary(ev.event_type)}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {ev.actor_account_id
+                          ? (userMap[ev.actor_account_id]?.email ??
+                              userMap[ev.actor_account_id]?.name ??
+                              `${ev.actor_account_id.slice(0, 8)}…`)
+                          : '—'}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {ev.target_account_id
+                          ? (userMap[ev.target_account_id]?.email ??
+                              userMap[ev.target_account_id]?.name ??
+                              `${ev.target_account_id.slice(0, 8)}…`)
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Collapsible.Content>
+      </Collapsible.Root>
+
+      {tenant ? (
+        <TransferPrimaryAdminDialog
+          tenantId={tenantId}
+          tenant={tenant}
+          candidates={transferTargetAdmins}
+          userMap={userMap}
+          open={transferOpen}
+          onOpenChange={setTransferOpen}
+          onSuccess={refreshAfterAdminChange}
+          session={session}
+        />
+      ) : null}
+
       <AddAdministratorDialog
         tenantId={tenantId}
         open={addOpen}
@@ -465,6 +650,189 @@ export default function TenantAdministratorsPage() {
         session={session}
       />
     </div>
+  );
+}
+
+interface TransferPrimaryAdminDialogProps {
+  tenantId: string;
+  tenant: TenantSchema;
+  candidates: TenantAccountSchema[];
+  userMap: Record<string, AccountSchema>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+  session: ReturnType<typeof useSession>['data'];
+}
+
+function TransferPrimaryAdminDialog({
+  tenantId,
+  tenant,
+  candidates,
+  userMap,
+  open,
+  onOpenChange,
+  onSuccess,
+  session,
+}: TransferPrimaryAdminDialogProps) {
+  const [targetId, setTargetId] = useState('');
+  const [confirmSlug, setConfirmSlug] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const first = candidates[0]?.account_id ?? '';
+    setTargetId((prev) => (prev && candidates.some((c) => c.account_id === prev) ? prev : first));
+    setFormError(null);
+  }, [open, candidates]);
+
+  const reset = () => {
+    setTargetId(candidates[0]?.account_id ?? '');
+    setConfirmSlug('');
+    setFormError(null);
+  };
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) reset();
+    onOpenChange(next);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session || !targetId) return;
+    setFormError(null);
+    if (confirmSlug.trim() !== tenant.slug) {
+      setFormError(`Type the tenant slug exactly: ${tenant.slug}`);
+      return;
+    }
+    setSaving(true);
+    try {
+      await transferTenantPrimaryAdministrator(
+        tenantId,
+        {
+          new_primary_account_id: targetId,
+          confirm_tenant_slug: confirmSlug.trim(),
+        },
+        getRestClientOptions((session as { accessToken?: string } | null) ?? null)
+      );
+      handleOpenChange(false);
+      onSuccess();
+    } catch (err) {
+      setFormError(
+        isForbiddenError(err)
+          ? 'You are not allowed to transfer the primary administrator role.'
+          : err instanceof Error
+            ? err.message
+            : 'Transfer failed'
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
+        <Dialog.Content
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 p-6"
+          aria-describedby={undefined}
+          onEscapeKeyDown={() => handleOpenChange(false)}
+          onPointerDownOutside={() => handleOpenChange(false)}
+        >
+          <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+            <Crown className="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden />
+            Transfer primary administrator
+          </Dialog.Title>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+            The primary administrator is the designated ownership contact for this
+            tenant. Choose another active administrator and confirm using the tenant
+            slug.
+          </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {formError && (
+              <div
+                className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm"
+                role="alert"
+              >
+                {formError}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label.Root
+                htmlFor="transfer-primary-target"
+                className="text-sm font-medium text-slate-700 dark:text-slate-300"
+              >
+                New primary administrator
+              </Label.Root>
+              <select
+                id="transfer-primary-target"
+                value={targetId}
+                onChange={(e) => setTargetId(e.target.value)}
+                disabled={saving || candidates.length === 0}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {candidates.map((c) => {
+                  const u = userMap[c.account_id];
+                  const label =
+                    u?.name ?? u?.email ?? `${c.account_id.slice(0, 8)}…`;
+                  return (
+                    <option key={c.account_id} value={c.account_id}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label.Root
+                htmlFor="transfer-primary-confirm-slug"
+                className="text-sm font-medium text-slate-700 dark:text-slate-300"
+              >
+                Confirm tenant slug
+              </Label.Root>
+              <input
+                id="transfer-primary-confirm-slug"
+                type="text"
+                value={confirmSlug}
+                onChange={(e) => setConfirmSlug(e.target.value)}
+                disabled={saving}
+                autoComplete="off"
+                placeholder={tenant.slug}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Enter <span className="font-mono">{tenant.slug}</span> exactly to
+                confirm.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleOpenChange(false)}
+                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving || !targetId}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Transferring…
+                  </>
+                ) : (
+                  'Confirm transfer'
+                )}
+              </button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.29
+  version: 1.0.30
 paths:
   /v1/auth/login:
     post:
@@ -2897,12 +2897,125 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/administrator-audit-events:
+    get:
+      tags:
+      - Tenants
+      summary: List tenant administrator audit events
+      description: Return recent append-only audit entries for administrator membership
+        changes and primary-administrator transfers. **Tenant administrators** and
+        **platform administrators** may access this list.
+      operationId: list_tenant_administrator_audit_events_v1_tenants__tenant_id__administrator_audit_events_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: Maximum rows to return (most recent first).
+          default: 50
+          title: Limit
+        description: Maximum rows to return (most recent first).
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TenantAdminAuditEventSchema'
+                title: Response List Tenant Administrator Audit Events V1 Tenants  Tenant
+                  Id  Administrator Audit Events Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/primary-administrator:
+    post:
+      tags:
+      - Tenants
+      summary: Transfer primary tenant administrator
+      description: Designate another active administrator as the primary (ownership)
+        administrator. Requires **tenant administrator** access. Only the **current
+        primary** or a **platform administrator** may transfer when a primary is already
+        set. ``confirm_tenant_slug`` must match the tenant slug exactly (case-sensitive).
+      operationId: transfer_tenant_primary_administrator_v1_tenants__tenant_id__primary_administrator_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantPrimaryAdminTransfer'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/tenants/{tenant_id}/administrators:
     get:
       tags:
       - Tenants
       summary: List tenant administrators
       description: List all active members with access_level=administrator for a tenant.
+        Requires **tenant administrator** or **platform administrator** authentication.
       operationId: list_tenant_administrators_v1_tenants__tenant_id__administrators_get
       parameters:
       - name: tenant_id
@@ -2911,6 +3024,22 @@ paths:
         schema:
           type: string
           title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
       responses:
         '200':
           description: Successful Response
@@ -2985,7 +3114,8 @@ paths:
       - Tenants
       summary: Remove tenant administrator
       description: Soft-delete the administrator tenant_account row for the given
-        account. **Admin only.**
+        account. Cannot remove the designated primary administrator until that role
+        is transferred. **Admin only.**
       operationId: remove_tenant_administrator_v1_tenants__tenant_id__administrators__account_id__delete
       parameters:
       - name: tenant_id
@@ -8982,6 +9112,48 @@ components:
       - schema_version_count
       title: TenantActivitySummarySchema
       description: 'Aggregated counts for dashboard tenant overview (GitHub #192).'
+    TenantAdminAuditEventSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        event_type:
+          type: string
+          title: Event Type
+        actor_account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Account Id
+        target_account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Target Account Id
+        previous_primary_account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previous Primary Account Id
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - tenant_id
+      - event_type
+      - created_at
+      title: TenantAdminAuditEventSchema
+      description: One append-only audit row for tenant administrator changes.
     TenantAdministratorCreate:
       properties:
         tenant_id:
@@ -9340,6 +9512,26 @@ components:
       - account_ids
       title: TenantMembersBulkRemove
       description: Request body for POST .../members/bulk-remove.
+    TenantPrimaryAdminTransfer:
+      properties:
+        new_primary_account_id:
+          type: string
+          title: New Primary Account Id
+          description: Account UUID that must already be an active administrator of
+            the tenant.
+        confirm_tenant_slug:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Confirm Tenant Slug
+          description: Must exactly match the tenant slug (case-sensitive) to confirm
+            the transfer.
+      type: object
+      required:
+      - new_primary_account_id
+      - confirm_tenant_slug
+      title: TenantPrimaryAdminTransfer
+      description: Transfer primary (designated) tenant administrator to another administrator.
     TenantSchema:
       properties:
         id:
@@ -9381,6 +9573,13 @@ components:
           - type: 'null'
           title: Max Versions Per Project
           description: Optional cap on active versions per project; null means unlimited.
+        primary_admin_account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Admin Account Id
+          description: Designated primary (ownership) administrator for the tenant;
+            used for transfer workflows. Null when not set (legacy tenants until designated).
         created_at:
           type: string
           format: date-time

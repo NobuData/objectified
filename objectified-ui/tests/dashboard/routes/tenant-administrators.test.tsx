@@ -22,6 +22,7 @@ const mockListTenantAdministrators = jest.fn();
 const mockListUsers = jest.fn();
 const mockRemoveTenantAdministrator = jest.fn();
 const mockUpdateTenantMember = jest.fn();
+const mockListTenantAdministratorAuditEvents = jest.fn();
 
 jest.mock('@lib/api/rest-client', () => ({
   getTenant: (...args: unknown[]) => mockGetTenant(...args),
@@ -32,6 +33,9 @@ jest.mock('@lib/api/rest-client', () => ({
     mockRemoveTenantAdministrator(...args),
   updateTenantMember: (...args: unknown[]) => mockUpdateTenantMember(...args),
   listUsers: (...args: unknown[]) => mockListUsers(...args),
+  listTenantAdministratorAuditEvents: (...args: unknown[]) =>
+    mockListTenantAdministratorAuditEvents(...args),
+  transferTenantPrimaryAdministrator: jest.fn(),
   getRestClientOptions: jest.fn(() => ({})),
   isForbiddenError: (e: unknown) =>
     Boolean(
@@ -39,6 +43,13 @@ jest.mock('@lib/api/rest-client', () => ({
         typeof e === 'object' &&
         'statusCode' in e &&
         (e as { statusCode: number }).statusCode === 403
+    ),
+  isConflictError: (e: unknown) =>
+    Boolean(
+      e &&
+        typeof e === 'object' &&
+        'statusCode' in e &&
+        (e as { statusCode: number }).statusCode === 409
     ),
 }));
 
@@ -63,12 +74,14 @@ describe('TenantAdministratorsPage', () => {
       slug: 'acme-corp',
       description: '',
       enabled: true,
+      primary_admin_account_id: 'primary-admin-id',
       created_at: '',
       updated_at: null,
       deleted_at: null,
     });
     mockListTenantAdministrators.mockResolvedValue([]);
     mockListUsers.mockResolvedValue([]);
+    mockListTenantAdministratorAuditEvents.mockResolvedValue([]);
   });
 
   it('renders administrators heading with tenant name', async () => {
@@ -129,7 +142,9 @@ describe('TenantAdministratorsPage', () => {
     render(<TenantAdministratorsPage />);
     await waitFor(() => {
       expect(
-        screen.getByText(/only platform administrators can view and manage tenant administrators/i)
+        screen.getByText(
+          /you need tenant administrator or platform administrator access to view this page/i
+        )
       ).toBeInTheDocument();
     });
   });
@@ -182,7 +197,9 @@ describe('TenantAdministratorsPage', () => {
     render(<TenantAdministratorsPage />);
     await waitFor(() => {
       expect(
-        screen.getByText(/only platform administrators can view and manage tenant administrators/i)
+        screen.getByText(
+          /you need tenant administrator or platform administrator access to view this page/i
+        )
       ).toBeInTheDocument();
     });
   });

@@ -144,6 +144,8 @@ export interface TenantSchema {
   rate_limit_requests_per_minute?: number | null;
   max_projects?: number | null;
   max_versions_per_project?: number | null;
+  /** Designated primary (ownership) administrator; null if unset. */
+  primary_admin_account_id?: string | null;
   created_at: string;
   updated_at: string | null;
   deleted_at?: string | null;
@@ -1094,8 +1096,24 @@ export async function updateTenantMember(
 }
 
 // ---------------------------------------------------------------------------
-// Tenant administrators (admin-only; list/add/remove)
+// Tenant administrators (list: tenant or platform admin; add/remove: platform admin)
 // ---------------------------------------------------------------------------
+
+export interface TenantAdminAuditEventSchema {
+  id: string;
+  tenant_id: string;
+  event_type: string;
+  actor_account_id?: string | null;
+  target_account_id?: string | null;
+  previous_primary_account_id?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface TenantPrimaryAdminTransfer {
+  new_primary_account_id: string;
+  confirm_tenant_slug: string;
+}
 
 export interface TenantAdministratorCreate {
   tenant_id?: string | null;
@@ -1138,6 +1156,34 @@ export async function removeTenantAdministrator(
     'DELETE',
     `/tenants/${encodeURIComponent(tenantId)}/administrators/${encodeURIComponent(accountId)}`,
     undefined,
+    options
+  );
+}
+
+export async function listTenantAdministratorAuditEvents(
+  tenantId: string,
+  options: RestClientOptions & { limit?: number } = {}
+): Promise<TenantAdminAuditEventSchema[]> {
+  const { limit = 50, ...requestOpts } = options;
+  const q =
+    limit === 50 ? '' : `?limit=${encodeURIComponent(String(limit))}`;
+  return request<TenantAdminAuditEventSchema[]>(
+    'GET',
+    `/tenants/${encodeURIComponent(tenantId)}/administrator-audit-events${q}`,
+    undefined,
+    requestOpts
+  );
+}
+
+export async function transferTenantPrimaryAdministrator(
+  tenantId: string,
+  body: TenantPrimaryAdminTransfer,
+  options: RestClientOptions = {}
+): Promise<TenantSchema> {
+  return request<TenantSchema>(
+    'POST',
+    `/tenants/${encodeURIComponent(tenantId)}/primary-administrator`,
+    body,
     options
   );
 }

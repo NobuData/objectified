@@ -42,6 +42,13 @@ class TenantSchema(BaseModel):
         default=None,
         description="Optional cap on active versions per project; null means unlimited.",
     )
+    primary_admin_account_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Designated primary (ownership) administrator for the tenant; used for transfer workflows. "
+            "Null when not set (legacy tenants until designated)."
+        ),
+    )
     created_at: datetime
     updated_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
