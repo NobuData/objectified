@@ -3,14 +3,17 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import DashboardSideNav from '../../src/app/dashboard/components/DashboardSideNav';
 
 let mockPathname = '/dashboard';
+const mockPrefetch = jest.fn();
 
 jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
+  useRouter: () => ({ prefetch: mockPrefetch }),
 }));
 
 describe('DashboardSideNav', () => {
   beforeEach(() => {
     mockPathname = '/dashboard';
+    mockPrefetch.mockClear();
   });
 
   it('renders navigation with sidebar links label', () => {
@@ -83,6 +86,31 @@ describe('DashboardSideNav', () => {
     render(<DashboardSideNav role="admin" />);
     expect(screen.getByRole('link', { name: 'Published' }).className).toContain('border-indigo-500');
     expect(screen.getByRole('link', { name: 'Publish' }).className).not.toContain('border-indigo-500');
+  });
+
+  it('prefetches a route on sidebar link hover', () => {
+    render(<DashboardSideNav role="member" />);
+    const projectsLink = screen.getByRole('link', { name: /Projects/i });
+    expect(projectsLink).toHaveAttribute('href', '/dashboard/projects');
+    fireEvent.mouseEnter(projectsLink);
+    expect(mockPrefetch).toHaveBeenCalledWith('/dashboard/projects');
+  });
+
+  it('does not re-prefetch a route on focus if already prefetched on hover', () => {
+    render(<DashboardSideNav role="member" />);
+    const projectsLink = screen.getByRole('link', { name: /Projects/i });
+    fireEvent.mouseEnter(projectsLink);
+    expect(mockPrefetch).toHaveBeenCalledTimes(1);
+    mockPrefetch.mockClear();
+    fireEvent.focus(projectsLink);
+    expect(mockPrefetch).not.toHaveBeenCalled();
+  });
+
+  it('prefetches a route on focus if not yet hovered', () => {
+    render(<DashboardSideNav role="member" />);
+    const projectsLink = screen.getByRole('link', { name: /Projects/i });
+    fireEvent.focus(projectsLink);
+    expect(mockPrefetch).toHaveBeenCalledWith('/dashboard/projects');
   });
 
   it('calls onNavigate when a link is clicked', () => {
