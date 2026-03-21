@@ -45,6 +45,10 @@ from app.schemas.tenant import (
     TenantSchema,
     TenantUpdate,
 )
+from app.schemas.tenant_admin_audit import (
+    TenantAdminAuditEventSchema,
+    TenantPrimaryAdminTransfer,
+)
 from app.schemas.tenant_account import (
     TenantAccessLevel,
     TenantAccountCreate,
@@ -144,8 +148,10 @@ __all__ = [
     "UserMembershipRoleSchema",
     "UserTenantMembershipAdminSchema",
     "TenantActivitySummarySchema",
+    "TenantAdminAuditEventSchema",
     "TenantAppearanceUpdate",
     "TenantCreate",
+    "TenantPrimaryAdminTransfer",
     "TenantSchema",
     "TenantUpdate",
     "SsoProviderCreate",

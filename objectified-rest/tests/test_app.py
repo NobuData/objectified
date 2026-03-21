@@ -50,10 +50,13 @@ _TENANT_ROW: dict[str, Any] = {
     "rate_limit_requests_per_minute": None,
     "max_projects": None,
     "max_versions_per_project": None,
+    "primary_admin_account_id": None,
     "created_at": _NOW,
     "updated_at": None,
     "deleted_at": None,
 }
+
+_OTHER_ACCOUNT_ID = "00000000-0000-0000-0000-000000000088"
 _TENANT_ACCOUNT_ROW: dict[str, Any] = {
     "id": "00000000-0000-0000-0000-000000000003",
     "tenant_id": "00000000-0000-0000-0000-000000000002",
@@ -81,6 +84,7 @@ def client():
 def admin_client():
     """FastAPI test client with require_admin overridden to pass as admin."""
     app.dependency_overrides[require_admin] = lambda: _ADMIN_CALLER
+    app.dependency_overrides[require_authenticated] = lambda: _ADMIN_CALLER
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -89,6 +93,21 @@ def admin_client():
 def jwt_client():
     """FastAPI test client with require_authenticated overridden (JWT caller for /me)."""
     app.dependency_overrides[require_authenticated] = lambda: _ADMIN_CALLER
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def tenant_admin_client():
+    """JWT client that passes require_tenant_admin (non-platform tenant admin)."""
+    from app.auth import require_tenant_admin
+
+    app.dependency_overrides[require_tenant_admin] = lambda tenant_id: {
+        "auth_method": "jwt",
+        "user_id": _ACCOUNT_ROW["id"],
+        "account_id": _ACCOUNT_ROW["id"],
+        "is_admin": False,
+    }
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -937,30 +956,39 @@ def test_remove_tenant_member_not_found(admin_client):
 # ---------------------------------------------------------------------------
 
 
-def test_list_tenant_administrators_found(client):
+def test_list_tenant_administrators_found(tenant_admin_client):
     """GET /v1/tenants/{id}/administrators returns admins."""
     admin_row = {**_TENANT_ACCOUNT_ROW, "access_level": "administrator"}
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [[_TENANT_ROW], [admin_row]]
-        r = client.get(f"/v1/tenants/{_TENANT_ROW['id']}/administrators")
+        r = tenant_admin_client.get(f"/v1/tenants/{_TENANT_ROW['id']}/administrators")
     assert r.status_code == 200
     assert r.json()[0]["access_level"] == "administrator"
 
 
-def test_list_tenant_administrators_tenant_not_found(client):
+def test_list_tenant_administrators_tenant_not_found(tenant_admin_client):
     """GET /v1/tenants/{id}/administrators returns 404 when tenant not found."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = []
-        r = client.get("/v1/tenants/00000000-0000-0000-0000-000000000099/administrators")
+        r = tenant_admin_client.get("/v1/tenants/00000000-0000-0000-0000-000000000099/administrators")
     assert r.status_code == 404
+
+
+def test_list_tenant_administrators_requires_auth(client):
+    """GET /v1/tenants/{id}/administrators returns 401 without credentials."""
+    r = client.get(f"/v1/tenants/{_TENANT_ROW['id']}/administrators")
+    assert r.status_code == 401
 
 
 def test_update_tenant_member_success(admin_client):
     """PUT /v1/tenants/{id}/members/{account_id} updates access level."""
     updated = {**_TENANT_ACCOUNT_ROW, "access_level": "administrator"}
     with mock_db_all() as mock_db:
-        mock_db.execute_query.side_effect = [[_TENANT_ACCOUNT_ROW], []]
-        mock_db.execute_mutation.return_value = updated
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ACCOUNT_ROW],
+            [],  # fetch_workspace_roles_for_members (tenant-wide roles)
+        ]
+        mock_db.execute_mutation.side_effect = [updated, None, None]
         r = admin_client.put(
             f"/v1/tenants/{_TENANT_ROW['id']}/members/{_ACCOUNT_ROW['id']}",
             json={"access_level": "administrator"},
@@ -1417,13 +1445,24 @@ _TENANT_ADMIN_ROW: dict[str, Any] = {
     "access_level": "administrator",
 }
 
+_AUDIT_EVENT_ROW: dict[str, Any] = {
+    "id": "00000000-0000-0000-0000-0000000000e1",
+    "tenant_id": _TENANT_ROW["id"],
+    "event_type": "admin_added",
+    "actor_account_id": _ACCOUNT_ROW["id"],
+    "target_account_id": _OTHER_ACCOUNT_ID,
+    "previous_primary_account_id": None,
+    "metadata": {},
+    "created_at": _NOW,
+}
+
 
 def test_add_tenant_administrator_success(admin_client):
     """POST /v1/tenants/{id}/administrators adds a new administrator (admin)."""
     with mock_db_all() as mock_db:
-        # Calls: tenant exists, account exists, existing membership check
+        # tenant exists, account exists, existing membership check
         mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], []]
-        mock_db.execute_mutation.return_value = _TENANT_ADMIN_ROW
+        mock_db.execute_mutation.side_effect = [_TENANT_ADMIN_ROW, None, None]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
             json={"account_id": _ACCOUNT_ROW["id"]},
@@ -1496,12 +1535,8 @@ def test_add_tenant_administrator_promotes_existing_member(admin_client):
     member_row = {**_TENANT_ACCOUNT_ROW, "access_level": "member"}
     promoted_row = {**_TENANT_ACCOUNT_ROW, "access_level": "administrator"}
     with mock_db_all() as mock_db:
-        mock_db.execute_query.side_effect = [
-            [_TENANT_ROW],
-            [_ACCOUNT_ROW],
-            [member_row],  # existing member row
-        ]
-        mock_db.execute_mutation.return_value = promoted_row
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], [member_row]]
+        mock_db.execute_mutation.side_effect = [promoted_row, None, None]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
             json={"account_id": _ACCOUNT_ROW["id"]},
@@ -1519,7 +1554,7 @@ def test_add_tenant_administrator_promote_server_error(admin_client):
             [_ACCOUNT_ROW],
             [member_row],
         ]
-        mock_db.execute_mutation.return_value = None
+        mock_db.execute_mutation.side_effect = [None, None]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
             json={"account_id": _ACCOUNT_ROW["id"]},
@@ -1531,7 +1566,7 @@ def test_add_tenant_administrator_server_error(admin_client):
     """POST /v1/tenants/{id}/administrators returns 500 when insert mutation returns None."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], []]
-        mock_db.execute_mutation.return_value = None
+        mock_db.execute_mutation.side_effect = [None]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
             json={"account_id": _ACCOUNT_ROW["id"]},
@@ -1543,12 +1578,8 @@ def test_add_tenant_administrator_by_email_success(admin_client):
     """POST /v1/tenants/{id}/administrators with email resolves account and adds administrator."""
     email_lookup_row = {"id": _ACCOUNT_ROW["id"]}
     with mock_db_all() as mock_db:
-        mock_db.execute_query.side_effect = [
-            [_TENANT_ROW],
-            [email_lookup_row],
-            [],
-        ]
-        mock_db.execute_mutation.return_value = _TENANT_ADMIN_ROW
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [email_lookup_row], []]
+        mock_db.execute_mutation.side_effect = [_TENANT_ADMIN_ROW, None, None]
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators",
             json={"email": _ACCOUNT_ROW["email"]},
@@ -1599,12 +1630,28 @@ def test_add_tenant_administrator_mismatched_tenant_id(admin_client):
 def test_remove_tenant_administrator_success(admin_client):
     """DELETE /v1/tenants/{id}/administrators/{account_id} removes administrator (admin)."""
     with mock_db_all() as mock_db:
-        mock_db.execute_query.return_value = [_TENANT_ADMIN_ROW]
-        mock_db.execute_mutation.return_value = None
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ADMIN_ROW],
+            [{"primary_admin_account_id": _OTHER_ACCOUNT_ID}],
+        ]
+        mock_db.execute_mutation.side_effect = [None, None]
         r = admin_client.delete(
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators/{_ACCOUNT_ROW['id']}"
         )
     assert r.status_code == 204
+
+
+def test_remove_tenant_administrator_rejects_primary(admin_client):
+    """DELETE administrators returns 409 when removing designated primary admin."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_TENANT_ADMIN_ROW],
+            [{"primary_admin_account_id": _ACCOUNT_ROW["id"]}],
+        ]
+        r = admin_client.delete(
+            f"/v1/tenants/{_TENANT_ROW['id']}/administrators/{_ACCOUNT_ROW['id']}"
+        )
+    assert r.status_code == 409
 
 
 def test_remove_tenant_administrator_requires_auth(client):
@@ -1623,6 +1670,58 @@ def test_remove_tenant_administrator_not_found(admin_client):
             f"/v1/tenants/{_TENANT_ROW['id']}/administrators/{_ACCOUNT_ROW['id']}"
         )
     assert r.status_code == 404
+
+
+def test_list_tenant_administrator_audit_events(tenant_admin_client):
+    """GET .../administrator-audit-events returns audit rows (tenant admin)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ROW["id"]}],
+            [_AUDIT_EVENT_ROW],
+        ]
+        r = tenant_admin_client.get(
+            f"/v1/tenants/{_TENANT_ROW['id']}/administrator-audit-events"
+        )
+    assert r.status_code == 200
+    assert r.json()[0]["event_type"] == "admin_added"
+
+
+def test_transfer_primary_administrator_slug_mismatch(tenant_admin_client):
+    """POST primary-administrator returns 422 when confirm_tenant_slug is wrong."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ROW["id"]}],
+            [{"slug": "acme", "primary_admin_account_id": None}],
+        ]
+        r = tenant_admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/primary-administrator",
+            json={
+                "new_primary_account_id": _OTHER_ACCOUNT_ID,
+                "confirm_tenant_slug": "not-acme",
+            },
+        )
+    assert r.status_code == 422
+
+
+def test_transfer_primary_administrator_success(admin_client):
+    """POST primary-administrator updates tenant (platform admin may always transfer)."""
+    updated = {**_TENANT_ROW, "primary_admin_account_id": _OTHER_ACCOUNT_ID}
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ROW["id"]}],
+            [{"slug": "acme", "primary_admin_account_id": _ACCOUNT_ROW["id"]}],
+            [{"1": 1}],
+        ]
+        mock_db.execute_mutation.side_effect = [updated, None]
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/primary-administrator",
+            json={
+                "new_primary_account_id": _OTHER_ACCOUNT_ID,
+                "confirm_tenant_slug": "acme",
+            },
+        )
+    assert r.status_code == 200
+    assert r.json()["primary_admin_account_id"] == _OTHER_ACCOUNT_ID
 
 
 # ---------------------------------------------------------------------------

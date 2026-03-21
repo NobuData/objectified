@@ -29,6 +29,10 @@ from app.database import Database
 from app.config import Settings, settings
 from tests.conftest import mock_db_all
 
+# PyJWT warns when HS256 keys are shorter than 32 bytes (RFC 7518).
+_TEST_JWT_HS256_SECRET = "unit_test_jwt_hs256_secret_key_32chars!"
+_TEST_JWT_HS256_SECRET_OTHER = "other_hs256_secret_key_for_tests_32b!!"
+
 
 # ============================================================================
 # Tests for auth.py module functions
@@ -43,7 +47,7 @@ class TestDecodeJwt:
         import jwt as pyjwt
 
         payload = {"user_id": "user123", "email": "test@example.com"}
-        secret = "test_secret_key"
+        secret = _TEST_JWT_HS256_SECRET
         token = pyjwt.encode(payload, secret, algorithm="HS256")
 
         with patch("app.auth.settings") as mock_settings:
@@ -58,7 +62,7 @@ class TestDecodeJwt:
         import jwt as pyjwt
 
         payload = {"user_id": "user123", "sub": "sub123"}
-        secret = "test_secret_key"
+        secret = _TEST_JWT_HS256_SECRET
         token = pyjwt.encode(payload, secret, algorithm="HS256")
 
         with patch("app.auth.settings") as mock_settings:
@@ -76,7 +80,7 @@ class TestDecodeJwt:
             "user_id": "user123",
             "exp": datetime.now(timezone.utc) - timedelta(hours=1),
         }
-        secret = "test_secret_key"
+        secret = _TEST_JWT_HS256_SECRET
         token = pyjwt.encode(payload, secret, algorithm="HS256")
 
         with patch("app.auth.settings") as mock_settings:
@@ -91,11 +95,11 @@ class TestDecodeJwt:
         import jwt as pyjwt
 
         payload = {"user_id": "user123"}
-        secret = "test_secret_key"
+        secret = _TEST_JWT_HS256_SECRET
         token = pyjwt.encode(payload, secret, algorithm="HS256")
 
         with patch("app.auth.settings") as mock_settings:
-            mock_settings.effective_jwt_secret = "wrong_secret"
+            mock_settings.effective_jwt_secret = _TEST_JWT_HS256_SECRET_OTHER
             mock_settings.jwt_algorithm = "HS256"
             result = decode_jwt(token)
 
@@ -104,7 +108,7 @@ class TestDecodeJwt:
     def test_decode_jwt_invalid_token_format(self):
         """Test decoding an invalid token format."""
         with patch("app.auth.settings") as mock_settings:
-            mock_settings.effective_jwt_secret = "secret"
+            mock_settings.effective_jwt_secret = _TEST_JWT_HS256_SECRET
             mock_settings.jwt_algorithm = "HS256"
             result = decode_jwt("not.a.valid.token")
 
@@ -113,7 +117,7 @@ class TestDecodeJwt:
     def test_decode_jwt_exception_handling(self):
         """Test exception handling in decode_jwt."""
         with patch("app.auth.settings") as mock_settings:
-            mock_settings.effective_jwt_secret = "secret"
+            mock_settings.effective_jwt_secret = _TEST_JWT_HS256_SECRET
             mock_settings.jwt_algorithm = "HS256"
             # This will cause an exception
             result = decode_jwt(None)
@@ -153,7 +157,7 @@ class TestValidateAuthentication:
         import jwt as pyjwt
 
         payload = {"user_id": "user123", "email": "test@example.com", "name": "Test User"}
-        secret = "test_secret_key"
+        secret = _TEST_JWT_HS256_SECRET
         token = pyjwt.encode(payload, secret, algorithm="HS256")
 
         tenant_data = {"tenant_id": "t1", "tenant_slug": "acme", "tenant_name": "Acme Corp"}
@@ -239,7 +243,7 @@ class TestResolveCaller:
             "name": "Test User",
             "is_admin": True,
         }
-        secret = "test_secret_key"
+        secret = _TEST_JWT_HS256_SECRET
         token = pyjwt.encode(payload, secret, algorithm="HS256")
 
         with patch("app.auth.decode_jwt", return_value=payload):
@@ -255,7 +259,7 @@ class TestResolveCaller:
         import jwt as pyjwt
 
         payload = {"user_id": "user123", "email": "test@example.com"}
-        secret = "test_secret_key"
+        secret = _TEST_JWT_HS256_SECRET
         token = pyjwt.encode(payload, secret, algorithm="HS256")
 
         with patch("app.auth.decode_jwt", return_value=payload):

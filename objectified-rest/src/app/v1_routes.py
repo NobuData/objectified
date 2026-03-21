@@ -6,7 +6,9 @@ Routes are split across focused modules:
   - app.routes.users             → /v1/users, /v1/me
   - app.routes.dashboard_audit   → /v1/me/dashboard/page-visits (optional audit, GitHub #188)
   - app.routes.tenants           → /v1/tenants, /v1/tenants/{id}/members,
-                                   /v1/tenants/{id}/administrators
+                                   /v1/tenants/{id}/administrators,
+                                   /v1/tenants/{id}/administrator-audit-events,
+                                   /v1/tenants/{id}/primary-administrator
   - app.routes.api_keys          → /v1/tenants/{id}/api-keys
   - app.routes.projects          → /v1/tenants/{id}/projects
   - app.routes.properties        → /v1/tenants/{tenant_id}/projects/{project_id}/properties

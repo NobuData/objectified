@@ -19,6 +19,8 @@ import {
   listTenantAdministrators,
   addTenantAdministrator,
   removeTenantAdministrator,
+  listTenantAdministratorAuditEvents,
+  transferTenantPrimaryAdministrator,
   listUsers,
   getUser,
   createUser,
@@ -513,6 +515,71 @@ describe('removeTenantAdministrator', () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe(`${baseUrl}/tenants/t1/administrators/a1`);
     expect((init as RequestInit).method).toBe('DELETE');
+  });
+});
+
+describe('listTenantAdministratorAuditEvents', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('GETs audit events with optional limit', async () => {
+    const rows = [
+      {
+        id: 'e1',
+        tenant_id: 't1',
+        event_type: 'admin_added',
+        actor_account_id: 'u1',
+        target_account_id: 'u2',
+        previous_primary_account_id: null,
+        metadata: {},
+        created_at: '2024-01-01T00:00:00Z',
+      },
+    ];
+    mockFetch.mockResolvedValue(makeFetchResponse(rows));
+    const result = await listTenantAdministratorAuditEvents('t1', { limit: 10 });
+    expect(result).toEqual(rows);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/administrator-audit-events?limit=10`);
+  });
+});
+
+describe('transferTenantPrimaryAdministrator', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('POSTs transfer body', async () => {
+    const tenant = {
+      id: 't1',
+      name: 'Acme',
+      description: '',
+      slug: 'acme',
+      enabled: true,
+      metadata: {},
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: null,
+      deleted_at: null,
+      primary_admin_account_id: 'u2',
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(tenant));
+    const out = await transferTenantPrimaryAdministrator(
+      't1',
+      { new_primary_account_id: 'u2', confirm_tenant_slug: 'acme' },
+      {}
+    );
+    expect(out).toEqual(tenant);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/primary-administrator`);
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      new_primary_account_id: 'u2',
+      confirm_tenant_slug: 'acme',
+    });
   });
 });
 
