@@ -849,6 +849,12 @@ export async function updateTenantAppearance(
 
 export type TenantAccessLevel = 'member' | 'administrator';
 
+export interface TenantMemberRoleSchema {
+  role_id: string;
+  key: string;
+  name: string;
+}
+
 export interface TenantAccountSchema {
   id: string;
   tenant_id: string;
@@ -858,6 +864,8 @@ export interface TenantAccountSchema {
   created_at: string;
   updated_at: string | null;
   deleted_at?: string | null;
+  /** Present on GET /tenants/{id}/members when include_roles is used. */
+  roles?: TenantMemberRoleSchema[];
 }
 
 export interface TenantAccountCreate {
@@ -866,20 +874,24 @@ export interface TenantAccountCreate {
   email?: string | null;
   access_level?: TenantAccessLevel;
   enabled?: boolean;
+  member_role_id?: string | null;
 }
 
 export interface TenantAccountUpdate {
   access_level?: TenantAccessLevel | null;
   enabled?: boolean | null;
+  member_role_id?: string | null;
 }
 
 export async function listTenantMembers(
   tenantId: string,
-  options: RestClientOptions = {}
+  options: RestClientOptions = {},
+  includeRoles = true
 ): Promise<TenantAccountSchema[]> {
+  const q = includeRoles ? '?include_roles=true' : '';
   return request<TenantAccountSchema[]>(
     'GET',
-    `/tenants/${tenantId}/members`,
+    `/tenants/${tenantId}/members${q}`,
     undefined,
     options
   );
@@ -898,6 +910,108 @@ export async function addTenantMember(
   );
 }
 
+export type TenantMemberInvitationStatus = 'pending' | 'accepted' | 'cancelled';
+
+export interface TenantMemberInvitationSchema {
+  id: string;
+  tenant_id: string;
+  email: string;
+  role_id?: string | null;
+  role_key?: string | null;
+  role_name?: string | null;
+  status: TenantMemberInvitationStatus;
+  invited_by_account_id?: string | null;
+  last_sent_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface TenantMemberInvitationCreate {
+  email: string;
+  member_role_id?: string | null;
+}
+
+export type TenantMemberInviteOutcomeKind = 'member' | 'pending_invitation';
+
+export interface TenantMemberInviteOutcome {
+  kind: TenantMemberInviteOutcomeKind;
+  member?: TenantAccountSchema | null;
+  invitation?: TenantMemberInvitationSchema | null;
+}
+
+export async function listTenantMemberInvitations(
+  tenantId: string,
+  options: RestClientOptions = {}
+): Promise<TenantMemberInvitationSchema[]> {
+  return request<TenantMemberInvitationSchema[]>(
+    'GET',
+    `/tenants/${tenantId}/members/invitations`,
+    undefined,
+    options
+  );
+}
+
+export async function inviteTenantMemberByEmail(
+  tenantId: string,
+  body: TenantMemberInvitationCreate,
+  options: RestClientOptions = {}
+): Promise<TenantMemberInviteOutcome> {
+  return request<TenantMemberInviteOutcome>(
+    'POST',
+    `/tenants/${tenantId}/members/invite-email`,
+    body,
+    options
+  );
+}
+
+export async function resendTenantMemberInvitation(
+  tenantId: string,
+  invitationId: string,
+  options: RestClientOptions = {}
+): Promise<TenantMemberInvitationSchema> {
+  return request<TenantMemberInvitationSchema>(
+    'POST',
+    `/tenants/${tenantId}/members/invitations/${encodeURIComponent(invitationId)}/resend`,
+    undefined,
+    options
+  );
+}
+
+export async function cancelTenantMemberInvitation(
+  tenantId: string,
+  invitationId: string,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/tenants/${tenantId}/members/invitations/${encodeURIComponent(invitationId)}`,
+    undefined,
+    options
+  );
+}
+
+export interface TenantRbacRoleSchema {
+  id: string;
+  tenant_id: string;
+  key: string;
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export async function listTenantRbacRoles(
+  tenantId: string,
+  options: RestClientOptions = {}
+): Promise<TenantRbacRoleSchema[]> {
+  return request<TenantRbacRoleSchema[]>(
+    'GET',
+    `/tenants/${tenantId}/rbac/roles`,
+    undefined,
+    options
+  );
+}
+
 export interface TenantBulkInviteResultEntry {
   email: string;
   status:
@@ -905,13 +1019,17 @@ export interface TenantBulkInviteResultEntry {
     | 'promoted'
     | 'already_member'
     | 'not_found'
-    | 'invalid_email';
+    | 'invalid_email'
+    | 'pending_invitation'
+    | 'already_invited';
   account_id?: string | null;
 }
 
 export interface TenantMembersBulkInvitePayload {
   emails: string[];
   access_level: TenantAccessLevel;
+  member_role_id?: string | null;
+  invite_unknown_emails?: boolean;
 }
 
 export interface TenantMembersBulkInviteResponse {
@@ -940,6 +1058,23 @@ export async function removeTenantMember(
     'DELETE',
     `/tenants/${tenantId}/members/${encodeURIComponent(accountId)}`,
     undefined,
+    options
+  );
+}
+
+export interface TenantMembersBulkRemovePayload {
+  account_ids: string[];
+}
+
+export async function bulkRemoveTenantMembers(
+  tenantId: string,
+  body: TenantMembersBulkRemovePayload,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'POST',
+    `/tenants/${tenantId}/members/bulk-remove`,
+    body,
     options
   );
 }

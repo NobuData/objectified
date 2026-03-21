@@ -11,6 +11,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from app.auth import require_admin, require_authenticated
 from app.database import db
 from app.routes.helpers import _get_active_account_by_id, _not_found
+from app.tenant_member_helpers import fulfill_pending_member_invitations
 from app.schemas import (
     AccountCreate,
     AccountLifecycleEventSchema,
@@ -394,7 +395,9 @@ def create_user(payload: AccountCreate) -> AccountSchema:
     )
     if not row:
         raise HTTPException(status_code=500, detail="Failed to create user")
-    return AccountSchema(**dict(row))
+    account = AccountSchema(**dict(row))
+    fulfill_pending_member_invitations(str(account.id), payload.email)
+    return account
 
 
 @router.put(

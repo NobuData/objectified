@@ -30,10 +30,22 @@ from app.schemas import (
     TenantAppearanceUpdate,
     TenantBulkInviteResultEntry,
     TenantCreate,
+    TenantMemberInvitationCreate,
+    TenantMemberInvitationSchema,
+    TenantMemberInvitationStatus,
+    TenantMemberInviteOutcome,
+    TenantMemberListEntrySchema,
     TenantMembersBulkInvite,
     TenantMembersBulkInviteResponse,
+    TenantMembersBulkRemove,
     TenantSchema,
     TenantUpdate,
+)
+from app.tenant_member_helpers import (
+    assign_workspace_role,
+    fetch_workspace_roles_for_members,
+    replace_workspace_roles,
+    validate_member_role_in_tenant,
 )
 
 logger = logging.getLogger(__name__)
@@ -561,11 +573,20 @@ def update_tenant_appearance(
 
 @router.get(
     "/tenants/{tenant_id}/members",
-    response_model=List[TenantAccountSchema],
+    response_model=List[TenantMemberListEntrySchema],
     summary="List tenant members",
-    description="List all active members (tenant_account rows) for a tenant.",
+    description=(
+        "List all active memberships for a tenant. "
+        "Use ``include_roles=true`` to load tenant-scoped workspace roles per member."
+    ),
 )
-def list_tenant_members(tenant_id: str) -> List[TenantAccountSchema]:
+def list_tenant_members(
+    tenant_id: str,
+    include_roles: bool = Query(
+        False,
+        description="Include workspace (RBAC) roles for each account.",
+    ),
+) -> List[TenantMemberListEntrySchema]:
     """List members of a tenant."""
     _assert_tenant_exists(tenant_id)
     rows = db.execute_query(
@@ -577,7 +598,14 @@ def list_tenant_members(tenant_id: str) -> List[TenantAccountSchema]:
         """,
         (tenant_id,),
     )
-    return [TenantAccountSchema(**dict(r)) for r in rows]
+    if not include_roles:
+        return [TenantMemberListEntrySchema(**dict(r), roles=[]) for r in rows]
+    ids = [str(r["account_id"]) for r in rows]
+    role_map = fetch_workspace_roles_for_members(tenant_id, ids)
+    return [
+        TenantMemberListEntrySchema(**dict(r), roles=role_map.get(str(r["account_id"]), []))
+        for r in rows
+    ]
 
 
 def _email_shape_ok(addr: str) -> bool:
@@ -587,6 +615,245 @@ def _email_shape_ok(addr: str) -> bool:
     return bool(local.strip()) and bool(domain.strip()) and "." in domain
 
 
+def _tenant_member_list_entry(tenant_id: str, row: dict) -> TenantMemberListEntrySchema:
+    d = dict(row)
+    roles = fetch_workspace_roles_for_members(tenant_id, [str(d["account_id"])]).get(
+        str(d["account_id"]), []
+    )
+    return TenantMemberListEntrySchema(**d, roles=roles)
+
+
+def _invitation_row_to_schema(row: dict) -> TenantMemberInvitationSchema:
+    d = dict(row)
+    status = d.get("status")
+    if isinstance(status, str):
+        status = TenantMemberInvitationStatus(status)
+    return TenantMemberInvitationSchema(
+        id=str(d["id"]),
+        tenant_id=str(d["tenant_id"]),
+        email=str(d["email"]),
+        role_id=str(d["role_id"]) if d.get("role_id") is not None else None,
+        role_key=str(d["role_key"]) if d.get("role_key") else None,
+        role_name=str(d["role_name"]) if d.get("role_name") else None,
+        status=status,
+        invited_by_account_id=str(d["invited_by_account_id"])
+        if d.get("invited_by_account_id")
+        else None,
+        last_sent_at=d.get("last_sent_at"),
+        created_at=d["created_at"],
+        updated_at=d.get("updated_at"),
+    )
+
+
+@router.get(
+    "/tenants/{tenant_id}/members/invitations",
+    response_model=List[TenantMemberInvitationSchema],
+    summary="List pending member invitations",
+    description="Pending email invitations to join the tenant as a member. **Admin only.**",
+    dependencies=[Depends(require_admin)],
+)
+def list_tenant_member_invitations(tenant_id: str) -> List[TenantMemberInvitationSchema]:
+    _assert_tenant_exists(tenant_id)
+    rows = db.execute_query(
+        """
+        SELECT i.id, i.tenant_id, i.email, i.role_id, i.status,
+               i.invited_by_account_id, i.last_sent_at, i.created_at, i.updated_at,
+               r.key AS role_key, r.name AS role_name
+        FROM objectified.tenant_member_invitation i
+        LEFT JOIN objectified.role r ON r.id = i.role_id AND r.deleted_at IS NULL
+        WHERE i.tenant_id = %s
+          AND i.status = 'pending'
+          AND i.deleted_at IS NULL
+        ORDER BY i.created_at ASC
+        """,
+        (tenant_id,),
+    )
+    return [_invitation_row_to_schema(dict(r)) for r in rows]
+
+
+@router.post(
+    "/tenants/{tenant_id}/members/invite-email",
+    response_model=TenantMemberInviteOutcome,
+    status_code=201,
+    summary="Invite member by email",
+    description=(
+        "If an account exists for the email, adds tenant membership (member) and optional workspace role. "
+        "Otherwise creates a pending invitation until the user registers. **Admin only.**"
+    ),
+    dependencies=[Depends(require_admin)],
+)
+def invite_tenant_member_by_email(
+    tenant_id: str,
+    payload: TenantMemberInvitationCreate,
+    caller: Annotated[dict[str, Any], Depends(require_admin)],
+) -> TenantMemberInviteOutcome:
+    _assert_tenant_exists(tenant_id)
+    email = payload.email.strip().lower()
+    if not _email_shape_ok(email):
+        raise HTTPException(status_code=422, detail="Invalid email address.")
+    if payload.member_role_id:
+        validate_member_role_in_tenant(tenant_id, payload.member_role_id)
+    invited_by = caller.get("user_id") or caller.get("account_id")
+
+    acc_rows = db.execute_query(
+        """
+        SELECT id FROM objectified.account
+        WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL
+        LIMIT 1
+        """,
+        (email,),
+    )
+    if acc_rows:
+        account_id = str(acc_rows[0]["id"])
+        existing = db.execute_query(
+            """
+            SELECT id FROM objectified.tenant_account
+            WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (tenant_id, account_id),
+        )
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail="Account is already a member of this tenant.",
+            )
+        row = db.execute_mutation(
+            """
+            INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
+            VALUES (%s, %s, 'member', true)
+            RETURNING id, tenant_id, account_id, access_level, enabled, created_at, updated_at, deleted_at
+            """,
+            (tenant_id, account_id),
+        )
+        if not row:
+            raise HTTPException(status_code=500, detail="Failed to add member")
+        if payload.member_role_id:
+            assign_workspace_role(tenant_id, account_id, payload.member_role_id)
+        return TenantMemberInviteOutcome(
+            kind="member",
+            member=_tenant_member_list_entry(tenant_id, dict(row)),
+            invitation=None,
+        )
+
+    pending = db.execute_query(
+        """
+        SELECT id FROM objectified.tenant_member_invitation
+        WHERE tenant_id = %s
+          AND LOWER(email) = LOWER(%s)
+          AND status = 'pending'
+          AND deleted_at IS NULL
+        LIMIT 1
+        """,
+        (tenant_id, email),
+    )
+    if pending:
+        raise HTTPException(
+            status_code=409,
+            detail="A pending invitation already exists for this email.",
+        )
+    inv_row = db.execute_mutation(
+        """
+        INSERT INTO objectified.tenant_member_invitation
+            (tenant_id, email, role_id, status, invited_by_account_id, last_sent_at)
+        VALUES (%s, %s, %s, 'pending', %s, timezone('utc', clock_timestamp()))
+        RETURNING id, tenant_id, email, role_id, status,
+            invited_by_account_id, last_sent_at, created_at, updated_at
+        """,
+        (tenant_id, email, payload.member_role_id, invited_by),
+    )
+    if not inv_row:
+        raise HTTPException(status_code=500, detail="Failed to create invitation")
+    inv_id = str(dict(inv_row)["id"])
+    full = db.execute_query(
+        """
+        SELECT i.id, i.tenant_id, i.email, i.role_id, i.status,
+               i.invited_by_account_id, i.last_sent_at, i.created_at, i.updated_at,
+               r.key AS role_key, r.name AS role_name
+        FROM objectified.tenant_member_invitation i
+        LEFT JOIN objectified.role r ON r.id = i.role_id AND r.deleted_at IS NULL
+        WHERE i.id = %s
+        LIMIT 1
+        """,
+        (inv_id,),
+    )
+    if not full:
+        raise HTTPException(status_code=500, detail="Failed to load invitation")
+    return TenantMemberInviteOutcome(
+        kind="pending_invitation",
+        member=None,
+        invitation=_invitation_row_to_schema(dict(full[0])),
+    )
+
+
+@router.post(
+    "/tenants/{tenant_id}/members/invitations/{invitation_id}/resend",
+    response_model=TenantMemberInvitationSchema,
+    summary="Resend member invitation",
+    description="Updates ``last_sent_at`` for a pending invitation. **Admin only.**",
+    dependencies=[Depends(require_admin)],
+)
+def resend_tenant_member_invitation(
+    tenant_id: str, invitation_id: str
+) -> TenantMemberInvitationSchema:
+    _assert_tenant_exists(tenant_id)
+    row = db.execute_mutation(
+        """
+        UPDATE objectified.tenant_member_invitation
+        SET last_sent_at = timezone('utc', clock_timestamp())
+        WHERE id = %s
+          AND tenant_id = %s
+          AND status = 'pending'
+          AND deleted_at IS NULL
+        RETURNING id
+        """,
+        (invitation_id, tenant_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Pending invitation not found.")
+    full = db.execute_query(
+        """
+        SELECT i.id, i.tenant_id, i.email, i.role_id, i.status,
+               i.invited_by_account_id, i.last_sent_at, i.created_at, i.updated_at,
+               r.key AS role_key, r.name AS role_name
+        FROM objectified.tenant_member_invitation i
+        LEFT JOIN objectified.role r ON r.id = i.role_id AND r.deleted_at IS NULL
+        WHERE i.id = %s AND i.tenant_id = %s
+        LIMIT 1
+        """,
+        (invitation_id, tenant_id),
+    )
+    if not full:
+        raise HTTPException(status_code=404, detail="Invitation not found.")
+    return _invitation_row_to_schema(dict(full[0]))
+
+
+@router.delete(
+    "/tenants/{tenant_id}/members/invitations/{invitation_id}",
+    status_code=204,
+    summary="Cancel member invitation",
+    description="Cancel a pending invitation. **Admin only.**",
+    dependencies=[Depends(require_admin)],
+)
+def cancel_tenant_member_invitation(tenant_id: str, invitation_id: str) -> None:
+    _assert_tenant_exists(tenant_id)
+    updated = db.execute_mutation(
+        """
+        UPDATE objectified.tenant_member_invitation
+        SET status = 'cancelled',
+            deleted_at = timezone('utc', clock_timestamp())
+        WHERE id = %s
+          AND tenant_id = %s
+          AND status = 'pending'
+          AND deleted_at IS NULL
+        RETURNING id
+        """,
+        (invitation_id, tenant_id),
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Pending invitation not found.")
+
+
 @router.post(
     "/tenants/{tenant_id}/members/bulk-invite",
     response_model=TenantMembersBulkInviteResponse,
@@ -594,17 +861,25 @@ def _email_shape_ok(addr: str) -> bool:
     description=(
         "Resolve each email to an active account and add or promote membership. "
         "``access_level`` ``member`` adds members; ``administrator`` adds or promotes "
-        "to administrator. Emails not matching an account return ``not_found``. "
+        "to administrator. Emails not matching an account return ``not_found`` unless "
+        "``invite_unknown_emails`` is true (member only), which creates a ``pending_invitation``. "
+        "Optional ``member_role_id`` assigns a tenant workspace role for new member rows. "
         "**Admin only.**"
     ),
     dependencies=[Depends(require_admin)],
 )
 def bulk_invite_tenant_members(
-    tenant_id: str, payload: TenantMembersBulkInvite
+    tenant_id: str,
+    payload: TenantMembersBulkInvite,
+    caller: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> TenantMembersBulkInviteResponse:
     """Add or promote many tenant memberships by email (admin)."""
     _assert_tenant_exists(tenant_id)
     want_admin = payload.access_level == TenantAccessLevel.ADMINISTRATOR
+    invited_by = caller.get("user_id") or caller.get("account_id")
+
+    if payload.member_role_id:
+        validate_member_role_in_tenant(tenant_id, payload.member_role_id)
 
     seen: set[str] = set()
     ordered: list[str] = []
@@ -659,7 +934,50 @@ def bulk_invite_tenant_members(
     for email in valid_emails:
         account_id = email_to_account_id.get(email)
         if account_id is None:
-            results.append(TenantBulkInviteResultEntry(email=email, status="not_found"))
+            if (
+                not want_admin
+                and payload.invite_unknown_emails
+                and payload.access_level == TenantAccessLevel.MEMBER
+            ):
+                pending_exists = db.execute_query(
+                    """
+                    SELECT id FROM objectified.tenant_member_invitation
+                    WHERE tenant_id = %s
+                      AND LOWER(email) = LOWER(%s)
+                      AND status = 'pending'
+                      AND deleted_at IS NULL
+                    LIMIT 1
+                    """,
+                    (tenant_id, email),
+                )
+                if pending_exists:
+                    results.append(
+                        TenantBulkInviteResultEntry(
+                            email=email, status="already_invited", account_id=None
+                        )
+                    )
+                else:
+                    inv_row = db.execute_mutation(
+                        """
+                        INSERT INTO objectified.tenant_member_invitation
+                            (tenant_id, email, role_id, status, invited_by_account_id, last_sent_at)
+                        VALUES (%s, %s, %s, 'pending', %s, timezone('utc', clock_timestamp()))
+                        RETURNING id
+                        """,
+                        (tenant_id, email, payload.member_role_id, invited_by),
+                    )
+                    if inv_row:
+                        results.append(
+                            TenantBulkInviteResultEntry(
+                                email=email, status="pending_invitation", account_id=None
+                            )
+                        )
+                    else:
+                        results.append(
+                            TenantBulkInviteResultEntry(email=email, status="not_found")
+                        )
+            else:
+                results.append(TenantBulkInviteResultEntry(email=email, status="not_found"))
             continue
 
         current_level = existing_map.get(account_id)
@@ -717,6 +1035,8 @@ def bulk_invite_tenant_members(
                 TenantBulkInviteResultEntry(email=email, status="not_found", account_id=account_id)
             )
         else:
+            if not want_admin and payload.member_role_id:
+                assign_workspace_role(tenant_id, account_id, payload.member_role_id)
             results.append(
                 TenantBulkInviteResultEntry(email=email, status="added", account_id=account_id)
             )
@@ -725,8 +1045,39 @@ def bulk_invite_tenant_members(
 
 
 @router.post(
+    "/tenants/{tenant_id}/members/bulk-remove",
+    status_code=204,
+    summary="Bulk remove tenant members",
+    description=(
+        "Soft-delete tenant memberships for the given account IDs. Missing IDs are ignored. "
+        "**Admin only.**"
+    ),
+    dependencies=[Depends(require_admin)],
+)
+def bulk_remove_tenant_members(
+    tenant_id: str, payload: TenantMembersBulkRemove
+) -> None:
+    _assert_tenant_exists(tenant_id)
+    seen: set[str] = set()
+    for raw_id in payload.account_ids:
+        aid = raw_id.strip()
+        if not aid or aid in seen:
+            continue
+        seen.add(aid)
+        db.execute_mutation(
+            """
+            UPDATE objectified.tenant_account
+            SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
+            WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
+            """,
+            (tenant_id, aid),
+            returning=False,
+        )
+
+
+@router.post(
     "/tenants/{tenant_id}/members",
-    response_model=TenantAccountSchema,
+    response_model=TenantMemberListEntrySchema,
     status_code=201,
     summary="Add tenant member",
     description=(
@@ -736,10 +1087,15 @@ def bulk_invite_tenant_members(
     ),
     dependencies=[Depends(require_admin)],
 )
-def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAccountSchema:
+def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantMemberListEntrySchema:
     """Add a member to a tenant by account_id or email."""
     _assert_tenant_exists(tenant_id)
     _validate_payload_tenant_id(payload.tenant_id, tenant_id)
+    if (
+        payload.member_role_id
+        and payload.access_level == TenantAccessLevel.MEMBER
+    ):
+        validate_member_role_in_tenant(tenant_id, payload.member_role_id)
     resolved_account_id = _resolve_account_id(payload.account_id, payload.email)
 
     existing = db.execute_query(
@@ -762,7 +1118,12 @@ def add_tenant_member(tenant_id: str, payload: TenantAccountCreate) -> TenantAcc
     )
     if not row:
         raise HTTPException(status_code=500, detail="Failed to add member")
-    return TenantAccountSchema(**dict(row))
+    if (
+        payload.access_level == TenantAccessLevel.MEMBER
+        and payload.member_role_id
+    ):
+        assign_workspace_role(tenant_id, resolved_account_id, payload.member_role_id)
+    return _tenant_member_list_entry(tenant_id, dict(row))
 
 
 @router.delete(
@@ -797,15 +1158,18 @@ def remove_tenant_member(tenant_id: str, account_id: str) -> None:
 
 @router.put(
     "/tenants/{tenant_id}/members/{account_id}",
-    response_model=TenantAccountSchema,
+    response_model=TenantMemberListEntrySchema,
     summary="Update tenant member",
-    description="Update the access level or enabled status of a tenant member. **Admin only.**",
+    description=(
+        "Update access level, enabled flag, and/or tenant-scoped workspace role assignments. "
+        "Send ``member_role_id`` as null to clear explicit roles (viewer baseline). **Admin only.**"
+    ),
     dependencies=[Depends(require_admin)],
 )
 def update_tenant_member(
     tenant_id: str, account_id: str, payload: TenantAccountUpdate
-) -> TenantAccountSchema:
-    """Update a tenant member's access level or enabled status."""
+) -> TenantMemberListEntrySchema:
+    """Update a tenant member's access level, enabled status, or workspace roles."""
     rows = db.execute_query(
         """
         SELECT id FROM objectified.tenant_account
@@ -816,6 +1180,7 @@ def update_tenant_member(
     if not rows:
         raise HTTPException(status_code=404, detail="Member not found in this tenant")
 
+    raw = payload.model_dump(exclude_unset=True)
     updates: list[str] = []
     params: list = []
 
@@ -826,22 +1191,50 @@ def update_tenant_member(
         updates.append("enabled = %s")
         params.append(payload.enabled)
 
-    if not updates:
+    if updates:
+        params.extend([tenant_id, account_id])
+        row = db.execute_mutation(
+            f"""
+            UPDATE objectified.tenant_account
+            SET {", ".join(updates)}
+            WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
+            RETURNING id, tenant_id, account_id, access_level, enabled, created_at, updated_at, deleted_at
+            """,
+            tuple(params),
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Member not found in this tenant")
+    else:
+        full = db.execute_query(
+            """
+            SELECT id, tenant_id, account_id, access_level, enabled, created_at, updated_at, deleted_at
+            FROM objectified.tenant_account
+            WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (tenant_id, account_id),
+        )
+        if not full:
+            raise HTTPException(status_code=404, detail="Member not found in this tenant")
+        row = full[0]
+
+    if "member_role_id" in raw:
+        level = dict(row).get("access_level")
+        if level in (TenantAccessLevel.MEMBER, "member"):
+            rid = raw["member_role_id"]
+            if rid is not None:
+                validate_member_role_in_tenant(tenant_id, rid)
+            replace_workspace_roles(tenant_id, account_id, rid)
+        elif raw["member_role_id"] is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="member_role_id applies only to members, not administrators.",
+            )
+
+    if not updates and "member_role_id" not in raw:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    params.extend([tenant_id, account_id])
-    row = db.execute_mutation(
-        f"""
-        UPDATE objectified.tenant_account
-        SET {", ".join(updates)}
-        WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
-        RETURNING id, tenant_id, account_id, access_level, enabled, created_at, updated_at, deleted_at
-        """,
-        tuple(params),
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Member not found in this tenant")
-    return TenantAccountSchema(**dict(row))
+    return _tenant_member_list_entry(tenant_id, dict(row))
 
 
 # ---------------------------------------------------------------------------

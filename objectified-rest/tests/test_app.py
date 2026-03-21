@@ -859,6 +859,7 @@ def test_list_tenant_members_found(client):
     assert r.status_code == 200
     assert len(r.json()) == 1
     assert r.json()[0]["access_level"] == "member"
+    assert r.json()[0]["roles"] == []
 
 
 def test_list_tenant_members_tenant_not_found(client):
@@ -872,7 +873,7 @@ def test_list_tenant_members_tenant_not_found(client):
 def test_add_tenant_member_success(admin_client):
     """POST /v1/tenants/{id}/members adds a member (admin)."""
     with mock_db_all() as mock_db:
-        mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], []]
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], [], []]
         mock_db.execute_mutation.return_value = _TENANT_ACCOUNT_ROW
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/members",
@@ -958,7 +959,7 @@ def test_update_tenant_member_success(admin_client):
     """PUT /v1/tenants/{id}/members/{account_id} updates access level."""
     updated = {**_TENANT_ACCOUNT_ROW, "access_level": "administrator"}
     with mock_db_all() as mock_db:
-        mock_db.execute_query.return_value = [_TENANT_ACCOUNT_ROW]
+        mock_db.execute_query.side_effect = [[_TENANT_ACCOUNT_ROW], []]
         mock_db.execute_mutation.return_value = updated
         r = admin_client.put(
             f"/v1/tenants/{_TENANT_ROW['id']}/members/{_ACCOUNT_ROW['id']}",
@@ -1243,7 +1244,7 @@ def test_update_tenant_member_enabled_only(admin_client):
     """PUT /v1/tenants/{id}/members/{account_id} updates enabled field only."""
     updated = {**_TENANT_ACCOUNT_ROW, "enabled": False}
     with mock_db_all() as mock_db:
-        mock_db.execute_query.return_value = [_TENANT_ACCOUNT_ROW]
+        mock_db.execute_query.side_effect = [[_TENANT_ACCOUNT_ROW], []]
         mock_db.execute_mutation.return_value = updated
         r = admin_client.put(
             f"/v1/tenants/{_TENANT_ROW['id']}/members/{_ACCOUNT_ROW['id']}",
@@ -1294,7 +1295,7 @@ def test_update_user_email_success(admin_client):
 def test_add_tenant_member_server_error(admin_client):
     """POST /v1/tenants/{id}/members returns 500 when DB mutation returns None."""
     with mock_db_all() as mock_db:
-        mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], []]
+        mock_db.execute_query.side_effect = [[_TENANT_ROW], [_ACCOUNT_ROW], [], []]
         mock_db.execute_mutation.return_value = None
         r = admin_client.post(
             f"/v1/tenants/{_TENANT_ROW['id']}/members",
@@ -1317,6 +1318,7 @@ def test_add_tenant_member_by_email_success(admin_client):
             [_TENANT_ROW],           # _assert_tenant_exists
             [email_lookup_row],      # email → account_id lookup
             [],                      # duplicate membership check
+            [],                      # workspace roles for response
         ]
         mock_db.execute_mutation.return_value = _TENANT_ACCOUNT_ROW
         r = admin_client.post(
@@ -1374,6 +1376,7 @@ def test_add_tenant_member_account_id_takes_precedence_over_email(admin_client):
             [_TENANT_ROW],   # _assert_tenant_exists
             [_ACCOUNT_ROW],  # _assert_account_exists (uses account_id path)
             [],              # duplicate check
+            [],              # workspace roles for response
         ]
         mock_db.execute_mutation.return_value = _TENANT_ACCOUNT_ROW
         r = admin_client.post(

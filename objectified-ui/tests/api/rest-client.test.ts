@@ -347,6 +347,13 @@ describe('listTenantMembers', () => {
     const result = await listTenantMembers('t1', {});
     expect(result).toEqual(members);
     const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/members?include_roles=true`);
+  });
+
+  it('omits include_roles when disabled', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listTenantMembers('t1', {}, false);
+    const [url] = mockFetch.mock.calls[0];
     expect(url).toBe(`${baseUrl}/tenants/t1/members`);
   });
 
