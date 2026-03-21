@@ -393,14 +393,16 @@ export default function TenantsPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className="inline-flex items-center gap-2">
-                          <Link
-                            href={`/dashboard/tenants/${tenant.id}/settings`}
-                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-                            aria-label={`Settings for ${tenant.name}`}
-                          >
-                            <Settings className="h-4 w-4" />
-                            Settings
-                          </Link>
+                          {!tenant.deleted_at && (
+                            <Link
+                              href={`/dashboard/tenants/${tenant.id}/settings`}
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                              aria-label={`Settings for ${tenant.name}`}
+                            >
+                              <Settings className="h-4 w-4" />
+                              Settings
+                            </Link>
+                          )}
                           <Link
                             href={`/dashboard/tenants/${tenant.id}/members`}
                             className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
