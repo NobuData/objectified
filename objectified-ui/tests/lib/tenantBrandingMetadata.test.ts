@@ -1,6 +1,8 @@
 import {
   TENANT_BRANDING_METADATA_KEY,
+  TENANT_DEFAULT_THEME_KEY,
   parseTenantBrandingFromMetadata,
+  parseTenantDefaultTheme,
 } from '../../lib/ui/tenantBrandingMetadata';
 
 describe('tenantBrandingMetadata', () => {
@@ -41,5 +43,12 @@ describe('tenantBrandingMetadata', () => {
       faviconUrl: null,
       primaryColor: null,
     });
+  });
+
+  it('parses defaultTheme from metadata', () => {
+    expect(parseTenantDefaultTheme({ [TENANT_DEFAULT_THEME_KEY]: 'dark' })).toBe('dark');
+    expect(parseTenantDefaultTheme({ [TENANT_DEFAULT_THEME_KEY]: ' system ' })).toBe('system');
+    expect(parseTenantDefaultTheme({ [TENANT_DEFAULT_THEME_KEY]: 'invalid' })).toBeNull();
+    expect(parseTenantDefaultTheme(undefined)).toBeNull();
   });
 });

@@ -14,9 +14,11 @@ jest.mock('next-auth/react', () => ({
 
 jest.mock('@lib/api/rest-client', () => ({
   listMyTenants: jest.fn(),
+  listTenants: jest.fn(),
   createTenant: jest.fn(),
   updateTenant: jest.fn(),
   deleteTenant: jest.fn(),
+  restoreTenant: jest.fn(),
   getRestClientOptions: jest.fn(() => ({})),
 }));
 
@@ -48,8 +50,9 @@ describe('TenantsPage', () => {
         accessToken: 'token',
       },
     });
-    const { listMyTenants } = require('@lib/api/rest-client');
+    const { listMyTenants, listTenants } = require('@lib/api/rest-client');
     listMyTenants.mockResolvedValue([]);
+    listTenants.mockResolvedValue([]);
   });
 
   it('renders tenants heading', async () => {
@@ -91,8 +94,8 @@ describe('TenantsPage', () => {
         accessToken: 'token',
       },
     });
-    const { listMyTenants } = require('@lib/api/rest-client');
-    listMyTenants.mockResolvedValue([_TENANT]);
+    const { listTenants } = require('@lib/api/rest-client');
+    listTenants.mockResolvedValue([_TENANT]);
     render(<TenantsPage />);
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /configure sso for acme corp/i })).toBeInTheDocument();

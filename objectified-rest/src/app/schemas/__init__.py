@@ -38,7 +38,13 @@ from app.schemas.class_property import (
 )
 from app.schemas.project import ProjectCreate, ProjectHistorySchema, ProjectSchema, ProjectUpdate
 from app.schemas.property import PropertyCreate, PropertySchema, PropertyUpdate
-from app.schemas.tenant import TenantCreate, TenantSchema, TenantUpdate
+from app.schemas.tenant import (
+    TenantActivitySummarySchema,
+    TenantAppearanceUpdate,
+    TenantCreate,
+    TenantSchema,
+    TenantUpdate,
+)
 from app.schemas.tenant_account import (
     TenantAccessLevel,
     TenantAccountCreate,
@@ -123,6 +129,8 @@ __all__ = [
     "TenantMembersBulkInviteResponse",
     "UserMembershipRoleSchema",
     "UserTenantMembershipAdminSchema",
+    "TenantActivitySummarySchema",
+    "TenantAppearanceUpdate",
     "TenantCreate",
     "TenantSchema",
     "TenantUpdate",

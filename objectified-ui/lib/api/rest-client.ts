@@ -141,6 +141,9 @@ export interface TenantSchema {
   slug: string;
   enabled?: boolean;
   metadata?: Record<string, unknown>;
+  rate_limit_requests_per_minute?: number | null;
+  max_projects?: number | null;
+  max_versions_per_project?: number | null;
   created_at: string;
   updated_at: string | null;
   deleted_at?: string | null;
@@ -160,6 +163,31 @@ export interface TenantUpdate {
   slug?: string | null;
   enabled?: boolean | null;
   metadata?: Record<string, unknown> | null;
+  rate_limit_requests_per_minute?: number | null;
+  max_projects?: number | null;
+  max_versions_per_project?: number | null;
+}
+
+export type TenantDefaultTheme = 'light' | 'dark' | 'system';
+
+export interface TenantActivitySummarySchema {
+  active_project_count: number;
+  active_member_count: number;
+  schema_version_count: number;
+  dashboard_page_visits_last_7_days?: number | null;
+}
+
+export interface TenantAppearanceUpdate {
+  logo_url?: string | null;
+  favicon_url?: string | null;
+  primary_color?: string | null;
+  default_theme?: TenantDefaultTheme | null;
+}
+
+export interface ListTenantsQuery {
+  includeDeleted?: boolean;
+  archivedOnly?: boolean;
+  search?: string;
 }
 
 export interface ProjectSchema {
@@ -728,17 +756,23 @@ export async function listUserTenantMemberships(
 
 export async function listTenants(
   options: RestClientOptions = {},
-  includeDeleted = false
+  query?: ListTenantsQuery
 ): Promise<TenantSchema[]> {
-  const q = includeDeleted ? '?include_deleted=true' : '';
+  const sp = new URLSearchParams();
+  if (query?.includeDeleted) sp.set('include_deleted', 'true');
+  if (query?.archivedOnly) sp.set('archived_only', 'true');
+  if (query?.search?.trim()) sp.set('search', query.search.trim());
+  const q = sp.toString() ? `?${sp.toString()}` : '';
   return request<TenantSchema[]>('GET', `/tenants${q}`, undefined, options);
 }
 
 /** List tenants the current user is a member of (requires JWT). */
 export async function listMyTenants(
-  options: RestClientOptions = {}
+  options: RestClientOptions = {},
+  includeArchived = false
 ): Promise<TenantSchema[]> {
-  return request<TenantSchema[]>('GET', '/tenants/me', undefined, options);
+  const q = includeArchived ? '?include_archived=true' : '';
+  return request<TenantSchema[]>('GET', `/tenants/me${q}`, undefined, options);
 }
 
 export async function getTenant(
@@ -770,6 +804,43 @@ export async function deleteTenant(
   options: RestClientOptions = {}
 ): Promise<void> {
   return request<void>('DELETE', `/tenants/${tenantId}`, undefined, options);
+}
+
+export async function restoreTenant(
+  tenantId: string,
+  options: RestClientOptions = {}
+): Promise<TenantSchema> {
+  return request<TenantSchema>(
+    'POST',
+    `/tenants/${encodeURIComponent(tenantId)}/restore`,
+    undefined,
+    options
+  );
+}
+
+export async function getTenantActivitySummary(
+  tenantId: string,
+  options: RestClientOptions = {}
+): Promise<TenantActivitySummarySchema> {
+  return request<TenantActivitySummarySchema>(
+    'GET',
+    `/tenants/${encodeURIComponent(tenantId)}/activity-summary`,
+    undefined,
+    options
+  );
+}
+
+export async function updateTenantAppearance(
+  tenantId: string,
+  body: TenantAppearanceUpdate,
+  options: RestClientOptions = {}
+): Promise<TenantSchema> {
+  return request<TenantSchema>(
+    'PUT',
+    `/tenants/${encodeURIComponent(tenantId)}/appearance`,
+    body,
+    options
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -570,6 +570,28 @@ def test_list_tenants_returns_tenants(client):
     assert r.json()[0]["slug"] == "acme"
 
 
+def test_list_tenants_archived_only_adds_deleted_filter(client):
+    """GET /v1/tenants?archived_only=true restricts to soft-deleted rows."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.get("/v1/tenants?archived_only=true")
+    assert r.status_code == 200
+    sql = mock_db.execute_query.call_args[0][0]
+    assert "deleted_at IS NOT NULL" in sql
+
+
+def test_list_tenants_search_adds_position_predicates(client):
+    """GET /v1/tenants?search=ac adds case-insensitive substring filters."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.get("/v1/tenants?search=ac")
+    assert r.status_code == 200
+    sql = mock_db.execute_query.call_args[0][0]
+    assert "POSITION(" in sql
+    args = mock_db.execute_query.call_args[0][1]
+    assert args == ("ac", "ac", "ac")
+
+
 def test_list_tenants_me_requires_auth(client):
     """GET /v1/tenants/me returns 401 with no credentials."""
     r = client.get("/v1/tenants/me")
@@ -596,6 +618,17 @@ def test_list_tenants_me_returns_empty_when_no_tenants(jwt_client):
         r = jwt_client.get("/v1/tenants/me")
     assert r.status_code == 200
     assert r.json() == []
+
+
+def test_list_tenants_me_include_archived_omits_deleted_filter_on_tenant_table(jwt_client):
+    """GET /v1/tenants/me?include_archived=true lists memberships including archived tenants."""
+    tenant_refs = [{"id": _TENANT_ROW["id"], "slug": "acme", "name": "Acme"}]
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [tenant_refs, [_TENANT_ROW]]
+        r = jwt_client.get("/v1/tenants/me?include_archived=true")
+    assert r.status_code == 200
+    second_sql = mock_db.execute_query.call_args_list[1][0][0]
+    assert "AND deleted_at IS NULL" not in second_sql
 
 
 def test_get_tenant_by_id_found(client):
@@ -639,6 +672,60 @@ def test_create_tenant_duplicate_slug(jwt_client):
         mock_db.execute_query.return_value = [_TENANT_ROW]
         r = jwt_client.post("/v1/tenants", json={"name": "Acme2", "description": "", "slug": "acme"})
     assert r.status_code == 409
+
+
+def test_restore_tenant_success(admin_client):
+    """POST /v1/tenants/{id}/restore clears deleted_at (admin)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [{"id": _TENANT_ROW["id"]}]
+        mock_db.execute_mutation.return_value = _TENANT_ROW
+        r = admin_client.post(f"/v1/tenants/{_TENANT_ROW['id']}/restore")
+    assert r.status_code == 200
+    assert r.json()["slug"] == "acme"
+
+
+def test_get_tenant_activity_summary(jwt_client):
+    """GET /v1/tenants/{id}/activity-summary returns aggregate counts."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ROW["id"]}],
+            [
+                {
+                    "active_project_count": 2,
+                    "active_member_count": 5,
+                    "schema_version_count": 11,
+                }
+            ],
+            [{"c": 4}],
+        ]
+        r = jwt_client.get(f"/v1/tenants/{_TENANT_ROW['id']}/activity-summary")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["active_project_count"] == 2
+    assert body["active_member_count"] == 5
+    assert body["schema_version_count"] == 11
+    assert body["dashboard_page_visits_last_7_days"] == 4
+
+
+def test_put_tenant_appearance_updates_metadata(jwt_client):
+    """PUT /v1/tenants/{id}/appearance merges branding into metadata."""
+    updated = dict(_TENANT_ROW)
+    updated["metadata"] = {
+        "branding": {"logoUrl": "https://cdn.example.com/logo.png"},
+        "defaultTheme": "dark",
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [{"metadata": {}}]
+        mock_db.execute_mutation.return_value = updated
+        r = jwt_client.put(
+            f"/v1/tenants/{_TENANT_ROW['id']}/appearance",
+            json={
+                "logo_url": "https://cdn.example.com/logo.png",
+                "default_theme": "dark",
+            },
+        )
+    assert r.status_code == 200
+    assert r.json()["metadata"]["defaultTheme"] == "dark"
 
 
 # ---------------------------------------------------------------------------
