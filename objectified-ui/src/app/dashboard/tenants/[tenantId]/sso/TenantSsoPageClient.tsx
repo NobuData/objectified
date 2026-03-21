@@ -256,6 +256,18 @@ function ProviderCard({
   );
   const [parseError, setParseError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setName(provider.name);
+    setEnabled(Boolean(provider.enabled));
+    setMetadataJson(prettyJson(provider.metadata));
+    setDocJson(
+      provider.provider_type === 'oidc'
+        ? prettyJson(provider.oidc_discovery)
+        : provider.saml_metadata_xml ?? ''
+    );
+    setParseError(null);
+  }, [provider.name, provider.enabled, provider.metadata, provider.provider_type, provider.oidc_discovery, provider.saml_metadata_xml]);
+
   const typeLabel = provider.provider_type === 'oidc' ? 'OIDC (Discovery JSON)' : 'SAML (Metadata XML)';
 
   const handleSave = async () => {
