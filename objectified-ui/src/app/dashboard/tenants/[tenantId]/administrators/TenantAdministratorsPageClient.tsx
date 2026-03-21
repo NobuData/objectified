@@ -198,7 +198,7 @@ export default function TenantAdministratorsPage() {
   }, [auditOpen, tenantId, fetchAuditEntries]);
 
   const refreshAfterAdminChange = useCallback(async () => {
-    const promises: Promise<void>[] = [fetchTenant(), fetchAdministrators()];
+    const promises: Promise<unknown>[] = [fetchTenant(), fetchAdministrators()];
     if (auditOpen) {
       promises.push(fetchAuditEntries());
     }
