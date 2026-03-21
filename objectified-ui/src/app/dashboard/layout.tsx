@@ -1,17 +1,12 @@
 import type { ReactNode } from 'react';
-import { getServerSession } from 'next-auth';
-import { redirect } from 'next/navigation';
-import { authOptions } from '@lib/auth/authOptions';
-import DashboardShell from './components/DashboardShell';
+import { Suspense } from 'react';
+import DashboardShellSkeleton from './components/DashboardShellSkeleton';
+import DashboardLayoutInner from './DashboardLayoutInner';
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    redirect('/login');
-  }
-  return <DashboardShell>{children}</DashboardShell>;
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<DashboardShellSkeleton />}>
+      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+    </Suspense>
+  );
 }

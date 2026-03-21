@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
-import TenantsPage from '../../../src/app/dashboard/tenants/page';
+import TenantsPage from '../../../src/app/dashboard/tenants/TenantsPageClient';
 
 jest.mock('next-auth/react', () => ({
   useSession: jest.fn(() => ({

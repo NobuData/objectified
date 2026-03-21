@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
-import DeepLinkPage from '../../../src/app/dashboard/projects/[projectId]/versions/[versionId]/page';
+import DeepLinkPage from '../../../src/app/dashboard/projects/[projectId]/versions/[versionId]/ProjectVersionPageClient';
 
 // ---------------------------------------------------------------------------
 // Stable module-level references used inside mocks.

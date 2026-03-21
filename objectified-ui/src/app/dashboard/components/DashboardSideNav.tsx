@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -61,6 +61,11 @@ export default function DashboardSideNav({
   collapsed = false,
 }: DashboardSideNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const prefetchRoute = (href: string) => {
+    router.prefetch(href);
+  };
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
@@ -117,6 +122,9 @@ export default function DashboardSideNav({
               <li key={item.href} className="mb-1">
                 <Link
                   href={item.href}
+                  prefetch={false}
+                  onMouseEnter={() => prefetchRoute(item.href)}
+                  onFocus={() => prefetchRoute(item.href)}
                   onClick={onNavigate}
                   className={linkClassName}
                   style={
