@@ -92,43 +92,52 @@ def _log_tenant_admin_audit_event(
     previous_primary_account_id: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
 ) -> None:
-    db.execute_mutation(
-        """
-        INSERT INTO objectified.tenant_admin_audit_event (
-            tenant_id, event_type, actor_account_id, target_account_id,
-            previous_primary_account_id, metadata
+    """Best-effort logging of tenant admin audit events.
+
+    Failures to insert audit rows are logged with context but do not raise,
+    so they cannot cause primary admin operations to fail after succeeding.
+    """
+    try:
+        db.execute_mutation(
+            """
+            INSERT INTO objectified.tenant_admin_audit_event (
+                tenant_id, event_type, actor_account_id, target_account_id,
+                previous_primary_account_id, metadata
+            )
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+            """,
+            (
+                tenant_id,
+                event_type,
+                actor_account_id,
+                target_account_id,
+                previous_primary_account_id,
+                json.dumps(metadata or {}),
+            ),
+            returning=False,
         )
-        VALUES (%s, %s, %s, %s, %s, %s::jsonb)
-        """,
-        (
-            tenant_id,
-            event_type,
-            actor_account_id,
-            target_account_id,
-            previous_primary_account_id,
-            json.dumps(metadata or {}),
-        ),
-        returning=False,
-    )
+    except Exception:
+        logger.exception(
+            "Failed to write tenant admin audit event",
+            extra={
+                "tenant_id": tenant_id,
+                "event_type": event_type,
+                "actor_account_id": actor_account_id,
+                "target_account_id": target_account_id,
+                "previous_primary_account_id": previous_primary_account_id,
+            },
+        )
 
 
 def _maybe_fill_primary_admin(tenant_id: str, account_id: str) -> None:
-    """If the tenant has no primary administrator, assign the given account."""
-    rows = db.execute_query(
-        """
-        SELECT primary_admin_account_id
-        FROM objectified.tenant
-        WHERE id = %s AND deleted_at IS NULL
-        """,
-        (tenant_id,),
-    )
-    if not rows or rows[0].get("primary_admin_account_id") is not None:
-        return
+    """If the tenant has no primary administrator, assign the given account atomically."""
     db.execute_mutation(
         """
         UPDATE objectified.tenant
         SET primary_admin_account_id = %s
-        WHERE id = %s AND deleted_at IS NULL
+        WHERE id = %s
+          AND deleted_at IS NULL
+          AND primary_admin_account_id IS NULL
         """,
         (account_id, tenant_id),
         returning=False,
