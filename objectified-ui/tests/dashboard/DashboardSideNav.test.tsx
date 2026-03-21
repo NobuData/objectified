@@ -88,13 +88,27 @@ describe('DashboardSideNav', () => {
     expect(screen.getByRole('link', { name: 'Publish' }).className).not.toContain('border-indigo-500');
   });
 
-  it('prefetches a route on sidebar link hover and focus', () => {
+  it('prefetches a route on sidebar link hover', () => {
     render(<DashboardSideNav role="member" />);
     const projectsLink = screen.getByRole('link', { name: /Projects/i });
     expect(projectsLink).toHaveAttribute('href', '/dashboard/projects');
     fireEvent.mouseEnter(projectsLink);
     expect(mockPrefetch).toHaveBeenCalledWith('/dashboard/projects');
+  });
+
+  it('does not re-prefetch a route on focus if already prefetched on hover', () => {
+    render(<DashboardSideNav role="member" />);
+    const projectsLink = screen.getByRole('link', { name: /Projects/i });
+    fireEvent.mouseEnter(projectsLink);
+    expect(mockPrefetch).toHaveBeenCalledTimes(1);
     mockPrefetch.mockClear();
+    fireEvent.focus(projectsLink);
+    expect(mockPrefetch).not.toHaveBeenCalled();
+  });
+
+  it('prefetches a route on focus if not yet hovered', () => {
+    render(<DashboardSideNav role="member" />);
+    const projectsLink = screen.getByRole('link', { name: /Projects/i });
     fireEvent.focus(projectsLink);
     expect(mockPrefetch).toHaveBeenCalledWith('/dashboard/projects');
   });

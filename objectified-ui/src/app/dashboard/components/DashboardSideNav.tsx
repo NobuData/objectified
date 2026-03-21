@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -62,8 +63,11 @@ export default function DashboardSideNav({
 }: DashboardSideNavProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const prefetchedRoutes = useRef<Set<string>>(new Set());
 
   const prefetchRoute = (href: string) => {
+    if (prefetchedRoutes.current.has(href)) return;
+    prefetchedRoutes.current.add(href);
     router.prefetch(href);
   };
 

@@ -62,16 +62,22 @@ export default function PublishedPage() {
     setLoading(true);
     try {
       const projectList = await listProjects(tenantIdAtStart, opts);
-      const projectVersionRowsPromises = projectList.map(async (project) => {
-        const versions = await listVersions(tenantIdAtStart, project.id, opts);
-        const published = versions.filter((v) => v.published);
+      const MAX_CONCURRENT_VERSION_REQUESTS = 5;
+      const projectVersionRowsNested: PublishedVersionRow[][] = [];
+      for (let i = 0; i < projectList.length; i += MAX_CONCURRENT_VERSION_REQUESTS) {
+        const batch = projectList.slice(i, i + MAX_CONCURRENT_VERSION_REQUESTS);
+        const batchPromises = batch.map(async (project) => {
+          const versions = await listVersions(tenantIdAtStart, project.id, opts);
+          const published = versions.filter((v) => v.published);
           return published.map<PublishedVersionRow>((v) => ({
-              ...v,
-              projectName: project.name,
-              tenantId: tenantIdAtStart,
-            }));
-      });
-      const projectVersionRowsNested = await Promise.all(projectVersionRowsPromises);
+            ...v,
+            projectName: project.name,
+            tenantId: tenantIdAtStart,
+          }));
+        });
+        const batchResult = await Promise.all(batchPromises);
+        projectVersionRowsNested.push(...batchResult);
+      }
       const rows: PublishedVersionRow[] = projectVersionRowsNested.flat();
       rows.sort(
         (a, b) =>
