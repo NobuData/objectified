@@ -21,6 +21,7 @@ import {
   type UserListSort,
   type UserListStatusFilter,
 } from '@lib/api/rest-client';
+import { formatForbiddenAlertMessage } from '@lib/api/permissionMessaging';
 type SessionUser = { is_administrator?: boolean };
 
 const filterSelectTriggerClass =
@@ -71,7 +72,10 @@ export default function UsersPage() {
     } catch (e) {
       setError(
         isForbiddenError(e)
-          ? 'Admin privileges required to list and manage users.'
+          ? formatForbiddenAlertMessage(
+              e,
+              'Admin privileges are required to list and manage users.'
+            )
           : e instanceof Error
             ? e.message
             : 'Failed to load users'
@@ -459,7 +463,10 @@ function DeactivateUserDialog({
     } catch (err) {
       onError(
         isForbiddenError(err)
-          ? 'Admin privileges required to deactivate a user.'
+          ? formatForbiddenAlertMessage(
+              err,
+              'Admin privileges are required to deactivate a user.'
+            )
           : err instanceof Error
             ? err.message
             : 'Failed to deactivate user'
@@ -591,7 +598,10 @@ function CreateUserDialog({
     } catch (err) {
       setFormError(
         isForbiddenError(err)
-          ? 'Admin privileges required to create a user.'
+          ? formatForbiddenAlertMessage(
+              err,
+              'Admin privileges are required to create a user.'
+            )
           : err instanceof Error
             ? err.message
             : 'Failed to create user'
@@ -764,7 +774,10 @@ function EditUserDialog({
     } catch (err) {
       setFormError(
         isForbiddenError(err)
-          ? 'Admin privileges required to update a user.'
+          ? formatForbiddenAlertMessage(
+              err,
+              'Admin privileges are required to update a user.'
+            )
           : err instanceof Error
             ? err.message
             : 'Failed to update user'

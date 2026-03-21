@@ -2,15 +2,19 @@
 
 import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
+import { PERMISSION_DENIED_SUGGESTION } from '@lib/api/permissionMessaging';
 
 export interface DashboardForbiddenProps {
   title?: string;
   message?: string;
+  /** Extra guidance (defaults to asking an administrator). Set to empty string to hide. */
+  suggestedAction?: string;
 }
 
 export default function DashboardForbidden({
-  title = 'Access denied',
+  title = 'Permission denied',
   message = 'You do not have permission to view this page.',
+  suggestedAction = PERMISSION_DENIED_SUGGESTION,
 }: DashboardForbiddenProps) {
   return (
     <div
@@ -23,6 +27,11 @@ export default function DashboardForbidden({
       <div>
         <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{message}</p>
+        {suggestedAction ? (
+          <p className="mt-4 text-sm text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700 pt-4">
+            {suggestedAction}
+          </p>
+        ) : null}
       </div>
       <Link
         href="/dashboard"

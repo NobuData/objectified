@@ -3,6 +3,17 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GitHubProvider from 'next-auth/providers/github';
 import { getAccountByEmail, verifyCredentials } from '@lib/auth/verifyCredentials';
 
+const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8; // 8 hours
+
+function resolveSessionMaxAgeSeconds(): number {
+  const raw = process.env.NEXTAUTH_SESSION_MAX_AGE_SECONDS;
+  if (!raw) return DEFAULT_SESSION_MAX_AGE_SECONDS;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_SESSION_MAX_AGE_SECONDS;
+}
+
+const SESSION_MAX_AGE_SECONDS = resolveSessionMaxAgeSeconds();
+
 /**
  * Internal credential check used by the credentials provider.
  * Kept in auth layer so verification stays server-side and within NextAuth's CSRF flow.
@@ -164,6 +175,10 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  },
+  jwt: {
+    maxAge: SESSION_MAX_AGE_SECONDS,
   },
 };
 

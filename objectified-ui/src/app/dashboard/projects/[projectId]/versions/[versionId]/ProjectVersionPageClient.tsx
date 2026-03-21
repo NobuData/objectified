@@ -115,7 +115,10 @@ export default function DashboardProjectVersionDeepLinkPage() {
 
   if (state.kind === 'forbidden') {
     return (
-      <DashboardForbidden message="You do not have permission to open this project or version." />
+      <DashboardForbidden
+        title="Forbidden"
+        message="You do not have permission to open this project or version."
+      />
     );
   }
 
