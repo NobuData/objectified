@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import { ChevronDown, Loader2, Plus, Pencil, UserX } from 'lucide-react';
 import * as Select from '@radix-ui/react-select';
 import * as Label from '@radix-ui/react-label';
@@ -300,7 +301,12 @@ export default function UsersPage() {
                       className="border-t border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/30"
                     >
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
-                        {user.name}
+                        <Link
+                          href={`/dashboard/users/${encodeURIComponent(user.id)}`}
+                          className="text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
+                        >
+                          {user.name}
+                        </Link>
                       </td>
                       <td className="px-4 py-3">{user.email}</td>
                       <td className="px-4 py-3">

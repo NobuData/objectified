@@ -334,21 +334,79 @@ def test_bulk_invite_tenant_members(admin_client):
     assert r.json()["results"][0]["status"] == "added"
 
 
-def test_get_user_by_id_found(client):
-    """GET /v1/users/{id} returns account when found."""
+def test_get_user_requires_auth(client):
+    """GET /v1/users/{id} returns 401 with no credentials."""
+    r = client.get(f"/v1/users/{_ACCOUNT_ROW['id']}")
+    assert r.status_code == 401
+
+
+def test_get_user_by_id_found(admin_client):
+    """GET /v1/users/{id} returns account when found (admin)."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = [_ACCOUNT_ROW]
-        r = client.get(f"/v1/users/{_ACCOUNT_ROW['id']}")
+        r = admin_client.get(f"/v1/users/{_ACCOUNT_ROW['id']}")
     assert r.status_code == 200
     assert r.json()["id"] == _ACCOUNT_ROW["id"]
 
 
-def test_get_user_by_id_not_found(client):
-    """GET /v1/users/{id} returns 404 when account not found."""
+def test_get_user_by_id_not_found(admin_client):
+    """GET /v1/users/{id} returns 404 when account not found (admin)."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = []
-        r = client.get("/v1/users/00000000-0000-0000-0000-000000000099")
+        r = admin_client.get("/v1/users/00000000-0000-0000-0000-000000000099")
     assert r.status_code == 404
+
+
+def test_list_user_tenant_memberships(admin_client):
+    """GET /v1/users/{id}/tenant-memberships returns memberships and roles (admin)."""
+    membership = {
+        "tenant_id": _TENANT_ROW["id"],
+        "tenant_name": "Acme",
+        "access_level": "member",
+        "membership_enabled": True,
+    }
+    role = {
+        "tenant_id": _TENANT_ROW["id"],
+        "role_id": "00000000-0000-0000-0000-0000000000bb",
+        "key": "editor",
+        "name": "Editor",
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": 1}],
+            [membership],
+            [role],
+        ]
+        r = admin_client.get(f"/v1/users/{_ACCOUNT_ROW['id']}/tenant-memberships")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["tenant_name"] == "Acme"
+    assert data[0]["access_level"] == "member"
+    assert data[0]["membership_enabled"] is True
+    assert len(data[0]["roles"]) == 1
+    assert data[0]["roles"][0]["key"] == "editor"
+
+
+def test_list_user_tenant_memberships_user_not_found(admin_client):
+    """GET /v1/users/{id}/tenant-memberships returns 404 when user missing."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = admin_client.get("/v1/users/00000000-0000-0000-0000-000000000099/tenant-memberships")
+    assert r.status_code == 404
+
+
+def test_list_user_tenant_memberships_empty_memberships(admin_client):
+    """GET /v1/users/{id}/tenant-memberships returns empty list when no tenants."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": 1}],
+            [],
+            [],
+        ]
+        r = admin_client.get(f"/v1/users/{_ACCOUNT_ROW['id']}/tenant-memberships")
+    assert r.status_code == 200
+    assert r.json() == []
 
 
 # ---------------------------------------------------------------------------
@@ -898,12 +956,12 @@ def test_list_users_include_deleted(admin_client):
     assert len(r.json()) == 2
 
 
-def test_get_user_include_deleted(client):
-    """GET /v1/users/{id}?include_deleted=true returns deleted account."""
+def test_get_user_include_deleted(admin_client):
+    """GET /v1/users/{id}?include_deleted=true returns deleted account (admin)."""
     deleted_row = {**_ACCOUNT_ROW, "deleted_at": _NOW}
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = [deleted_row]
-        r = client.get(f"/v1/users/{_ACCOUNT_ROW['id']}?include_deleted=true")
+        r = admin_client.get(f"/v1/users/{_ACCOUNT_ROW['id']}?include_deleted=true")
     assert r.status_code == 200
     assert r.json()["id"] == _ACCOUNT_ROW["id"]
 

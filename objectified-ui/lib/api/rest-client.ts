@@ -696,6 +696,32 @@ export async function listUserLifecycleEvents(
   );
 }
 
+export interface UserMembershipRoleSchema {
+  role_id: string;
+  key: string;
+  name: string;
+}
+
+export interface UserTenantMembershipAdminSchema {
+  tenant_id: string;
+  tenant_name: string;
+  access_level: 'member' | 'administrator';
+  membership_enabled: boolean;
+  roles: UserMembershipRoleSchema[];
+}
+
+export async function listUserTenantMemberships(
+  userId: string,
+  options: RestClientOptions = {}
+): Promise<UserTenantMembershipAdminSchema[]> {
+  return request<UserTenantMembershipAdminSchema[]>(
+    'GET',
+    `/users/${encodeURIComponent(userId)}/tenant-memberships`,
+    undefined,
+    options
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tenants
 // ---------------------------------------------------------------------------
