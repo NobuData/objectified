@@ -197,15 +197,17 @@ export default function TenantAdministratorsPage() {
     void fetchAuditEntries();
   }, [auditOpen, tenantId, fetchAuditEntries]);
 
-  const refreshAfterAdminChange = useCallback(() => {
-    void fetchTenant();
-    void fetchAdministrators();
-    if (auditOpen) void fetchAuditEntries();
+  const refreshAfterAdminChange = useCallback(async () => {
+    const promises: Promise<void>[] = [fetchTenant(), fetchAdministrators()];
+    if (auditOpen) {
+      promises.push(fetchAuditEntries());
+    }
+    await Promise.all(promises);
   }, [fetchTenant, fetchAdministrators, auditOpen, fetchAuditEntries]);
 
   const handleAddSuccess = () => {
     setAddOpen(false);
-    refreshAfterAdminChange();
+    void refreshAfterAdminChange();
   };
 
   const handleRemove = async (admin: TenantAccountSchema) => {
