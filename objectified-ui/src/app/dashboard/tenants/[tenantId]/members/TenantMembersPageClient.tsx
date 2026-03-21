@@ -251,8 +251,12 @@ export default function TenantMembersPage() {
     a.href = url;
     a.download = `tenant-members-${tenantId.slice(0, 8)}.csv`;
     a.rel = 'noopener';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      a.remove();
+    }, 0);
   }, [members, userMap, tenantId]);
 
   const handleBulkRemove = async () => {
