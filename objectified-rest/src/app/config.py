@@ -65,6 +65,14 @@ class Settings(BaseSettings):
         description="service.name resource attribute for OpenTelemetry.",
     )
 
+    dashboard_page_visit_audit_enabled: bool = Field(
+        default=False,
+        description=(
+            "When True, POST /v1/me/dashboard/page-visits persists rows to "
+            "objectified.dashboard_page_visit (GitHub #188)."
+        ),
+    )
+
     @property
     def effective_database_url(self) -> str:
         """Database URL, preferring DATABASE_URL over components."""

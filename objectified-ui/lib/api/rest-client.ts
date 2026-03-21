@@ -80,6 +80,10 @@ export function isForbiddenError(e: unknown): e is RestApiError {
   return isRestApiError(e) && e.statusCode === 403;
 }
 
+export function isNotFoundError(e: unknown): e is RestApiError {
+  return isRestApiError(e) && e.statusCode === 404;
+}
+
 export function isConflictError(e: unknown): e is RestApiError {
   return isRestApiError(e) && e.statusCode === 409;
 }
@@ -525,6 +529,20 @@ export async function updateMe(
   options: RestClientOptions = {}
 ): Promise<MeProfile> {
   return request<MeProfile>('PATCH', '/me', body, options);
+}
+
+/** Payload for optional dashboard navigation audit (GitHub #188). */
+export interface DashboardPageVisitPayload {
+  route: string;
+  tenant_id?: string | null;
+}
+
+/** Record a dashboard page view; API no-ops with 204 when audit is disabled. */
+export async function recordDashboardPageVisit(
+  body: DashboardPageVisitPayload,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>('POST', '/me/dashboard/page-visits', body, options);
 }
 
 // ---------------------------------------------------------------------------
@@ -1007,6 +1025,28 @@ export async function getVersion(
   options: RestClientOptions = {}
 ): Promise<VersionSchema> {
   return request<VersionSchema>('GET', `/versions/${versionId}`, undefined, options);
+}
+
+/**
+ * Resolve tenant id for a project by probing GET /tenants/{id}/projects/{projectId}
+ * across tenants returned by listMyTenants.
+ */
+export async function resolveTenantIdForProject(
+  projectId: string,
+  options: RestClientOptions = {}
+): Promise<string | null> {
+  const tenants = await listMyTenants(options);
+  const results = await Promise.all(
+    tenants.map(async (t) => {
+      try {
+        const p = await getProject(t.id, projectId, options);
+        return p.id === projectId ? t.id : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+  return results.find((id) => id != null) ?? null;
 }
 
 export async function listVersionSnapshots(

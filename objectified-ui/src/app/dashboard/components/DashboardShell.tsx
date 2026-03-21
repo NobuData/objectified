@@ -9,6 +9,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import DashboardSideNav from './DashboardSideNav';
+import DashboardAccessGate from './DashboardAccessGate';
+import DashboardPageVisitLogger from './DashboardPageVisitLogger';
 import ThemeSelector from '@/app/components/theme/ThemeSelector';
 import { useTheme } from 'next-themes';
 import Breadcrumbs, { type BreadcrumbItem } from '@/app/components/Breadcrumbs';
@@ -128,6 +130,12 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       return [{ label: 'Projects', href: '/dashboard/projects' }] satisfies BreadcrumbItem[];
     if (pathname === '/dashboard/versions')
       return [{ label: 'Versions', href: '/dashboard/versions' }] satisfies BreadcrumbItem[];
+    if (/^\/dashboard\/projects\/[^/]+\/versions\/[^/]+$/.test(pathname)) {
+      return [
+        { label: 'Projects', href: '/dashboard/projects' },
+        { label: 'Open workspace' },
+      ] satisfies BreadcrumbItem[];
+    }
     if (pathname === '/dashboard/publish')
       return [{ label: 'Publish', href: '/dashboard/publish' }] satisfies BreadcrumbItem[];
     if (pathname === '/dashboard/published')
@@ -387,7 +395,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           tabIndex={-1}
           className="flex-1 min-w-0 min-h-0 overflow-auto bg-transparent print:overflow-visible focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-inset dark:focus-visible:ring-offset-slate-900"
         >
-          {children}
+          <DashboardPageVisitLogger />
+          <DashboardAccessGate>{children}</DashboardAccessGate>
         </main>
       </div>
 

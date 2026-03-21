@@ -3,7 +3,8 @@ v1 API aggregator.
 
 Routes are split across focused modules:
   - app.routes.auth              → /v1/auth/login
-  - app.routes.users             → /v1/users
+  - app.routes.users             → /v1/users, /v1/me
+  - app.routes.dashboard_audit   → /v1/me/dashboard/page-visits (optional audit, GitHub #188)
   - app.routes.tenants           → /v1/tenants, /v1/tenants/{id}/members,
                                    /v1/tenants/{id}/administrators
   - app.routes.api_keys          → /v1/tenants/{id}/api-keys
@@ -42,6 +43,7 @@ from app.routes.auth import router as _auth_router
 from app.routes.catalog import router as _catalog_router
 from app.routes.class_properties import router as _class_properties_router
 from app.routes.classes import router as _classes_router
+from app.routes.dashboard_audit import router as _dashboard_audit_router
 from app.routes.export import router as _export_router
 from app.routes.import_routes import router as _import_router
 from app.routes.projects import router as _projects_router
@@ -65,6 +67,7 @@ router.include_router(_classes_router)
 router.include_router(_export_router)
 router.include_router(_import_router)
 router.include_router(_users_router)
+router.include_router(_dashboard_audit_router)
 router.include_router(_tenants_router)
 router.include_router(_sso_router)
 router.include_router(_rbac_router)

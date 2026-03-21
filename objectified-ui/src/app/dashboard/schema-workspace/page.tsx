@@ -36,6 +36,7 @@ import {
   type CompareSchemasResult,
 } from '@/app/dashboard/utils/compareSchemas';
 import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
+import { dashboardProjectVersionPath } from '@/lib/dashboard/deepLinks';
 
 const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300';
 const inputClass =
@@ -472,7 +473,7 @@ export default function SchemaWorkspacePage() {
                     </div>
                     {selectedTenantId && selectedProjectId && leftSlot.versionId && (
                       <Link
-                        href={`/data-designer?${new URLSearchParams({ tenantId: selectedTenantId, projectId: selectedProjectId, versionId: leftSlot.versionId }).toString()}`}
+                        href={dashboardProjectVersionPath(selectedProjectId, leftSlot.versionId)}
                         className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
                       >
                         <PenTool className="h-4 w-4" />
@@ -553,7 +554,7 @@ export default function SchemaWorkspacePage() {
                     </div>
                     {selectedTenantId && selectedProjectId && rightSlot.versionId && (
                       <Link
-                        href={`/data-designer?${new URLSearchParams({ tenantId: selectedTenantId, projectId: selectedProjectId, versionId: rightSlot.versionId }).toString()}`}
+                        href={dashboardProjectVersionPath(selectedProjectId, rightSlot.versionId)}
                         className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
                       >
                         <PenTool className="h-4 w-4" />

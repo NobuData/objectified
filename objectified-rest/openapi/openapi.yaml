@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.24
+  version: 1.0.25
 paths:
   /v1/auth/login:
     post:
@@ -1592,6 +1592,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/me/dashboard/page-visits:
+    post:
+      tags:
+      - Users
+      summary: Record a dashboard page visit (optional audit)
+      description: 'When ``DASHBOARD_PAGE_VISIT_AUDIT_ENABLED`` is true on the API, append
+        one audit row (tenant optional, account, route path, UTC timestamp). When disabled,
+        returns 204 with no write. If ``tenant_id`` is set, the caller must belong to that
+        tenant (GitHub #188).'
+      operationId: record_dashboard_page_visit_v1_me_dashboard_page_visits_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardPageVisitCreate'
+      responses:
+        '204':
+          description: Accepted (no response body)
+        '403':
+          description: Forbidden — caller is not a member of the given tenant
         '422':
           description: Validation Error
           content:
@@ -7175,6 +7219,25 @@ components:
       description: 'Update payload for current user profile (name and metadata only).
         When sending ``metadata``, include a full merge of existing keys; optional
         ``metadata.ui`` supports ``theme`` and ``highContrast`` (GitHub #187).'
+    DashboardPageVisitCreate:
+      properties:
+        route:
+          type: string
+          title: Route
+          description: Path-only route (e.g. /dashboard/projects/{id}/versions/{id})
+          maxLength: 2048
+        tenant_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Tenant Id
+          description: Active tenant when the view occurred, if any
+      type: object
+      required:
+      - route
+      title: DashboardPageVisitCreate
+      description: Payload for optional dashboard navigation audit (GitHub #188).
     ProjectCreate:
       properties:
         tenant_id:
