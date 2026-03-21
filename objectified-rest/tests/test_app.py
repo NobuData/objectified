@@ -322,7 +322,7 @@ def test_bulk_invite_tenant_members(admin_client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [{"id": _TENANT_ROW["id"]}],
-            [{"id": _ACCOUNT_ROW["id"]}],
+            [{"id": _ACCOUNT_ROW["id"], "email": "alice@example.com"}],
             [],
         ]
         mock_db.execute_mutation.return_value = dict(_TENANT_ACCOUNT_ROW)
