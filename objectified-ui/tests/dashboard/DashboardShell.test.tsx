@@ -61,6 +61,13 @@ jest.mock('@lib/api/rest-client', () => ({
   recordDashboardPageVisit: jest.fn(async () => undefined),
 }));
 
+jest.mock('@/app/dashboard/components/SessionExpiryWarning', () => ({
+  __esModule: true,
+  default: function MockSessionExpiryWarning() {
+    return null;
+  },
+}));
+
 jest.mock('@/app/hooks/useTenantPermissions', () => ({
   useTenantPermissions: jest.fn(() => ({
     permissions: null,
@@ -110,6 +117,30 @@ describe('DashboardShell', () => {
     expect(within(sidebar).queryByRole('link', { name: /Publish/i })).not.toBeInTheDocument();
   });
 
+  it('shows platform role in header when administrator has no tenants', async () => {
+    const { useSession } = require('next-auth/react');
+    const { listMyTenants } = require('@lib/api/rest-client');
+    useSession.mockReturnValue({
+      status: 'authenticated',
+      data: {
+        user: { name: 'Admin User', email: 'admin@example.com', is_administrator: true },
+        accessToken: 'test-token',
+      },
+    });
+    listMyTenants.mockResolvedValue([]);
+
+    render(
+      <DashboardShell>
+        <div>Content</div>
+      </DashboardShell>
+    );
+
+    await waitFor(() => expect(listMyTenants).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByLabelText(/platform role/i)).toHaveTextContent(/Platform admin/)
+    );
+  });
+
   it('shows Users link in sidebar when user is administrator', () => {
     const { useSession } = require('next-auth/react');
     useSession.mockReturnValue({
@@ -157,7 +188,7 @@ describe('DashboardShell', () => {
     expect(screen.getByRole('main')).toHaveAttribute('id', 'dashboard-main-content');
   });
 
-  it('does not render tenant switcher when there is only one tenant', async () => {
+  it('shows current tenant and role when there is only one tenant (no switcher)', async () => {
     const { useSession } = require('next-auth/react');
     const { listMyTenants } = require('@lib/api/rest-client');
     useSession.mockReturnValue(mockSessionWithToken);
@@ -171,6 +202,10 @@ describe('DashboardShell', () => {
 
     await waitFor(() => expect(listMyTenants).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: /switch tenant/i })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/current tenant and role/i)).toHaveTextContent(/Only Tenant/)
+    );
+    expect(screen.getByLabelText(/current tenant and role/i)).toHaveTextContent(/Member/);
   });
 
   it('renders tenant switcher when multiple tenants are available', async () => {
@@ -192,6 +227,7 @@ describe('DashboardShell', () => {
       expect(screen.getByRole('button', { name: /switch tenant/i })).toBeInTheDocument()
     );
     expect(screen.getByRole('button', { name: /switch tenant/i })).toHaveTextContent('Tenant One');
+    expect(screen.getByRole('button', { name: /switch tenant/i })).toHaveTextContent('Member');
   });
 
   it('persists tenant selection to localStorage when tenant is switched', async () => {

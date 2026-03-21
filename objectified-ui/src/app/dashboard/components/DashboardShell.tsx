@@ -22,6 +22,7 @@ import { TenantSelectionProvider } from '@/app/contexts/TenantSelectionContext';
 import { useDashboardKeyboardShortcuts } from '@/app/dashboard/hooks/useDashboardKeyboardShortcuts';
 import TenantBrandingEffects from '@/app/components/theme/TenantBrandingEffects';
 import { parseTenantBrandingFromMetadata } from '@lib/ui/tenantBrandingMetadata';
+import SessionExpiryWarning from '@/app/dashboard/components/SessionExpiryWarning';
 
 const SIDEBAR_WIDTH = 280;
 const SIDEBAR_COLLAPSED_WIDTH = 72;
@@ -89,6 +90,12 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     : tenantPermissions.permissions?.is_tenant_admin
       ? 'tenant-admin'
       : 'member';
+  const tenantRoleLabel = (() => {
+    if (isAdministrator) return 'Platform admin';
+    if (selectedTenantId && tenantPermissions.loading) return '…';
+    if (navRole === 'tenant-admin') return 'Tenant admin';
+    return 'Member';
+  })();
   const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId) ?? null;
   const tenantBranding = useMemo(
     () => parseTenantBrandingFromMetadata(selectedTenant?.metadata),
@@ -119,7 +126,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [status, accessToken]);
+  }, [status, session, accessToken]);
 
   const breadcrumbs = (() => {
     if (pathname === '/dashboard') return [{ label: 'Dashboard', href: '/dashboard' }] satisfies BreadcrumbItem[];
@@ -240,7 +247,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {tenants.length > 1 && (
+          {tenants.length > 1 && selectedTenant ? (
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
@@ -248,11 +255,11 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
                   className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
                   aria-label="Switch tenant"
                 >
-                  <Building2 className="h-4 w-4" />
-                  <span className="max-w-[160px] truncate">
-                    {selectedTenant?.name ?? 'Select tenant'}
+                  <Building2 className="h-4 w-4 shrink-0" />
+                  <span className="max-w-[200px] truncate">
+                    {selectedTenant.name} · {tenantRoleLabel}
                   </span>
-                  <ChevronDown className="h-4 w-4" />
+                  <ChevronDown className="h-4 w-4 shrink-0" />
                 </button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
@@ -278,7 +285,29 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
-          )}
+          ) : null}
+          {tenants.length === 1 && selectedTenant ? (
+            <div
+              className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300"
+              role="note"
+              aria-label="Current tenant and role"
+            >
+              <Building2 className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
+              <span className="max-w-[220px] truncate">
+                {selectedTenant.name} · {tenantRoleLabel}
+              </span>
+            </div>
+          ) : null}
+          {!tenantsLoading && tenants.length === 0 && isAdministrator ? (
+            <div
+              className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300"
+              role="note"
+              aria-label="Platform role"
+            >
+              <Building2 className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
+              <span>Platform admin</span>
+            </div>
+          ) : null}
           <GlobalSearchDialog />
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
@@ -325,6 +354,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </DropdownMenu.Root>
         </div>
       </header>
+
+      <SessionExpiryWarning />
 
       <div className="shrink-0 px-4 py-2 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 print:hidden">
         <Breadcrumbs items={breadcrumbs} />

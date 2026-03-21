@@ -40,13 +40,19 @@ export default function DashboardAccessGate({ children }: { children: ReactNode 
 
   if (pathname === '/dashboard/users' && !isAdministrator) {
     return (
-      <DashboardForbidden message="Only platform administrators can manage users." />
+      <DashboardForbidden
+        title="Insufficient permission"
+        message="Only platform administrators can open the Users area."
+      />
     );
   }
 
   if (pathname === '/dashboard/tenants' && !isAdministrator) {
     return (
-      <DashboardForbidden message="Only platform administrators can manage tenants." />
+      <DashboardForbidden
+        title="Insufficient permission"
+        message="Only platform administrators can open the Tenants area."
+      />
     );
   }
 
@@ -62,7 +68,10 @@ export default function DashboardAccessGate({ children }: { children: ReactNode 
       isAdministrator || Boolean(pathTenantPerms.permissions?.is_tenant_admin);
     if (!ok) {
       return (
-        <DashboardForbidden message="Tenant administrators or platform administrators only." />
+        <DashboardForbidden
+          title="Forbidden"
+          message="This tenant administration page is limited to tenant administrators and platform administrators."
+        />
       );
     }
   }
@@ -85,7 +94,10 @@ export default function DashboardAccessGate({ children }: { children: ReactNode 
       (Boolean(selectedTenantId) && Boolean(selectedPerms.permissions?.is_tenant_admin));
     if (!ok) {
       return (
-        <DashboardForbidden message="Schema workspace and publishing require tenant administrator access for the selected tenant." />
+        <DashboardForbidden
+          title="Insufficient permission"
+          message="Schema workspace and publishing require tenant administrator access for the tenant you have selected."
+        />
       );
     }
   }
