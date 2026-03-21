@@ -68,17 +68,22 @@ export default function ThemeSelector({ isOpen, onClose }: ThemeSelectorProps) {
     if (isOpen) appearance?.clearPersistError();
   }, [isOpen, appearance]);
 
-  const handleThemeSelect = (themeId: string) => {
+  const handleThemeSelect = async (themeId: string) => {
     setTheme(themeId);
-    onClose();
+
     if (
       appearance &&
       (themeId === 'light' || themeId === 'dark' || themeId === 'system')
     ) {
-      void appearance.persistTheme(themeId as UserThemePreference).catch(() => {
-        /* persistError set in context */
-      });
+      try {
+        await appearance.persistTheme(themeId as UserThemePreference);
+      } catch {
+        /* persistError set in context; keep dialog open so error is visible */
+        return;
+      }
     }
+
+    onClose();
   };
 
   return (
