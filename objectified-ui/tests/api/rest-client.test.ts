@@ -38,6 +38,10 @@ import {
   mergeVersion,
   isForbiddenError,
   RestApiError,
+  recordDashboardPageVisit,
+  resolveTenantIdForProject,
+  getProject,
+  listMyTenants,
   type RestClientOptions,
   type TenantSchema,
   type ProjectSchema,
@@ -927,5 +931,125 @@ describe('updateMe', () => {
       name: 'New Name',
       metadata: { key: 'value' },
     });
+  });
+});
+
+describe('recordDashboardPageVisit', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('POSTs to /me/dashboard/page-visits and returns undefined on 204', async () => {
+    mockFetch.mockResolvedValue(makeEmptyFetchResponse(204));
+    const result = await recordDashboardPageVisit({ route: '/dashboard/projects', tenant_id: 't1' }, {});
+    expect(result).toBeUndefined();
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/me/dashboard/page-visits`);
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      route: '/dashboard/projects',
+      tenant_id: 't1',
+    });
+  });
+
+  it('accepts null tenant_id', async () => {
+    mockFetch.mockResolvedValue(makeEmptyFetchResponse(204));
+    await recordDashboardPageVisit({ route: '/dashboard', tenant_id: null }, {});
+    const [, init] = mockFetch.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      route: '/dashboard',
+      tenant_id: null,
+    });
+  });
+});
+
+describe('resolveTenantIdForProject', () => {
+  const baseUrl = getRestBaseUrl();
+
+  const makeTenant = (id: string): TenantSchema => ({
+    id,
+    name: `Tenant ${id}`,
+    slug: id,
+    enabled: true,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: null,
+    deleted_at: null,
+  });
+
+  const makeProject = (id: string): ProjectSchema => ({
+    id,
+    name: `Project ${id}`,
+    slug: id,
+    description: null,
+    enabled: true,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: null,
+    deleted_at: null,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns the matching tenant id when project is found in the list', async () => {
+    const tenants: TenantSchema[] = [makeTenant('t1'), makeTenant('t2')];
+    // t1 returns 404, t2 owns the project
+    mockFetch
+      .mockResolvedValueOnce(makeErrorFetchResponse('not found', 404))
+      .mockResolvedValueOnce(makeFetchResponse(makeProject('proj-1')));
+
+    const result = await resolveTenantIdForProject('proj-1', {}, tenants);
+    expect(result).toBe('t2');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns null when no tenant owns the project (all 404)', async () => {
+    const tenants: TenantSchema[] = [makeTenant('t1'), makeTenant('t2')];
+    mockFetch
+      .mockResolvedValueOnce(makeErrorFetchResponse('not found', 404))
+      .mockResolvedValueOnce(makeErrorFetchResponse('not found', 404));
+
+    const result = await resolveTenantIdForProject('proj-x', {}, tenants);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when no tenant owns the project (all 403)', async () => {
+    const tenants: TenantSchema[] = [makeTenant('t1')];
+    mockFetch.mockResolvedValueOnce(makeErrorFetchResponse('forbidden', 403));
+
+    const result = await resolveTenantIdForProject('proj-x', {}, tenants);
+    expect(result).toBeNull();
+  });
+
+  it('short-circuits after first matching tenant', async () => {
+    const tenants: TenantSchema[] = [makeTenant('t1'), makeTenant('t2'), makeTenant('t3')];
+    mockFetch.mockResolvedValueOnce(makeFetchResponse(makeProject('proj-1')));
+
+    const result = await resolveTenantIdForProject('proj-1', {}, tenants);
+    expect(result).toBe('t1');
+    // Should only probe the first tenant, not t2 or t3
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rethrows unexpected (non-403/404) errors', async () => {
+    const tenants: TenantSchema[] = [makeTenant('t1')];
+    mockFetch.mockResolvedValueOnce(makeErrorFetchResponse('internal error', 500));
+
+    await expect(resolveTenantIdForProject('proj-1', {}, tenants)).rejects.toThrow();
+  });
+
+  it('fetches tenant list via listMyTenants when no tenants array is supplied', async () => {
+    const tenants: TenantSchema[] = [makeTenant('t1')];
+    // First call: listMyTenants, second call: getProject
+    mockFetch
+      .mockResolvedValueOnce(makeFetchResponse(tenants))
+      .mockResolvedValueOnce(makeFetchResponse(makeProject('proj-1')));
+
+    const result = await resolveTenantIdForProject('proj-1', {});
+    expect(result).toBe('t1');
+    const [firstUrl] = mockFetch.mock.calls[0];
+    expect(firstUrl).toContain('/tenants/me');
   });
 });

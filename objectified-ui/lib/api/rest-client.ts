@@ -80,6 +80,10 @@ export function isForbiddenError(e: unknown): e is RestApiError {
   return isRestApiError(e) && e.statusCode === 403;
 }
 
+export function isNotFoundError(e: unknown): e is RestApiError {
+  return isRestApiError(e) && e.statusCode === 404;
+}
+
 export function isConflictError(e: unknown): e is RestApiError {
   return isRestApiError(e) && e.statusCode === 409;
 }
@@ -525,6 +529,20 @@ export async function updateMe(
   options: RestClientOptions = {}
 ): Promise<MeProfile> {
   return request<MeProfile>('PATCH', '/me', body, options);
+}
+
+/** Payload for optional dashboard navigation audit (GitHub #188). */
+export interface DashboardPageVisitPayload {
+  route: string;
+  tenant_id?: string | null;
+}
+
+/** Record a dashboard page view; API no-ops with 204 when audit is disabled. */
+export async function recordDashboardPageVisit(
+  body: DashboardPageVisitPayload,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>('POST', '/me/dashboard/page-visits', body, options);
 }
 
 // ---------------------------------------------------------------------------
@@ -1007,6 +1025,34 @@ export async function getVersion(
   options: RestClientOptions = {}
 ): Promise<VersionSchema> {
   return request<VersionSchema>('GET', `/versions/${versionId}`, undefined, options);
+}
+
+/**
+ * Resolve tenant id for a project by probing GET /tenants/{id}/projects/{projectId}
+ * across the provided tenant list (or listMyTenants when omitted).
+ * Short-circuits on the first successful match. Only 403/404 responses are
+ * silently ignored; unexpected errors (network, 5xx) are rethrown.
+ */
+export async function resolveTenantIdForProject(
+  projectId: string,
+  options: RestClientOptions = {},
+  tenants?: TenantSchema[]
+): Promise<string | null> {
+  const tenantList = tenants ?? (await listMyTenants(options));
+  for (const t of tenantList) {
+    try {
+      const p = await getProject(t.id, projectId, options);
+      if (p.id === projectId) {
+        return t.id;
+      }
+    } catch (error: unknown) {
+      if (isForbiddenError(error) || isNotFoundError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  return null;
 }
 
 export async function listVersionSnapshots(

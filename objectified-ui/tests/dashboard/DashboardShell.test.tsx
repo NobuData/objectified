@@ -58,6 +58,7 @@ jest.mock('@/app/components/theme/ThemeSelector', () => {
 jest.mock('@lib/api/rest-client', () => ({
   getRestClientOptions: jest.fn(() => ({})),
   listMyTenants: jest.fn(async () => []),
+  recordDashboardPageVisit: jest.fn(async () => undefined),
 }));
 
 jest.mock('@/app/hooks/useTenantPermissions', () => ({

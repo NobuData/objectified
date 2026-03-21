@@ -12,6 +12,7 @@ import {
   type VersionSchema,
 } from '@lib/api/rest-client';
 import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
+import { dashboardProjectVersionPath } from '@/lib/dashboard/deepLinks';
 
 function formatDateTime(dateString: string): string {
   const d = new Date(dateString);
@@ -265,7 +266,7 @@ export default function PublishedPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
-                        href={`/data-designer?tenantId=${encodeURIComponent(v.tenantId)}&projectId=${encodeURIComponent(v.project_id)}&versionId=${encodeURIComponent(v.id)}`}
+                        href={dashboardProjectVersionPath(v.project_id, v.id)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         aria-label={`Open ${v.name} in Studio`}
                       >
