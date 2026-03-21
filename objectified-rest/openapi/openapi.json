@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.26"
+    "version": "1.0.27"
   },
   "paths": {
     "/v1/auth/login": {
@@ -2909,13 +2909,92 @@
         }
       }
     },
+    "/v1/users/{user_id}/tenant-memberships": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "List user tenant memberships and roles (admin)",
+        "description": "Return each tenant membership with tenant name, access level, and RBAC roles assigned in that tenant, including disabled memberships. **Admin only.**",
+        "operationId": "list_user_tenant_memberships_v1_users__user_id__tenant_memberships_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserTenantMembershipAdminSchema"
+                  },
+                  "title": "Response List User Tenant Memberships V1 Users  User Id  Tenant Memberships Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/users/{user_id}": {
       "get": {
         "tags": [
           "Users"
         ],
-        "summary": "Get user by ID",
-        "description": "Retrieve a single account by its UUID.",
+        "summary": "Get user by ID (admin)",
+        "description": "Retrieve a single account by its UUID. **Admin only** \u2014 same authorization as ``GET /v1/users``. Use ``include_deleted=true`` to load a deactivated account.",
         "operationId": "get_user_v1_users__user_id__get",
         "parameters": [
           {
@@ -10401,6 +10480,64 @@
           "created_at"
         ],
         "title": "AccountLifecycleEventSchema"
+      },
+      "UserMembershipRoleSchema": {
+        "properties": {
+          "role_id": {
+            "type": "string",
+            "title": "Role Id"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role_id",
+          "key",
+          "name"
+        ],
+        "title": "UserMembershipRoleSchema"
+      },
+      "UserTenantMembershipAdminSchema": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "tenant_name": {
+            "type": "string",
+            "title": "Tenant Name"
+          },
+          "access_level": {
+            "$ref": "#/components/schemas/TenantAccessLevel"
+          },
+          "membership_enabled": {
+            "type": "boolean",
+            "title": "Membership Enabled",
+            "description": "Whether the tenant_account row is enabled (distinct from account.enabled)."
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserMembershipRoleSchema"
+            },
+            "title": "Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "tenant_name",
+          "access_level",
+          "membership_enabled"
+        ],
+        "title": "UserTenantMembershipAdminSchema"
       },
       "UserDeactivateBody": {
         "properties": {

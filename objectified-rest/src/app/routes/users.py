@@ -20,6 +20,8 @@ from app.schemas import (
     UserDeactivateBody,
     UserListSort,
     UserListStatus,
+    UserMembershipRoleSchema,
+    UserTenantMembershipAdminSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -257,16 +259,90 @@ def list_user_lifecycle_events(
 
 
 @router.get(
+    "/users/{user_id}/tenant-memberships",
+    response_model=List[UserTenantMembershipAdminSchema],
+    summary="List user tenant memberships and roles (admin)",
+    description=(
+        "Return each tenant membership for the account with tenant name, "
+        "access level (member or tenant administrator), and RBAC roles assigned in "
+        "that tenant, including disabled memberships. **Admin only.**"
+    ),
+)
+def list_user_tenant_memberships(
+    user_id: str,
+    _admin: Annotated[dict[str, Any], Depends(require_admin)] = None,
+) -> List[UserTenantMembershipAdminSchema]:
+    """List tenant memberships and per-tenant roles for an account."""
+    exists = db.execute_query(
+        "SELECT 1 FROM objectified.account WHERE id = %s LIMIT 1",
+        (user_id,),
+    )
+    if not exists:
+        raise _not_found("User", user_id)
+
+    membership_rows = db.execute_query(
+        """
+        SELECT ta.tenant_id, t.name AS tenant_name, ta.access_level, ta.enabled AS membership_enabled
+        FROM objectified.tenant_account ta
+        INNER JOIN objectified.tenant t ON t.id = ta.tenant_id AND t.deleted_at IS NULL
+        WHERE ta.account_id = %s
+          AND ta.deleted_at IS NULL
+        ORDER BY LOWER(t.name) ASC
+        """,
+        (user_id,),
+    )
+
+    role_rows = db.execute_query(
+        """
+        SELECT ar.tenant_id, r.id AS role_id, r.key, r.name
+        FROM objectified.account_role ar
+        INNER JOIN objectified.role r ON r.id = ar.role_id AND r.deleted_at IS NULL
+        WHERE ar.account_id = %s
+          AND ar.deleted_at IS NULL
+          AND ar.enabled = true
+        ORDER BY ar.tenant_id, LOWER(r.key) ASC
+        """,
+        (user_id,),
+    )
+
+    roles_by_tenant: dict[str, list[UserMembershipRoleSchema]] = {}
+    for rr in role_rows:
+        tid = str(rr["tenant_id"])
+        roles_by_tenant.setdefault(tid, []).append(
+            UserMembershipRoleSchema(
+                role_id=str(rr["role_id"]),
+                key=str(rr["key"]),
+                name=str(rr["name"]),
+            )
+        )
+
+    return [
+        UserTenantMembershipAdminSchema(
+            tenant_id=str(row["tenant_id"]),
+            tenant_name=str(row["tenant_name"]),
+            access_level=row["access_level"],
+            membership_enabled=bool(row["membership_enabled"]),
+            roles=roles_by_tenant.get(str(row["tenant_id"]), []),
+        )
+        for row in membership_rows
+    ]
+
+
+@router.get(
     "/users/{user_id}",
     response_model=AccountSchema,
-    summary="Get user by ID",
-    description="Retrieve a single account by its UUID.",
+    summary="Get user by ID (admin)",
+    description=(
+        "Retrieve a single account by its UUID. **Admin only** — same authorization "
+        "as ``GET /v1/users``. Use ``include_deleted=true`` to load a deactivated account."
+    ),
 )
 def get_user(
     user_id: str,
     include_deleted: bool = Query(False, description="Include soft-deleted account"),
+    _admin: Annotated[dict[str, Any], Depends(require_admin)] = None,
 ) -> AccountSchema:
-    """Get a user account by ID."""
+    """Get a user account by ID (admin)."""
     if include_deleted:
         rows = db.execute_query(
             f"""

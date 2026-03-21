@@ -93,4 +93,29 @@ describe('UsersPage', () => {
       expect(screen.getByText(/no users yet/i)).toBeInTheDocument();
     });
   });
+
+  it('links user name to the user detail page', async () => {
+    const { listUsers } = require('@lib/api/rest-client');
+    listUsers.mockResolvedValue([
+      {
+        id: '00000000-0000-0000-0000-000000000001',
+        name: 'Alice',
+        email: 'alice@example.com',
+        verified: true,
+        enabled: true,
+        metadata: {},
+        created_at: '2025-01-01T00:00:00.000Z',
+        deleted_at: null,
+        last_login_at: null,
+      },
+    ]);
+    render(<UsersPage />);
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: 'Alice' });
+      expect(link).toHaveAttribute(
+        'href',
+        '/dashboard/users/00000000-0000-0000-0000-000000000001'
+      );
+    });
+  });
 });

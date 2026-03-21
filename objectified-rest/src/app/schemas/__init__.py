@@ -49,6 +49,10 @@ from app.schemas.tenant_account import (
     TenantMembersBulkInvite,
     TenantMembersBulkInviteResponse,
 )
+from app.schemas.user_memberships import (
+    UserMembershipRoleSchema,
+    UserTenantMembershipAdminSchema,
+)
 from app.schemas.sso import (
     SsoProviderCreate,
     SsoProviderSchema,
@@ -117,6 +121,8 @@ __all__ = [
     "TenantBulkInviteResultEntry",
     "TenantMembersBulkInvite",
     "TenantMembersBulkInviteResponse",
+    "UserMembershipRoleSchema",
+    "UserTenantMembershipAdminSchema",
     "TenantCreate",
     "TenantSchema",
     "TenantUpdate",
