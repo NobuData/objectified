@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TenantAccessLevel(str, Enum):
@@ -82,3 +82,30 @@ class TenantAccountUpdate(BaseModel):
 
     access_level: Optional[TenantAccessLevel] = None
     enabled: Optional[bool] = None
+
+
+class TenantBulkInviteResultEntry(BaseModel):
+    """Per-email outcome for bulk tenant invite."""
+
+    email: str
+    status: Literal[
+        "added",
+        "promoted",
+        "already_member",
+        "not_found",
+        "invalid_email",
+    ]
+    account_id: Optional[str] = None
+
+
+class TenantMembersBulkInvite(BaseModel):
+    """Request body for POST .../members/bulk-invite."""
+
+    emails: List[str] = Field(..., min_length=1, max_length=100)
+    access_level: TenantAccessLevel = TenantAccessLevel.MEMBER
+
+
+class TenantMembersBulkInviteResponse(BaseModel):
+    """Response for POST .../members/bulk-invite."""
+
+    results: List[TenantBulkInviteResultEntry]

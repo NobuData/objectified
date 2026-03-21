@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.25
+  version: 1.0.26
 paths:
   /v1/auth/login:
     post:
@@ -1662,6 +1662,41 @@ paths:
           default: false
           title: Include Deleted
         description: Include soft-deleted accounts
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            enum:
+            - active
+            - disabled
+            - deactivated
+          - type: 'null'
+          title: Status
+        description: Filter by active, disabled, or deactivated (defines soft-delete scope
+          when set)
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 500
+          title: Search
+        description: Case-insensitive substring match on name or email
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - created_at_asc
+          - created_at_desc
+          - last_login_at_asc
+          - last_login_at_desc
+          default: created_at_asc
+          title: Sort
+        description: Sort by created_at or last_login_at
       - name: authorization
         in: header
         required: false
@@ -1713,6 +1748,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/users/{user_id}/lifecycle-events:
+    get:
+      tags:
+      - Users
+      summary: List user lifecycle audit events (admin)
+      description: Return recent account lifecycle events (e.g. deactivation) for auditing.
+        **Admin only.**
+      operationId: list_user_lifecycle_events_v1_users__user_id__lifecycle_events_get
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: User Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccountLifecycleEventSchema'
+                title: Response List User Lifecycle Events V1 Users  User Id  Lifecycle
+                  Events Get
         '422':
           description: Validation Error
           content:
@@ -1808,7 +1891,9 @@ paths:
       - Users
       summary: Deactivate user
       description: Soft-delete (deactivate) a user account by setting deleted_at.
-        The record is retained; no hard delete is performed. **Admin only.**
+        The record is retained; no hard delete is performed. **Admin only.** Optional
+        JSON body with a deactivation reason (stored on the account and in the lifecycle
+        audit log).
       operationId: deactivate_user_v1_users__user_id__delete
       parameters:
       - name: user_id
@@ -1833,6 +1918,12 @@ paths:
           - type: string
           - type: 'null'
           title: X-Api-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserDeactivateBody'
+        required: false
       responses:
         '204':
           description: Successful Response
@@ -2160,6 +2251,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TenantAccountSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/members/bulk-invite:
+    post:
+      tags:
+      - Tenants
+      summary: Bulk invite tenant members by email
+      description: Resolve each email to an active account and add or promote membership.
+        **Admin only.**
+      operationId: bulk_invite_tenant_members_v1_tenants__tenant_id__members_bulk_invite_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantMembersBulkInvite'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantMembersBulkInviteResponse'
         '422':
           description: Validation Error
           content:
@@ -6166,6 +6307,22 @@ components:
             format: date-time
           - type: 'null'
           title: Deleted At
+        last_login_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Login At
+        deactivation_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deactivation Reason
+        deactivated_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deactivated By
       type: object
       required:
       - id
@@ -6175,6 +6332,103 @@ components:
       title: AccountSchema
       description: 'Response schema for objectified.account. Clients may store UI preferences
         under ``metadata.ui`` (e.g. ``theme``, ``highContrast``; see PATCH /me).'
+    AccountLifecycleEventSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        account_id:
+          type: string
+          title: Account Id
+        event_type:
+          type: string
+          title: Event Type
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        actor_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - account_id
+      - event_type
+      - created_at
+      title: AccountLifecycleEventSchema
+    UserDeactivateBody:
+      properties:
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+      type: object
+      title: UserDeactivateBody
+    TenantBulkInviteResultEntry:
+      properties:
+        email:
+          type: string
+          title: Email
+        status:
+          type: string
+          enum:
+          - added
+          - promoted
+          - already_member
+          - not_found
+          - invalid_email
+          title: Status
+        account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Account Id
+      type: object
+      required:
+      - email
+      - status
+      title: TenantBulkInviteResultEntry
+    TenantMembersBulkInvite:
+      properties:
+        emails:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 100
+          title: Emails
+        access_level:
+          type: string
+          enum:
+          - member
+          - administrator
+          default: member
+          title: Access Level
+      type: object
+      required:
+      - emails
+      title: TenantMembersBulkInvite
+    TenantMembersBulkInviteResponse:
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantBulkInviteResultEntry'
+          title: Results
+      type: object
+      required:
+      - results
+      title: TenantMembersBulkInviteResponse
     AccountUpdate:
       properties:
         name:

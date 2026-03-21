@@ -15,11 +15,15 @@ from app.routes.helpers import (
     _validate_payload_tenant_id,
 )
 from app.schemas import (
+    TenantAccessLevel,
     TenantAccountCreate,
     TenantAccountSchema,
     TenantAccountUpdate,
     TenantAdministratorCreate,
+    TenantBulkInviteResultEntry,
     TenantCreate,
+    TenantMembersBulkInvite,
+    TenantMembersBulkInviteResponse,
     TenantSchema,
     TenantUpdate,
 )
@@ -323,6 +327,141 @@ def list_tenant_members(tenant_id: str) -> List[TenantAccountSchema]:
         (tenant_id,),
     )
     return [TenantAccountSchema(**dict(r)) for r in rows]
+
+
+def _email_shape_ok(addr: str) -> bool:
+    if len(addr) < 3 or len(addr) > 320 or addr.count("@") != 1:
+        return False
+    local, domain = addr.split("@", 1)
+    return bool(local.strip()) and bool(domain.strip()) and "." in domain
+
+
+@router.post(
+    "/tenants/{tenant_id}/members/bulk-invite",
+    response_model=TenantMembersBulkInviteResponse,
+    summary="Bulk invite tenant members by email",
+    description=(
+        "Resolve each email to an active account and add or promote membership. "
+        "``access_level`` ``member`` adds members; ``administrator`` adds or promotes "
+        "to administrator. Emails not matching an account return ``not_found``. "
+        "**Admin only.**"
+    ),
+    dependencies=[Depends(require_admin)],
+)
+def bulk_invite_tenant_members(
+    tenant_id: str, payload: TenantMembersBulkInvite
+) -> TenantMembersBulkInviteResponse:
+    """Add or promote many tenant memberships by email (admin)."""
+    _assert_tenant_exists(tenant_id)
+    want_admin = payload.access_level == TenantAccessLevel.ADMINISTRATOR
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for raw in payload.emails:
+        e = raw.strip().lower()
+        if not e or e in seen:
+            continue
+        seen.add(e)
+        ordered.append(e)
+
+    results: list[TenantBulkInviteResultEntry] = []
+
+    for email in ordered:
+        if not _email_shape_ok(email):
+            results.append(TenantBulkInviteResultEntry(email=email, status="invalid_email"))
+            continue
+
+        acc_rows = db.execute_query(
+            """
+            SELECT id FROM objectified.account
+            WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (email,),
+        )
+        if not acc_rows:
+            results.append(TenantBulkInviteResultEntry(email=email, status="not_found"))
+            continue
+
+        account_id = str(acc_rows[0]["id"])
+        existing_rows = db.execute_query(
+            """
+            SELECT id, access_level FROM objectified.tenant_account
+            WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
+            """,
+            (tenant_id, account_id),
+        )
+
+        if existing_rows:
+            current_level = existing_rows[0]["access_level"]
+            if want_admin:
+                if current_level == "administrator":
+                    results.append(
+                        TenantBulkInviteResultEntry(
+                            email=email, status="already_member", account_id=account_id
+                        )
+                    )
+                else:
+                    row = db.execute_mutation(
+                        """
+                        UPDATE objectified.tenant_account
+                        SET access_level = 'administrator'
+                        WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
+                        RETURNING id, tenant_id, account_id, access_level, enabled,
+                            created_at, updated_at, deleted_at
+                        """,
+                        (tenant_id, account_id),
+                    )
+                    if not row:
+                        results.append(
+                            TenantBulkInviteResultEntry(
+                                email=email, status="not_found", account_id=account_id
+                            )
+                        )
+                    else:
+                        results.append(
+                            TenantBulkInviteResultEntry(
+                                email=email, status="promoted", account_id=account_id
+                            )
+                        )
+            else:
+                results.append(
+                    TenantBulkInviteResultEntry(
+                        email=email, status="already_member", account_id=account_id
+                    )
+                )
+            continue
+
+        if want_admin:
+            row = db.execute_mutation(
+                """
+                INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
+                VALUES (%s, %s, 'administrator', true)
+                RETURNING id, tenant_id, account_id, access_level, enabled,
+                    created_at, updated_at, deleted_at
+                """,
+                (tenant_id, account_id),
+            )
+        else:
+            row = db.execute_mutation(
+                """
+                INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
+                VALUES (%s, %s, 'member', true)
+                RETURNING id, tenant_id, account_id, access_level, enabled,
+                    created_at, updated_at, deleted_at
+                """,
+                (tenant_id, account_id),
+            )
+        if not row:
+            results.append(
+                TenantBulkInviteResultEntry(email=email, status="not_found", account_id=account_id)
+            )
+        else:
+            results.append(
+                TenantBulkInviteResultEntry(email=email, status="added", account_id=account_id)
+            )
+
+    return TenantMembersBulkInviteResponse(results=results)
 
 
 @router.post(

@@ -117,6 +117,7 @@ class TestLogin:
         """Valid credentials return a JWT access token."""
         with mock_db_all() as mock_db:
             mock_db.execute_query.return_value = [_ACCOUNT_ROW]
+            mock_db.execute_mutation.return_value = None
             with patch("app.routes.auth.settings") as mock_settings:
                 mock_settings.effective_jwt_secret = "test-secret-that-is-at-least-32-bytes-long"
                 mock_settings.jwt_algorithm = "HS256"
@@ -182,6 +183,7 @@ class TestLogin:
         bcrypt_account = {**_ACCOUNT_ROW, "password": bcrypt_hash}
         with mock_db_all() as mock_db:
             mock_db.execute_query.return_value = [bcrypt_account]
+            mock_db.execute_mutation.return_value = None
             with patch("app.routes.auth.settings") as mock_settings:
                 mock_settings.effective_jwt_secret = "test-secret-that-is-at-least-32-bytes-long"
                 mock_settings.jwt_algorithm = "HS256"

@@ -2,20 +2,39 @@
 
 import json
 import logging
-from typing import Annotated, Any, List
+from typing import Annotated, Any, List, Optional
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from app.auth import require_admin, require_authenticated
 from app.database import db
 from app.routes.helpers import _get_active_account_by_id, _not_found
-from app.schemas import AccountCreate, AccountSchema, AccountUpdate, ProfileUpdate
+from app.schemas import (
+    AccountCreate,
+    AccountLifecycleEventSchema,
+    AccountSchema,
+    AccountUpdate,
+    ProfileUpdate,
+    UserDeactivateBody,
+    UserListSort,
+    UserListStatus,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Users"])
+
+_ACCOUNT_SELECT = (
+    "id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at, "
+    "last_login_at, deactivation_reason, deactivated_by"
+)
+
+
+def _sanitize_ilike(text: str) -> str:
+    """Escape ``%``, ``_``, and ``\\`` for use in ILIKE ... ESCAPE '\\'."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 # ---------------------------------------------------------------------------
 # Password hashing — Argon2id via argon2-cffi
@@ -81,7 +100,7 @@ def get_me(
     user_id = caller["user_id"]
     account = _get_active_account_by_id(
         user_id,
-        columns="id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at",
+        columns=_ACCOUNT_SELECT,
     )
     if not account:
         raise _not_found("User", user_id)
@@ -125,7 +144,7 @@ def update_me(
         UPDATE objectified.account
         SET {", ".join(updates)}, updated_at = timezone('utc', clock_timestamp())
         WHERE id = %s AND deleted_at IS NULL
-        RETURNING id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
+        RETURNING {_ACCOUNT_SELECT}
         """,
         tuple(params),
     )
@@ -143,30 +162,98 @@ def update_me(
         "``is_admin=true``, an account that is an administrator in at least "
         "one tenant, or a valid internal API key. "
         "Soft-deleted accounts are excluded by default; pass "
-        "``include_deleted=true`` to include them."
+        "``include_deleted=true`` to include them. "
+        "Use ``status`` to filter by active/disabled/deactivated; when set, it "
+        "defines which rows are returned regardless of ``include_deleted``. "
+        "``search`` matches name or email (case-insensitive substring). "
+        "``sort`` orders by created time or last login."
     ),
 )
 def list_users(
     include_deleted: bool = Query(False, description="Include soft-deleted accounts"),
+    status: Optional[UserListStatus] = Query(
+        None,
+        description="Filter: active, disabled, or deactivated (overrides include_deleted for deleted_at)",
+    ),
+    search: Optional[str] = Query(
+        None,
+        max_length=500,
+        description="Case-insensitive substring match on name or email",
+    ),
+    sort: UserListSort = Query(
+        UserListSort.CREATED_AT_ASC,
+        description="Sort by created_at or last_login_at",
+    ),
     _admin: Annotated[dict[str, Any], Depends(require_admin)] = None,
 ) -> List[AccountSchema]:
     """List all user accounts (admin)."""
-    if include_deleted:
-        query = """
-            SELECT id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
-            FROM objectified.account
-            ORDER BY created_at ASC
-        """
-        rows = db.execute_query(query)
-    else:
-        query = """
-            SELECT id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
-            FROM objectified.account
-            WHERE deleted_at IS NULL
-            ORDER BY created_at ASC
-        """
-        rows = db.execute_query(query)
+    conditions: list[str] = []
+    params: list[Any] = []
+
+    if status is not None:
+        if status == UserListStatus.ACTIVE:
+            conditions.append("deleted_at IS NULL AND enabled = true")
+        elif status == UserListStatus.DISABLED:
+            conditions.append("deleted_at IS NULL AND enabled = false")
+        elif status == UserListStatus.DEACTIVATED:
+            conditions.append("deleted_at IS NOT NULL")
+    elif not include_deleted:
+        conditions.append("deleted_at IS NULL")
+
+    if search and search.strip():
+        raw = search.strip()[:500]
+        esc = _sanitize_ilike(raw)
+        pat = f"%{esc}%"
+        conditions.append(
+            "(name ILIKE %s ESCAPE '\\' OR email ILIKE %s ESCAPE '\\')"
+        )
+        params.extend([pat, pat])
+
+    where_sql = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    order_map = {
+        UserListSort.CREATED_AT_ASC: "created_at ASC NULLS LAST",
+        UserListSort.CREATED_AT_DESC: "created_at DESC NULLS LAST",
+        UserListSort.LAST_LOGIN_AT_ASC: "last_login_at ASC NULLS LAST, created_at ASC",
+        UserListSort.LAST_LOGIN_AT_DESC: "last_login_at DESC NULLS LAST, created_at DESC",
+    }
+    order_sql = order_map[sort]
+    query = f"""
+        SELECT {_ACCOUNT_SELECT}
+        FROM objectified.account
+        {where_sql}
+        ORDER BY {order_sql}
+    """
+    rows = db.execute_query(query, tuple(params) if params else None)
     return [AccountSchema(**dict(r)) for r in rows]
+
+
+@router.get(
+    "/users/{user_id}/lifecycle-events",
+    response_model=List[AccountLifecycleEventSchema],
+    summary="List user lifecycle audit events (admin)",
+    description=(
+        "Return recent account lifecycle events (e.g. deactivation) for auditing. **Admin only.**"
+    ),
+)
+def list_user_lifecycle_events(
+    user_id: str,
+    _admin: Annotated[dict[str, Any], Depends(require_admin)] = None,
+) -> List[AccountLifecycleEventSchema]:
+    """List lifecycle audit rows for an account."""
+    exists = db.execute_query("SELECT 1 FROM objectified.account WHERE id = %s LIMIT 1", (user_id,))
+    if not exists:
+        raise _not_found("User", user_id)
+    rows = db.execute_query(
+        """
+        SELECT id, account_id, event_type, reason, actor_id, created_at
+        FROM objectified.account_lifecycle_event
+        WHERE account_id = %s
+        ORDER BY created_at DESC
+        LIMIT 100
+        """,
+        (user_id,),
+    )
+    return [AccountLifecycleEventSchema(**dict(r)) for r in rows]
 
 
 @router.get(
@@ -182,8 +269,8 @@ def get_user(
     """Get a user account by ID."""
     if include_deleted:
         rows = db.execute_query(
-            """
-            SELECT id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
+            f"""
+            SELECT {_ACCOUNT_SELECT}
             FROM objectified.account
             WHERE id = %s
             """,
@@ -191,8 +278,8 @@ def get_user(
         )
     else:
         rows = db.execute_query(
-            """
-            SELECT id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
+            f"""
+            SELECT {_ACCOUNT_SELECT}
             FROM objectified.account
             WHERE id = %s
               AND deleted_at IS NULL
@@ -222,10 +309,10 @@ def create_user(payload: AccountCreate) -> AccountSchema:
 
     hashed = _hash_password(payload.password)
     row = db.execute_mutation(
-        """
+        f"""
         INSERT INTO objectified.account (name, email, password, verified, enabled, metadata)
         VALUES (%s, %s, %s, %s, %s, %s::jsonb)
-        RETURNING id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
+        RETURNING {_ACCOUNT_SELECT}
         """,
         (payload.name, payload.email, hashed, False, True, json.dumps(payload.metadata)),
     )
@@ -291,7 +378,7 @@ def update_user(
         UPDATE objectified.account
         SET {", ".join(updates)}
         WHERE id = %s AND deleted_at IS NULL
-        RETURNING id, name, email, verified, enabled, metadata, created_at, updated_at, deleted_at
+        RETURNING {_ACCOUNT_SELECT}
         """,
         tuple(params),
     )
@@ -306,21 +393,46 @@ def update_user(
     summary="Deactivate user",
     description=(
         "Soft-delete (deactivate) a user account by setting deleted_at. "
-        "The record is retained; no hard delete is performed. **Admin only.**"
+        "The record is retained; no hard delete is performed. **Admin only.** "
+        "Optional JSON body: ``{ \"reason\": \"...\" }`` (stored on the account and "
+        "in the lifecycle audit log)."
     ),
-    dependencies=[Depends(require_admin)],
 )
-def deactivate_user(user_id: str) -> None:
+def deactivate_user(
+    user_id: str,
+    caller: Annotated[dict[str, Any], Depends(require_admin)],
+    payload: Optional[UserDeactivateBody] = Body(None),
+) -> None:
     """Deactivate (soft-delete) a user account."""
     if not _get_active_account_by_id(user_id):
         raise _not_found("User", user_id)
 
-    db.execute_mutation(
+    reason: Optional[str] = None
+    if payload is not None and payload.reason is not None:
+        stripped = payload.reason.strip()
+        reason = stripped if stripped else None
+    actor_id = caller.get("user_id")
+
+    row = db.execute_mutation(
         """
         UPDATE objectified.account
-        SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
+        SET deleted_at = timezone('utc', clock_timestamp()),
+            enabled = false,
+            deactivation_reason = %s,
+            deactivated_by = %s
         WHERE id = %s AND deleted_at IS NULL
+        RETURNING id
         """,
-        (user_id,),
+        (reason, actor_id, user_id),
+    )
+    if not row:
+        raise _not_found("User", user_id)
+
+    db.execute_mutation(
+        """
+        INSERT INTO objectified.account_lifecycle_event (account_id, event_type, reason, actor_id)
+        VALUES (%s, 'deactivated', %s, %s)
+        """,
+        (user_id, reason, actor_id),
         returning=False,
     )

@@ -767,6 +767,24 @@ describe('listUsers', () => {
     const [url] = mockFetch.mock.calls[0];
     expect(url).toBe(`${baseUrl}/users?include_deleted=true`);
   });
+
+  it('builds query string from ListUsersQuery', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listUsers(
+      {},
+      {
+        includeDeleted: true,
+        search: 'alice',
+        status: 'active',
+        sort: 'last_login_at_desc',
+      }
+    );
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain('include_deleted=true');
+    expect(url).toContain('search=alice');
+    expect(url).toContain('status=active');
+    expect(url).toContain('sort=last_login_at_desc');
+  });
 });
 
 describe('getUser', () => {
@@ -867,6 +885,16 @@ describe('deactivateUser', () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe(`${baseUrl}/users/u1`);
     expect((init as RequestInit).method).toBe('DELETE');
+    expect((init as RequestInit).body).toBeUndefined();
+  });
+
+  it('sends optional deactivation reason in JSON body', async () => {
+    mockFetch.mockResolvedValue(makeEmptyFetchResponse(204));
+    await deactivateUser('u1', {}, { reason: 'Left org' });
+    const [, init] = mockFetch.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      reason: 'Left org',
+    });
   });
 });
 

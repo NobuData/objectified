@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.auth import decode_jwt  # noqa: F401 - available for re-use
 from app.config import settings
+from app.database import db
 from app.routes.helpers import _get_active_account_by_email
 from app.routes.users import _verify_password
 from app.schemas.auth import LoginRequest, LoginResponse
@@ -63,6 +64,16 @@ def login(payload: LoginRequest) -> LoginResponse:
 
     if not account.get("enabled"):
         raise HTTPException(status_code=403, detail="Account is disabled")
+
+    db.execute_mutation(
+        """
+        UPDATE objectified.account
+        SET last_login_at = timezone('utc', clock_timestamp())
+        WHERE id = %s AND deleted_at IS NULL
+        """,
+        (str(account["id"]),),
+        returning=False,
+    )
 
     now = datetime.datetime.now(datetime.timezone.utc)
     exp = now + datetime.timedelta(seconds=_JWT_EXPIRY_SECONDS)
