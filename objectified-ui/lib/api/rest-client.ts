@@ -781,7 +781,7 @@ export async function getTenant(
   includeDeleted = false
 ): Promise<TenantSchema> {
   const q = includeDeleted ? '?include_deleted=true' : '';
-  return request<TenantSchema>('GET', `/tenants/${tenantId}${q}`, undefined, options);
+  return request<TenantSchema>('GET', `/tenants/${encodeURIComponent(tenantId)}${q}`, undefined, options);
 }
 
 export async function createTenant(
@@ -796,14 +796,14 @@ export async function updateTenant(
   body: TenantUpdate,
   options: RestClientOptions = {}
 ): Promise<TenantSchema> {
-  return request<TenantSchema>('PUT', `/tenants/${tenantId}`, body, options);
+  return request<TenantSchema>('PUT', `/tenants/${encodeURIComponent(tenantId)}`, body, options);
 }
 
 export async function deleteTenant(
   tenantId: string,
   options: RestClientOptions = {}
 ): Promise<void> {
-  return request<void>('DELETE', `/tenants/${tenantId}`, undefined, options);
+  return request<void>('DELETE', `/tenants/${encodeURIComponent(tenantId)}`, undefined, options);
 }
 
 export async function restoreTenant(
@@ -891,7 +891,7 @@ export async function listTenantMembers(
   const q = includeRoles ? '?include_roles=true' : '';
   return request<TenantAccountSchema[]>(
     'GET',
-    `/tenants/${tenantId}/members${q}`,
+    `/tenants/${encodeURIComponent(tenantId)}/members${q}`,
     undefined,
     options
   );
@@ -904,7 +904,7 @@ export async function addTenantMember(
 ): Promise<TenantAccountSchema> {
   return request<TenantAccountSchema>(
     'POST',
-    `/tenants/${tenantId}/members`,
+    `/tenants/${encodeURIComponent(tenantId)}/members`,
     { ...body, tenant_id: tenantId },
     options
   );
@@ -945,7 +945,7 @@ export async function listTenantMemberInvitations(
 ): Promise<TenantMemberInvitationSchema[]> {
   return request<TenantMemberInvitationSchema[]>(
     'GET',
-    `/tenants/${tenantId}/members/invitations`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/invitations`,
     undefined,
     options
   );
@@ -958,7 +958,7 @@ export async function inviteTenantMemberByEmail(
 ): Promise<TenantMemberInviteOutcome> {
   return request<TenantMemberInviteOutcome>(
     'POST',
-    `/tenants/${tenantId}/members/invite-email`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/invite-email`,
     body,
     options
   );
@@ -971,7 +971,7 @@ export async function resendTenantMemberInvitation(
 ): Promise<TenantMemberInvitationSchema> {
   return request<TenantMemberInvitationSchema>(
     'POST',
-    `/tenants/${tenantId}/members/invitations/${encodeURIComponent(invitationId)}/resend`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/invitations/${encodeURIComponent(invitationId)}/resend`,
     undefined,
     options
   );
@@ -984,7 +984,7 @@ export async function cancelTenantMemberInvitation(
 ): Promise<void> {
   return request<void>(
     'DELETE',
-    `/tenants/${tenantId}/members/invitations/${encodeURIComponent(invitationId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/invitations/${encodeURIComponent(invitationId)}`,
     undefined,
     options
   );
@@ -1006,7 +1006,7 @@ export async function listTenantRbacRoles(
 ): Promise<TenantRbacRoleSchema[]> {
   return request<TenantRbacRoleSchema[]>(
     'GET',
-    `/tenants/${tenantId}/rbac/roles`,
+    `/tenants/${encodeURIComponent(tenantId)}/rbac/roles`,
     undefined,
     options
   );
@@ -1043,7 +1043,7 @@ export async function bulkInviteTenantMembers(
 ): Promise<TenantMembersBulkInviteResponse> {
   return request<TenantMembersBulkInviteResponse>(
     'POST',
-    `/tenants/${tenantId}/members/bulk-invite`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/bulk-invite`,
     body,
     options
   );
@@ -1056,7 +1056,7 @@ export async function removeTenantMember(
 ): Promise<void> {
   return request<void>(
     'DELETE',
-    `/tenants/${tenantId}/members/${encodeURIComponent(accountId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(accountId)}`,
     undefined,
     options
   );
@@ -1073,7 +1073,7 @@ export async function bulkRemoveTenantMembers(
 ): Promise<void> {
   return request<void>(
     'POST',
-    `/tenants/${tenantId}/members/bulk-remove`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/bulk-remove`,
     body,
     options
   );
@@ -1087,7 +1087,7 @@ export async function updateTenantMember(
 ): Promise<TenantAccountSchema> {
   return request<TenantAccountSchema>(
     'PUT',
-    `/tenants/${tenantId}/members/${encodeURIComponent(accountId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(accountId)}`,
     body,
     options
   );
@@ -1110,7 +1110,7 @@ export async function listTenantAdministrators(
 ): Promise<TenantAccountSchema[]> {
   return request<TenantAccountSchema[]>(
     'GET',
-    `/tenants/${tenantId}/administrators`,
+    `/tenants/${encodeURIComponent(tenantId)}/administrators`,
     undefined,
     options
   );
@@ -1123,7 +1123,7 @@ export async function addTenantAdministrator(
 ): Promise<TenantAccountSchema> {
   return request<TenantAccountSchema>(
     'POST',
-    `/tenants/${tenantId}/administrators`,
+    `/tenants/${encodeURIComponent(tenantId)}/administrators`,
     { ...body, tenant_id: tenantId },
     options
   );
@@ -1136,7 +1136,7 @@ export async function removeTenantAdministrator(
 ): Promise<void> {
   return request<void>(
     'DELETE',
-    `/tenants/${tenantId}/administrators/${encodeURIComponent(accountId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/administrators/${encodeURIComponent(accountId)}`,
     undefined,
     options
   );
@@ -1188,7 +1188,7 @@ export async function listTenantSsoProviders(
   const q = includeDeleted ? '?include_deleted=true' : '';
   return request<SsoProviderSchema[]>(
     'GET',
-    `/tenants/${tenantId}/sso/providers${q}`,
+    `/tenants/${encodeURIComponent(tenantId)}/sso/providers${q}`,
     undefined,
     options
   );
@@ -1201,7 +1201,7 @@ export async function createTenantSsoProvider(
 ): Promise<SsoProviderSchema> {
   return request<SsoProviderSchema>(
     'POST',
-    `/tenants/${tenantId}/sso/providers`,
+    `/tenants/${encodeURIComponent(tenantId)}/sso/providers`,
     { ...body, tenant_id: tenantId },
     options
   );
@@ -1215,7 +1215,7 @@ export async function updateTenantSsoProvider(
 ): Promise<SsoProviderSchema> {
   return request<SsoProviderSchema>(
     'PUT',
-    `/tenants/${tenantId}/sso/providers/${encodeURIComponent(providerId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/sso/providers/${encodeURIComponent(providerId)}`,
     body,
     options
   );
@@ -1228,7 +1228,7 @@ export async function deleteTenantSsoProvider(
 ): Promise<void> {
   return request<void>(
     'DELETE',
-    `/tenants/${tenantId}/sso/providers/${encodeURIComponent(providerId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/sso/providers/${encodeURIComponent(providerId)}`,
     undefined,
     options
   );

@@ -930,6 +930,28 @@ def bulk_invite_tenant_members(
         )
         existing_map = {str(r["account_id"]): r["access_level"] for r in membership_rows}
 
+    # Bulk-fetch existing pending invitations for all unknown emails in a single query,
+    # avoiding an N+1 pattern when invite_unknown_emails is requested.
+    unknown_emails = [e for e in valid_emails if e not in email_to_account_id]
+    existing_pending_set: set[str] = set()
+    if (
+        unknown_emails
+        and not want_admin
+        and payload.invite_unknown_emails
+        and payload.access_level == TenantAccessLevel.MEMBER
+    ):
+        pending_rows = db.execute_query(
+            """
+            SELECT LOWER(email) AS email FROM objectified.tenant_member_invitation
+            WHERE tenant_id = %s
+              AND LOWER(email) = ANY(%s)
+              AND status = 'pending'
+              AND deleted_at IS NULL
+            """,
+            (tenant_id, unknown_emails),
+        )
+        existing_pending_set = {r["email"] for r in pending_rows}
+
     # Process each valid email using the pre-fetched data.
     for email in valid_emails:
         account_id = email_to_account_id.get(email)
@@ -939,18 +961,7 @@ def bulk_invite_tenant_members(
                 and payload.invite_unknown_emails
                 and payload.access_level == TenantAccessLevel.MEMBER
             ):
-                pending_exists = db.execute_query(
-                    """
-                    SELECT id FROM objectified.tenant_member_invitation
-                    WHERE tenant_id = %s
-                      AND LOWER(email) = LOWER(%s)
-                      AND status = 'pending'
-                      AND deleted_at IS NULL
-                    LIMIT 1
-                    """,
-                    (tenant_id, email),
-                )
-                if pending_exists:
+                if email in existing_pending_set:
                     results.append(
                         TenantBulkInviteResultEntry(
                             email=email, status="already_invited", account_id=None
@@ -1059,20 +1070,28 @@ def bulk_remove_tenant_members(
 ) -> None:
     _assert_tenant_exists(tenant_id)
     seen: set[str] = set()
+    account_ids: list[str] = []
     for raw_id in payload.account_ids:
         aid = raw_id.strip()
         if not aid or aid in seen:
             continue
         seen.add(aid)
-        db.execute_mutation(
-            """
-            UPDATE objectified.tenant_account
-            SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
-            WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
-            """,
-            (tenant_id, aid),
-            returning=False,
-        )
+        account_ids.append(aid)
+
+    if not account_ids:
+        return
+
+    db.execute_mutation(
+        """
+        UPDATE objectified.tenant_account
+        SET deleted_at = timezone('utc', clock_timestamp()), enabled = false
+        WHERE tenant_id = %s
+          AND account_id = ANY(%s)
+          AND deleted_at IS NULL
+        """,
+        (tenant_id, account_ids),
+        returning=False,
+    )
 
 
 @router.post(

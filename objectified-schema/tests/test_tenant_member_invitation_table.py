@@ -4,6 +4,7 @@ test_tenant_member_invitation_table.py – SQL tests for tenant_member_invitatio
 Runs against objectified_test; each test uses a rolled-back transaction via conftest.
 """
 
+import psycopg2.errors
 import pytest
 
 
@@ -74,7 +75,7 @@ class TestTenantMemberInvitationTableStructure:
             """,
             (tenant_id, "pending-user@example.com", role_id, inviter),
         )
-        with pytest.raises(Exception):
+        with pytest.raises(psycopg2.errors.UniqueViolation):
             conn.execute(
                 """
                 INSERT INTO objectified.tenant_member_invitation
