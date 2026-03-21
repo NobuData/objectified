@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { AlertTriangle, Info, CheckCircle, XCircle } from 'lucide-react';
+import * as Checkbox from '@radix-ui/react-checkbox';
+import { AlertTriangle, Check, Info, CheckCircle, XCircle } from 'lucide-react';
 
 export type ConfirmDialogVariant = 'danger' | 'warning' | 'info' | 'success';
 
@@ -13,7 +14,10 @@ interface ConfirmDialogProps {
   variant?: ConfirmDialogVariant;
   confirmLabel?: string;
   cancelLabel?: string;
-  onConfirm: () => void;
+  /** When set with sessionKey in the provider, shows “Don’t ask again this session”. */
+  showDontAskAgain?: boolean;
+  dontAskAgainLabel?: string;
+  onConfirm: (dontAskAgain?: boolean) => void;
   onCancel: () => void;
 }
 
@@ -24,9 +28,17 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   variant = 'warning',
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  showDontAskAgain = false,
+  dontAskAgainLabel = 'Don’t ask again this session',
   onConfirm,
   onCancel,
 }) => {
+  const [dontAskAgain, setDontAskAgain] = useState(false);
+
+  useEffect(() => {
+    if (open) setDontAskAgain(false);
+  }, [open]);
+
   const getIcon = () => {
     switch (variant) {
       case 'danger':
@@ -79,6 +91,26 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               <div className="text-gray-700 dark:text-gray-300">{message}</div>
             )}
           </div>
+          {showDontAskAgain && (
+            <div className="px-6 pb-2 flex items-center gap-2">
+              <Checkbox.Root
+                id="confirm-dont-ask-again"
+                checked={dontAskAgain}
+                onCheckedChange={(checked) => setDontAskAgain(checked === true)}
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+              >
+                <Checkbox.Indicator className="flex items-center justify-center text-white">
+                  <Check className="h-3 w-3" />
+                </Checkbox.Indicator>
+              </Checkbox.Root>
+              <label
+                htmlFor="confirm-dont-ask-again"
+                className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer select-none"
+              >
+                {dontAskAgainLabel}
+              </label>
+            </div>
+          )}
           <div className="flex justify-end gap-2 p-4 pt-4">
             <button
               type="button"
@@ -89,7 +121,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             </button>
             <button
               type="button"
-              onClick={onConfirm}
+              onClick={() => onConfirm(showDontAskAgain ? dontAskAgain : false)}
               className={getConfirmButtonClass()}
               autoFocus
             >

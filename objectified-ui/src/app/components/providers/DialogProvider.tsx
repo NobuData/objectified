@@ -3,13 +3,17 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import ConfirmDialog, { ConfirmDialogVariant } from '../dialogs/ConfirmDialog';
 import AlertDialog, { AlertDialogVariant } from '../dialogs/AlertDialog';
+import { isSessionConfirmSkipped, setSessionConfirmSkipped } from '@lib/sessionConfirmSkip';
 
-interface ConfirmOptions {
+export interface ConfirmOptions {
   title?: string;
   message: string | ReactNode;
   variant?: ConfirmDialogVariant;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** When set, shows “Don’t ask again this session”; skips the dialog for the rest of the browser tab session once confirmed with that option checked. */
+  sessionKey?: string;
+  dontAskAgainLabel?: string;
 }
 
 interface AlertOptions {
@@ -44,6 +48,9 @@ export const DialogProvider: React.FC<DialogProviderProps> = ({ children }) => {
   } | null>(null);
 
   const confirm = useCallback((options: ConfirmOptions): Promise<boolean> => {
+    if (options.sessionKey && isSessionConfirmSkipped(options.sessionKey)) {
+      return Promise.resolve(true);
+    }
     return new Promise((resolve) => {
       setConfirmDialog({
         open: true,
@@ -63,8 +70,11 @@ export const DialogProvider: React.FC<DialogProviderProps> = ({ children }) => {
     });
   }, []);
 
-  const handleConfirm = () => {
+  const handleConfirm = (dontAskAgain?: boolean) => {
     if (confirmDialog) {
+      if (dontAskAgain && confirmDialog.options.sessionKey) {
+        setSessionConfirmSkipped(confirmDialog.options.sessionKey);
+      }
       confirmDialog.resolve(true);
       setConfirmDialog(null);
     }
@@ -95,6 +105,8 @@ export const DialogProvider: React.FC<DialogProviderProps> = ({ children }) => {
           variant={confirmDialog.options.variant}
           confirmLabel={confirmDialog.options.confirmLabel}
           cancelLabel={confirmDialog.options.cancelLabel}
+          showDontAskAgain={Boolean(confirmDialog.options.sessionKey)}
+          dontAskAgainLabel={confirmDialog.options.dontAskAgainLabel}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
         />

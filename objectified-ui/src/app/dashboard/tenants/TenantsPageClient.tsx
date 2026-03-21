@@ -34,8 +34,27 @@ import {
   type ListTenantsQuery,
 } from '@lib/api/rest-client';
 import { useDialog } from '@/app/components/providers/DialogProvider';
+import ListTableToolbar, {
+  buildCsvContent,
+  downloadCsvFile,
+  type ListTableColumnOption,
+} from '@/app/components/dashboard/ListTableToolbar';
 
 type TenantScopeFilter = 'active' | 'all' | 'archived';
+
+const TENANT_TABLE_COLUMNS: ListTableColumnOption[] = [
+  { id: 'name', label: 'Name' },
+  { id: 'slug', label: 'Slug' },
+  { id: 'description', label: 'Description' },
+  { id: 'status', label: 'Status' },
+];
+
+function defaultTenantColumnVisibility(): Record<string, boolean> {
+  return Object.fromEntries(TENANT_TABLE_COLUMNS.map((c) => [c.id, true])) as Record<
+    string,
+    boolean
+  >;
+}
 
 const filterSelectTriggerClass =
   'inline-flex items-center justify-between gap-2 min-w-[160px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -79,6 +98,11 @@ export default function TenantsPage() {
   const [tenantScopeFilter, setTenantScopeFilter] =
     useState<TenantScopeFilter>('active');
   const [includeArchivedMemberships, setIncludeArchivedMemberships] = useState(false);
+  const [tablePage, setTablePage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(25);
+  const [tenantColumnVisibility, setTenantColumnVisibility] = useState<Record<string, boolean>>(
+    defaultTenantColumnVisibility
+  );
 
   type SessionUser = { is_administrator?: boolean };
   const isAdministrator = Boolean(
@@ -89,6 +113,10 @@ export default function TenantsPage() {
     const t = setTimeout(() => setSearch(searchDraft), 400);
     return () => clearTimeout(t);
   }, [searchDraft]);
+
+  useEffect(() => {
+    setTablePage(1);
+  }, [search, tenantScopeFilter, includeArchivedMemberships, isAdministrator]);
 
   const fetchTenants = useCallback(async () => {
     if (status !== 'authenticated' || !session) {
@@ -174,6 +202,7 @@ export default function TenantsPage() {
       ),
       variant: 'danger',
       confirmLabel: 'Archive',
+      sessionKey: 'tenant-archive',
     });
     if (!ok) return;
     setDeletingId(tenant.id);
@@ -207,6 +236,7 @@ export default function TenantsPage() {
       ),
       variant: 'info',
       confirmLabel: 'Restore',
+      sessionKey: 'tenant-restore',
     });
     if (!ok) return;
     setRestoringId(tenant.id);
@@ -227,6 +257,45 @@ export default function TenantsPage() {
     } finally {
       setRestoringId(null);
     }
+  };
+
+  const totalTablePages = Math.max(1, Math.ceil(tenants.length / tablePageSize));
+  useEffect(() => {
+    setTablePage((p) => Math.min(p, totalTablePages));
+  }, [totalTablePages]);
+
+  const currentTablePage = Math.min(tablePage, totalTablePages);
+  const pagedTenants = tenants.slice(
+    (currentTablePage - 1) * tablePageSize,
+    (currentTablePage - 1) * tablePageSize + tablePageSize
+  );
+
+  const visibleTenantDataColumnCount = TENANT_TABLE_COLUMNS.filter(
+    (c) => tenantColumnVisibility[c.id] !== false
+  ).length;
+  const emptyTenantRowColSpan = visibleTenantDataColumnCount + 1;
+
+  const exportTenantsCsv = () => {
+    const headers: string[] = [];
+    if (tenantColumnVisibility.name !== false) headers.push('Name');
+    if (tenantColumnVisibility.slug !== false) headers.push('Slug');
+    if (tenantColumnVisibility.description !== false) headers.push('Description');
+    if (tenantColumnVisibility.status !== false) headers.push('Status');
+    const rows: string[][] = tenants.map((t) => {
+      const statusLabel = t.deleted_at
+        ? 'Archived'
+        : t.enabled === false
+          ? 'Disabled'
+          : 'Active';
+      const row: string[] = [];
+      if (tenantColumnVisibility.name !== false) row.push(t.name);
+      if (tenantColumnVisibility.slug !== false) row.push(t.slug);
+      if (tenantColumnVisibility.description !== false) row.push(t.description || '');
+      if (tenantColumnVisibility.status !== false) row.push(statusLabel);
+      return row;
+    });
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsvFile(`tenants-${stamp}.csv`, buildCsvContent(headers, rows));
   };
 
   if (status === 'loading') {
@@ -340,14 +409,39 @@ export default function TenantsPage() {
         </div>
       ) : (
         <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
+          <ListTableToolbar
+            label="Tenants"
+            page={currentTablePage}
+            onPageChange={setTablePage}
+            pageSize={tablePageSize}
+            onPageSizeChange={(n) => {
+              setTablePageSize(n);
+              setTablePage(1);
+            }}
+            totalItems={tenants.length}
+            columnOptions={TENANT_TABLE_COLUMNS}
+            columnVisibility={tenantColumnVisibility}
+            onColumnVisibilityChange={(id, visible) =>
+              setTenantColumnVisibility((prev) => ({ ...prev, [id]: visible }))
+            }
+            onExportCsv={exportTenantsCsv}
+          />
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left text-slate-700 dark:text-slate-200">
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Slug</th>
-                  <th className="px-4 py-3 font-medium">Description</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
+                  {tenantColumnVisibility.name !== false && (
+                    <th className="px-4 py-3 font-medium">Name</th>
+                  )}
+                  {tenantColumnVisibility.slug !== false && (
+                    <th className="px-4 py-3 font-medium">Slug</th>
+                  )}
+                  {tenantColumnVisibility.description !== false && (
+                    <th className="px-4 py-3 font-medium">Description</th>
+                  )}
+                  {tenantColumnVisibility.status !== false && (
+                    <th className="px-4 py-3 font-medium">Status</th>
+                  )}
                   <th className="px-4 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
@@ -355,42 +449,50 @@ export default function TenantsPage() {
                 {tenants.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={emptyTenantRowColSpan}
                       className="px-4 py-8 text-center text-slate-500 dark:text-slate-400"
                     >
                       You are not a member of any tenants yet.
                     </td>
                   </tr>
                 ) : (
-                  tenants.map((tenant) => (
+                  pagedTenants.map((tenant) => (
                     <tr
                       key={tenant.id}
                       className="border-t border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/30"
                     >
-                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
-                        {tenant.name}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-300">
-                        {tenant.slug}
-                      </td>
-                      <td className="px-4 py-3 max-w-xs truncate text-slate-600 dark:text-slate-400">
-                        {tenant.description || '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        {tenant.deleted_at ? (
-                          <span className="text-amber-600 dark:text-amber-400">
-                            Archived
-                          </span>
-                        ) : tenant.enabled === false ? (
-                          <span className="text-slate-500 dark:text-slate-400">
-                            Disabled
-                          </span>
-                        ) : (
-                          <span className="text-green-600 dark:text-green-400">
-                            Active
-                          </span>
-                        )}
-                      </td>
+                      {tenantColumnVisibility.name !== false && (
+                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
+                          {tenant.name}
+                        </td>
+                      )}
+                      {tenantColumnVisibility.slug !== false && (
+                        <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-300">
+                          {tenant.slug}
+                        </td>
+                      )}
+                      {tenantColumnVisibility.description !== false && (
+                        <td className="px-4 py-3 max-w-xs truncate text-slate-600 dark:text-slate-400">
+                          {tenant.description || '—'}
+                        </td>
+                      )}
+                      {tenantColumnVisibility.status !== false && (
+                        <td className="px-4 py-3">
+                          {tenant.deleted_at ? (
+                            <span className="text-amber-600 dark:text-amber-400">
+                              Archived
+                            </span>
+                          ) : tenant.enabled === false ? (
+                            <span className="text-slate-500 dark:text-slate-400">
+                              Disabled
+                            </span>
+                          ) : (
+                            <span className="text-green-600 dark:text-green-400">
+                              Active
+                            </span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-right">
                         <span className="inline-flex items-center gap-2">
                           {!tenant.deleted_at && (
