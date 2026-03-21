@@ -1029,24 +1029,30 @@ export async function getVersion(
 
 /**
  * Resolve tenant id for a project by probing GET /tenants/{id}/projects/{projectId}
- * across tenants returned by listMyTenants.
+ * across the provided tenant list (or listMyTenants when omitted).
+ * Short-circuits on the first successful match. Only 403/404 responses are
+ * silently ignored; unexpected errors (network, 5xx) are rethrown.
  */
 export async function resolveTenantIdForProject(
   projectId: string,
-  options: RestClientOptions = {}
+  options: RestClientOptions = {},
+  tenants?: TenantSchema[]
 ): Promise<string | null> {
-  const tenants = await listMyTenants(options);
-  const results = await Promise.all(
-    tenants.map(async (t) => {
-      try {
-        const p = await getProject(t.id, projectId, options);
-        return p.id === projectId ? t.id : null;
-      } catch {
-        return null;
+  const tenantList = tenants ?? (await listMyTenants(options));
+  for (const t of tenantList) {
+    try {
+      const p = await getProject(t.id, projectId, options);
+      if (p.id === projectId) {
+        return t.id;
       }
-    })
-  );
-  return results.find((id) => id != null) ?? null;
+    } catch (error: unknown) {
+      if (isForbiddenError(error) || isNotFoundError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  return null;
 }
 
 export async function listVersionSnapshots(
