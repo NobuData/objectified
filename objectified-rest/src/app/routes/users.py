@@ -413,26 +413,29 @@ def deactivate_user(
         reason = stripped if stripped else None
     actor_id = caller.get("user_id")
 
-    row = db.execute_mutation(
-        """
-        UPDATE objectified.account
-        SET deleted_at = timezone('utc', clock_timestamp()),
-            enabled = false,
-            deactivation_reason = %s,
-            deactivated_by = %s
-        WHERE id = %s AND deleted_at IS NULL
-        RETURNING id
-        """,
-        (reason, actor_id, user_id),
-    )
-    if not row:
-        raise _not_found("User", user_id)
+    with db.transaction() as conn:
+        row = db.execute_mutation(
+            """
+            UPDATE objectified.account
+            SET deleted_at = timezone('utc', clock_timestamp()),
+                enabled = false,
+                deactivation_reason = %s,
+                deactivated_by = %s
+            WHERE id = %s AND deleted_at IS NULL
+            RETURNING id
+            """,
+            (reason, actor_id, user_id),
+            _conn=conn,
+        )
+        if not row:
+            raise _not_found("User", user_id)
 
-    db.execute_mutation(
-        """
-        INSERT INTO objectified.account_lifecycle_event (account_id, event_type, reason, actor_id)
-        VALUES (%s, 'deactivated', %s, %s)
-        """,
-        (user_id, reason, actor_id),
-        returning=False,
-    )
+        db.execute_mutation(
+            """
+            INSERT INTO objectified.account_lifecycle_event (account_id, event_type, reason, actor_id)
+            VALUES (%s, 'deactivated', %s, %s)
+            """,
+            (user_id, reason, actor_id),
+            returning=False,
+            _conn=conn,
+        )
