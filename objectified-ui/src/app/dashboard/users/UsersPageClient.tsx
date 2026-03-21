@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { ChevronDown, Loader2, Plus, Pencil, UserX } from 'lucide-react';
+import { Check, ChevronDown, Loader2, Plus, Pencil, UserX } from 'lucide-react';
 import * as Select from '@radix-ui/react-select';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Switch from '@radix-ui/react-switch';
+import * as Checkbox from '@radix-ui/react-checkbox';
 import {
   listUsers,
   createUser,
@@ -22,7 +23,50 @@ import {
   type UserListStatusFilter,
 } from '@lib/api/rest-client';
 import { formatForbiddenAlertMessage } from '@lib/api/permissionMessaging';
+import { useDialog } from '@/app/components/providers/DialogProvider';
+import ListTableToolbar, {
+  buildCsvContent,
+  downloadCsvFile,
+  type ListTableColumnOption,
+} from '@/app/components/dashboard/ListTableToolbar';
+
 type SessionUser = { is_administrator?: boolean };
+
+const USER_DEACTIVATE_SKIP_FORM_KEY = 'objectified:user-deactivate:skip-form';
+
+const USER_TABLE_COLUMNS: ListTableColumnOption[] = [
+  { id: 'name', label: 'Name' },
+  { id: 'email', label: 'Email' },
+  { id: 'status', label: 'Status' },
+  { id: 'last_sign_in', label: 'Last sign-in' },
+  { id: 'created', label: 'Created' },
+  { id: 'deactivation', label: 'Deactivation' },
+];
+
+function defaultUserColumnVisibility(): Record<string, boolean> {
+  return Object.fromEntries(USER_TABLE_COLUMNS.map((c) => [c.id, true])) as Record<
+    string,
+    boolean
+  >;
+}
+
+function readSkipDeactivateForm(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage.getItem(USER_DEACTIVATE_SKIP_FORM_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeSkipDeactivateForm(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(USER_DEACTIVATE_SKIP_FORM_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
 
 const filterSelectTriggerClass =
   'inline-flex items-center justify-between gap-2 min-w-[170px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -33,6 +77,7 @@ const filterSelectItemClass =
 
 export default function UsersPage() {
   const { data: session, status } = useSession();
+  const { confirm } = useDialog();
   const [users, setUsers] = useState<AccountSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +90,11 @@ export default function UsersPage() {
   const [editUser, setEditUser] = useState<AccountSchema | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<AccountSchema | null>(null);
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const [tablePage, setTablePage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(25);
+  const [userColumnVisibility, setUserColumnVisibility] = useState<Record<string, boolean>>(
+    defaultUserColumnVisibility
+  );
 
   const isAdministrator = Boolean(
     (session?.user as SessionUser | undefined)?.is_administrator
@@ -109,6 +159,99 @@ export default function UsersPage() {
     const t = setTimeout(() => setSearch(searchDraft), 400);
     return () => clearTimeout(t);
   }, [searchDraft]);
+
+  useEffect(() => {
+    setTablePage(1);
+  }, [search, statusFilter, sort, includeDeleted]);
+
+  const totalTablePages = Math.max(1, Math.ceil(users.length / tablePageSize));
+  useEffect(() => {
+    setTablePage((p) => Math.min(p, totalTablePages));
+  }, [totalTablePages]);
+
+  const currentTablePage = Math.min(tablePage, totalTablePages);
+  const pagedUsers = users.slice(
+    (currentTablePage - 1) * tablePageSize,
+    (currentTablePage - 1) * tablePageSize + tablePageSize
+  );
+
+  const visibleUserDataColumnCount = USER_TABLE_COLUMNS.filter(
+    (c) => userColumnVisibility[c.id] !== false
+  ).length;
+  const emptyRowColSpan = visibleUserDataColumnCount + 1;
+
+  const exportUsersCsv = () => {
+    const headers: string[] = [];
+    if (userColumnVisibility.name !== false) headers.push('Name');
+    if (userColumnVisibility.email !== false) headers.push('Email');
+    if (userColumnVisibility.status !== false) headers.push('Status');
+    if (userColumnVisibility.last_sign_in !== false) headers.push('Last sign-in');
+    if (userColumnVisibility.created !== false) headers.push('Created');
+    if (userColumnVisibility.deactivation !== false) headers.push('Deactivation reason');
+    const rows: string[][] = users.map((u) => {
+      const statusLabel = u.deleted_at
+        ? 'Deactivated'
+        : u.enabled === false
+          ? 'Disabled'
+          : 'Active';
+      const row: string[] = [];
+      if (userColumnVisibility.name !== false) row.push(u.name);
+      if (userColumnVisibility.email !== false) row.push(u.email);
+      if (userColumnVisibility.status !== false) row.push(statusLabel);
+      if (userColumnVisibility.last_sign_in !== false) {
+        row.push(u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '');
+      }
+      if (userColumnVisibility.created !== false) {
+        row.push(u.created_at ? new Date(u.created_at).toLocaleDateString() : '');
+      }
+      if (userColumnVisibility.deactivation !== false) {
+        row.push(u.deleted_at && u.deactivation_reason ? u.deactivation_reason : '');
+      }
+      return row;
+    });
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsvFile(`users-${stamp}.csv`, buildCsvContent(headers, rows));
+  };
+
+  const handleQuickDeactivate = async (user: AccountSchema) => {
+    if (!session) return;
+    const ok = await confirm({
+      title: 'Deactivate user',
+      message: (
+        <span>
+          Deactivate <strong>{user.name}</strong> ({user.email})? They will no longer be able to
+          sign in.
+        </span>
+      ),
+      variant: 'danger',
+      confirmLabel: 'Deactivate',
+      sessionKey: 'user-deactivate-quick',
+    });
+    if (!ok) return;
+    setDeactivatingId(user.id);
+    setError(null);
+    try {
+      await deactivateUser(
+        user.id,
+        getRestClientOptions((session as { accessToken?: string } | null) ?? null),
+        undefined
+      );
+      await fetchUsers();
+    } catch (err) {
+      setError(
+        isForbiddenError(err)
+          ? formatForbiddenAlertMessage(
+              err,
+              'Admin privileges are required to deactivate a user.'
+            )
+          : err instanceof Error
+            ? err.message
+            : 'Failed to deactivate user'
+      );
+    } finally {
+      setDeactivatingId(null);
+    }
+  };
 
   if (status === 'loading') {
     return (
@@ -273,16 +416,45 @@ export default function UsersPage() {
         </div>
       ) : (
         <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
+          <ListTableToolbar
+            label="Users"
+            page={currentTablePage}
+            onPageChange={setTablePage}
+            pageSize={tablePageSize}
+            onPageSizeChange={(n) => {
+              setTablePageSize(n);
+              setTablePage(1);
+            }}
+            totalItems={users.length}
+            columnOptions={USER_TABLE_COLUMNS}
+            columnVisibility={userColumnVisibility}
+            onColumnVisibilityChange={(id, visible) =>
+              setUserColumnVisibility((prev) => ({ ...prev, [id]: visible }))
+            }
+            onExportCsv={exportUsersCsv}
+          />
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left text-slate-700 dark:text-slate-200">
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Last sign-in</th>
-                  <th className="px-4 py-3 font-medium">Created</th>
-                  <th className="px-4 py-3 font-medium max-w-[200px]">Deactivation</th>
+                  {userColumnVisibility.name !== false && (
+                    <th className="px-4 py-3 font-medium">Name</th>
+                  )}
+                  {userColumnVisibility.email !== false && (
+                    <th className="px-4 py-3 font-medium">Email</th>
+                  )}
+                  {userColumnVisibility.status !== false && (
+                    <th className="px-4 py-3 font-medium">Status</th>
+                  )}
+                  {userColumnVisibility.last_sign_in !== false && (
+                    <th className="px-4 py-3 font-medium">Last sign-in</th>
+                  )}
+                  {userColumnVisibility.created !== false && (
+                    <th className="px-4 py-3 font-medium">Created</th>
+                  )}
+                  {userColumnVisibility.deactivation !== false && (
+                    <th className="px-4 py-3 font-medium max-w-[200px]">Deactivation</th>
+                  )}
                   <th className="px-4 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
@@ -290,7 +462,7 @@ export default function UsersPage() {
                 {users.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={emptyRowColSpan}
                       className="px-4 py-8 text-center text-slate-500 dark:text-slate-400"
                     >
                       {!search.trim() && !statusFilter
@@ -299,50 +471,62 @@ export default function UsersPage() {
                     </td>
                   </tr>
                 ) : (
-                  users.map((user) => (
+                  pagedUsers.map((user) => (
                     <tr
                       key={user.id}
                       className="border-t border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/30"
                     >
-                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
-                        <Link
-                          href={`/dashboard/users/${encodeURIComponent(user.id)}`}
-                          className="text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
-                        >
-                          {user.name}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">{user.email}</td>
-                      <td className="px-4 py-3">
-                        {user.deleted_at ? (
-                          <span className="text-amber-600 dark:text-amber-400">
-                            Deactivated
-                          </span>
-                        ) : user.enabled === false ? (
-                          <span className="text-slate-500 dark:text-slate-400">
-                            Disabled
-                          </span>
-                        ) : (
-                          <span className="text-green-600 dark:text-green-400">
-                            Active
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                        {user.last_login_at
-                          ? new Date(user.last_login_at).toLocaleString()
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
-                        {user.created_at
-                          ? new Date(user.created_at).toLocaleDateString()
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[200px] break-words">
-                        {user.deleted_at && user.deactivation_reason
-                          ? user.deactivation_reason
-                          : '—'}
-                      </td>
+                      {userColumnVisibility.name !== false && (
+                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
+                          <Link
+                            href={`/dashboard/users/${encodeURIComponent(user.id)}`}
+                            className="text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
+                          >
+                            {user.name}
+                          </Link>
+                        </td>
+                      )}
+                      {userColumnVisibility.email !== false && (
+                        <td className="px-4 py-3">{user.email}</td>
+                      )}
+                      {userColumnVisibility.status !== false && (
+                        <td className="px-4 py-3">
+                          {user.deleted_at ? (
+                            <span className="text-amber-600 dark:text-amber-400">
+                              Deactivated
+                            </span>
+                          ) : user.enabled === false ? (
+                            <span className="text-slate-500 dark:text-slate-400">
+                              Disabled
+                            </span>
+                          ) : (
+                            <span className="text-green-600 dark:text-green-400">
+                              Active
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {userColumnVisibility.last_sign_in !== false && (
+                        <td className="px-4 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                          {user.last_login_at
+                            ? new Date(user.last_login_at).toLocaleString()
+                            : '—'}
+                        </td>
+                      )}
+                      {userColumnVisibility.created !== false && (
+                        <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                          {user.created_at
+                            ? new Date(user.created_at).toLocaleDateString()
+                            : '—'}
+                        </td>
+                      )}
+                      {userColumnVisibility.deactivation !== false && (
+                        <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs max-w-[200px] break-words">
+                          {user.deleted_at && user.deactivation_reason
+                            ? user.deactivation_reason
+                            : '—'}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-right">
                         {!user.deleted_at && (
                           <span className="inline-flex items-center gap-2">
@@ -357,7 +541,13 @@ export default function UsersPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => setDeactivateTarget(user)}
+                              onClick={() => {
+                                if (readSkipDeactivateForm()) {
+                                  void handleQuickDeactivate(user);
+                                } else {
+                                  setDeactivateTarget(user);
+                                }
+                              }}
                               disabled={deactivatingId === user.id}
                               className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
                               aria-label={`Deactivate ${user.name}`}
@@ -437,9 +627,13 @@ function DeactivateUserDialog({
   setDeactivatingId,
 }: DeactivateUserDialogProps) {
   const [reason, setReason] = useState('');
+  const [useQuickConfirmNext, setUseQuickConfirmNext] = useState(false);
 
   useEffect(() => {
-    if (open) setReason('');
+    if (open) {
+      setReason('');
+      setUseQuickConfirmNext(false);
+    }
   }, [open, user.id]);
 
   const handleOpenChange = (next: boolean) => {
@@ -458,6 +652,9 @@ function DeactivateUserDialog({
         getRestClientOptions((session as { accessToken?: string } | null) ?? null),
         trimmed ? { reason: trimmed } : undefined
       );
+      if (useQuickConfirmNext) {
+        writeSkipDeactivateForm();
+      }
       handleOpenChange(false);
       await onSuccess();
     } catch (err) {
@@ -510,6 +707,26 @@ function DeactivateUserDialog({
                 placeholder="e.g. Left the organization"
                 disabled={deactivatingId === user.id}
               />
+            </div>
+            <div className="flex items-start gap-2 pt-1">
+              <Checkbox.Root
+                id="deactivate-skip-form-next"
+                checked={useQuickConfirmNext}
+                onCheckedChange={(checked) => setUseQuickConfirmNext(checked === true)}
+                disabled={deactivatingId === user.id}
+                className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+              >
+                <Checkbox.Indicator className="flex items-center justify-center text-white">
+                  <Check className="h-3 w-3" />
+                </Checkbox.Indicator>
+              </Checkbox.Root>
+              <label
+                htmlFor="deactivate-skip-form-next"
+                className="text-sm text-slate-600 dark:text-slate-400 cursor-pointer"
+              >
+                Next time, use quick confirmation only (skip this form for the rest of this browser
+                session)
+              </label>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
