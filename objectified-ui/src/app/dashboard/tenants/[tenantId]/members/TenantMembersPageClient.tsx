@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   Users,
   ShieldCheck,
+  UserPlus,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -21,6 +22,7 @@ import {
   listTenantMembers,
   addTenantMember,
   addTenantAdministrator,
+  bulkInviteTenantMembers,
   removeTenantMember,
   updateTenantMember,
   listUsers,
@@ -42,13 +44,14 @@ export default function TenantMembersPage() {
   const params = useParams();
   const tenantId = typeof params?.tenantId === 'string' ? params.tenantId : '';
   const { data: session, status } = useSession();
-  const { confirm } = useDialog();
+  const { confirm, alert } = useDialog();
   const [tenant, setTenant] = useState<TenantSchema | null>(null);
   const [members, setMembers] = useState<TenantAccountSchema[]>([]);
   const [userMap, setUserMap] = useState<Record<string, AccountSchema>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editMember, setEditMember] = useState<TenantAccountSchema | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
@@ -129,6 +132,11 @@ export default function TenantMembersPage() {
 
   const handleAddSuccess = () => {
     setAddOpen(false);
+    fetchMembers();
+  };
+
+  const handleBulkSuccess = () => {
+    setBulkOpen(false);
     fetchMembers();
   };
 
@@ -250,14 +258,24 @@ export default function TenantMembersPage() {
               Administrators
             </Link>
             {tenant && isAdministrator && (
-              <button
-                type="button"
-                onClick={() => setAddOpen(true)}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Add member
-              </button>
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBulkOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                >
+                  <UserPlus className="h-4 w-4" aria-hidden />
+                  Bulk invite
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Add member
+                </button>
+              </span>
             )}
           </span>
         </div>
@@ -397,6 +415,23 @@ export default function TenantMembersPage() {
         </div>
       )}
 
+      <BulkInviteDialog
+        tenantId={tenantId}
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        onSuccess={handleBulkSuccess}
+        session={session}
+        alertSummary={async (summary) => {
+          await alert({
+            title: 'Bulk invite finished',
+            message: (
+              <pre className="text-xs whitespace-pre-wrap font-sans text-left max-h-64 overflow-y-auto">
+                {summary}
+              </pre>
+            ),
+          });
+        }}
+      />
       <AddMemberDialog
         tenantId={tenantId}
         open={addOpen}
@@ -415,6 +450,200 @@ export default function TenantMembersPage() {
         />
       )}
     </div>
+  );
+}
+
+function parseEmailsFromBulkInput(raw: string): string[] {
+  const parts = raw.split(/[\s,;]+/);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
+    const e = p.trim().toLowerCase();
+    if (!e || seen.has(e)) continue;
+    seen.add(e);
+    out.push(e);
+  }
+  return out;
+}
+
+interface BulkInviteDialogProps {
+  tenantId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+  session: ReturnType<typeof useSession>['data'];
+  alertSummary: (summary: string) => Promise<void>;
+}
+
+function BulkInviteDialog({
+  tenantId,
+  open,
+  onOpenChange,
+  onSuccess,
+  session,
+  alertSummary,
+}: BulkInviteDialogProps) {
+  const [rawEmails, setRawEmails] = useState('');
+  const [accessLevel, setAccessLevel] = useState<TenantAccessLevel>('member');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const parsedEmails = useMemo(() => parseEmailsFromBulkInput(rawEmails), [rawEmails]);
+  const overLimit = parsedEmails.length > 100;
+  const ignoredCount = overLimit ? parsedEmails.length - 100 : 0;
+
+  const reset = () => {
+    setRawEmails('');
+    setAccessLevel('member');
+    setFormError(null);
+  };
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) reset();
+    onOpenChange(next);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session) return;
+    setFormError(null);
+    const emails = parsedEmails.slice(0, 100);
+    if (emails.length === 0) {
+      setFormError('Enter at least one email (separate with commas, spaces, or new lines).');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await bulkInviteTenantMembers(
+        tenantId,
+        { emails, access_level: accessLevel },
+        getRestClientOptions((session as { accessToken?: string } | null) ?? null)
+      );
+      const summary = res.results.map((r) => `${r.email}: ${r.status}`).join('\n');
+      await alertSummary(summary);
+      handleOpenChange(false);
+      onSuccess();
+    } catch (err) {
+      setFormError(
+        isForbiddenError(err)
+          ? 'Admin privileges required for bulk invite.'
+          : err instanceof Error
+            ? err.message
+            : 'Bulk invite failed'
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
+        <Dialog.Content
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-lg bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 p-6 max-h-[90vh] overflow-y-auto"
+          aria-describedby={undefined}
+          onEscapeKeyDown={() => handleOpenChange(false)}
+          onPointerDownOutside={() => handleOpenChange(false)}
+        >
+          <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+            <UserPlus className="h-5 w-5 text-indigo-500" aria-hidden />
+            Bulk invite by email
+          </Dialog.Title>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+            Paste a list or CSV of email addresses (up to 100). Each address must match an
+            existing account. Choose whether they join as members or administrators.
+          </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {overLimit && (
+              <div
+                className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-sm"
+                role="alert"
+              >
+                {`${parsedEmails.length} unique addresses detected - only the first 100 will be invited. ${ignoredCount} address${ignoredCount === 1 ? '' : 'es'} will be ignored.`}
+              </div>
+            )}
+            {formError && (
+              <div
+                className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm"
+                role="alert"
+              >
+                {formError}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label.Root
+                htmlFor="bulk-emails"
+                className="text-sm font-medium text-slate-700 dark:text-slate-300"
+              >
+                Emails
+              </Label.Root>
+              <textarea
+                id="bulk-emails"
+                value={rawEmails}
+                onChange={(e) => setRawEmails(e.target.value)}
+                rows={8}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-y min-h-[120px]"
+                placeholder={'alice@example.com\nbob@example.com'}
+                disabled={saving}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Role
+              </Label.Root>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <label className="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
+                  <input
+                    type="radio"
+                    name="bulk-role"
+                    checked={accessLevel === 'member'}
+                    onChange={() => setAccessLevel('member')}
+                    disabled={saving}
+                    className="text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Member
+                </label>
+                <label className="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
+                  <input
+                    type="radio"
+                    name="bulk-role"
+                    checked={accessLevel === 'administrator'}
+                    onChange={() => setAccessLevel('administrator')}
+                    disabled={saving}
+                    className="text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Administrator
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleOpenChange(false)}
+                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Inviting…
+                  </>
+                ) : (
+                  'Invite'
+                )}
+              </button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

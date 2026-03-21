@@ -36,6 +36,9 @@ _ACCOUNT_ROW: dict[str, Any] = {
     "created_at": _NOW,
     "updated_at": None,
     "deleted_at": None,
+    "last_login_at": None,
+    "deactivation_reason": None,
+    "deactivated_by": None,
 }
 _TENANT_ROW: dict[str, Any] = {
     "id": "00000000-0000-0000-0000-000000000002",
@@ -278,6 +281,59 @@ def test_list_users_empty(admin_client):
     assert r.json() == []
 
 
+def test_list_users_search_status_sort_builds_query(admin_client):
+    """GET /v1/users passes search, status, and sort into SQL."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = admin_client.get(
+            "/v1/users?search=ali&status=active&sort=last_login_at_desc"
+        )
+    assert r.status_code == 200
+    mock_db.execute_query.assert_called_once()
+    sql = mock_db.execute_query.call_args[0][0]
+    assert "ILIKE" in sql
+    assert "last_login_at DESC" in sql
+
+
+def test_list_user_lifecycle_events(admin_client):
+    """GET /v1/users/{id}/lifecycle-events returns audit rows."""
+    ev = {
+        "id": "00000000-0000-0000-0000-0000000000aa",
+        "account_id": _ACCOUNT_ROW["id"],
+        "event_type": "deactivated",
+        "reason": "test",
+        "actor_id": "admin-uid",
+        "created_at": _NOW,
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"1": 1}],
+            [ev],
+        ]
+        r = admin_client.get(f"/v1/users/{_ACCOUNT_ROW['id']}/lifecycle-events")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["event_type"] == "deactivated"
+
+
+def test_bulk_invite_tenant_members(admin_client):
+    """POST .../members/bulk-invite adds existing accounts by email."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ROW["id"]}],
+            [{"id": _ACCOUNT_ROW["id"], "email": "alice@example.com"}],
+            [],
+        ]
+        mock_db.execute_mutation.return_value = dict(_TENANT_ACCOUNT_ROW)
+        r = admin_client.post(
+            f"/v1/tenants/{_TENANT_ROW['id']}/members/bulk-invite",
+            json={"emails": ["alice@example.com"], "access_level": "member"},
+        )
+    assert r.status_code == 200
+    assert r.json()["results"][0]["status"] == "added"
+
+
 def test_get_user_by_id_found(client):
     """GET /v1/users/{id} returns account when found."""
     with mock_db_all() as mock_db:
@@ -425,7 +481,10 @@ def test_deactivate_user_success(admin_client):
     """DELETE /v1/users/{id} soft-deletes user and returns 204."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = [_ACCOUNT_ROW]
-        mock_db.execute_mutation.return_value = None
+        mock_db.execute_mutation.side_effect = [
+            {"id": _ACCOUNT_ROW["id"]},
+            None,
+        ]
         r = admin_client.delete(f"/v1/users/{_ACCOUNT_ROW['id']}")
     assert r.status_code == 204
 

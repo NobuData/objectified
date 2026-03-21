@@ -1,9 +1,27 @@
 """Schemas for objectified.account table."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class UserListStatus(str, Enum):
+    """Filter for GET /v1/users (admin list)."""
+
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    DEACTIVATED = "deactivated"
+
+
+class UserListSort(str, Enum):
+    """Sort order for GET /v1/users."""
+
+    CREATED_AT_ASC = "created_at_asc"
+    CREATED_AT_DESC = "created_at_desc"
+    LAST_LOGIN_AT_ASC = "last_login_at_asc"
+    LAST_LOGIN_AT_DESC = "last_login_at_desc"
 
 
 class AccountSchema(BaseModel):
@@ -20,6 +38,9 @@ class AccountSchema(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
+    last_login_at: Optional[datetime] = None
+    deactivation_reason: Optional[str] = None
+    deactivated_by: Optional[str] = None
 
 
 class AccountCreate(BaseModel):
@@ -52,3 +73,22 @@ class ProfileUpdate(BaseModel):
 
     name: Optional[str] = None
     metadata: Optional[dict[str, Any]] = None
+
+
+class UserDeactivateBody(BaseModel):
+    """Optional JSON body for DELETE /v1/users/{user_id} (deactivate)."""
+
+    reason: Optional[str] = Field(None, max_length=2000)
+
+
+class AccountLifecycleEventSchema(BaseModel):
+    """One row from objectified.account_lifecycle_event."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    account_id: str
+    event_type: str
+    reason: Optional[str] = None
+    actor_id: Optional[str] = None
+    created_at: datetime

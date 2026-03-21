@@ -5,7 +5,16 @@ objectified.project, objectified.version, objectified.property, objectified.clas
 objectified.class_property. Used for OpenAPI documentation and future CRUD services.
 """
 
-from app.schemas.account import AccountCreate, AccountSchema, AccountUpdate, ProfileUpdate
+from app.schemas.account import (
+    AccountCreate,
+    AccountLifecycleEventSchema,
+    AccountSchema,
+    AccountUpdate,
+    ProfileUpdate,
+    UserDeactivateBody,
+    UserListSort,
+    UserListStatus,
+)
 from app.schemas.auth import (
     ApiKeyCreate,
     ApiKeyCreateResponse,
@@ -36,6 +45,9 @@ from app.schemas.tenant_account import (
     TenantAccountSchema,
     TenantAccountUpdate,
     TenantAdministratorCreate,
+    TenantBulkInviteResultEntry,
+    TenantMembersBulkInvite,
+    TenantMembersBulkInviteResponse,
 )
 from app.schemas.sso import (
     SsoProviderCreate,
@@ -72,6 +84,7 @@ from app.schemas.schema_promotions import (
 
 __all__ = [
     "AccountCreate",
+    "AccountLifecycleEventSchema",
     "AccountSchema",
     "AccountUpdate",
     "ApiKeyCreate",
@@ -86,6 +99,9 @@ __all__ = [
     "ClassPropertySchema",
     "ClassPropertyUpdate",
     "ProfileUpdate",
+    "UserDeactivateBody",
+    "UserListSort",
+    "UserListStatus",
     "ProjectCreate",
     "ProjectHistorySchema",
     "ProjectSchema",
@@ -98,6 +114,9 @@ __all__ = [
     "TenantAccountSchema",
     "TenantAccountUpdate",
     "TenantAdministratorCreate",
+    "TenantBulkInviteResultEntry",
+    "TenantMembersBulkInvite",
+    "TenantMembersBulkInviteResponse",
     "TenantCreate",
     "TenantSchema",
     "TenantUpdate",

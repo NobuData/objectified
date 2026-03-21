@@ -34,6 +34,7 @@ def mock_db_all():
     with (
         patch("app.auth.db", mock),
         patch("app.routes.users.db", mock),
+        patch("app.routes.auth.db", mock),
         patch("app.routes.tenants.db", mock),
         patch("app.routes.sso.db", mock),
         patch("app.routes.helpers.db", mock),

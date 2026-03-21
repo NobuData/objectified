@@ -559,6 +559,9 @@ export interface AccountSchema {
   created_at: string;
   updated_at?: string | null;
   deleted_at?: string | null;
+  last_login_at?: string | null;
+  deactivation_reason?: string | null;
+  deactivated_by?: string | null;
 }
 
 export interface AccountCreate {
@@ -577,12 +580,43 @@ export interface AccountUpdate {
   metadata?: Record<string, unknown> | null;
 }
 
+export type UserListStatusFilter = 'active' | 'disabled' | 'deactivated';
+
+export type UserListSort =
+  | 'created_at_asc'
+  | 'created_at_desc'
+  | 'last_login_at_asc'
+  | 'last_login_at_desc';
+
+export interface ListUsersQuery {
+  includeDeleted?: boolean;
+  search?: string;
+  status?: UserListStatusFilter;
+  sort?: UserListSort;
+}
+
 export async function listUsers(
   options: RestClientOptions = {},
-  includeDeleted = false
+  queryOrIncludeDeleted: boolean | ListUsersQuery = false
 ): Promise<AccountSchema[]> {
-  const q = includeDeleted ? '?include_deleted=true' : '';
-  return request<AccountSchema[]>('GET', `/users${q}`, undefined, options);
+  const params = new URLSearchParams();
+  let q: ListUsersQuery;
+  if (typeof queryOrIncludeDeleted === 'boolean') {
+    q = { includeDeleted: queryOrIncludeDeleted };
+  } else {
+    q = queryOrIncludeDeleted ?? {};
+  }
+  if (q.includeDeleted) params.set('include_deleted', 'true');
+  if (q.search?.trim()) params.set('search', q.search.trim());
+  if (q.status) params.set('status', q.status);
+  if (q.sort) params.set('sort', q.sort);
+  const qs = params.toString();
+  return request<AccountSchema[]>(
+    'GET',
+    `/users${qs ? `?${qs}` : ''}`,
+    undefined,
+    options
+  );
 }
 
 export async function getUser(
@@ -619,13 +653,44 @@ export async function updateUser(
   );
 }
 
+export interface UserDeactivateBody {
+  reason?: string | null;
+}
+
 export async function deactivateUser(
   userId: string,
-  options: RestClientOptions = {}
+  options: RestClientOptions = {},
+  body?: UserDeactivateBody
 ): Promise<void> {
+  const trimmed =
+    body?.reason !== undefined && body.reason !== null
+      ? String(body.reason).trim()
+      : '';
+  const payload = trimmed ? { reason: trimmed } : undefined;
   return request<void>(
     'DELETE',
     `/users/${encodeURIComponent(userId)}`,
+    payload,
+    options
+  );
+}
+
+export interface AccountLifecycleEventSchema {
+  id: string;
+  account_id: string;
+  event_type: string;
+  reason?: string | null;
+  actor_id?: string | null;
+  created_at: string;
+}
+
+export async function listUserLifecycleEvents(
+  userId: string,
+  options: RestClientOptions = {}
+): Promise<AccountLifecycleEventSchema[]> {
+  return request<AccountLifecycleEventSchema[]>(
+    'GET',
+    `/users/${encodeURIComponent(userId)}/lifecycle-events`,
     undefined,
     options
   );
@@ -732,6 +797,39 @@ export async function addTenantMember(
     'POST',
     `/tenants/${tenantId}/members`,
     { ...body, tenant_id: tenantId },
+    options
+  );
+}
+
+export interface TenantBulkInviteResultEntry {
+  email: string;
+  status:
+    | 'added'
+    | 'promoted'
+    | 'already_member'
+    | 'not_found'
+    | 'invalid_email';
+  account_id?: string | null;
+}
+
+export interface TenantMembersBulkInvitePayload {
+  emails: string[];
+  access_level: TenantAccessLevel;
+}
+
+export interface TenantMembersBulkInviteResponse {
+  results: TenantBulkInviteResultEntry[];
+}
+
+export async function bulkInviteTenantMembers(
+  tenantId: string,
+  body: TenantMembersBulkInvitePayload,
+  options: RestClientOptions = {}
+): Promise<TenantMembersBulkInviteResponse> {
+  return request<TenantMembersBulkInviteResponse>(
+    'POST',
+    `/tenants/${tenantId}/members/bulk-invite`,
+    body,
     options
   );
 }
