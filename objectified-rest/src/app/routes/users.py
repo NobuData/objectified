@@ -263,9 +263,9 @@ def list_user_lifecycle_events(
     response_model=List[UserTenantMembershipAdminSchema],
     summary="List user tenant memberships and roles (admin)",
     description=(
-        "Return each active tenant membership for the account with tenant name, "
+        "Return each tenant membership for the account with tenant name, "
         "access level (member or tenant administrator), and RBAC roles assigned in "
-        "that tenant. **Admin only.**"
+        "that tenant, including disabled memberships. **Admin only.**"
     ),
 )
 def list_user_tenant_memberships(

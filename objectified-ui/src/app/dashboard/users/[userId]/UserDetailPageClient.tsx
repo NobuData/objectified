@@ -351,6 +351,8 @@ export default function UserDetailPageClient() {
             <button
               type="button"
               id="user-audit-heading"
+              aria-expanded={auditOpen}
+              aria-controls="user-audit-content"
               onClick={() => setAuditOpen((o) => !o)}
               className="flex w-full items-center justify-between gap-2 text-left text-lg font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded-md"
             >
@@ -366,7 +368,7 @@ export default function UserDetailPageClient() {
               load.
             </p>
             {auditOpen && (
-              <div className="mt-2">
+              <div id="user-audit-content" className="mt-2">
                 {auditLoading ? (
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

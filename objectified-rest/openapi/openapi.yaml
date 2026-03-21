@@ -1807,8 +1807,9 @@ paths:
       tags:
       - Users
       summary: List user tenant memberships and roles (admin)
-      description: Return each active tenant membership with tenant name, access level,
-        and RBAC roles assigned in that tenant. **Admin only.**
+      description: Return each tenant membership with tenant name, access level, and
+        RBAC roles assigned in that tenant, including disabled memberships. **Admin
+        only.**
       operationId: list_user_tenant_memberships_v1_users__user_id__tenant_memberships_get
       parameters:
       - name: user_id
