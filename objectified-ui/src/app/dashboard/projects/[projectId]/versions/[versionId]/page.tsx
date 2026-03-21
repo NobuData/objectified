@@ -33,7 +33,7 @@ export default function DashboardProjectVersionDeepLinkPage() {
   const projectId = typeof params?.projectId === 'string' ? params.projectId : '';
   const versionId = typeof params?.versionId === 'string' ? params.versionId : '';
   const { data: session, status } = useSession();
-  const { setSelectedTenantId } = useTenantSelection();
+  const { setSelectedTenantId, tenants, tenantsLoading } = useTenantSelection();
   const [state, setState] = useState<ResolveState>({ kind: 'loading' });
 
   const accessToken = (session as { accessToken?: string } | null)?.accessToken ?? null;
@@ -44,6 +44,10 @@ export default function DashboardProjectVersionDeepLinkPage() {
       return;
     }
     if (status !== 'authenticated' || !accessToken || !projectId || !versionId) {
+      return;
+    }
+    // Wait until the dashboard tenant list has been loaded before probing.
+    if (tenantsLoading) {
       return;
     }
 
@@ -62,7 +66,8 @@ export default function DashboardProjectVersionDeepLinkPage() {
           setState({ kind: 'not_found' });
           return;
         }
-        const tenantId = await resolveTenantIdForProject(projectId, callOpts);
+        // Reuse the already-loaded tenant list to avoid an extra listMyTenants() round-trip.
+        const tenantId = await resolveTenantIdForProject(projectId, callOpts, tenants);
         if (controller.signal.aborted) return;
         if (!tenantId) {
           setState({ kind: 'not_found' });
@@ -97,7 +102,7 @@ export default function DashboardProjectVersionDeepLinkPage() {
     return () => {
       controller.abort();
     };
-  }, [status, accessToken, projectId, versionId, router, setSelectedTenantId]);
+  }, [status, accessToken, projectId, versionId, router, setSelectedTenantId, tenants, tenantsLoading]);
 
   if (status === 'loading') {
     return (
