@@ -3,7 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GitHubProvider from 'next-auth/providers/github';
 import { getAccountByEmail, verifyCredentials } from '@lib/auth/verifyCredentials';
 
-const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8; // 8 hours
+const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24; // 24 hours – matches REST JWT expiry
 
 function resolveSessionMaxAgeSeconds(): number {
   const raw = process.env.NEXTAUTH_SESSION_MAX_AGE_SECONDS;
