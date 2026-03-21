@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession, signOut } from 'next-auth/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 
 const DISMISS_STORAGE_PREFIX = 'objectified:sessionExpiryDismissed:';
 
@@ -41,7 +41,7 @@ export default function SessionExpiryWarning() {
     return () => window.clearInterval(id);
   }, [leadSeconds, status, expiresAt]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!dismissStorageKey || typeof window === 'undefined') return;
     try {
       const v = sessionStorage.getItem(dismissStorageKey);
