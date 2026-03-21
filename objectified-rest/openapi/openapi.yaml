@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.28
+  version: 1.0.29
 paths:
   /v1/auth/login:
     post:
@@ -1556,11 +1556,9 @@ paths:
       tags:
       - Users
       summary: Update current user profile
-      description: 'Update the authenticated user''s name and/or metadata (requires
+      description: Update the authenticated user's name and/or metadata (requires
         JWT). Only ``name`` and ``metadata`` can be updated; use admin endpoints for
-        other fields. Optional UI keys under ``metadata.ui``: ``theme`` (``light``,
-        ``dark``, ``system``) and ``highContrast`` (boolean) are used by the dashboard
-        for appearance (GitHub #187).'
+        other fields.
       operationId: update_me_v1_me_patch
       parameters:
       - name: authorization
@@ -1598,50 +1596,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /v1/me/dashboard/page-visits:
-    post:
-      tags:
-      - Users
-      summary: Record a dashboard page visit (optional audit)
-      description: 'When ``DASHBOARD_PAGE_VISIT_AUDIT_ENABLED`` is true on the API, append
-        one audit row (tenant optional, account, route path, UTC timestamp). When disabled,
-        returns 204 with no write. If ``tenant_id`` is set, the caller must belong to that
-        tenant (GitHub #188).'
-      operationId: record_dashboard_page_visit_v1_me_dashboard_page_visits_post
-      parameters:
-      - name: authorization
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Authorization
-      - name: X-API-Key
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Api-Key
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DashboardPageVisitCreate'
-      responses:
-        '204':
-          description: Accepted (no response body)
-        '403':
-          description: Forbidden — caller is not a member of the given tenant
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
   /v1/users:
     get:
       tags:
@@ -1650,7 +1604,10 @@ paths:
       description: List all accounts. **Admin only** — requires a valid JWT with ``is_admin=true``,
         an account that is an administrator in at least one tenant, or a valid internal
         API key. Soft-deleted accounts are excluded by default; pass ``include_deleted=true``
-        to include them.
+        to include them. Use ``status`` to filter by active/disabled/deactivated;
+        when set, it defines which rows are returned regardless of ``include_deleted``.
+        ``search`` matches name or email (case-insensitive substring). ``sort`` orders
+        by created time or last login.
       operationId: list_users_v1_users_get
       parameters:
       - name: include_deleted
@@ -1667,35 +1624,31 @@ paths:
         required: false
         schema:
           anyOf:
-          - type: string
-            enum:
-            - active
-            - disabled
-            - deactivated
+          - $ref: '#/components/schemas/UserListStatus'
           - type: 'null'
+          description: 'Filter: active, disabled, or deactivated (overrides include_deleted
+            for deleted_at)'
           title: Status
-        description: Filter by active, disabled, or deactivated (defines soft-delete scope
-          when set)
+        description: 'Filter: active, disabled, or deactivated (overrides include_deleted
+          for deleted_at)'
       - name: search
         in: query
         required: false
         schema:
-          type: string
-          maxLength: 500
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          description: Case-insensitive substring match on name or email
           title: Search
         description: Case-insensitive substring match on name or email
       - name: sort
         in: query
         required: false
         schema:
-          type: string
-          enum:
-          - created_at_asc
-          - created_at_desc
-          - last_login_at_asc
-          - last_login_at_desc
+          $ref: '#/components/schemas/UserListSort'
+          description: Sort by created_at or last_login_at
           default: created_at_asc
-          title: Sort
         description: Sort by created_at or last_login_at
       - name: authorization
         in: header
@@ -1759,8 +1712,8 @@ paths:
       tags:
       - Users
       summary: List user lifecycle audit events (admin)
-      description: Return recent account lifecycle events (e.g. deactivation) for auditing.
-        **Admin only.**
+      description: Return recent account lifecycle events (e.g. deactivation) for
+        auditing. **Admin only.**
       operationId: list_user_lifecycle_events_v1_users__user_id__lifecycle_events_get
       parameters:
       - name: user_id
@@ -1807,9 +1760,9 @@ paths:
       tags:
       - Users
       summary: List user tenant memberships and roles (admin)
-      description: Return each tenant membership with tenant name, access level, and
-        RBAC roles assigned in that tenant, including disabled memberships. **Admin
-        only.**
+      description: Return each tenant membership for the account with tenant name,
+        access level (member or tenant administrator), and RBAC roles assigned in
+        that tenant, including disabled memberships. **Admin only.**
       operationId: list_user_tenant_memberships_v1_users__user_id__tenant_memberships_get
       parameters:
       - name: user_id
@@ -1857,7 +1810,7 @@ paths:
       - Users
       summary: Get user by ID (admin)
       description: Retrieve a single account by its UUID. **Admin only** — same authorization
-        as `GET /v1/users`. Use `include_deleted=true` to load a deactivated account.
+        as ``GET /v1/users``. Use ``include_deleted=true`` to load a deactivated account.
       operationId: get_user_v1_users__user_id__get
       parameters:
       - name: user_id
@@ -1875,6 +1828,22 @@ paths:
           default: false
           title: Include Deleted
         description: Include soft-deleted account
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
       responses:
         '200':
           description: Successful Response
@@ -1940,10 +1909,10 @@ paths:
       tags:
       - Users
       summary: Deactivate user
-      description: Soft-delete (deactivate) a user account by setting deleted_at.
+      description: 'Soft-delete (deactivate) a user account by setting deleted_at.
         The record is retained; no hard delete is performed. **Admin only.** Optional
-        JSON body with a deactivation reason (stored on the account and in the lifecycle
-        audit log).
+        JSON body: ``{ "reason": "..." }`` (stored on the account and in the lifecycle
+        audit log).'
       operationId: deactivate_user_v1_users__user_id__delete
       parameters:
       - name: user_id
@@ -1972,8 +1941,52 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserDeactivateBody'
+              anyOf:
+              - $ref: '#/components/schemas/UserDeactivateBody'
+              - type: 'null'
+              title: Payload
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/me/dashboard/page-visits:
+    post:
+      tags:
+      - Users
+      summary: Record a dashboard page visit (optional audit)
+      description: When ``DASHBOARD_PAGE_VISIT_AUDIT_ENABLED`` is true on the API,
+        append one row with tenant (optional), authenticated account, route, and timestamp.
+        When disabled, returns 204 without writing. JWT or API key callers only; if
+        ``tenant_id`` is set, the caller must be a member of that tenant.
+      operationId: record_dashboard_page_visit_v1_me_dashboard_page_visits_post
+      parameters:
+      - name: authorization
+        in: header
         required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardPageVisitCreate'
       responses:
         '204':
           description: Successful Response
@@ -1989,8 +2002,8 @@ paths:
       - Tenants
       summary: List tenants
       description: List all tenants. Soft-deleted tenants are excluded by default.
-        Optional search matches name, slug, and description (case-insensitive substring).
-        Use archived_only for archived tenants only.
+        Use ``archived_only=true`` for archived tenants only; optional ``search``
+        filters by case-insensitive substring on name, slug, and description.
       operationId: list_tenants_v1_tenants_get
       parameters:
       - name: include_deleted
@@ -2007,18 +2020,21 @@ paths:
         required: false
         schema:
           type: boolean
-          description: Return only archived (soft-deleted) tenants
+          description: When true, return only archived (soft-deleted) tenants.
           default: false
           title: Archived Only
-        description: Return only archived (soft-deleted) tenants
+        description: When true, return only archived (soft-deleted) tenants.
       - name: search
         in: query
         required: false
         schema:
-          type: string
-          maxLength: 200
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          description: Case-insensitive substring match on name, slug, and description.
           title: Search
-        description: Case-insensitive substring on name, slug, and description
+        description: Case-insensitive substring match on name, slug, and description.
       responses:
         '200':
           description: Successful Response
@@ -2085,8 +2101,7 @@ paths:
       - Tenants
       summary: List current user's tenants
       description: List tenants the authenticated user is a member of (requires JWT).
-        Returns full tenant details. Soft-deleted tenants are excluded unless include_archived
-        is true.
+        Returns full tenant details. Soft-deleted tenants are excluded unless ``include_archived=true``.
       operationId: list_my_tenants_v1_tenants_me_get
       parameters:
       - name: include_archived
@@ -2094,10 +2109,12 @@ paths:
         required: false
         schema:
           type: boolean
-          description: Include soft-deleted tenants where membership still exists
+          description: Include tenants that are soft-deleted (archived) but still
+            have membership rows.
           default: false
           title: Include Archived
-        description: Include soft-deleted tenants where membership still exists
+        description: Include tenants that are soft-deleted (archived) but still have
+          membership rows.
       - name: authorization
         in: header
         required: false
@@ -2260,7 +2277,7 @@ paths:
       tags:
       - Tenants
       summary: Restore archived tenant
-      description: Clear soft-delete (deleted_at) and re-enable the tenant. **Admin
+      description: Clear soft-delete (``deleted_at``) and re-enable the tenant. **Admin
         only** (JWT platform administrators).
       operationId: restore_tenant_v1_tenants__tenant_id__restore_post
       parameters:
@@ -2304,8 +2321,9 @@ paths:
       tags:
       - Tenants
       summary: Tenant activity summary
-      description: Project, member, and version counts plus optional dashboard page
-        visit counts (last 7 days). Requires tenant membership or platform admin.
+      description: Return project, member, and schema version counts for the tenant,
+        plus an optional count of dashboard page visits in the last 7 days when the
+        audit table exists. Requires tenant membership or platform admin.
       operationId: get_tenant_activity_summary_v1_tenants__tenant_id__activity_summary_get
       parameters:
       - name: tenant_id
@@ -2348,8 +2366,9 @@ paths:
       tags:
       - Tenants
       summary: Update tenant appearance
-      description: Merge branding and default UI theme into tenant metadata. Tenant
-        administrators or platform admins. Send JSON null for a field to clear it.
+      description: Merge branding (logo, favicon, primary color) and default UI theme
+        into ``metadata``. Send JSON ``null`` for a field to clear it. **Tenant administrators**
+        or **platform admins**.
       operationId: update_tenant_appearance_v1_tenants__tenant_id__appearance_put
       parameters:
       - name: tenant_id
@@ -2398,7 +2417,8 @@ paths:
       tags:
       - Tenants
       summary: List tenant members
-      description: List all active members (tenant_account rows) for a tenant.
+      description: List all active memberships for a tenant. Use ``include_roles=true``
+        to load tenant-scoped workspace roles per member.
       operationId: list_tenant_members_v1_tenants__tenant_id__members_get
       parameters:
       - name: tenant_id
@@ -2407,6 +2427,15 @@ paths:
         schema:
           type: string
           title: Tenant Id
+      - name: include_roles
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include workspace (RBAC) roles for each account.
+          default: false
+          title: Include Roles
+        description: Include workspace (RBAC) roles for each account.
       responses:
         '200':
           description: Successful Response
@@ -2415,7 +2444,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/TenantAccountSchema'
+                  $ref: '#/components/schemas/TenantMemberListEntrySchema'
                 title: Response List Tenant Members V1 Tenants  Tenant Id  Members
                   Get
         '422':
@@ -2467,7 +2496,200 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TenantAccountSchema'
+                $ref: '#/components/schemas/TenantMemberListEntrySchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/members/invitations:
+    get:
+      tags:
+      - Tenants
+      summary: List pending member invitations
+      description: Pending email invitations to join the tenant as a member. **Admin
+        only.**
+      operationId: list_tenant_member_invitations_v1_tenants__tenant_id__members_invitations_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TenantMemberInvitationSchema'
+                title: Response List Tenant Member Invitations V1 Tenants  Tenant
+                  Id  Members Invitations Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/members/invite-email:
+    post:
+      tags:
+      - Tenants
+      summary: Invite member by email
+      description: If an account exists for the email, adds tenant membership (member)
+        and optional workspace role. Otherwise creates a pending invitation until
+        the user registers. **Admin only.**
+      operationId: invite_tenant_member_by_email_v1_tenants__tenant_id__members_invite_email_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantMemberInvitationCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantMemberInviteOutcome'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/members/invitations/{invitation_id}/resend:
+    post:
+      tags:
+      - Tenants
+      summary: Resend member invitation
+      description: Updates ``last_sent_at`` for a pending invitation. **Admin only.**
+      operationId: resend_tenant_member_invitation_v1_tenants__tenant_id__members_invitations__invitation_id__resend_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: invitation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Invitation Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantMemberInvitationSchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/members/invitations/{invitation_id}:
+    delete:
+      tags:
+      - Tenants
+      summary: Cancel member invitation
+      description: Cancel a pending invitation. **Admin only.**
+      operationId: cancel_tenant_member_invitation_v1_tenants__tenant_id__members_invitations__invitation_id__delete
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: invitation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Invitation Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -2480,7 +2702,11 @@ paths:
       - Tenants
       summary: Bulk invite tenant members by email
       description: Resolve each email to an active account and add or promote membership.
-        **Admin only.**
+        ``access_level`` ``member`` adds members; ``administrator`` adds or promotes
+        to administrator. Emails not matching an account return ``not_found`` unless
+        ``invite_unknown_emails`` is true (member only), which creates a ``pending_invitation``.
+        Optional ``member_role_id`` assigns a tenant workspace role for new member
+        rows. **Admin only.**
       operationId: bulk_invite_tenant_members_v1_tenants__tenant_id__members_bulk_invite_post
       parameters:
       - name: tenant_id
@@ -2518,6 +2744,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TenantMembersBulkInviteResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/members/bulk-remove:
+    post:
+      tags:
+      - Tenants
+      summary: Bulk remove tenant members
+      description: Soft-delete tenant memberships for the given account IDs. Missing
+        IDs are ignored. **Admin only.**
+      operationId: bulk_remove_tenant_members_v1_tenants__tenant_id__members_bulk_remove_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantMembersBulkRemove'
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -2573,8 +2845,9 @@ paths:
       tags:
       - Tenants
       summary: Update tenant member
-      description: Update the access level or enabled status of a tenant member. **Admin
-        only.**
+      description: Update access level, enabled flag, and/or tenant-scoped workspace
+        role assignments. Send ``member_role_id`` as null to clear explicit roles
+        (viewer baseline). **Admin only.**
       operationId: update_tenant_member_v1_tenants__tenant_id__members__account_id__put
       parameters:
       - name: tenant_id
@@ -2617,7 +2890,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TenantAccountSchema'
+                $ref: '#/components/schemas/TenantMemberListEntrySchema'
         '422':
           description: Validation Error
           content:
@@ -4907,9 +5180,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SchemaPromotionRequest'
-              default:
-                metadata: {}
+              anyOf:
+              - $ref: '#/components/schemas/SchemaPromotionRequest'
+              - type: 'null'
+              title: Payload
       responses:
         '200':
           description: Successful Response
@@ -6451,6 +6725,39 @@ components:
         always created with ``verified=False`` and ``enabled=True`` on the server
 
         side to prevent callers from self-verifying or disabling their account.'
+    AccountLifecycleEventSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        account_id:
+          type: string
+          title: Account Id
+        event_type:
+          type: string
+          title: Event Type
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        actor_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - account_id
+      - event_type
+      - created_at
+      title: AccountLifecycleEventSchema
+      description: One row from objectified.account_lifecycle_event.
     AccountRoleAssignmentCreate:
       properties:
         account_id:
@@ -6547,148 +6854,7 @@ components:
       - email
       - created_at
       title: AccountSchema
-      description: 'Response schema for objectified.account. Clients may store UI preferences
-        under ``metadata.ui`` (e.g. ``theme``, ``highContrast``; see PATCH /me).'
-    AccountLifecycleEventSchema:
-      properties:
-        id:
-          type: string
-          title: Id
-        account_id:
-          type: string
-          title: Account Id
-        event_type:
-          type: string
-          title: Event Type
-        reason:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Reason
-        actor_id:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Actor Id
-        created_at:
-          type: string
-          format: date-time
-          title: Created At
-      type: object
-      required:
-      - id
-      - account_id
-      - event_type
-      - created_at
-      title: AccountLifecycleEventSchema
-    UserMembershipRoleSchema:
-      properties:
-        role_id:
-          type: string
-          title: Role Id
-        key:
-          type: string
-          title: Key
-        name:
-          type: string
-          title: Name
-      type: object
-      required:
-      - role_id
-      - key
-      - name
-      title: UserMembershipRoleSchema
-    UserTenantMembershipAdminSchema:
-      properties:
-        tenant_id:
-          type: string
-          title: Tenant Id
-        tenant_name:
-          type: string
-          title: Tenant Name
-        access_level:
-          $ref: '#/components/schemas/TenantAccessLevel'
-        membership_enabled:
-          type: boolean
-          title: Membership Enabled
-          description: Whether the tenant_account row is enabled (distinct from account.enabled).
-        roles:
-          type: array
-          items:
-            $ref: '#/components/schemas/UserMembershipRoleSchema'
-          title: Roles
-      type: object
-      required:
-      - tenant_id
-      - tenant_name
-      - access_level
-      - membership_enabled
-      title: UserTenantMembershipAdminSchema
-    UserDeactivateBody:
-      properties:
-        reason:
-          anyOf:
-          - type: string
-            maxLength: 2000
-          - type: 'null'
-          title: Reason
-      type: object
-      title: UserDeactivateBody
-    TenantBulkInviteResultEntry:
-      properties:
-        email:
-          type: string
-          title: Email
-        status:
-          type: string
-          enum:
-          - added
-          - promoted
-          - already_member
-          - not_found
-          - invalid_email
-          title: Status
-        account_id:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Account Id
-      type: object
-      required:
-      - email
-      - status
-      title: TenantBulkInviteResultEntry
-    TenantMembersBulkInvite:
-      properties:
-        emails:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          maxItems: 100
-          title: Emails
-        access_level:
-          type: string
-          enum:
-          - member
-          - administrator
-          default: member
-          title: Access Level
-      type: object
-      required:
-      - emails
-      title: TenantMembersBulkInvite
-    TenantMembersBulkInviteResponse:
-      properties:
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/TenantBulkInviteResultEntry'
-          title: Results
-      type: object
-      required:
-      - results
-      title: TenantMembersBulkInviteResponse
+      description: Response schema for objectified.account.
     AccountUpdate:
       properties:
         name:
@@ -7486,6 +7652,25 @@ components:
       title: ConflictResolutionChoice
       description: 'A single conflict resolution: path and choice of ours, theirs,
         or custom value.'
+    DashboardPageVisitCreate:
+      properties:
+        route:
+          type: string
+          maxLength: 2048
+          title: Route
+          description: Path-only route (e.g. /dashboard/projects/…/versions/…).
+        tenant_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Tenant Id
+          description: Active tenant context when the page was viewed, if applicable.
+      type: object
+      required:
+      - route
+      title: DashboardPageVisitCreate
+      description: Client-reported dashboard route view for compliance audit.
     EffectivePermissionsResponse:
       properties:
         tenant_id:
@@ -7730,28 +7915,7 @@ components:
           title: Metadata
       type: object
       title: ProfileUpdate
-      description: 'Update payload for current user profile (name and metadata only).
-        When sending ``metadata``, include a full merge of existing keys; optional
-        ``metadata.ui`` supports ``theme`` and ``highContrast`` (GitHub #187).'
-    DashboardPageVisitCreate:
-      properties:
-        route:
-          type: string
-          title: Route
-          description: Path-only route (e.g. /dashboard/projects/{id}/versions/{id})
-          maxLength: 2048
-        tenant_id:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
-          title: Tenant Id
-          description: Active tenant when the view occurred, if any
-      type: object
-      required:
-      - route
-      title: DashboardPageVisitCreate
-      description: Payload for optional dashboard navigation audit (GitHub #188).
+      description: Update payload for current user profile (name and metadata only).
     ProjectCreate:
       properties:
         tenant_id:
@@ -8705,6 +8869,13 @@ components:
           type: boolean
           title: Enabled
           default: true
+        member_role_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Member Role Id
+          description: Optional tenant role UUID to assign after adding a member (viewer
+            baseline applies when omitted).
       type: object
       title: TenantAccountCreate
       description: 'Create payload for objectified.tenant_account.
@@ -8770,9 +8941,47 @@ components:
           - type: boolean
           - type: 'null'
           title: Enabled
+        member_role_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Member Role Id
+          description: 'When set (including explicit null in JSON), replaces tenant-scoped
+            role assignments: null clears explicit roles (viewer baseline only).'
       type: object
       title: TenantAccountUpdate
       description: Update payload for objectified.tenant_account.
+    TenantActivitySummarySchema:
+      properties:
+        active_project_count:
+          type: integer
+          minimum: 0.0
+          title: Active Project Count
+          description: Non-deleted projects for this tenant.
+        active_member_count:
+          type: integer
+          minimum: 0.0
+          title: Active Member Count
+          description: Active tenant_account memberships.
+        schema_version_count:
+          type: integer
+          minimum: 0.0
+          title: Schema Version Count
+          description: Non-deleted schema versions across all projects in the tenant.
+        dashboard_page_visits_last_7_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Dashboard Page Visits Last 7 Days
+          description: Optional count from dashboard_page_visit when the table is
+            available.
+      type: object
+      required:
+      - active_project_count
+      - active_member_count
+      - schema_version_count
+      title: TenantActivitySummarySchema
+      description: 'Aggregated counts for dashboard tenant overview (GitHub #192).'
     TenantAdministratorCreate:
       properties:
         tenant_id:
@@ -8812,6 +9021,68 @@ components:
         ``tenant_id`` is optional in the body — it is validated against the path
 
         parameter in the route handler.'
+    TenantAppearanceUpdate:
+      properties:
+        logo_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Logo Url
+          description: HTTPS (or HTTP) logo URL; stored as metadata.branding.logoUrl.
+            Omit to leave unchanged.
+        favicon_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Favicon Url
+          description: HTTPS (or HTTP) favicon URL; stored as metadata.branding.faviconUrl.
+        primary_color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Color
+          description: 'Hex color (#RGB / #RRGGBB / #RRGGBBAA); stored as metadata.branding.primaryColor.'
+        default_theme:
+          anyOf:
+          - type: string
+            enum:
+            - light
+            - dark
+            - system
+          - type: 'null'
+          title: Default Theme
+          description: Default dashboard theme for this tenant; stored as metadata.defaultTheme.
+      type: object
+      title: TenantAppearanceUpdate
+      description: Partial update for tenant branding and default UI theme (merged
+        into metadata).
+    TenantBulkInviteResultEntry:
+      properties:
+        email:
+          type: string
+          title: Email
+        status:
+          type: string
+          enum:
+          - added
+          - promoted
+          - already_member
+          - not_found
+          - invalid_email
+          - pending_invitation
+          - already_invited
+          title: Status
+        account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Account Id
+      type: object
+      required:
+      - email
+      - status
+      title: TenantBulkInviteResultEntry
+      description: Per-email outcome for bulk tenant invite.
     TenantCreate:
       properties:
         name:
@@ -8842,6 +9113,233 @@ components:
       - slug
       title: TenantCreate
       description: Create payload for objectified.tenant.
+    TenantMemberInvitationCreate:
+      properties:
+        email:
+          type: string
+          title: Email
+        member_role_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Member Role Id
+          description: Tenant role UUID; omitted means viewer baseline only after
+            join.
+      type: object
+      required:
+      - email
+      title: TenantMemberInvitationCreate
+      description: Create a pending invitation or immediately add an existing account.
+    TenantMemberInvitationSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        email:
+          type: string
+          title: Email
+        role_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Role Id
+        role_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Role Key
+        role_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Role Name
+        status:
+          $ref: '#/components/schemas/TenantMemberInvitationStatus'
+        invited_by_account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Invited By Account Id
+        last_sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Sent At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+      type: object
+      required:
+      - id
+      - tenant_id
+      - email
+      - status
+      - created_at
+      title: TenantMemberInvitationSchema
+      description: Pending or historical email invitation to join a tenant as a member.
+    TenantMemberInvitationStatus:
+      type: string
+      enum:
+      - pending
+      - accepted
+      - cancelled
+      title: TenantMemberInvitationStatus
+      description: Invitation lifecycle for objectified.tenant_member_invitation.status.
+    TenantMemberInviteOutcome:
+      properties:
+        kind:
+          type: string
+          enum:
+          - member
+          - pending_invitation
+          title: Kind
+        member:
+          anyOf:
+          - $ref: '#/components/schemas/TenantMemberListEntrySchema'
+          - type: 'null'
+        invitation:
+          anyOf:
+          - $ref: '#/components/schemas/TenantMemberInvitationSchema'
+          - type: 'null'
+      type: object
+      required:
+      - kind
+      title: TenantMemberInviteOutcome
+      description: Result of POST .../members/invite-email (member added vs pending
+        invitation).
+    TenantMemberListEntrySchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        account_id:
+          type: string
+          title: Account Id
+        access_level:
+          $ref: '#/components/schemas/TenantAccessLevel'
+          default: member
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        deleted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deleted At
+        roles:
+          items:
+            $ref: '#/components/schemas/TenantMemberRoleSchema'
+          type: array
+          title: Roles
+      type: object
+      required:
+      - id
+      - tenant_id
+      - account_id
+      - created_at
+      title: TenantMemberListEntrySchema
+      description: Tenant member row with optional workspace roles (tenant-scoped
+        assignments).
+    TenantMemberRoleSchema:
+      properties:
+        role_id:
+          type: string
+          title: Role Id
+        key:
+          type: string
+          title: Key
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - role_id
+      - key
+      - name
+      title: TenantMemberRoleSchema
+      description: Workspace RBAC role assigned at tenant scope (no resource filter).
+    TenantMembersBulkInvite:
+      properties:
+        emails:
+          items:
+            type: string
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Emails
+        access_level:
+          $ref: '#/components/schemas/TenantAccessLevel'
+          default: member
+        member_role_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Member Role Id
+          description: Optional workspace role UUID to assign for new or existing
+            members.
+        invite_unknown_emails:
+          type: boolean
+          title: Invite Unknown Emails
+          description: When true and access_level is member, emails with no account
+            create a pending invitation instead of not_found.
+          default: false
+      type: object
+      required:
+      - emails
+      title: TenantMembersBulkInvite
+      description: Request body for POST .../members/bulk-invite.
+    TenantMembersBulkInviteResponse:
+      properties:
+        results:
+          items:
+            $ref: '#/components/schemas/TenantBulkInviteResultEntry'
+          type: array
+          title: Results
+      type: object
+      required:
+      - results
+      title: TenantMembersBulkInviteResponse
+      description: Response for POST .../members/bulk-invite.
+    TenantMembersBulkRemove:
+      properties:
+        account_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 200
+          minItems: 1
+          title: Account Ids
+      type: object
+      required:
+      - account_ids
+      title: TenantMembersBulkRemove
+      description: Request body for POST .../members/bulk-remove.
     TenantSchema:
       properties:
         id:
@@ -8864,10 +9362,6 @@ components:
           additionalProperties: true
           type: object
           title: Metadata
-          description: 'Optional ``metadata.branding`` for the dashboard: ``logoUrl``,
-            ``faviconUrl`` (http/https), ``primaryColor`` (``#RGB`` / ``#RRGGBB`` / ``#RRGGBBAA``)
-            (GitHub #187). Optional ``metadata.defaultTheme``: ``light``, ``dark``, or ``system``
-            (GitHub #192).'
         rate_limit_requests_per_minute:
           anyOf:
           - type: integer
@@ -8912,71 +9406,6 @@ components:
       - created_at
       title: TenantSchema
       description: Response schema for objectified.tenant.
-    TenantActivitySummarySchema:
-      properties:
-        active_project_count:
-          type: integer
-          minimum: 0.0
-          title: Active Project Count
-          description: Non-deleted projects for this tenant.
-        active_member_count:
-          type: integer
-          minimum: 0.0
-          title: Active Member Count
-          description: Active tenant_account memberships.
-        schema_version_count:
-          type: integer
-          minimum: 0.0
-          title: Schema Version Count
-          description: Non-deleted schema versions across projects in the tenant.
-        dashboard_page_visits_last_7_days:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: Dashboard Page Visits Last 7 Days
-          description: Optional count from dashboard_page_visit when available.
-      type: object
-      required:
-      - active_project_count
-      - active_member_count
-      - schema_version_count
-      title: TenantActivitySummarySchema
-      description: Aggregated counts for dashboard tenant overview (GitHub #192).
-    TenantAppearanceUpdate:
-      properties:
-        logo_url:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Logo Url
-          description: HTTPS (or HTTP) logo URL; stored as metadata.branding.logoUrl.
-        favicon_url:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Favicon Url
-          description: HTTPS (or HTTP) favicon URL; stored as metadata.branding.faviconUrl.
-        primary_color:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Primary Color
-          description: Hex color; stored as metadata.branding.primaryColor.
-        default_theme:
-          anyOf:
-          - type: string
-            enum:
-            - light
-            - dark
-            - system
-          - type: 'null'
-          title: Default Theme
-          description: Stored as metadata.defaultTheme.
-      type: object
-      title: TenantAppearanceUpdate
-      description: Partial update for tenant branding and default UI theme (GitHub
-        #192).
     TenantUpdate:
       properties:
         name:
@@ -9036,6 +9465,80 @@ components:
       type: object
       title: TenantUpdate
       description: Update payload for objectified.tenant.
+    UserDeactivateBody:
+      properties:
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+      type: object
+      title: UserDeactivateBody
+      description: Optional JSON body for DELETE /v1/users/{user_id} (deactivate).
+    UserListSort:
+      type: string
+      enum:
+      - created_at_asc
+      - created_at_desc
+      - last_login_at_asc
+      - last_login_at_desc
+      title: UserListSort
+      description: Sort order for GET /v1/users.
+    UserListStatus:
+      type: string
+      enum:
+      - active
+      - disabled
+      - deactivated
+      title: UserListStatus
+      description: Filter for GET /v1/users (admin list).
+    UserMembershipRoleSchema:
+      properties:
+        role_id:
+          type: string
+          title: Role Id
+        key:
+          type: string
+          title: Key
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - role_id
+      - key
+      - name
+      title: UserMembershipRoleSchema
+      description: One RBAC role assigned to the user within a tenant.
+    UserTenantMembershipAdminSchema:
+      properties:
+        tenant_id:
+          type: string
+          title: Tenant Id
+        tenant_name:
+          type: string
+          title: Tenant Name
+        access_level:
+          $ref: '#/components/schemas/TenantAccessLevel'
+        membership_enabled:
+          type: boolean
+          title: Membership Enabled
+          description: Whether the tenant_account row is enabled (distinct from account.enabled).
+        roles:
+          items:
+            $ref: '#/components/schemas/UserMembershipRoleSchema'
+          type: array
+          title: Roles
+      type: object
+      required:
+      - tenant_id
+      - tenant_name
+      - access_level
+      - membership_enabled
+      title: UserTenantMembershipAdminSchema
+      description: Tenant membership for an account, including access level and assigned
+        roles.
     ValidationError:
       properties:
         loc:

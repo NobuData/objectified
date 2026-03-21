@@ -1,6 +1,6 @@
 {
   "name": "objectified-ui",
-  "version": "0.10.127",
+  "version": "0.10.128",
   "private": true,
   "scripts": {
     "dev": "rm -rf .next && next dev",

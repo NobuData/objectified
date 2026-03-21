@@ -20,17 +20,25 @@ jest.mock('next/navigation', () => ({
 const mockGetTenant = jest.fn();
 const mockListTenantMembers = jest.fn();
 const mockListUsers = jest.fn();
+const mockListTenantMemberInvitations = jest.fn();
+const mockListTenantRbacRoles = jest.fn();
 const mockAddTenantMember = jest.fn();
 const mockAddTenantAdministrator = jest.fn();
+const mockInviteTenantMemberByEmail = jest.fn();
 
 jest.mock('@lib/api/rest-client', () => ({
   getTenant: (...args: unknown[]) => mockGetTenant(...args),
   listTenantMembers: (...args: unknown[]) => mockListTenantMembers(...args),
   addTenantMember: (...args: unknown[]) => mockAddTenantMember(...args),
   addTenantAdministrator: (...args: unknown[]) => mockAddTenantAdministrator(...args),
+  inviteTenantMemberByEmail: (...args: unknown[]) =>
+    mockInviteTenantMemberByEmail(...args),
   removeTenantMember: jest.fn(),
   updateTenantMember: jest.fn(),
   listUsers: (...args: unknown[]) => mockListUsers(...args),
+  listTenantMemberInvitations: (...args: unknown[]) =>
+    mockListTenantMemberInvitations(...args),
+  listTenantRbacRoles: (...args: unknown[]) => mockListTenantRbacRoles(...args),
   getRestClientOptions: jest.fn(() => ({})),
 }));
 
@@ -55,8 +63,11 @@ describe('TenantMembersPage', () => {
     });
     mockListTenantMembers.mockResolvedValue([]);
     mockListUsers.mockResolvedValue([]);
+    mockListTenantMemberInvitations.mockResolvedValue([]);
+    mockListTenantRbacRoles.mockResolvedValue([]);
     mockAddTenantMember.mockReset();
     mockAddTenantAdministrator.mockReset();
+    mockInviteTenantMemberByEmail.mockReset();
   });
 
   it('renders members heading with tenant name', async () => {
@@ -154,7 +165,7 @@ describe('TenantMembersPage', () => {
     render(<TenantMembersPage />);
     const addBtn = await screen.findByRole('button', { name: /add member/i });
     await user.click(addBtn);
-    const roleSelect = await screen.findByRole('combobox', { name: /role/i });
+    const roleSelect = await screen.findByRole('combobox', { name: /access/i });
     await user.selectOptions(roleSelect, 'administrator');
     const accountIdInput = screen.getByPlaceholderText(/uuid/i);
     await user.type(accountIdInput, 'new-admin-id');

@@ -781,7 +781,7 @@ export async function getTenant(
   includeDeleted = false
 ): Promise<TenantSchema> {
   const q = includeDeleted ? '?include_deleted=true' : '';
-  return request<TenantSchema>('GET', `/tenants/${tenantId}${q}`, undefined, options);
+  return request<TenantSchema>('GET', `/tenants/${encodeURIComponent(tenantId)}${q}`, undefined, options);
 }
 
 export async function createTenant(
@@ -796,14 +796,14 @@ export async function updateTenant(
   body: TenantUpdate,
   options: RestClientOptions = {}
 ): Promise<TenantSchema> {
-  return request<TenantSchema>('PUT', `/tenants/${tenantId}`, body, options);
+  return request<TenantSchema>('PUT', `/tenants/${encodeURIComponent(tenantId)}`, body, options);
 }
 
 export async function deleteTenant(
   tenantId: string,
   options: RestClientOptions = {}
 ): Promise<void> {
-  return request<void>('DELETE', `/tenants/${tenantId}`, undefined, options);
+  return request<void>('DELETE', `/tenants/${encodeURIComponent(tenantId)}`, undefined, options);
 }
 
 export async function restoreTenant(
@@ -849,6 +849,12 @@ export async function updateTenantAppearance(
 
 export type TenantAccessLevel = 'member' | 'administrator';
 
+export interface TenantMemberRoleSchema {
+  role_id: string;
+  key: string;
+  name: string;
+}
+
 export interface TenantAccountSchema {
   id: string;
   tenant_id: string;
@@ -858,6 +864,8 @@ export interface TenantAccountSchema {
   created_at: string;
   updated_at: string | null;
   deleted_at?: string | null;
+  /** Present on GET /tenants/{id}/members when include_roles is used. */
+  roles?: TenantMemberRoleSchema[];
 }
 
 export interface TenantAccountCreate {
@@ -866,20 +874,24 @@ export interface TenantAccountCreate {
   email?: string | null;
   access_level?: TenantAccessLevel;
   enabled?: boolean;
+  member_role_id?: string | null;
 }
 
 export interface TenantAccountUpdate {
   access_level?: TenantAccessLevel | null;
   enabled?: boolean | null;
+  member_role_id?: string | null;
 }
 
 export async function listTenantMembers(
   tenantId: string,
-  options: RestClientOptions = {}
+  options: RestClientOptions = {},
+  includeRoles = true
 ): Promise<TenantAccountSchema[]> {
+  const q = includeRoles ? '?include_roles=true' : '';
   return request<TenantAccountSchema[]>(
     'GET',
-    `/tenants/${tenantId}/members`,
+    `/tenants/${encodeURIComponent(tenantId)}/members${q}`,
     undefined,
     options
   );
@@ -892,8 +904,110 @@ export async function addTenantMember(
 ): Promise<TenantAccountSchema> {
   return request<TenantAccountSchema>(
     'POST',
-    `/tenants/${tenantId}/members`,
+    `/tenants/${encodeURIComponent(tenantId)}/members`,
     { ...body, tenant_id: tenantId },
+    options
+  );
+}
+
+export type TenantMemberInvitationStatus = 'pending' | 'accepted' | 'cancelled';
+
+export interface TenantMemberInvitationSchema {
+  id: string;
+  tenant_id: string;
+  email: string;
+  role_id?: string | null;
+  role_key?: string | null;
+  role_name?: string | null;
+  status: TenantMemberInvitationStatus;
+  invited_by_account_id?: string | null;
+  last_sent_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface TenantMemberInvitationCreate {
+  email: string;
+  member_role_id?: string | null;
+}
+
+export type TenantMemberInviteOutcomeKind = 'member' | 'pending_invitation';
+
+export interface TenantMemberInviteOutcome {
+  kind: TenantMemberInviteOutcomeKind;
+  member?: TenantAccountSchema | null;
+  invitation?: TenantMemberInvitationSchema | null;
+}
+
+export async function listTenantMemberInvitations(
+  tenantId: string,
+  options: RestClientOptions = {}
+): Promise<TenantMemberInvitationSchema[]> {
+  return request<TenantMemberInvitationSchema[]>(
+    'GET',
+    `/tenants/${encodeURIComponent(tenantId)}/members/invitations`,
+    undefined,
+    options
+  );
+}
+
+export async function inviteTenantMemberByEmail(
+  tenantId: string,
+  body: TenantMemberInvitationCreate,
+  options: RestClientOptions = {}
+): Promise<TenantMemberInviteOutcome> {
+  return request<TenantMemberInviteOutcome>(
+    'POST',
+    `/tenants/${encodeURIComponent(tenantId)}/members/invite-email`,
+    body,
+    options
+  );
+}
+
+export async function resendTenantMemberInvitation(
+  tenantId: string,
+  invitationId: string,
+  options: RestClientOptions = {}
+): Promise<TenantMemberInvitationSchema> {
+  return request<TenantMemberInvitationSchema>(
+    'POST',
+    `/tenants/${encodeURIComponent(tenantId)}/members/invitations/${encodeURIComponent(invitationId)}/resend`,
+    undefined,
+    options
+  );
+}
+
+export async function cancelTenantMemberInvitation(
+  tenantId: string,
+  invitationId: string,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/tenants/${encodeURIComponent(tenantId)}/members/invitations/${encodeURIComponent(invitationId)}`,
+    undefined,
+    options
+  );
+}
+
+export interface TenantRbacRoleSchema {
+  id: string;
+  tenant_id: string;
+  key: string;
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export async function listTenantRbacRoles(
+  tenantId: string,
+  options: RestClientOptions = {}
+): Promise<TenantRbacRoleSchema[]> {
+  return request<TenantRbacRoleSchema[]>(
+    'GET',
+    `/tenants/${encodeURIComponent(tenantId)}/rbac/roles`,
+    undefined,
     options
   );
 }
@@ -905,13 +1019,17 @@ export interface TenantBulkInviteResultEntry {
     | 'promoted'
     | 'already_member'
     | 'not_found'
-    | 'invalid_email';
+    | 'invalid_email'
+    | 'pending_invitation'
+    | 'already_invited';
   account_id?: string | null;
 }
 
 export interface TenantMembersBulkInvitePayload {
   emails: string[];
   access_level: TenantAccessLevel;
+  member_role_id?: string | null;
+  invite_unknown_emails?: boolean;
 }
 
 export interface TenantMembersBulkInviteResponse {
@@ -925,7 +1043,7 @@ export async function bulkInviteTenantMembers(
 ): Promise<TenantMembersBulkInviteResponse> {
   return request<TenantMembersBulkInviteResponse>(
     'POST',
-    `/tenants/${tenantId}/members/bulk-invite`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/bulk-invite`,
     body,
     options
   );
@@ -938,8 +1056,25 @@ export async function removeTenantMember(
 ): Promise<void> {
   return request<void>(
     'DELETE',
-    `/tenants/${tenantId}/members/${encodeURIComponent(accountId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(accountId)}`,
     undefined,
+    options
+  );
+}
+
+export interface TenantMembersBulkRemovePayload {
+  account_ids: string[];
+}
+
+export async function bulkRemoveTenantMembers(
+  tenantId: string,
+  body: TenantMembersBulkRemovePayload,
+  options: RestClientOptions = {}
+): Promise<void> {
+  return request<void>(
+    'POST',
+    `/tenants/${encodeURIComponent(tenantId)}/members/bulk-remove`,
+    body,
     options
   );
 }
@@ -952,7 +1087,7 @@ export async function updateTenantMember(
 ): Promise<TenantAccountSchema> {
   return request<TenantAccountSchema>(
     'PUT',
-    `/tenants/${tenantId}/members/${encodeURIComponent(accountId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(accountId)}`,
     body,
     options
   );
@@ -975,7 +1110,7 @@ export async function listTenantAdministrators(
 ): Promise<TenantAccountSchema[]> {
   return request<TenantAccountSchema[]>(
     'GET',
-    `/tenants/${tenantId}/administrators`,
+    `/tenants/${encodeURIComponent(tenantId)}/administrators`,
     undefined,
     options
   );
@@ -988,7 +1123,7 @@ export async function addTenantAdministrator(
 ): Promise<TenantAccountSchema> {
   return request<TenantAccountSchema>(
     'POST',
-    `/tenants/${tenantId}/administrators`,
+    `/tenants/${encodeURIComponent(tenantId)}/administrators`,
     { ...body, tenant_id: tenantId },
     options
   );
@@ -1001,7 +1136,7 @@ export async function removeTenantAdministrator(
 ): Promise<void> {
   return request<void>(
     'DELETE',
-    `/tenants/${tenantId}/administrators/${encodeURIComponent(accountId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/administrators/${encodeURIComponent(accountId)}`,
     undefined,
     options
   );
@@ -1053,7 +1188,7 @@ export async function listTenantSsoProviders(
   const q = includeDeleted ? '?include_deleted=true' : '';
   return request<SsoProviderSchema[]>(
     'GET',
-    `/tenants/${tenantId}/sso/providers${q}`,
+    `/tenants/${encodeURIComponent(tenantId)}/sso/providers${q}`,
     undefined,
     options
   );
@@ -1066,7 +1201,7 @@ export async function createTenantSsoProvider(
 ): Promise<SsoProviderSchema> {
   return request<SsoProviderSchema>(
     'POST',
-    `/tenants/${tenantId}/sso/providers`,
+    `/tenants/${encodeURIComponent(tenantId)}/sso/providers`,
     { ...body, tenant_id: tenantId },
     options
   );
@@ -1080,7 +1215,7 @@ export async function updateTenantSsoProvider(
 ): Promise<SsoProviderSchema> {
   return request<SsoProviderSchema>(
     'PUT',
-    `/tenants/${tenantId}/sso/providers/${encodeURIComponent(providerId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/sso/providers/${encodeURIComponent(providerId)}`,
     body,
     options
   );
@@ -1093,7 +1228,7 @@ export async function deleteTenantSsoProvider(
 ): Promise<void> {
   return request<void>(
     'DELETE',
-    `/tenants/${tenantId}/sso/providers/${encodeURIComponent(providerId)}`,
+    `/tenants/${encodeURIComponent(tenantId)}/sso/providers/${encodeURIComponent(providerId)}`,
     undefined,
     options
   );
