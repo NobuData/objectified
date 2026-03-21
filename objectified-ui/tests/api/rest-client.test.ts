@@ -24,6 +24,8 @@ import {
   createUser,
   updateUser,
   deactivateUser,
+  listUserLifecycleEvents,
+  bulkInviteTenantMembers,
   listProjects,
   listVersions,
   listVersionSnapshots,
@@ -895,6 +897,83 @@ describe('deactivateUser', () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       reason: 'Left org',
     });
+  });
+});
+
+describe('listUserLifecycleEvents', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('fetches lifecycle events for a user', async () => {
+    const events = [
+      {
+        id: 'evt-1',
+        account_id: 'u1',
+        event_type: 'deactivated',
+        reason: 'Left the org',
+        actor_id: 'admin-1',
+        created_at: '2024-06-01T12:00:00Z',
+      },
+    ];
+    mockFetch.mockResolvedValue(makeFetchResponse(events));
+    const result = await listUserLifecycleEvents('u1', {});
+    expect(result).toEqual(events);
+  });
+
+  it('uses the correct URL with encoded user id', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listUserLifecycleEvents('user/with-slash', {});
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/users/user%2Fwith-slash/lifecycle-events`);
+  });
+
+  it('uses GET method', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse([]));
+    await listUserLifecycleEvents('u1', {});
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).method).toBe('GET');
+  });
+});
+
+describe('bulkInviteTenantMembers', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('POSTs to the correct bulk-invite path', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse({ results: [] }));
+    await bulkInviteTenantMembers('t1', { emails: [], access_level: 'member' }, {});
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/members/bulk-invite`);
+    expect((init as RequestInit).method).toBe('POST');
+  });
+
+  it('sends emails and access_level in the request body', async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse({ results: [] }));
+    const payload = { emails: ['alice@example.com', 'bob@example.com'], access_level: 'administrator' as const };
+    await bulkInviteTenantMembers('t1', payload, {});
+    const [, init] = mockFetch.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual(payload);
+  });
+
+  it('returns parsed results array', async () => {
+    const response = {
+      results: [
+        { email: 'alice@example.com', status: 'added', account_id: 'a1' },
+        { email: 'bob@example.com', status: 'not_found' },
+      ],
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(response));
+    const result = await bulkInviteTenantMembers('t1', { emails: ['alice@example.com', 'bob@example.com'], access_level: 'member' }, {});
+    expect(result).toEqual(response);
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0].status).toBe('added');
+    expect(result.results[1].status).toBe('not_found');
   });
 });
 

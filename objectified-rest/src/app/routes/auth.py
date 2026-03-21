@@ -65,15 +65,20 @@ def login(payload: LoginRequest) -> LoginResponse:
     if not account.get("enabled"):
         raise HTTPException(status_code=403, detail="Account is disabled")
 
-    db.execute_mutation(
-        """
-        UPDATE objectified.account
-        SET last_login_at = timezone('utc', clock_timestamp())
-        WHERE id = %s AND deleted_at IS NULL
-        """,
-        (str(account["id"]),),
-        returning=False,
-    )
+    try:
+        db.execute_mutation(
+            """
+            UPDATE objectified.account
+            SET last_login_at = timezone('utc', clock_timestamp())
+            WHERE id = %s AND deleted_at IS NULL
+            """,
+            (str(account["id"]),),
+            returning=False,
+        )
+    except Exception:
+        logger.exception(
+            "login: failed to update last_login_at for account %s", account["id"]
+        )
 
     now = datetime.datetime.now(datetime.timezone.utc)
     exp = now + datetime.timedelta(seconds=_JWT_EXPIRY_SECONDS)

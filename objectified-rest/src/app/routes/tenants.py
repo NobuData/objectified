@@ -366,34 +366,53 @@ def bulk_invite_tenant_members(
 
     results: list[TenantBulkInviteResultEntry] = []
 
+    # Separate invalid emails upfront so they don't pollute the bulk queries.
+    valid_emails: list[str] = []
     for email in ordered:
         if not _email_shape_ok(email):
             results.append(TenantBulkInviteResultEntry(email=email, status="invalid_email"))
-            continue
+        else:
+            valid_emails.append(email)
 
-        acc_rows = db.execute_query(
+    if not valid_emails:
+        return TenantMembersBulkInviteResponse(results=results)
+
+    # Bulk-fetch all accounts matching the valid emails in a single query.
+    # Emails in valid_emails are already lowercased (normalised above), but
+    # explicitly lowercase again here to make the intent clear.
+    lower_valid_emails = [e.lower() for e in valid_emails]
+    acc_rows = db.execute_query(
+        """
+        SELECT id, LOWER(email) AS email FROM objectified.account
+        WHERE LOWER(email) = ANY(%s) AND deleted_at IS NULL
+        """,
+        (lower_valid_emails,),
+    )
+    email_to_account_id: dict[str, str] = {r["email"]: str(r["id"]) for r in acc_rows}
+
+    found_account_ids = list(email_to_account_id.values())
+
+    # Bulk-fetch all existing memberships for found accounts in a single query.
+    existing_map: dict[str, str] = {}  # account_id -> access_level
+    if found_account_ids:
+        membership_rows = db.execute_query(
             """
-            SELECT id FROM objectified.account
-            WHERE LOWER(email) = LOWER(%s) AND deleted_at IS NULL
-            LIMIT 1
+            SELECT account_id, access_level FROM objectified.tenant_account
+            WHERE tenant_id = %s AND account_id = ANY(%s) AND deleted_at IS NULL
             """,
-            (email,),
+            (tenant_id, found_account_ids),
         )
-        if not acc_rows:
+        existing_map = {str(r["account_id"]): r["access_level"] for r in membership_rows}
+
+    # Process each valid email using the pre-fetched data.
+    for email in valid_emails:
+        account_id = email_to_account_id.get(email)
+        if account_id is None:
             results.append(TenantBulkInviteResultEntry(email=email, status="not_found"))
             continue
 
-        account_id = str(acc_rows[0]["id"])
-        existing_rows = db.execute_query(
-            """
-            SELECT id, access_level FROM objectified.tenant_account
-            WHERE tenant_id = %s AND account_id = %s AND deleted_at IS NULL
-            """,
-            (tenant_id, account_id),
-        )
-
-        if existing_rows:
-            current_level = existing_rows[0]["access_level"]
+        current_level = existing_map.get(account_id)
+        if current_level is not None:
             if want_admin:
                 if current_level == "administrator":
                     results.append(
@@ -432,26 +451,16 @@ def bulk_invite_tenant_members(
                 )
             continue
 
-        if want_admin:
-            row = db.execute_mutation(
-                """
-                INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
-                VALUES (%s, %s, 'administrator', true)
-                RETURNING id, tenant_id, account_id, access_level, enabled,
-                    created_at, updated_at, deleted_at
-                """,
-                (tenant_id, account_id),
-            )
-        else:
-            row = db.execute_mutation(
-                """
-                INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
-                VALUES (%s, %s, 'member', true)
-                RETURNING id, tenant_id, account_id, access_level, enabled,
-                    created_at, updated_at, deleted_at
-                """,
-                (tenant_id, account_id),
-            )
+        access_level_val = "administrator" if want_admin else "member"
+        row = db.execute_mutation(
+            """
+            INSERT INTO objectified.tenant_account (tenant_id, account_id, access_level, enabled)
+            VALUES (%s, %s, %s, true)
+            RETURNING id, tenant_id, account_id, access_level, enabled,
+                created_at, updated_at, deleted_at
+            """,
+            (tenant_id, account_id, access_level_val),
+        )
         if not row:
             results.append(
                 TenantBulkInviteResultEntry(email=email, status="not_found", account_id=account_id)

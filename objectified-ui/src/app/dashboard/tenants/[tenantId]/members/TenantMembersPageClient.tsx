@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -463,7 +463,7 @@ function parseEmailsFromBulkInput(raw: string): string[] {
     seen.add(e);
     out.push(e);
   }
-  return out.slice(0, 100);
+  return out;
 }
 
 interface BulkInviteDialogProps {
@@ -488,6 +488,10 @@ function BulkInviteDialog({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const parsedEmails = useMemo(() => parseEmailsFromBulkInput(rawEmails), [rawEmails]);
+  const overLimit = parsedEmails.length > 100;
+  const ignoredCount = overLimit ? parsedEmails.length - 100 : 0;
+
   const reset = () => {
     setRawEmails('');
     setAccessLevel('member');
@@ -503,7 +507,7 @@ function BulkInviteDialog({
     e.preventDefault();
     if (!session) return;
     setFormError(null);
-    const emails = parseEmailsFromBulkInput(rawEmails);
+    const emails = parsedEmails.slice(0, 100);
     if (emails.length === 0) {
       setFormError('Enter at least one email (separate with commas, spaces, or new lines).');
       return;
@@ -551,6 +555,14 @@ function BulkInviteDialog({
             existing account. Choose whether they join as members or administrators.
           </p>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {overLimit && (
+              <div
+                className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-sm"
+                role="alert"
+              >
+                {`${parsedEmails.length} unique addresses detected - only the first 100 will be invited. ${ignoredCount} address${ignoredCount === 1 ? '' : 'es'} will be ignored.`}
+              </div>
+            )}
             {formError && (
               <div
                 className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm"
