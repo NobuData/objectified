@@ -90,7 +90,7 @@ export default function TopHeader() {
             // eslint-disable-next-line @next/next/no-img-element -- tenant URLs are external/dynamic
             <img
               src={tenantBranding.logoUrl}
-              alt=""
+              alt={workspace?.tenant?.name || 'Tenant logo'}
               className="h-8 w-auto max-w-[140px] object-contain hidden sm:block"
             />
           ) : null}

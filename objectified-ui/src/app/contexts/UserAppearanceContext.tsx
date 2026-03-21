@@ -50,6 +50,7 @@ export function UserAppearanceProvider({ children }: { children: ReactNode }) {
 
   const metadataRef = useRef<Record<string, unknown>>({});
   const metadataHydratedRef = useRef(false);
+  const inflightRef = useRef<Promise<void>>(Promise.resolve());
   const [highContrast, setHighContrastState] = useState(false);
   const [persistError, setPersistError] = useState<string | null>(null);
 
@@ -103,27 +104,39 @@ export function UserAppearanceProvider({ children }: { children: ReactNode }) {
     async (patch: UserUiPatch) => {
       if (status !== 'authenticated' || !accessToken) return;
       setPersistError(null);
-      if (!metadataHydratedRef.current) {
+
+      // Serialize all persistence calls to avoid last-write-wins races.
+      // Chain the task onto the queue; swallow errors on the stored ref so a
+      // failed call doesn't prevent subsequent calls from running.
+      const task = inflightRef.current.then(async () => {
+        if (!metadataHydratedRef.current) {
+          try {
+            const opts = getRestClientOptions({ accessToken });
+            const me = await getMe(opts);
+            metadataRef.current = { ...(me.metadata ?? {}) };
+            metadataHydratedRef.current = true;
+          } catch {
+            /* merge from empty preserves unrelated keys as absent */
+          }
+        }
+        // Merge patch into the latest known server state (updated by prior tasks).
+        const merged = mergeUserUiIntoMetadata(metadataRef.current, patch);
         try {
           const opts = getRestClientOptions({ accessToken });
-          const me = await getMe(opts);
+          const me = await updateMe({ metadata: merged }, opts);
           metadataRef.current = { ...(me.metadata ?? {}) };
-          metadataHydratedRef.current = true;
-        } catch {
-          /* merge from empty preserves unrelated keys as absent */
+        } catch (e) {
+          setPersistError(
+            e instanceof Error ? e.message : 'Failed to save appearance settings'
+          );
+          throw e;
         }
-      }
-      const merged = mergeUserUiIntoMetadata(metadataRef.current, patch);
-      try {
-        const opts = getRestClientOptions({ accessToken });
-        const me = await updateMe({ metadata: merged }, opts);
-        metadataRef.current = { ...(me.metadata ?? {}) };
-      } catch (e) {
-        setPersistError(
-          e instanceof Error ? e.message : 'Failed to save appearance settings'
-        );
-        throw e;
-      }
+      });
+
+      // Keep the queue alive even if this task errors so subsequent calls can still run.
+      inflightRef.current = task.catch(() => {});
+
+      await task;
     },
     [status, accessToken]
   );
