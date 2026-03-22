@@ -9,6 +9,7 @@ import { generateLocalId } from '@lib/studio/types';
 import { computeStateChecksum } from '@lib/studio/stateBackup';
 
 const mockPullVersion = jest.fn();
+const mockPullVersionWithEtag = jest.fn();
 const mockListProperties = jest.fn();
 const mockCommitVersion = jest.fn();
 const mockPushVersion = jest.fn();
@@ -16,6 +17,9 @@ const mockMergeVersion = jest.fn();
 
 jest.mock('@lib/api/rest-client', () => ({
   pullVersion: (...args: unknown[]) => mockPullVersion(...args),
+  pullVersionWithEtag: (...args: unknown[]) => mockPullVersionWithEtag(...args),
+  buildPullEtag: (versionId: string, er: number | null | undefined) =>
+    `W/"${versionId}:er=${er == null ? 'null' : String(er)}:r=head:since=none"`,
   listProperties: (...args: unknown[]) => mockListProperties(...args),
   commitVersion: (...args: unknown[]) => mockCommitVersion(...args),
   pushVersion: (...args: unknown[]) => mockPushVersion(...args),
@@ -122,6 +126,17 @@ function TestConsumer() {
 describe('StudioContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPullVersionWithEtag.mockImplementation(
+      async (
+        versionId: string,
+        options: unknown,
+        revision?: number | null,
+        sinceRevision?: number | null
+      ) => {
+        const data = await mockPullVersion(versionId, options, revision, sinceRevision);
+        return { notModified: false, data, etag: null };
+      }
+    );
     mockListProperties.mockResolvedValue([]);
     localStorageMock.clear();
     sessionStorageMock.clear();
@@ -201,7 +216,7 @@ describe('StudioContext', () => {
     await waitFor(() => {
       expect(screen.getByTestId('has-state').textContent).toBe('yes');
     });
-    expect(mockPullVersion).toHaveBeenCalledWith('v1', {}, 2);
+    expect(mockPullVersionWithEtag).toHaveBeenCalledWith('v1', {}, 2);
     expect(screen.getByTestId('read-only').textContent).toBe('yes');
     await act(async () => {
       screen.getByTestId('add-class').click();

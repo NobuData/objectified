@@ -50,7 +50,10 @@ jest.mock('@lib/api/rest-client', () => ({
 const mockUndo = jest.fn();
 const mockRedo = jest.fn();
 const mockSave = jest.fn();
-const mockLoadFromServer = jest.fn();
+const mockLoadFromServer = jest.fn(() =>
+  Promise.resolve({ status: 'loaded' as const, revision: 1 })
+);
+const mockPeekPullIfNoneMatch = jest.fn(() => undefined);
 const mockCheckServerForUpdates = jest.fn();
 const mockPush = jest.fn();
 const mockMerge = jest.fn();
@@ -77,10 +80,11 @@ jest.mock('@/app/hooks/useTenantPermissions', () => ({
 }));
 
 const mockConfirm = jest.fn(() => Promise.resolve(true));
+const mockAlert = jest.fn(() => Promise.resolve());
 jest.mock('@/app/components/providers/DialogProvider', () => ({
   useDialog: jest.fn(() => ({
     confirm: mockConfirm,
-    alert: jest.fn(() => Promise.resolve()),
+    alert: mockAlert,
   })),
 }));
 
@@ -144,6 +148,7 @@ describe('StudioToolbar', () => {
       serverHasNewChanges: false,
       checkServerForUpdates: mockCheckServerForUpdates,
       loadFromServer: mockLoadFromServer,
+      peekPullIfNoneMatch: mockPeekPullIfNoneMatch,
       push: mockPush,
       merge: mockMerge,
       pushConflict409: false,
@@ -169,6 +174,7 @@ describe('StudioToolbar', () => {
       serverHasNewChanges: false,
       checkServerForUpdates: mockCheckServerForUpdates,
       loadFromServer: mockLoadFromServer,
+      peekPullIfNoneMatch: mockPeekPullIfNoneMatch,
       push: mockPush,
       merge: mockMerge,
       pushConflict409: false,
@@ -284,6 +290,7 @@ describe('StudioToolbar', () => {
     serverHasNewChanges: false,
     checkServerForUpdates: mockCheckServerForUpdates,
     loadFromServer: mockLoadFromServer,
+    peekPullIfNoneMatch: mockPeekPullIfNoneMatch,
     push: mockPush,
     merge: mockMerge,
     pushConflict409: false,
@@ -503,35 +510,28 @@ describe('StudioToolbar', () => {
     await waitFor(() => expect(mockLoadFromServer).toHaveBeenCalledTimes(1));
   });
 
-  it('Pull when dirty opens confirm dialog; confirming calls loadFromServer', async () => {
+  it('Pull when dirty opens stash/discard dialog; Discard and pull calls loadFromServer', async () => {
     useStudioOptional.mockReturnValue({
       ...defaultStudioWithState,
       isDirty: true,
     });
-    mockConfirm.mockResolvedValueOnce(true);
     const user = userEvent.setup();
     render(<StudioToolbar />);
     await user.click(screen.getByRole('button', { name: /pull from server/i }));
-    expect(mockConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Discard local changes?',
-        confirmLabel: 'Discard and pull',
-        variant: 'warning',
-      })
-    );
+    expect(screen.getByText(/unsaved local changes/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^discard and pull$/i }));
     await waitFor(() => expect(mockLoadFromServer).toHaveBeenCalledTimes(1));
   });
 
-  it('Pull when dirty and user cancels confirm does not call loadFromServer', async () => {
+  it('Pull when dirty and user cancels dialog does not call loadFromServer', async () => {
     useStudioOptional.mockReturnValue({
       ...defaultStudioWithState,
       isDirty: true,
     });
-    mockConfirm.mockResolvedValueOnce(false);
     const user = userEvent.setup();
     render(<StudioToolbar />);
     await user.click(screen.getByRole('button', { name: /pull from server/i }));
-    expect(mockConfirm).toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }));
     expect(mockLoadFromServer).not.toHaveBeenCalled();
   });
 

@@ -28,6 +28,8 @@ import {
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
 import { getRestClientOptions, pullVersion } from '@lib/api/rest-client';
+import { loadPersistedCommitInfo } from '@lib/studio/commitStorage';
+import { savePullStash } from '@lib/studio/stashStorage';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
@@ -40,6 +42,9 @@ import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 import ExportDialog from '@/app/dashboard/components/ExportDialog';
 import GenerateCodeDialog from '@/app/dashboard/components/GenerateCodeDialog';
+import PullDirtyConfirmDialog, {
+  type PullDirtyChoice,
+} from '@/app/dashboard/components/PullDirtyConfirmDialog';
 import { useCodeGenerationPanelOptional } from '@/app/contexts/CodeGenerationPanelContext';
 import { getSchemaMode, setSchemaModeOnDraft, type SchemaMode } from '@lib/studio/schemaMode';
 import * as Select from '@radix-ui/react-select';
@@ -146,6 +151,7 @@ export default function StudioToolbar() {
     total: number;
   } | null>(null);
   const [requireCommitMessage, setRequireCommitMessage] = useState(false);
+  const [pullDirtyOpen, setPullDirtyOpen] = useState(false);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
@@ -178,35 +184,91 @@ export default function StudioToolbar() {
     void studio.checkServerForUpdates(options);
   }, [studio?.state?.versionId, studio?.state?.revision, options.jwt, options.apiKey]);
 
-  const performPull = useCallback(async () => {
-    if (!versionId || !studio) return;
-    await runWithOperation('pull', async () => {
-      await studio.loadFromServer(versionId, options, {
-        tenantId: tenantId || undefined,
-        projectId: projectId || undefined,
+  const runPull = useCallback(
+    async (pullOpts?: { stashUsed?: boolean }) => {
+      if (!versionId || !studio) return;
+      const before = loadPersistedCommitInfo(versionId);
+      const stashUsed = pullOpts?.stashUsed === true;
+      const nm = studio.peekPullIfNoneMatch(versionId);
+      let result: Awaited<ReturnType<typeof studio.loadFromServer>> | undefined;
+      await runWithOperation('pull', async () => {
+        result = await studio.loadFromServer(versionId, options, {
+          tenantId: tenantId || undefined,
+          projectId: projectId || undefined,
+          ...(nm ? { ifNoneMatch: nm } : {}),
+        });
       });
-    });
-  }, [studio, versionId, options, tenantId, projectId, runWithOperation]);
+
+      if (result?.status === 'not_modified') {
+        if (stashUsed) {
+          await alertDialog({
+            message:
+              'Your edits were saved to a local stash. The server copy was already up to date.',
+            variant: 'info',
+          });
+        } else {
+          await alertDialog({
+            message: 'Already up to date with the server.',
+            variant: 'info',
+          });
+        }
+        return;
+      }
+
+      if (
+        result?.status === 'loaded' &&
+        before?.hasUnpushedCommits &&
+        typeof before.revision === 'number' &&
+        typeof result.revision === 'number' &&
+        result.revision > before.revision
+      ) {
+        await alertDialog({
+          title: 'Merge may be required',
+          message:
+            'You had local commits that were not pushed to another version. The server revision is now newer than your last commit. Open Merge to reconcile histories or push when ready.',
+          variant: 'warning',
+        });
+        setMergeSourceVersionId(null);
+        setMergeDialogOpen(true);
+        return;
+      }
+
+      if (result?.status === 'loaded' && stashUsed) {
+        await alertDialog({
+          message:
+            'Your edits were saved to a local stash before pulling. The editor now shows the latest server state.',
+          variant: 'success',
+        });
+      }
+    },
+    [versionId, studio, options, tenantId, projectId, runWithOperation, alertDialog]
+  );
+
+  const handlePullDirtyChoice = useCallback(
+    async (choice: PullDirtyChoice) => {
+      if (choice === 'cancel' || !studio?.state || !versionId) return;
+      if (choice === 'stash') {
+        savePullStash(versionId, studio.state);
+        await runPull({ stashUsed: true });
+      } else {
+        await runPull();
+      }
+    },
+    [studio, versionId, runPull]
+  );
 
   const handlePull = useCallback(async () => {
     if (!studio) return;
     if (studio.isDirty) {
-      const ok = await confirm({
-        title: 'Discard local changes?',
-        message:
-          'You have uncommitted changes. Discarding will replace your local state with the server version. Continue?',
-        variant: 'warning',
-        confirmLabel: 'Discard and pull',
-        cancelLabel: 'Cancel',
-      });
-      if (!ok) return;
+      setPullDirtyOpen(true);
+      return;
     }
-    await performPull();
-  }, [studio, confirm, performPull]);
+    await runPull();
+  }, [studio, runPull]);
 
   const handleReset = useCallback(() => {
-    void performPull();
-  }, [performPull]);
+    void runPull();
+  }, [runPull]);
 
   const handleLoadRevision = useCallback(
     async (revision: number, readOnly: boolean) => {
@@ -866,6 +928,13 @@ export default function StudioToolbar() {
         requireMessage={requireCommitMessage}
         onRequireMessageChange={updateRequireCommitMessage}
       />
+      <PullDirtyConfirmDialog
+        open={pullDirtyOpen}
+        onOpenChange={setPullDirtyOpen}
+        onChoice={(choice) => {
+          void handlePullDirtyChoice(choice);
+        }}
+      />
       <PushTargetDialog
         open={pushDialogOpen}
         onOpenChange={(open) => {
@@ -914,7 +983,9 @@ export default function StudioToolbar() {
         tenantId={tenantId || undefined}
         projectId={projectId || undefined}
         onLoadRevision={handleLoadRevision}
-        onRollbackSuccess={performPull}
+        onRollbackSuccess={() => {
+          void runPull();
+        }}
         onBranchSuccess={(newVersion) => {
           if (tenantId && projectId) {
             router.push(

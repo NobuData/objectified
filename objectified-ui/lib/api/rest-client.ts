@@ -40,6 +40,8 @@ export interface RestClientOptions {
   jwt?: string;
   apiKey?: string;
   signal?: AbortSignal;
+  /** Sent as `If-None-Match` on GET /versions/{id}/pull for conditional GET. */
+  ifNoneMatch?: string;
 }
 
 function buildAuthHeaders(options: RestClientOptions): Record<string, string> {
@@ -2109,22 +2111,95 @@ async function sleep(ms: number): Promise<void> {
   });
 }
 
+export function buildPullEtag(
+  versionId: string,
+  effectiveRevision: number | null | undefined,
+  revisionParam: number | null | undefined,
+  sinceRevisionParam: number | null | undefined
+): string {
+  const er = effectiveRevision == null ? 'null' : String(effectiveRevision);
+  const rp = revisionParam == null ? 'head' : String(revisionParam);
+  const sr = sinceRevisionParam == null ? 'none' : String(sinceRevisionParam);
+  return `W/"${versionId}:er=${er}:r=${rp}:since=${sr}"`;
+}
+
+export type PullVersionWithEtagResult =
+  | { notModified: true; etag: string | null }
+  | { notModified: false; data: VersionPullResponse; etag: string | null };
+
+async function fetchPullVersion(
+  versionId: string,
+  options: RestClientOptions = {},
+  revision?: number | null,
+  sinceRevision?: number | null
+): Promise<PullVersionWithEtagResult> {
+  const params = new URLSearchParams();
+  if (revision != null) params.set('revision', String(revision));
+  if (sinceRevision != null) params.set('since_revision', String(sinceRevision));
+  const q = params.toString() ? `?${params.toString()}` : '';
+  const path = `/versions/${versionId}/pull${q}`;
+  const url = path.startsWith('http') ? path : `${getRequestBase()}${path}`;
+  const headers = buildAuthHeaders(options);
+  if (options.ifNoneMatch) {
+    headers['If-None-Match'] = options.ifNoneMatch;
+  }
+  const isRelative = url.startsWith('/');
+  const res = await fetch(url, {
+    method: 'GET',
+    headers,
+    ...(isRelative ? { credentials: 'include' as RequestCredentials } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  const etag = res.headers?.get?.('ETag') ?? null;
+  if (res.status === 304) {
+    return { notModified: true, etag };
+  }
+  const text = await res.text();
+  let parsed: VersionPullResponse | ApiError | null = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text) as VersionPullResponse | ApiError;
+    } catch {
+      // non-JSON response
+    }
+  }
+  if (!res.ok) {
+    const err = parsed as ApiError | null;
+    const detail = err?.detail;
+    const message =
+      typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d) => d.msg).join('; ')
+          : `HTTP ${res.status}`;
+    throw new RestApiError(message || `HTTP ${res.status}`, res.status, detail);
+  }
+  return { notModified: false, data: (parsed as VersionPullResponse) ?? ({} as VersionPullResponse), etag };
+}
+
+export async function pullVersionWithEtag(
+  versionId: string,
+  options: RestClientOptions = {},
+  revision?: number | null,
+  sinceRevision?: number | null
+): Promise<PullVersionWithEtagResult> {
+  return fetchPullVersion(versionId, options, revision, sinceRevision);
+}
+
 export async function pullVersion(
   versionId: string,
   options: RestClientOptions = {},
   revision?: number | null,
   sinceRevision?: number | null
 ): Promise<VersionPullResponse> {
-  const params = new URLSearchParams();
-  if (revision != null) params.set('revision', String(revision));
-  if (sinceRevision != null) params.set('since_revision', String(sinceRevision));
-  const q = params.toString() ? `?${params.toString()}` : '';
-  return request<VersionPullResponse>(
-    'GET',
-    `/versions/${versionId}/pull${q}`,
-    undefined,
-    options
-  );
+  const r = await fetchPullVersion(versionId, options, revision, sinceRevision);
+  if (r.notModified) {
+    throw new RestApiError(
+      'Unexpected 304 from pull without conditional handling; omit ifNoneMatch for unconditional pull',
+      304
+    );
+  }
+  return r.data;
 }
 
 export async function rollbackVersion(
