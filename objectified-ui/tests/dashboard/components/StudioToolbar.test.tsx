@@ -25,8 +25,17 @@ const mockGetTenantQuotaStatus = jest.fn(() =>
     active_version_count_for_project: 0,
   })
 );
+const mockPullVersion = jest.fn(() =>
+  Promise.resolve({
+    version_id: 'v2',
+    revision: 1,
+    pulled_at: '2026-03-22T00:00:00Z',
+    diff: null,
+  })
+);
 jest.mock('@lib/api/rest-client', () => ({
   getRestClientOptions: () => ({}),
+  pullVersion: (...args: unknown[]) => mockPullVersion(...args),
   listVersionSnapshotsMetadata: (...args: unknown[]) => mockListVersionSnapshotsMetadata(...args),
   getTenantQuotaStatus: (...args: unknown[]) => mockGetTenantQuotaStatus(...args),
 }));
@@ -80,6 +89,12 @@ describe('StudioToolbar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockConfirm.mockResolvedValue(true);
+    mockPullVersion.mockResolvedValue({
+      version_id: 'v2',
+      revision: 1,
+      pulled_at: '2026-03-22T00:00:00Z',
+      diff: null,
+    });
     useStudioOptional.mockReturnValue(null);
     useStudio.mockImplementation(() => useStudioOptional());
   });
