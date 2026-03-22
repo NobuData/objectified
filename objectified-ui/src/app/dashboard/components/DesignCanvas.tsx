@@ -85,6 +85,7 @@ import ZoomToClassRegistration from './ZoomToClassRegistration';
 import CanvasExportRegistration from './CanvasExportRegistration';
 
 const defaultPosition = { x: 0, y: 0 };
+const NODE_MUTATION_DEBOUNCE_MS = 150;
 
 const nodeTypes = { class: ClassNode, group: GroupNode };
 const edgeTypes = { classRef: ClassRefEdge };
@@ -240,6 +241,140 @@ export default function DesignCanvas() {
     [onEdgesChange]
   );
 
+  const pendingNodeMutationsRef = useRef<{
+    classPositions: Map<string, { x: number; y: number }>;
+    classDimensions: Map<string, { width: number; height: number }>;
+    groupPositions: Map<string, { x: number; y: number }>;
+    groupDimensions: Map<string, { width: number; height: number }>;
+  }>({
+    classPositions: new Map(),
+    classDimensions: new Map(),
+    groupPositions: new Map(),
+    groupDimensions: new Map(),
+  });
+  const pendingNodeMutationsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+
+  const flushPendingNodeMutations = useCallback(() => {
+    if (!studio?.applyChange) return;
+    const pending = pendingNodeMutationsRef.current;
+    if (
+      pending.classPositions.size === 0 &&
+      pending.classDimensions.size === 0 &&
+      pending.groupPositions.size === 0 &&
+      pending.groupDimensions.size === 0
+    ) {
+      return;
+    }
+
+    const classPositionEntries = Array.from(pending.classPositions.entries());
+    const classDimensionEntries = Array.from(pending.classDimensions.entries());
+    const groupPositionEntries = Array.from(pending.groupPositions.entries());
+    const groupDimensionEntries = Array.from(pending.groupDimensions.entries());
+
+    pending.classPositions.clear();
+    pending.classDimensions.clear();
+    pending.groupPositions.clear();
+    pending.groupDimensions.clear();
+
+    studio.applyChange((draft) => {
+      for (const [nodeId, position] of classPositionEntries) {
+        const idx = draft.classes.findIndex((c) => getStableClassId(c) === nodeId);
+        if (idx >= 0) {
+          const target = draft.classes[idx];
+          target.canvas_metadata = {
+            ...target.canvas_metadata,
+            position: { x: position.x, y: position.y },
+          };
+        }
+      }
+
+      for (const [nodeId, dimensions] of classDimensionEntries) {
+        const idx = draft.classes.findIndex((c) => getStableClassId(c) === nodeId);
+        if (idx >= 0) {
+          const target = draft.classes[idx];
+          target.canvas_metadata = {
+            ...target.canvas_metadata,
+            dimensions: { width: dimensions.width, height: dimensions.height },
+          };
+        }
+      }
+
+      for (const [nodeId, position] of groupPositionEntries) {
+        const g = draft.groups.find((x) => x.id === nodeId);
+        if (g) {
+          g.metadata = { ...g.metadata, position: { x: position.x, y: position.y } };
+        }
+      }
+
+      for (const [nodeId, dimensions] of groupDimensionEntries) {
+        const g = draft.groups.find((x) => x.id === nodeId);
+        if (g) {
+          g.metadata = {
+            ...g.metadata,
+            dimensions: { width: dimensions.width, height: dimensions.height },
+          };
+        }
+      }
+    });
+
+    if (versionId && classPositionEntries.length > 0) {
+      const updatedMap = new Map(classPositionEntries);
+      const allPositions = classes.map((c) => {
+        const id = getStableClassId(c);
+        const updatedPos = updatedMap.get(id);
+        return {
+          classId: id,
+          position: updatedPos ?? c.canvas_metadata?.position ?? defaultPosition,
+        };
+      });
+      saveDefaultCanvasLayout(versionId, allPositions);
+    }
+  }, [studio, classes, versionId]);
+
+  const schedulePendingNodeMutationFlush = useCallback(
+    (immediate = false) => {
+      if (pendingNodeMutationsTimerRef.current) {
+        clearTimeout(pendingNodeMutationsTimerRef.current);
+        pendingNodeMutationsTimerRef.current = null;
+      }
+      if (immediate) {
+        flushPendingNodeMutations();
+        return;
+      }
+      pendingNodeMutationsTimerRef.current = setTimeout(() => {
+        pendingNodeMutationsTimerRef.current = null;
+        flushPendingNodeMutations();
+      }, NODE_MUTATION_DEBOUNCE_MS);
+    },
+    [flushPendingNodeMutations]
+  );
+
+  useEffect(() => {
+    return () => {
+      // Flush any pending node mutations before clearing the debounce timer on unmount
+      flushPendingNodeMutations();
+      if (pendingNodeMutationsTimerRef.current) {
+        clearTimeout(pendingNodeMutationsTimerRef.current);
+        pendingNodeMutationsTimerRef.current = null;
+      }
+    };
+  }, [flushPendingNodeMutations]);
+
+  useEffect(() => {
+    // When the version changes, flush any pending mutations for the previous version
+    flushPendingNodeMutations();
+    if (pendingNodeMutationsTimerRef.current) {
+      clearTimeout(pendingNodeMutationsTimerRef.current);
+      pendingNodeMutationsTimerRef.current = null;
+    }
+    pendingNodeMutationsRef.current.classPositions.clear();
+    pendingNodeMutationsRef.current.classDimensions.clear();
+    pendingNodeMutationsRef.current.groupPositions.clear();
+    pendingNodeMutationsRef.current.groupDimensions.clear();
+  }, [versionId, flushPendingNodeMutations]);
+
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       // In read-only mode, only allow selection and dimensions changes through so
@@ -256,102 +391,52 @@ export default function DesignCanvas() {
       if (isReadOnly || !studio?.applyChange) return;
 
       const groupIds = new Set(groups.map((g) => g.id));
-      const positionUpdates: { nodeId: string; position: { x: number; y: number } }[] = [];
-      const dimensionUpdates: {
-        nodeId: string;
-        dimensions: { width: number; height: number };
-      }[] = [];
+      let sawTerminalChange = false;
+      let sawPersistableChange = false;
+      const pending = pendingNodeMutationsRef.current;
 
       for (const change of changes) {
-        if (
-          change.type === 'position' &&
-          change.dragging === false &&
-          change.position != null
-        ) {
-          positionUpdates.push({ nodeId: change.id, position: change.position });
+        if (change.type === 'position' && change.position != null) {
+          sawPersistableChange = true;
+          if (groupIds.has(change.id)) {
+            pending.groupPositions.set(change.id, {
+              x: change.position.x,
+              y: change.position.y,
+            });
+          } else {
+            pending.classPositions.set(change.id, {
+              x: change.position.x,
+              y: change.position.y,
+            });
+          }
+          if (change.dragging === false) {
+            sawTerminalChange = true;
+          }
         }
         if (
           change.type === 'dimensions' &&
-          change.resizing === false &&
           change.dimensions != null
         ) {
           const { width, height } = change.dimensions;
           if (typeof width === 'number' && typeof height === 'number') {
-            dimensionUpdates.push({ nodeId: change.id, dimensions: { width, height } });
+            sawPersistableChange = true;
+            if (groupIds.has(change.id)) {
+              pending.groupDimensions.set(change.id, { width, height });
+            } else {
+              pending.classDimensions.set(change.id, { width, height });
+            }
+          }
+          if (change.resizing === false) {
+            sawTerminalChange = true;
           }
         }
       }
 
-      const classPositionUpdates = positionUpdates.filter((u) => !groupIds.has(u.nodeId));
-      const groupPositionUpdates = positionUpdates.filter((u) => groupIds.has(u.nodeId));
-      const classDimensionUpdates = dimensionUpdates.filter((u) => !groupIds.has(u.nodeId));
-      const groupDimensionUpdates = dimensionUpdates.filter((u) => groupIds.has(u.nodeId));
-
-      if (classPositionUpdates.length > 0) {
-        studio.applyChange((draft) => {
-          for (const { nodeId, position } of classPositionUpdates) {
-            const idx = draft.classes.findIndex((c) => getStableClassId(c) === nodeId);
-            if (idx >= 0) {
-              const target = draft.classes[idx];
-              target.canvas_metadata = {
-                ...target.canvas_metadata,
-                position: { x: position.x, y: position.y },
-              };
-            }
-          }
-        });
-        if (versionId) {
-          const updatedMap = new Map(classPositionUpdates.map((u) => [u.nodeId, u.position]));
-          const allPositions = classes.map((c) => {
-            const id = getStableClassId(c);
-            const updatedPos = updatedMap.get(id);
-            return {
-              classId: id,
-              position: updatedPos ?? c.canvas_metadata?.position ?? defaultPosition,
-            };
-          });
-          saveDefaultCanvasLayout(versionId, allPositions);
-        }
-      }
-
-      if (groupPositionUpdates.length > 0) {
-        studio.applyChange((draft) => {
-          for (const { nodeId, position } of groupPositionUpdates) {
-            const g = draft.groups.find((x) => x.id === nodeId);
-            if (g) {
-              g.metadata = { ...g.metadata, position: { x: position.x, y: position.y } };
-            }
-          }
-        });
-      }
-
-      if (classDimensionUpdates.length > 0) {
-        studio.applyChange((draft) => {
-          for (const { nodeId, dimensions } of classDimensionUpdates) {
-            const idx = draft.classes.findIndex((c) => getStableClassId(c) === nodeId);
-            if (idx >= 0) {
-              const target = draft.classes[idx];
-              target.canvas_metadata = {
-                ...target.canvas_metadata,
-                dimensions: { width: dimensions.width, height: dimensions.height },
-              };
-            }
-          }
-        });
-      }
-
-      if (groupDimensionUpdates.length > 0) {
-        studio.applyChange((draft) => {
-          for (const { nodeId, dimensions } of groupDimensionUpdates) {
-            const g = draft.groups.find((x) => x.id === nodeId);
-            if (g) {
-              g.metadata = { ...g.metadata, dimensions: { width: dimensions.width, height: dimensions.height } };
-            }
-          }
-        });
+      if (sawPersistableChange) {
+        schedulePendingNodeMutationFlush(sawTerminalChange);
       }
     },
-    [onNodesChange, studio, classes, groups, versionId, isReadOnly]
+    [onNodesChange, studio, groups, isReadOnly, schedulePendingNodeMutationFlush]
   );
 
   const canvasSearch = useCanvasSearchOptional();

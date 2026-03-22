@@ -249,6 +249,16 @@ describe('StudioToolbar', () => {
     merge: mockMerge,
     pushConflict409: false,
     clearPushConflict409: mockClearPushConflict409,
+    mutationAudit: {
+      addedClassCount: 0,
+      removedClassCount: 0,
+      modifiedClassCount: 0,
+      modifiedGroupCount: 0,
+      projectPropertiesChanged: false,
+      canvasMetadataChanged: false,
+    },
+    pendingChangesSummary: null,
+    suggestedCommitMessage: null,
   };
 
   it('calls undo when Undo is clicked', async () => {
@@ -292,6 +302,22 @@ describe('StudioToolbar', () => {
     expect(mockSave).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ message: 'my commit message' })
+    );
+  });
+
+  it('shows pending changes summary and pre-fills suggested commit message', async () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      pendingChangesSummary: '3 classes modified',
+      suggestedCommitMessage: 'Update studio: 3 classes modified',
+    });
+    render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    expect(screen.getByText(/pending changes: 3 classes modified/i)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /commit message/i })).toHaveValue(
+      'Update studio: 3 classes modified'
     );
   });
 

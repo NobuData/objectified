@@ -509,6 +509,8 @@ export default function StudioToolbar() {
         onOpenChange={setCommitDialogOpen}
         onCommit={handleCommitWithMessage}
         loading={studio!.loading}
+        suggestedMessage={studio!.suggestedCommitMessage}
+        pendingChangesSummary={studio!.pendingChangesSummary}
       />
       <PushTargetDialog
         open={pushDialogOpen}
