@@ -179,6 +179,13 @@ export interface TenantActivitySummarySchema {
   dashboard_page_visits_last_7_days?: number | null;
 }
 
+export interface TenantQuotaStatusSchema {
+  max_projects?: number | null;
+  active_project_count: number;
+  max_versions_per_project?: number | null;
+  active_version_count_for_project?: number | null;
+}
+
 export interface TenantAppearanceUpdate {
   logo_url?: string | null;
   favicon_url?: string | null;
@@ -842,6 +849,23 @@ export async function getTenantActivitySummary(
   return request<TenantActivitySummarySchema>(
     'GET',
     `/tenants/${encodeURIComponent(tenantId)}/activity-summary`,
+    undefined,
+    options
+  );
+}
+
+export async function getTenantQuotaStatus(
+  tenantId: string,
+  options: RestClientOptions = {},
+  projectId?: string | null
+): Promise<TenantQuotaStatusSchema> {
+  const q =
+    projectId != null && projectId !== ''
+      ? `?project_id=${encodeURIComponent(projectId)}`
+      : '';
+  return request<TenantQuotaStatusSchema>(
+    'GET',
+    `/tenants/${encodeURIComponent(tenantId)}/quota-status${q}`,
     undefined,
     options
   );

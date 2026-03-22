@@ -15,6 +15,7 @@ from app.auth import (
 )
 from app.database import db
 from app.routes.helpers import (
+    _assert_project_exists,
     _assert_tenant_exists,
     _not_found,
     _resolve_account_id,
@@ -40,6 +41,7 @@ from app.schemas import (
     TenantMembersBulkInviteResponse,
     TenantMembersBulkRemove,
     TenantPrimaryAdminTransfer,
+    TenantQuotaStatusSchema,
     TenantSchema,
     TenantUpdate,
 )
@@ -578,6 +580,76 @@ def get_tenant_activity_summary(
         active_member_count=int(srow["active_member_count"] or 0),
         schema_version_count=int(srow["schema_version_count"] or 0),
         dashboard_page_visits_last_7_days=visit_count,
+    )
+
+
+@router.get(
+    "/tenants/{tenant_id}/quota-status",
+    response_model=TenantQuotaStatusSchema,
+    summary="Tenant quota usage vs limits",
+    description=(
+        "Returns active project count and configured caps. "
+        "When ``project_id`` is provided, also returns the active version count for that project "
+        "(the project must belong to the tenant). Requires project:read."
+    ),
+)
+def get_tenant_quota_status(
+    tenant_id: str,
+    _authz: Annotated[
+        dict[str, Any],
+        Depends(require_tenant_permission("project:read")),
+    ],
+    project_id: Optional[str] = Query(
+        None,
+        description="Optional project UUID; when set, includes active version count for that project.",
+    ),
+) -> TenantQuotaStatusSchema:
+    """Usage vs tenant max_projects and max_versions_per_project for dashboard UI."""
+    cap_rows = db.execute_query(
+        """
+        SELECT max_projects, max_versions_per_project
+        FROM objectified.tenant
+        WHERE id = %s AND deleted_at IS NULL
+        LIMIT 1
+        """,
+        (tenant_id,),
+    )
+    if not cap_rows:
+        raise _not_found("Tenant", tenant_id)
+    max_projects = cap_rows[0].get("max_projects")
+    max_versions_per_project = cap_rows[0].get("max_versions_per_project")
+
+    proj_rows = db.execute_query(
+        """
+        SELECT COUNT(*)::int AS c
+        FROM objectified.project
+        WHERE tenant_id = %s AND deleted_at IS NULL
+        """,
+        (tenant_id,),
+    )
+    active_project_count = int(proj_rows[0]["c"]) if proj_rows else 0
+
+    active_version_count_for_project: Optional[int] = None
+    if project_id:
+        _assert_project_exists(project_id, tenant_id)
+        vc_rows = db.execute_query(
+            """
+            SELECT COUNT(*)::int AS c
+            FROM objectified.version v
+            INNER JOIN objectified.project p ON p.id = v.project_id AND p.deleted_at IS NULL
+            WHERE v.project_id = %s AND v.deleted_at IS NULL
+            """,
+            (project_id,),
+        )
+        active_version_count_for_project = int(vc_rows[0]["c"]) if vc_rows else 0
+
+    return TenantQuotaStatusSchema(
+        max_projects=int(max_projects) if max_projects is not None else None,
+        active_project_count=active_project_count,
+        max_versions_per_project=int(max_versions_per_project)
+        if max_versions_per_project is not None
+        else None,
+        active_version_count_for_project=active_version_count_for_project,
     )
 
 

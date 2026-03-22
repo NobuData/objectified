@@ -38,12 +38,15 @@ import {
   restoreProject,
   permanentDeleteProject,
   getUser,
+  getTenantQuotaStatus,
   getRestClientOptions,
   isForbiddenError,
   type ProjectSchema,
   type ProjectCreate,
   type ProjectUpdate,
+  type TenantQuotaStatusSchema,
 } from '@lib/api/rest-client';
+import { atQuotaLimit, formatUsageLine, quotaSeverity } from '@lib/quotaDisplay';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
@@ -142,6 +145,7 @@ export default function ProjectsPage() {
   const [bulkWorking, setBulkWorking] = useState(false);
   const [cloneSource, setCloneSource] = useState<ProjectSchema | null>(null);
   const [cloningId, setCloningId] = useState<string | null>(null);
+  const [quotaStatus, setQuotaStatus] = useState<TenantQuotaStatusSchema | null>(null);
 
   const perms = useTenantPermissions(selectedTenantId);
   const canReadProjects = perms.has('project:read');
@@ -189,10 +193,36 @@ export default function ProjectsPage() {
     }
   }, [status, selectedTenantId, opts, showDeleted, canReadProjects, perms.loading]);
 
+  const fetchQuota = useCallback(async () => {
+    if (status !== 'authenticated' || !selectedTenantId) {
+      setQuotaStatus(null);
+      return;
+    }
+    if (perms.loading) {
+      setQuotaStatus(null);
+      return;
+    }
+    if (!canReadProjects) {
+      setQuotaStatus(null);
+      return;
+    }
+    try {
+      const q = await getTenantQuotaStatus(selectedTenantId, opts);
+      setQuotaStatus(q);
+    } catch {
+      setQuotaStatus(null);
+    }
+  }, [status, selectedTenantId, opts, canReadProjects, perms.loading]);
+
   useEffect(() => {
     if (status !== 'authenticated' || !selectedTenantId) return;
     fetchProjects();
   }, [status, selectedTenantId, fetchProjects]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !selectedTenantId) return;
+    void fetchQuota();
+  }, [status, selectedTenantId, fetchQuota]);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -216,6 +246,24 @@ export default function ProjectsPage() {
     }
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [projects]);
+
+  const projectQuotaBlocksCreate = useMemo(
+    () =>
+      quotaStatus != null &&
+      atQuotaLimit(quotaStatus.max_projects, quotaStatus.active_project_count),
+    [quotaStatus]
+  );
+
+  const projectQuotaBanner = useMemo(() => {
+    if (!quotaStatus || quotaStatus.max_projects == null) return null;
+    const line = formatUsageLine(
+      'Projects',
+      quotaStatus.active_project_count,
+      quotaStatus.max_projects
+    );
+    const level = quotaSeverity(quotaStatus.max_projects, quotaStatus.active_project_count);
+    return { line, level };
+  }, [quotaStatus]);
 
   const uniqueOwnerIds = useMemo(() => {
     const s = new Set<string>();
@@ -438,6 +486,7 @@ export default function ProjectsPage() {
 
       setSelectedIds(new Set());
       await fetchProjects();
+      void fetchQuota();
 
       if (errors.length > 0) {
         const firstError = errors[0]?.error;
@@ -504,7 +553,8 @@ export default function ProjectsPage() {
 
   const handleCreateSuccess = () => {
     setCreateOpen(false);
-    fetchProjects();
+    void fetchProjects();
+    void fetchQuota();
   };
 
   const handleEditSuccess = () => {
@@ -530,6 +580,7 @@ export default function ProjectsPage() {
     try {
       await deleteProject(selectedTenantId, project.id, opts);
       await fetchProjects();
+      void fetchQuota();
     } catch (e) {
       await alertDialog({
         message:
@@ -563,6 +614,7 @@ export default function ProjectsPage() {
     try {
       await restoreProject(selectedTenantId, project.id, opts);
       await fetchProjects();
+      void fetchQuota();
     } catch (e) {
       await alertDialog({
         message:
@@ -596,6 +648,7 @@ export default function ProjectsPage() {
     try {
       await permanentDeleteProject(selectedTenantId, project.id, opts);
       await fetchProjects();
+      void fetchQuota();
     } catch (e) {
       await alertDialog({
         message:
@@ -673,14 +726,21 @@ export default function ProjectsPage() {
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
-              disabled={!selectedTenantId || !canWriteProjects || perms.loading}
+              disabled={
+                !selectedTenantId ||
+                !canWriteProjects ||
+                perms.loading ||
+                projectQuotaBlocksCreate
+              }
               className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
               title={
                 !selectedTenantId
                   ? 'Select a tenant first'
                   : !canWriteProjects
                     ? 'You do not have permission to create projects'
-                    : 'Create project'
+                    : projectQuotaBlocksCreate
+                      ? 'Project quota reached for this tenant'
+                      : 'Create project'
               }
             >
               <Plus className="h-4 w-4" aria-hidden />
@@ -694,6 +754,31 @@ export default function ProjectsPage() {
           metadata as a <code className="text-xs font-mono">tags</code> array for
           filtering and bulk actions.
         </p>
+        {projectQuotaBanner && (
+          <div
+            className={
+              projectQuotaBanner.level === 'block'
+                ? 'rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-800 dark:text-red-200 print:hidden'
+                : projectQuotaBanner.level === 'warn'
+                  ? 'rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100 print:hidden'
+                  : 'rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/40 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 print:hidden'
+            }
+            role="status"
+          >
+            <div className="font-medium">{projectQuotaBanner.line}</div>
+            {projectQuotaBanner.level === 'block' && canWriteProjects && (
+              <p className="mt-1 text-xs opacity-90">
+                Project quota is full. Archive or remove a project, or ask an administrator to raise
+                the limit.
+              </p>
+            )}
+            {projectQuotaBanner.level === 'warn' && canWriteProjects && (
+              <p className="mt-1 text-xs opacity-90">
+                You are near the project limit for this tenant.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -1073,14 +1158,20 @@ export default function ProjectsPage() {
                               {!project.deleted_at && (
                                 <DropdownMenu.Item
                                   onSelect={() => {
-                                    if (canWriteProjects) setCloneSource(project);
+                                    if (canWriteProjects && !projectQuotaBlocksCreate)
+                                      setCloneSource(project);
                                   }}
-                                  disabled={!canWriteProjects}
+                                  disabled={!canWriteProjects || projectQuotaBlocksCreate}
                                   className={`rounded-md px-3 py-2 text-sm outline-none flex items-center gap-2 ${
-                                    canWriteProjects
+                                    canWriteProjects && !projectQuotaBlocksCreate
                                       ? 'text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800'
                                       : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-70'
                                   }`}
+                                  title={
+                                    projectQuotaBlocksCreate
+                                      ? 'Project quota reached for this tenant'
+                                      : undefined
+                                  }
                                 >
                                   <Copy className="h-4 w-4 text-indigo-500" aria-hidden />
                                   Duplicate project
@@ -1224,6 +1315,7 @@ export default function ProjectsPage() {
           onSuccess={handleCreateSuccess}
           tenantId={selectedTenantId}
           session={session}
+          quotaBlocked={projectQuotaBlocksCreate}
         />
       )}
       {editProject && selectedTenantId && (
@@ -1245,8 +1337,10 @@ export default function ProjectsPage() {
           session={session}
           cloningId={cloningId}
           setCloningId={setCloningId}
+          quotaBlocked={projectQuotaBlocksCreate}
           onSuccess={(newProjectId) => {
             setCloneSource(null);
+            void fetchQuota();
             router.push(`/dashboard/projects/${newProjectId}/settings`);
           }}
         />
@@ -1263,6 +1357,7 @@ interface CloneProjectDialogProps {
   session: ReturnType<typeof useSession>['data'];
   cloningId: string | null;
   setCloningId: (id: string | null) => void;
+  quotaBlocked?: boolean;
   onSuccess: (newProjectId: string) => void;
 }
 
@@ -1274,6 +1369,7 @@ function CloneProjectDialog({
   session,
   cloningId,
   setCloningId,
+  quotaBlocked = false,
   onSuccess,
 }: CloneProjectDialogProps) {
   const [name, setName] = useState('');
@@ -1298,6 +1394,12 @@ function CloneProjectDialog({
     e.preventDefault();
     if (!session) return;
     setFormError(null);
+    if (quotaBlocked) {
+      setFormError(
+        'This tenant has reached its project limit. Archive or remove a project, or ask an administrator to raise the quota.'
+      );
+      return;
+    }
     const trimmedName = name.trim();
     const trimmedSlug = slug.trim().toLowerCase();
     if (!trimmedName) {
@@ -1365,6 +1467,15 @@ function CloneProjectDialog({
                 role="alert"
               >
                 {formError}
+              </div>
+            )}
+            {quotaBlocked && (
+              <div
+                className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100 text-sm"
+                role="alert"
+              >
+                Project quota reached for this tenant. Free a slot or ask an administrator to
+                raise the limit before duplicating.
               </div>
             )}
             <div className="space-y-2">
@@ -1457,7 +1568,7 @@ function CloneProjectDialog({
               </button>
               <button
                 type="submit"
-                disabled={busy}
+                disabled={busy || quotaBlocked}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
               >
                 {busy ? (
@@ -1483,6 +1594,7 @@ interface CreateProjectDialogProps {
   onSuccess: () => void;
   tenantId: string;
   session: ReturnType<typeof useSession>['data'];
+  quotaBlocked?: boolean;
 }
 
 function CreateProjectDialog({
@@ -1491,6 +1603,7 @@ function CreateProjectDialog({
   onSuccess,
   tenantId,
   session,
+  quotaBlocked = false,
 }: CreateProjectDialogProps) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -1516,6 +1629,12 @@ function CreateProjectDialog({
     e.preventDefault();
     if (!session) return;
     setFormError(null);
+    if (quotaBlocked) {
+      setFormError(
+        'This tenant has reached its project limit. Archive or remove a project, or ask an administrator to raise the quota.'
+      );
+      return;
+    }
     const trimmedName = name.trim();
     const trimmedSlug = slug.trim().toLowerCase();
     const trimmedDescription = description.trim();
@@ -1578,6 +1697,15 @@ function CreateProjectDialog({
                 role="alert"
               >
                 {formError}
+              </div>
+            )}
+            {quotaBlocked && (
+              <div
+                className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100 text-sm"
+                role="alert"
+              >
+                Project quota reached for this tenant. Free a slot or ask an administrator to
+                raise the limit before creating a project.
               </div>
             )}
             <div className="space-y-2">
@@ -1654,7 +1782,7 @@ function CreateProjectDialog({
               </button>
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || quotaBlocked}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
               >
                 {saving ? (

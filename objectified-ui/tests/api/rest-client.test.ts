@@ -11,6 +11,7 @@ import {
   updateMe,
   listTenants,
   getTenant,
+  getTenantQuotaStatus,
   createTenant,
   listTenantMembers,
   addTenantMember,
@@ -296,6 +297,42 @@ describe('204 No Content handling', () => {
     mockFetch.mockResolvedValue(makeEmptyFetchResponse(204));
     const result = await getTenant('tenant-uuid', {});
     expect(result).toBeUndefined();
+  });
+});
+
+describe('getTenantQuotaStatus', () => {
+  const baseUrl = getRestBaseUrl();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('GETs quota status without project_id', async () => {
+    const body = {
+      max_projects: 5,
+      active_project_count: 2,
+      max_versions_per_project: 10,
+      active_version_count_for_project: null,
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(body));
+    const result = await getTenantQuotaStatus('t1', {});
+    expect(result).toEqual(body);
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/quota-status`);
+  });
+
+  it('appends project_id query when provided', async () => {
+    mockFetch.mockResolvedValue(
+      makeFetchResponse({
+        max_projects: null,
+        active_project_count: 1,
+        max_versions_per_project: 3,
+        active_version_count_for_project: 2,
+      })
+    );
+    await getTenantQuotaStatus('t1', {}, 'p-abc');
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/quota-status?project_id=p-abc`);
   });
 });
 

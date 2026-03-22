@@ -10,12 +10,14 @@ import {
   rollbackVersion,
   createVersionFromRevision,
   deleteVersion,
+  getTenantQuotaStatus,
   type VersionSnapshotMetadataSchema,
   type VersionSnapshotSchemaChangesAuditSchema,
   type VersionPullDiff,
   type VersionSchema,
   type RestClientOptions,
 } from '@lib/api/rest-client';
+import { atQuotaLimit } from '@lib/quotaDisplay';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 
 const inputClass =
@@ -90,6 +92,7 @@ export default function VersionHistoryDialog({
   const [branchDescription, setBranchDescription] = useState('');
   const [branchSubmitting, setBranchSubmitting] = useState(false);
   const [branchError, setBranchError] = useState<string | null>(null);
+  const [versionQuotaBlocked, setVersionQuotaBlocked] = useState(false);
 
   const fetchSnapshots = useCallback(async () => {
     if (!versionId || !open) return;
@@ -117,6 +120,30 @@ export default function VersionHistoryDialog({
       fetchSnapshots();
     }
   }, [open, versionId, fetchSnapshots]);
+
+  useEffect(() => {
+    if (!open || !tenantId || !projectId) {
+      setVersionQuotaBlocked(false);
+      return;
+    }
+    let cancelled = false;
+    void getTenantQuotaStatus(tenantId, options, projectId)
+      .then((q) => {
+        if (cancelled) return;
+        setVersionQuotaBlocked(
+          atQuotaLimit(
+            q.max_versions_per_project,
+            q.active_version_count_for_project ?? 0
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setVersionQuotaBlocked(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tenantId, projectId, options]);
 
   const fetchAuditEntries = useCallback(async () => {
     if (!versionId || !open) return;
@@ -251,6 +278,12 @@ export default function VersionHistoryDialog({
       !onBranchSuccess
     )
       return;
+    if (versionQuotaBlocked) {
+      setBranchError(
+        'This project has reached the maximum number of versions allowed for the tenant.'
+      );
+      return;
+    }
     const name = branchName.trim();
     if (!name) {
       setBranchError('Version name is required.');
@@ -290,6 +323,7 @@ export default function VersionHistoryDialog({
     onBranchSuccess,
     options,
     onOpenChange,
+    versionQuotaBlocked,
   ]);
 
   const handleDeleteVersion = useCallback(async () => {
@@ -464,9 +498,15 @@ export default function VersionHistoryDialog({
                                 <button
                                   type="button"
                                   onClick={() => handleBranchClick(snap.revision)}
-                                  disabled={rollbackSubmitting || branchSubmitting}
+                                  disabled={
+                                    rollbackSubmitting || branchSubmitting || versionQuotaBlocked
+                                  }
                                   className="p-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50"
-                                  title="Branch from this revision (new version)"
+                                  title={
+                                    versionQuotaBlocked
+                                      ? 'Version quota reached for this project'
+                                      : 'Branch from this revision (new version)'
+                                  }
                                   aria-label={`Branch from revision ${snap.revision}`}
                                 >
                                   <GitBranch className="h-4 w-4" />
@@ -614,6 +654,15 @@ export default function VersionHistoryDialog({
                 {branchError}
               </div>
             )}
+            {versionQuotaBlocked && (
+              <div
+                className="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100 text-sm"
+                role="alert"
+              >
+                Version quota reached for this project. Delete a version or ask an administrator to
+                raise the limit before branching.
+              </div>
+            )}
             <div className="mt-4 space-y-4">
               <div>
                 <Label.Root htmlFor="branch-name" className={labelClass}>
@@ -656,7 +705,7 @@ export default function VersionHistoryDialog({
               <button
                 type="button"
                 onClick={() => void handleBranchSubmit()}
-                disabled={branchSubmitting || !branchName.trim()}
+                disabled={branchSubmitting || !branchName.trim() || versionQuotaBlocked}
                 className="px-4 py-2 rounded-lg border border-indigo-600 dark:border-indigo-500 bg-indigo-600 dark:bg-indigo-500 text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50"
               >
                 {branchSubmitting ? (

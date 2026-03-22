@@ -42,6 +42,7 @@ from app.schemas.tenant import (
     TenantActivitySummarySchema,
     TenantAppearanceUpdate,
     TenantCreate,
+    TenantQuotaStatusSchema,
     TenantSchema,
     TenantUpdate,
 )
@@ -148,6 +149,7 @@ __all__ = [
     "UserMembershipRoleSchema",
     "UserTenantMembershipAdminSchema",
     "TenantActivitySummarySchema",
+    "TenantQuotaStatusSchema",
     "TenantAdminAuditEventSchema",
     "TenantAppearanceUpdate",
     "TenantCreate",

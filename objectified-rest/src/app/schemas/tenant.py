@@ -83,6 +83,24 @@ class TenantActivitySummarySchema(BaseModel):
     )
 
 
+class TenantQuotaStatusSchema(BaseModel):
+    """Active counts vs tenant-configured caps for UI quota display (GitHub #199)."""
+
+    max_projects: Optional[int] = Field(
+        default=None,
+        description="Tenant cap on active projects; null means unlimited.",
+    )
+    active_project_count: int = Field(ge=0, description="Non-deleted projects for this tenant.")
+    max_versions_per_project: Optional[int] = Field(
+        default=None,
+        description="Tenant cap on active versions per project; null means unlimited.",
+    )
+    active_version_count_for_project: Optional[int] = Field(
+        default=None,
+        description="Non-deleted versions for the selected project when project_id was requested; otherwise null.",
+    )
+
+
 class TenantAppearanceUpdate(BaseModel):
     """Partial update for tenant branding and default UI theme (merged into metadata)."""
 
