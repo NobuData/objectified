@@ -32,6 +32,7 @@ import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import { useUndoKeyboard, getModifierLabel } from '@lib/studio/useUndoKeyboard';
+import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import CommitMessageDialog from '@/app/dashboard/components/CommitMessageDialog';
 import CanvasSettingsDialog from '@/app/dashboard/components/CanvasSettingsDialog';
 import MergeDialog from '@/app/dashboard/components/MergeDialog';
@@ -50,6 +51,8 @@ const btnPrimary =
 
 const selectTrigger =
   'h-9 inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+
+type ToolbarOperation = 'commit' | 'push' | 'pull' | 'merge';
 
 export default function StudioToolbar() {
   const router = useRouter();
@@ -79,25 +82,45 @@ export default function StudioToolbar() {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [canvasSettingsDialogOpen, setCanvasSettingsDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [activeOperation, setActiveOperation] = useState<ToolbarOperation | null>(null);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
   const projectId = workspace?.project?.id ?? '';
   const isReadOnly =
     studio?.state?.readOnly === true || workspace?.version?.published === true;
+  const tenantPerms = useTenantPermissions(tenantId || null);
+  const hasSchemaRead = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:read');
+  const hasSchemaWrite = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:write');
+  const canCommitPushMerge = !isReadOnly && !tenantPerms.loading && hasSchemaWrite;
+  const canPull = !tenantPerms.loading && (hasSchemaRead || hasSchemaWrite);
+
+  const runWithOperation = useCallback(
+    async (operation: ToolbarOperation, action: () => Promise<void>) => {
+      setActiveOperation(operation);
+      try {
+        await action();
+      } finally {
+        setActiveOperation((current) => (current === operation ? null : current));
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!studio?.state?.versionId || (!options.jwt && !options.apiKey)) return;
     void studio.checkServerForUpdates(options);
   }, [studio?.state?.versionId, studio?.state?.revision, options.jwt, options.apiKey]);
 
-  const performPull = useCallback(() => {
+  const performPull = useCallback(async () => {
     if (!versionId || !studio) return;
-    void studio.loadFromServer(versionId, options, {
-      tenantId: tenantId || undefined,
-      projectId: projectId || undefined,
+    await runWithOperation('pull', async () => {
+      await studio.loadFromServer(versionId, options, {
+        tenantId: tenantId || undefined,
+        projectId: projectId || undefined,
+      });
     });
-  }, [studio, versionId, options, tenantId, projectId]);
+  }, [studio, versionId, options, tenantId, projectId, runWithOperation]);
 
   const handlePull = useCallback(async () => {
     if (!studio) return;
@@ -112,11 +135,11 @@ export default function StudioToolbar() {
       });
       if (!ok) return;
     }
-    performPull();
+    await performPull();
   }, [studio, confirm, performPull]);
 
   const handleReset = useCallback(() => {
-    performPull();
+    void performPull();
   }, [performPull]);
 
   const handleLoadRevision = useCallback(
@@ -155,24 +178,28 @@ export default function StudioToolbar() {
   );
 
   const handleCommitWithMessage = useCallback(
-    (message: string | null) => {
+    async (message: string | null) => {
       if (!studio) return;
-      void studio.save(options, { message });
+      await runWithOperation('commit', async () => {
+        await studio.save(options, { message });
+      });
     },
-    [studio, options]
+    [studio, options, runWithOperation]
   );
 
   const handlePushToTarget = useCallback(
     async (targetVersionId: string) => {
       if (!studio) return;
       try {
-        await studio.push(targetVersionId, options);
+        await runWithOperation('push', async () => {
+          await studio.push(targetVersionId, options);
+        });
         setPushDialogOpen(false);
       } catch {
         // Error and pushConflict409 set in context; dialog stays open for Pull then Merge suggestion
       }
     },
-    [studio, options]
+    [studio, options, runWithOperation]
   );
 
   const checkTargetServerAhead = useCallback(
@@ -232,12 +259,14 @@ export default function StudioToolbar() {
   const handleOverwriteToTarget = useCallback(
     async (targetVersionId: string) => {
       if (!studio) return;
-      await studio.push(targetVersionId, options, {
-        message: 'Overwrite push after server-ahead confirmation',
-        overwrite: true,
+      await runWithOperation('push', async () => {
+        await studio.push(targetVersionId, options, {
+          message: 'Overwrite push after server-ahead confirmation',
+          overwrite: true,
+        });
       });
     },
-    [studio, options]
+    [studio, options, runWithOperation]
   );
 
   const openMergeDialog = useCallback((sourceVersionId?: string | null) => {
@@ -253,6 +282,13 @@ export default function StudioToolbar() {
   );
 
   const modLabel = useMemo(() => getModifierLabel(), []);
+  const progressLabel = useMemo(() => {
+    if (activeOperation === 'commit') return 'Committing...';
+    if (activeOperation === 'push') return 'Pushing...';
+    if (activeOperation === 'pull') return 'Pulling...';
+    if (activeOperation === 'merge') return 'Merging...';
+    return null;
+  }, [activeOperation]);
 
   useUndoKeyboard({
     onUndo: () => {
@@ -272,6 +308,43 @@ export default function StudioToolbar() {
       setMergeDialogOpen(false);
     }
   }, [isReadOnly]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const withPrimaryModifier = event.metaKey || event.ctrlKey;
+      if (!withPrimaryModifier || event.altKey) return;
+
+      if (event.key.toLowerCase() === 's' && !event.shiftKey) {
+        event.preventDefault();
+        if (canCommitPushMerge && !studio?.loading) {
+          setCommitDialogOpen(true);
+        }
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'p' && event.shiftKey) {
+        event.preventDefault();
+        if (canCommitPushMerge && !studio?.loading && tenantId && projectId) {
+          setPushDialogOpen(true);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [canCommitPushMerge, studio?.loading, tenantId, projectId]);
 
   const showGitToolbar = Boolean(studio && studio.state);
   const schemaMode: SchemaMode = studio?.state ? getSchemaMode(studio.state) : 'openapi';
@@ -323,6 +396,16 @@ export default function StudioToolbar() {
         >
           <Eye className="h-3.5 w-3.5" />
           Revision {studio!.state?.revision ?? '?'} (read-only)
+        </span>
+      )}
+      {showGitToolbar && progressLabel && (
+        <span
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          {progressLabel}
         </span>
       )}
       {showGitToolbar && isReadOnly && !studio!.state?.readOnly && (
@@ -387,16 +470,20 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => setCommitDialogOpen(true)}
-        disabled={studio!.loading || isReadOnly}
+        disabled={studio!.loading || !canCommitPushMerge}
         className={btnPrimary}
         aria-label="Commit (snapshot to server)"
         title={
           isReadOnly
             ? 'Cannot commit (read-only)'
-            : 'Commit local state to server (optional message)'
+            : tenantPerms.loading
+              ? 'Checking permissions…'
+              : !hasSchemaWrite
+                ? 'Cannot commit (schema:write permission required)'
+                : `Commit local state to server (optional message) (${modLabel}+S)`
         }
       >
-        {studio!.loading ? (
+        {activeOperation === 'commit' ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
           <GitCommit className="h-4 w-4" />
@@ -418,34 +505,68 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => setPushDialogOpen(true)}
-        disabled={studio!.loading || isReadOnly || !tenantId || !projectId}
+        disabled={studio!.loading || !canCommitPushMerge || !tenantId || !projectId}
         className={btnBase}
         aria-label="Push to another version"
-        title="Push current state to another version"
+        title={
+          isReadOnly
+            ? 'Cannot push (read-only)'
+            : tenantPerms.loading
+              ? 'Checking permissions…'
+              : !hasSchemaWrite
+                ? 'Cannot push (schema:write permission required)'
+                : `Push current state to another version (${modLabel}+Shift+P)`
+        }
       >
-        <Upload className="h-4 w-4" />
+        {activeOperation === 'push' ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Upload className="h-4 w-4" />
+        )}
       </button>
 
       <button
         type="button"
         onClick={handlePull}
-        disabled={studio!.loading}
+        disabled={studio!.loading || !canPull}
         className={btnBase}
         aria-label="Pull from server"
-        title="Reload from server"
+        title={
+          tenantPerms.loading
+            ? 'Checking permissions…'
+            : canPull
+              ? 'Reload from server'
+              : 'Cannot pull (schema:read permission required)'
+        }
       >
-        <Download className="h-4 w-4" />
+        {activeOperation === 'pull' ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Download className="h-4 w-4" />
+        )}
       </button>
 
       <button
         type="button"
         onClick={() => openMergeDialog(null)}
-        disabled={studio!.loading || isReadOnly || !tenantId || !projectId}
+        disabled={studio!.loading || !canCommitPushMerge || !tenantId || !projectId}
         className={btnBase}
         aria-label="Merge from another version"
-        title="Merge changes from another version"
+        title={
+          isReadOnly
+            ? 'Cannot merge (read-only)'
+            : tenantPerms.loading
+              ? 'Checking permissions…'
+              : !hasSchemaWrite
+                ? 'Cannot merge (schema:write permission required)'
+                : 'Merge changes from another version'
+        }
       >
-        <GitMerge className="h-4 w-4" />
+        {activeOperation === 'merge' ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <GitMerge className="h-4 w-4" />
+        )}
       </button>
 
       <button
@@ -606,6 +727,13 @@ export default function StudioToolbar() {
         options={options}
         tenantId={tenantId}
         projectId={projectId}
+        onMergeProgressChange={(inProgress) =>
+          setActiveOperation((current) => {
+            if (inProgress) return 'merge';
+            if (current === 'merge') return null;
+            return current;
+          })
+        }
         onApplied={() => setMergeDialogOpen(false)}
       />
       <VersionHistoryDialog

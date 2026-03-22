@@ -36,6 +36,7 @@ export interface MergeDialogProps {
   options: RestClientOptions;
   tenantId: string;
   projectId: string;
+  onMergeProgressChange?: (inProgress: boolean) => void;
   onApplied: () => void;
 }
 
@@ -76,6 +77,7 @@ export default function MergeDialog({
   options,
   tenantId,
   projectId,
+  onMergeProgressChange,
   onApplied,
 }: MergeDialogProps) {
   const studio = useStudio();
@@ -207,6 +209,7 @@ export default function MergeDialog({
   const handleApply = useCallback(async () => {
     if (!preview || !effectiveSourceId) return;
     setApplying(true);
+    onMergeProgressChange?.(true);
     setError(null);
     try {
       const conflict_resolutions: ConflictResolutionChoice[] = preview.conflicts.map((c) => {
@@ -247,6 +250,7 @@ export default function MergeDialog({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to apply merge');
     } finally {
+      onMergeProgressChange?.(false);
       setApplying(false);
     }
   }, [
@@ -260,6 +264,7 @@ export default function MergeDialog({
     tenantId,
     projectId,
     studio,
+    onMergeProgressChange,
     onApplied,
     handleOpenChange,
   ]);
