@@ -156,7 +156,49 @@ describe('MergeDialog', () => {
     expect(screen.getByRole('dialog').textContent).toMatch(/All\s+2\s+on\s+"description"/);
   });
 
-  it('calls mergeResolve with apply false then true when applying with conflicts', async () => {
+  it('bulk "Use mine" resolves all matching conflicts and enables the apply button', async () => {
+    mergePreview.mockResolvedValue({
+      merged_state: { classes: [], canvas_metadata: null },
+      conflicts: [
+        {
+          path: 'Person.email.description',
+          description: 'd1',
+          class_name: 'Person',
+          property_name: 'email',
+          field: 'email.description',
+          local_value: 'a',
+          remote_value: 'b',
+        },
+        {
+          path: 'Person.phone.description',
+          description: 'd2',
+          class_name: 'Person',
+          property_name: 'phone',
+          field: 'phone.description',
+          local_value: 'c',
+          remote_value: 'd',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<MergeDialog {...baseProps} initialSourceVersionId="v2" />);
+    await waitFor(() => expect(screen.getByText(/Bulk actions/i)).toBeInTheDocument());
+
+    // Apply button should be disabled before any resolution is selected
+    const applyBtn = screen.getByRole('button', { name: /Validate & apply merge/i });
+    expect(applyBtn).toBeDisabled();
+
+    // Click "Use mine" in the bulk actions panel (first occurrence, before per-conflict rows)
+    const useMineButtons = screen.getAllByRole('button', { name: /Use mine/i });
+    await user.click(useMineButtons[0]);
+
+    // After bulk "Use mine", all conflicts should be resolved and apply button enabled
+    await waitFor(() => {
+      expect(applyBtn).not.toBeDisabled();
+    });
+  });
+
+  it('calls mergeResolve once with apply true when applying with conflicts', async () => {
     mergeResolve.mockResolvedValue({
       merged_state: { classes: [], canvas_metadata: null },
       revision: 2,
@@ -184,9 +226,8 @@ describe('MergeDialog', () => {
     await user.click(screen.getByRole('button', { name: /Use mine/i }));
     await user.click(screen.getByRole('button', { name: /Validate & apply merge/i }));
     await waitFor(() => {
-      expect(mergeResolve).toHaveBeenCalledTimes(2);
-      expect(mergeResolve.mock.calls[0][1]).toMatchObject({ apply: false });
-      expect(mergeResolve.mock.calls[1][1]).toMatchObject({ apply: true });
+      expect(mergeResolve).toHaveBeenCalledTimes(1);
+      expect(mergeResolve.mock.calls[0][1]).toMatchObject({ apply: true });
     });
   });
 

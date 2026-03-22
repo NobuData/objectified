@@ -258,10 +258,6 @@ export default function MergeDialog({
         conflict_resolutions,
         ours_state: ours_state ?? undefined,
       };
-      const needsConflictPass = (preview.conflicts?.length ?? 0) > 0;
-      if (needsConflictPass) {
-        await mergeResolve(versionId, { ...resolveBody, apply: false }, options);
-      }
       await mergeResolve(versionId, { ...resolveBody, apply: true }, options);
       studio.clearPushConflict409();
       await studio.loadFromServer(versionId, options, {
@@ -317,6 +313,7 @@ export default function MergeDialog({
       const entry = bulkFieldGroups.find(([k]) => k === fieldKey);
       const conflicts = entry?.[1];
       if (!conflicts) return;
+      const paths = new Set(conflicts.map((c) => c.path));
       setResolutions((prev) => {
         const next = { ...prev };
         for (const c of conflicts) {
@@ -324,8 +321,13 @@ export default function MergeDialog({
         }
         return next;
       });
+      // Close any active custom editor if it targets one of the bulk-affected conflicts
+      if (customEditPath !== null && paths.has(customEditPath)) {
+        setCustomEditPath(null);
+        setCustomEditValue('');
+      }
     },
-    [bulkFieldGroups]
+    [bulkFieldGroups, customEditPath]
   );
 
   const hasConflicts = (preview?.conflicts?.length ?? 0) > 0;
@@ -442,6 +444,8 @@ export default function MergeDialog({
                       <button
                         type="button"
                         onClick={() => setMergedPreviewOpen((o) => !o)}
+                        aria-expanded={mergedPreviewOpen}
+                        aria-controls="merged-state-json"
                         className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-medium text-indigo-900 dark:text-indigo-100 bg-indigo-100/50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
                       >
                         Merged state JSON
@@ -452,7 +456,10 @@ export default function MergeDialog({
                         )}
                       </button>
                       {mergedPreviewOpen && (
-                        <pre className="max-h-40 overflow-y-auto p-2 text-[11px] leading-snug font-mono text-slate-700 dark:text-slate-300 bg-white/80 dark:bg-slate-900/60">
+                        <pre
+                          id="merged-state-json"
+                          className="max-h-40 overflow-y-auto p-2 text-[11px] leading-snug font-mono text-slate-700 dark:text-slate-300 bg-white/80 dark:bg-slate-900/60"
+                        >
                           {JSON.stringify(preview.merged_state, null, 2)}
                         </pre>
                       )}
