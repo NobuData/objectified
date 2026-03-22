@@ -6,6 +6,7 @@ import React from 'react';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { StudioProvider, useStudio } from '@/app/contexts/StudioContext';
 import { generateLocalId } from '@lib/studio/types';
+import { computeStateChecksum } from '@lib/studio/stateBackup';
 
 const mockPullVersion = jest.fn();
 const mockListProperties = jest.fn();
@@ -53,6 +54,7 @@ function TestConsumer() {
       <span data-testid="loading">{studio.loading ? 'yes' : 'no'}</span>
       <span data-testid="version-id">{studio.state?.versionId ?? ''}</span>
       <span data-testid="read-only">{studio.state?.readOnly ? 'yes' : 'no'}</span>
+      <span data-testid="backup-warning">{studio.backupWarning ?? ''}</span>
       <button type="button" onClick={studio.undo} data-testid="undo">
         Undo
       </button>
@@ -941,9 +943,15 @@ describe('StudioContext', () => {
       canvas_metadata: null,
       groups: [],
     };
+    const backupEnvelope = {
+      formatVersion: 2,
+      checksum: computeStateChecksum(backupState),
+      state: backupState,
+      savedAt: new Date().toISOString(),
+    };
     localStorageMock.getItem.mockImplementation((key: string) =>
       key === backupKey
-        ? JSON.stringify({ state: backupState, savedAt: new Date().toISOString() })
+        ? JSON.stringify(backupEnvelope)
         : null
     );
 
@@ -971,6 +979,50 @@ describe('StudioContext', () => {
     expect(screen.getByTestId('has-state').textContent).toBe('yes');
     expect(screen.getByTestId('class-count').textContent).toBe('1');
     expect(screen.getByTestId('version-id').textContent).toBe('v1');
+  });
+
+  it('loadFromServer warns and ignores corrupted backup on API failure', async () => {
+    const backupKey = 'objectified:studio:backup:v1';
+    const badState = {
+      versionId: 'v1',
+      revision: 4,
+      classes: [{ name: 'BadBackup', properties: [] }],
+      properties: [],
+      canvas_metadata: null,
+      groups: [],
+    };
+    localStorageMock.getItem.mockImplementation((key: string) =>
+      key === backupKey
+        ? JSON.stringify({
+            formatVersion: 2,
+            checksum: 'badsum00',
+            state: badState,
+            savedAt: new Date().toISOString(),
+          })
+        : null
+    );
+    mockPullVersion.mockRejectedValueOnce(new Error('Backend down'));
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error').textContent).toBe('Backend down');
+    });
+    expect(screen.getByTestId('backup-warning').textContent).toContain('integrity');
+    // Falls back to valid empty state because corrupted backup is rejected.
+    expect(screen.getByTestId('class-count').textContent).toBe('0');
   });
 
   // ─── localStorage backup tests (GitHub #65) ────────────────────────────────
@@ -1227,6 +1279,69 @@ describe('StudioContext', () => {
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'objectified:studio:backup:v1',
       expect.stringContaining('"revision":2')
+    );
+  });
+
+  it('warns when another tab updates backup for the same version', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-state').textContent).toBe('yes');
+    });
+
+    const remoteState = {
+      versionId: 'v1',
+      revision: 2,
+      classes: [
+        { id: 'c1', name: 'User', metadata: {}, properties: [] },
+        { id: 'c2', name: 'Order', metadata: {}, properties: [] },
+      ],
+      properties: [],
+      canvas_metadata: null,
+      groups: [],
+    };
+    const eventPayload = JSON.stringify({
+      formatVersion: 2,
+      checksum: computeStateChecksum(remoteState),
+      state: remoteState,
+      savedAt: new Date().toISOString(),
+      sourceTabId: 'tab-remote',
+    });
+    localStorageMock.getItem.mockImplementation((key: string) =>
+      key === 'objectified:studio:backup:v1' ? eventPayload : null
+    );
+
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'objectified:studio:backup:v1',
+          newValue: eventPayload,
+        })
+      );
+    });
+
+    expect(screen.getByTestId('backup-warning').textContent).toContain(
+      'Another Studio tab updated this version'
     );
   });
 });

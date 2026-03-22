@@ -5,8 +5,10 @@
 
 import {
   backupStorageKey,
+  computeStateChecksum,
   saveStateBackup,
   loadStateBackup,
+  loadStateBackupWithDiagnostics,
   clearStateBackup,
 } from '@lib/studio/stateBackup';
 import type { LocalVersionState } from '@lib/studio/types';
@@ -79,6 +81,8 @@ describe('saveStateBackup', () => {
     const [key, value] = localStorageMock.setItem.mock.calls[0];
     expect(key).toBe(backupStorageKey(VERSION_ID));
     const parsed = JSON.parse(value);
+    expect(parsed.formatVersion).toBe(2);
+    expect(typeof parsed.checksum).toBe('string');
     expect(parsed.state).toEqual(state);
     expect(typeof parsed.savedAt).toBe('string');
   });
@@ -142,6 +146,40 @@ describe('loadStateBackup', () => {
 
     expect(loadStateBackup('v1')).toEqual(s1);
     expect(loadStateBackup('v2')).toEqual(s2);
+  });
+
+  it('returns null and warning when backup checksum is invalid', () => {
+    const state = makeState({ revision: 11 });
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({
+        formatVersion: 2,
+        checksum: 'deadbeef',
+        savedAt: new Date().toISOString(),
+        state,
+      })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('corrupted');
+    expect(loaded.warning).toContain('integrity');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
+  });
+
+  it('returns null and warning when backup format is incompatible', () => {
+    const state = makeState({ revision: 6 });
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({
+        formatVersion: 99,
+        checksum: computeStateChecksum(state),
+        savedAt: new Date().toISOString(),
+        state,
+      })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('incompatible');
+    expect(loaded.warning).toContain('incompatible');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
   });
 });
 
