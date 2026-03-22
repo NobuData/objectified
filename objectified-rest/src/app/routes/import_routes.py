@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Annotated, Any, Optional
+from urllib.parse import urljoin
 
 import httpx
 import yaml
@@ -36,7 +37,7 @@ from app.routes.properties import _PROPERTY_COLUMNS
 from app.routes.validate import _validate_openapi_document
 from app.routes.versions import _assert_version_exists
 from app.schemas.import_model import FetchImportUrlRequest, FetchImportUrlResponse, ImportResult
-from app.url_safety import assert_https_url_safe_for_fetch
+from app.url_safety import SSRFBlockedError, assert_https_url_safe_for_fetch, make_ssrf_validated_transport
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +340,14 @@ def _preview_create_class_property(
     parent_class_property_id: Optional[str],
     result: ImportResult,
 ) -> str:
+    # A synthetic class_id means the class does not yet exist in the DB.
+    # Skip the existence query – every class_property link is a would-create.
+    if class_id.startswith("__preview_new__:"):
+        result.class_properties_created += 1
+        return (
+            f"__preview_cp__:{class_id}:{imported_prop.name}:{parent_class_property_id or 'root'}"
+        )
+
     if parent_class_property_id is not None:
         existing = db.execute_query(
             "SELECT id FROM objectified.class_property "
@@ -414,6 +423,7 @@ def _preview_import(
     responses={
         200: {"description": "Parsed document"},
         400: {"description": "Invalid URL, unsafe host, or unparseable body"},
+        502: {"description": "Upstream HTTP error or timeout when fetching the URL"},
     },
 )
 def fetch_import_url(
@@ -431,18 +441,49 @@ def fetch_import_url(
 
     collected = bytearray()
     content_type: str | None = None
+    _max_redirects = 5
     try:
-        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
-            with client.stream("GET", safe_url, headers=headers) as response:
-                response.raise_for_status()
-                content_type = response.headers.get("content-type")
-                for chunk in response.iter_bytes():
-                    collected.extend(chunk)
-                    if len(collected) > _FETCH_MAX_BYTES:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Response exceeds maximum size of {_FETCH_MAX_BYTES} bytes",
-                        )
+        with httpx.Client(
+            timeout=30.0,
+            follow_redirects=False,
+            transport=make_ssrf_validated_transport(),
+        ) as client:
+            current_url = safe_url
+            redirects_remaining = _max_redirects
+            while True:
+                with client.stream("GET", current_url, headers=headers) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise HTTPException(
+                                status_code=502,
+                                detail="Redirect response missing Location header",
+                            )
+
+                        if redirects_remaining <= 0:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="Too many redirects while fetching URL",
+                            )
+                        redirects_remaining -= 1
+
+                        next_url = urljoin(current_url, location)
+                        current_url = assert_https_url_safe_for_fetch(next_url)
+                        continue
+
+                    response.raise_for_status()
+                    content_type = response.headers.get("content-type")
+                    for chunk in response.iter_bytes():
+                        collected.extend(chunk)
+                        if len(collected) > _FETCH_MAX_BYTES:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Response exceeds maximum size of {_FETCH_MAX_BYTES} bytes",
+                            )
+                    break
+    except SSRFBlockedError as exc:
+        logger.warning("fetch_import_url: SSRF blocked for %s: %s", safe_url, exc.detail)
+        raise HTTPException(status_code=400, detail=exc.detail) from exc
     except httpx.HTTPStatusError as exc:
         logger.warning("fetch_import_url: HTTP error %s for %s", exc.response.status_code, safe_url)
         raise HTTPException(
