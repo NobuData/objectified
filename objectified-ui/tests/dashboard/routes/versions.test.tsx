@@ -93,6 +93,7 @@ const sampleVersionTwo = {
 describe('VersionsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.localStorage.clear();
     const { useSession } = require('next-auth/react');
     useSession.mockReturnValue({
       status: 'authenticated',
@@ -173,6 +174,45 @@ describe('VersionsPage', () => {
     await waitFor(() => {
       expect(listVersions).toHaveBeenCalledWith('t1', 'p1', expect.anything());
     });
+  });
+
+  it('shows initial loading progress while first version load is pending', async () => {
+    const { listVersions } = require('@lib/api/rest-client');
+    let resolveVersions!: (value: unknown[]) => void;
+    listVersions.mockReturnValue(
+      new Promise((resolve) => {
+        resolveVersions = resolve;
+      })
+    );
+    render(<VersionsPage />);
+    expect(
+      await screen.findByRole('progressbar', { name: /versions initial load progress/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/initial load/i)).toBeInTheDocument();
+    await act(async () => {
+      resolveVersions([]);
+      await Promise.resolve();
+    });
+  });
+
+  it('falls back to cached drafts and exposes retry when versions API fails', async () => {
+    const { listVersions } = require('@lib/api/rest-client');
+    listVersions.mockRejectedValue(new Error('Network unavailable'));
+    window.localStorage.setItem(
+      'objectified:dashboard:versions:draft-cache:v1:t1:p1',
+      JSON.stringify({
+        tenantId: 't1',
+        projectId: 'p1',
+        savedAt: '2026-03-21T00:00:00.000Z',
+        versions: [sampleVersion],
+      })
+    );
+    render(<VersionsPage />);
+    await waitFor(() => {
+      expect(screen.getByText(/cached draft version/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    expect(screen.getByText('v1.0.0')).toBeInTheDocument();
   });
 
   it('shows Version history menu item in version actions dropdown', async () => {

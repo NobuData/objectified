@@ -78,6 +78,60 @@ const CODEGEN_TAG_PRESETS = ['staging', 'production', 'development'] as const;
 /** @deprecated Use CODEGEN_TAG_PRESETS instead */
 const VERSION_TAG_PRESETS = CODEGEN_TAG_PRESETS;
 const LAST_OPENED_VERSION_STORAGE_KEY = 'objectified:dashboard:last-opened-version';
+const VERSION_DRAFT_CACHE_STORAGE_PREFIX = 'objectified:dashboard:versions:draft-cache:v1';
+
+type DraftVersionCacheRecord = {
+  tenantId: string;
+  projectId: string;
+  savedAt: string;
+  versions: VersionSchema[];
+};
+
+function draftCacheKey(tenantId: string, projectId: string): string {
+  return `${VERSION_DRAFT_CACHE_STORAGE_PREFIX}:${tenantId}:${projectId}`;
+}
+
+function writeDraftVersionCache(
+  tenantId: string,
+  projectId: string,
+  versions: VersionSchema[]
+): void {
+  try {
+    const payload: DraftVersionCacheRecord = {
+      tenantId,
+      projectId,
+      savedAt: new Date().toISOString(),
+      versions: versions.filter((version) => !version.published),
+    };
+    window.localStorage.setItem(draftCacheKey(tenantId, projectId), JSON.stringify(payload));
+  } catch {
+    // Ignore localStorage write failures.
+  }
+}
+
+function readDraftVersionCache(
+  tenantId: string,
+  projectId: string
+): DraftVersionCacheRecord | null {
+  try {
+    const raw = window.localStorage.getItem(draftCacheKey(tenantId, projectId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<DraftVersionCacheRecord>;
+    if (parsed.tenantId !== tenantId || parsed.projectId !== projectId) return null;
+    if (!Array.isArray(parsed.versions)) return null;
+    return {
+      tenantId,
+      projectId,
+      savedAt:
+        typeof parsed.savedAt === 'string' && parsed.savedAt
+          ? parsed.savedAt
+          : new Date().toISOString(),
+      versions: parsed.versions as VersionSchema[],
+    };
+  } catch {
+    return null;
+  }
+}
 
 type VersionStatusFilter = 'all' | 'draft' | 'published' | 'disabled';
 type PublishedTargetFilter = 'all' | (typeof VERSION_PUBLISH_TARGETS)[number];
@@ -115,7 +169,13 @@ export default function VersionsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionSchema[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const initialLoadCompleteRef = useRef<boolean>(false);
+  const [loadProgressPercent, setLoadProgressPercent] = useState(0);
+  const [loadProgressLabel, setLoadProgressLabel] = useState('Preparing dashboard...');
   const [error, setError] = useState<string | null>(null);
+  const [usingCachedDrafts, setUsingCachedDrafts] = useState(false);
+  const [cachedDraftSavedAt, setCachedDraftSavedAt] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editVersion, setEditVersion] = useState<VersionSchema | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -194,6 +254,10 @@ export default function VersionsPage() {
     }
     setError(null);
     setLoading(true);
+    if (!initialLoadCompleteRef.current) {
+      setLoadProgressLabel('Loading projects...');
+      setLoadProgressPercent(30);
+    }
     try {
       const data = await listProjects(selectedTenantId, opts);
       setProjects(data);
@@ -201,6 +265,12 @@ export default function VersionsPage() {
         if (prev) return prev;
         return data.length > 0 ? data[0].id : null;
       });
+      if (!initialLoadCompleteRef.current) {
+        setLoadProgressLabel(
+          data.length > 0 ? 'Loading versions...' : 'Projects loaded.'
+        );
+        setLoadProgressPercent(data.length > 0 ? 55 : 100);
+      }
     } catch (e) {
       setError(
         isForbiddenError(e)
@@ -210,6 +280,8 @@ export default function VersionsPage() {
             : 'Failed to load projects'
       );
       setProjects([]);
+      initialLoadCompleteRef.current = true;
+      setInitialLoadComplete(true);
     } finally {
       setLoading(false);
     }
@@ -218,21 +290,52 @@ export default function VersionsPage() {
   const fetchVersions = useCallback(async () => {
     if (status !== 'authenticated' || !selectedTenantId || !selectedProjectId) {
       setVersions([]);
+      setUsingCachedDrafts(false);
+      setCachedDraftSavedAt(null);
+      setLoading(false);
       return;
     }
     setError(null);
+    setLoading(true);
+    setUsingCachedDrafts(false);
+    setCachedDraftSavedAt(null);
+    if (!initialLoadCompleteRef.current) {
+      setLoadProgressLabel('Loading versions...');
+      setLoadProgressPercent(70);
+    }
     try {
       const data = await listVersions(selectedTenantId, selectedProjectId, opts);
       setVersions(data);
+      writeDraftVersionCache(selectedTenantId, selectedProjectId, data);
+      if (!initialLoadCompleteRef.current) {
+        setLoadProgressLabel('Versions ready.');
+        setLoadProgressPercent(100);
+      }
     } catch (e) {
-      setError(
-        isForbiddenError(e)
-          ? 'You do not have permission to view versions.'
-          : e instanceof Error
-            ? e.message
-            : 'Failed to load versions'
-      );
-      setVersions([]);
+      const cached = readDraftVersionCache(selectedTenantId, selectedProjectId);
+      if (cached && cached.versions.length > 0) {
+        setVersions(cached.versions);
+        setUsingCachedDrafts(true);
+        setCachedDraftSavedAt(cached.savedAt);
+        setError(
+          `Failed to load versions from server. Showing ${cached.versions.length} cached draft version(s) from ${formatDateTime(
+            cached.savedAt
+          )}.`
+        );
+      } else {
+        setError(
+          isForbiddenError(e)
+            ? 'You do not have permission to view versions.'
+            : e instanceof Error
+              ? e.message
+              : 'Failed to load versions'
+        );
+        setVersions([]);
+      }
+    } finally {
+      setLoading(false);
+      initialLoadCompleteRef.current = true;
+      setInitialLoadComplete(true);
     }
   }, [status, selectedTenantId, selectedProjectId, opts]);
 
@@ -336,6 +439,8 @@ export default function VersionsPage() {
       fetchVersions();
     } else {
       setVersions([]);
+      setUsingCachedDrafts(false);
+      setCachedDraftSavedAt(null);
     }
   }, [selectedProjectId, fetchVersions]);
 
@@ -405,6 +510,15 @@ export default function VersionsPage() {
     () => projects.find((p) => p.id === selectedProjectId) ?? null,
     [projects, selectedProjectId]
   );
+
+  const handleRetryLoad = useCallback(() => {
+    if (selectedProjectId) {
+      void fetchVersions();
+      void fetchQuota();
+      return;
+    }
+    void fetchProjects();
+  }, [fetchProjects, fetchQuota, fetchVersions, selectedProjectId]);
 
   const versionQuotaBanner = useMemo(() => {
     if (
@@ -932,13 +1046,57 @@ export default function VersionsPage() {
           className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm print:hidden"
           role="alert"
         >
-          {error}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={handleRetryLoad}
+              className="inline-flex items-center gap-1 rounded-md border border-red-300 dark:border-red-700 bg-white/80 dark:bg-slate-900/60 px-2.5 py-1 text-xs font-medium text-red-700 dark:text-red-200 hover:bg-white dark:hover:bg-slate-900"
+            >
+              <Loader2 className={loading ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {usingCachedDrafts && cachedDraftSavedAt && (
+        <div className="mb-4 p-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200 text-sm print:hidden">
+          Working from cached draft data saved at {formatDateTime(cachedDraftSavedAt)}.
         </div>
       )}
 
       {!selectedProjectId ? (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 p-8 text-center text-slate-500 dark:text-slate-400">
           Select a project to list versions.
+        </div>
+      ) : loading && !initialLoadComplete ? (
+        <div
+          className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+              Initial load
+            </h2>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{loadProgressPercent}%</span>
+          </div>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{loadProgressLabel}</p>
+          <progress
+            max={100}
+            value={loadProgressPercent}
+            className="mt-3 h-2 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-slate-200 dark:[&::-webkit-progress-bar]:bg-slate-700 [&::-webkit-progress-value]:bg-indigo-600 dark:[&::-webkit-progress-value]:bg-indigo-400"
+            aria-label="Versions initial load progress"
+          />
+          <div className="mt-6 space-y-3 animate-pulse">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                key={`versions-loading-skeleton-${idx}`}
+                className="h-14 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/60"
+              />
+            ))}
+          </div>
         </div>
       ) : versions.length === 0 ? (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 p-12 text-center">
