@@ -363,6 +363,64 @@ def test_create_project_tenant_not_found_returns_404(client):
 
 
 # ---------------------------------------------------------------------------
+# Clone project
+# ---------------------------------------------------------------------------
+
+
+def test_clone_project_without_schema_copy_returns_201(client):
+    """POST .../projects/{id}/clone creates a project when no version is copied."""
+    new_row = {
+        **_PROJECT_ROW,
+        "id": "00000000-0000-0000-0000-000000000013",
+        "slug": "cloned-slug",
+        "name": "Cloned",
+    }
+    with mock_db_all() as mock_db:
+        # Note: ensure_project_quota_allows_create uses app.quotas.db (not patched here),
+        # so its tenant quota query does not consume execute_query side_effect entries.
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+            [_PROJECT_ROW],
+            [],
+            [],
+        ]
+        mock_db.execute_mutation.return_value = new_row
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/clone",
+            json={
+                "name": "Cloned",
+                "slug": "cloned-slug",
+                "copy_latest_version": False,
+            },
+        )
+    assert r.status_code == 201
+    data = r.json()
+    assert data["project"]["slug"] == "cloned-slug"
+    assert data["cloned_version_id"] is None
+
+
+def test_clone_project_slug_conflict_returns_409(client):
+    """POST .../clone returns 409 when the new slug is already taken."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+            [_PROJECT_ROW],
+            [{"id": "other-id"}],
+        ]
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/clone",
+            json={
+                "name": "Cloned",
+                "slug": "taken-slug",
+                "copy_latest_version": False,
+            },
+        )
+    assert r.status_code == 409
+
+
+# ---------------------------------------------------------------------------
 # Update project
 # ---------------------------------------------------------------------------
 

@@ -29,6 +29,7 @@ import {
   listUserLifecycleEvents,
   bulkInviteTenantMembers,
   listProjects,
+  cloneProject,
   listVersions,
   listVersionSnapshots,
   listClassesWithPropertiesAndTags,
@@ -602,6 +603,43 @@ describe('listProjects', () => {
     await listProjects('t1', {}, true);
     const [url] = mockFetch.mock.calls[0];
     expect(url).toContain('include_deleted=true');
+  });
+});
+
+describe('cloneProject', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('POSTs clone body and returns project clone result', async () => {
+    const baseUrl = getRestBaseUrl();
+    const result = {
+      project: {
+        id: 'p2',
+        tenant_id: 't1',
+        name: 'Copy',
+        slug: 'copy',
+        created_at: '2024-01-01',
+        updated_at: null,
+      },
+      cloned_version_id: 'v9',
+    };
+    mockFetch.mockResolvedValue(makeFetchResponse(result));
+    const out = await cloneProject(
+      't1',
+      'p1',
+      { name: 'Copy', slug: 'copy', copy_latest_version: true },
+      {}
+    );
+    expect(out).toEqual(result);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${baseUrl}/tenants/t1/projects/p1/clone`);
+    expect((init as RequestInit).method).toBe('POST');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      name: 'Copy',
+      slug: 'copy',
+      copy_latest_version: true,
+    });
   });
 });
 

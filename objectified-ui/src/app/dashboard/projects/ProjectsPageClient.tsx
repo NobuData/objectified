@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   Loader2,
@@ -19,6 +21,8 @@ import {
   Archive,
   ArrowUpDown,
   Check,
+  Copy,
+  Settings,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -28,6 +32,7 @@ import {
   listProjects,
   listVersions,
   createProject,
+  cloneProject,
   updateProject,
   deleteProject,
   restoreProject,
@@ -108,6 +113,7 @@ function shortId(id: string): string {
 }
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
   const { tenants, selectedTenantId, setSelectedTenantId } = useTenantSelection();
@@ -134,6 +140,8 @@ export default function ProjectsPage() {
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [bulkTagInput, setBulkTagInput] = useState('');
   const [bulkWorking, setBulkWorking] = useState(false);
+  const [cloneSource, setCloneSource] = useState<ProjectSchema | null>(null);
+  const [cloningId, setCloningId] = useState<string | null>(null);
 
   const perms = useTenantPermissions(selectedTenantId);
   const canReadProjects = perms.has('project:read');
@@ -507,15 +515,15 @@ export default function ProjectsPage() {
   const handleDelete = async (project: ProjectSchema) => {
     if (!selectedTenantId) return;
     const ok = await confirm({
-      title: 'Delete project',
+      title: 'Archive project',
       message: (
         <span>
-          Soft-delete <strong>{project.name}</strong> ({project.slug})? The
-          project will be hidden by default and can be restored later.
+          Soft-delete (archive) <strong>{project.name}</strong> ({project.slug})?
+          The project will be hidden by default and can be restored later.
         </span>
       ),
       variant: 'danger',
-      confirmLabel: 'Delete',
+      confirmLabel: 'Archive',
     });
     if (!ok) return;
     setDeletingId(project.id);
@@ -1012,9 +1020,17 @@ export default function ProjectsPage() {
                               type="button"
                               className="p-2 rounded-md text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                               aria-label={`Actions for ${project.name}`}
-                              disabled={deletingId === project.id || restoringId === project.id || permanentDeletingId === project.id}
+                              disabled={
+                                deletingId === project.id ||
+                                restoringId === project.id ||
+                                permanentDeletingId === project.id ||
+                                cloningId === project.id
+                              }
                             >
-                              {(deletingId === project.id || restoringId === project.id || permanentDeletingId === project.id) ? (
+                              {(deletingId === project.id ||
+                                restoringId === project.id ||
+                                permanentDeletingId === project.id ||
+                                cloningId === project.id) ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
                                 <MoreVertical className="h-4 w-4" />
@@ -1027,6 +1043,17 @@ export default function ProjectsPage() {
                               sideOffset={4}
                               align="end"
                             >
+                              {!project.deleted_at && (
+                                <DropdownMenu.Item asChild>
+                                  <Link
+                                    href={`/dashboard/projects/${project.id}/settings`}
+                                    className="rounded-md px-3 py-2 text-sm outline-none flex items-center gap-2 text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800"
+                                  >
+                                    <Settings className="h-4 w-4 text-indigo-500" aria-hidden />
+                                    Project settings
+                                  </Link>
+                                </DropdownMenu.Item>
+                              )}
                               {!project.deleted_at && (
                                 <DropdownMenu.Item
                                   onSelect={() => {
@@ -1046,6 +1073,22 @@ export default function ProjectsPage() {
                               {!project.deleted_at && (
                                 <DropdownMenu.Item
                                   onSelect={() => {
+                                    if (canWriteProjects) setCloneSource(project);
+                                  }}
+                                  disabled={!canWriteProjects}
+                                  className={`rounded-md px-3 py-2 text-sm outline-none flex items-center gap-2 ${
+                                    canWriteProjects
+                                      ? 'text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800'
+                                      : 'text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-70'
+                                  }`}
+                                >
+                                  <Copy className="h-4 w-4 text-indigo-500" aria-hidden />
+                                  Duplicate project
+                                </DropdownMenu.Item>
+                              )}
+                              {!project.deleted_at && (
+                                <DropdownMenu.Item
+                                  onSelect={() => {
                                     if (canWriteProjects) void handleDelete(project);
                                   }}
                                   disabled={!canWriteProjects}
@@ -1056,7 +1099,7 @@ export default function ProjectsPage() {
                                   }`}
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                  Delete project
+                                  Archive project
                                 </DropdownMenu.Item>
                               )}
                               {project.deleted_at && (
@@ -1193,7 +1236,245 @@ export default function ProjectsPage() {
           session={session}
         />
       )}
+      {cloneSource && selectedTenantId && (
+        <CloneProjectDialog
+          source={cloneSource}
+          open={!!cloneSource}
+          onOpenChange={(open) => !open && setCloneSource(null)}
+          tenantId={selectedTenantId}
+          session={session}
+          cloningId={cloningId}
+          setCloningId={setCloningId}
+          onSuccess={(newProjectId) => {
+            setCloneSource(null);
+            void fetchProjects();
+            router.push(`/dashboard/projects/${newProjectId}/settings`);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+interface CloneProjectDialogProps {
+  source: ProjectSchema;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tenantId: string;
+  session: ReturnType<typeof useSession>['data'];
+  cloningId: string | null;
+  setCloningId: (id: string | null) => void;
+  onSuccess: (newProjectId: string) => void;
+}
+
+function CloneProjectDialog({
+  source,
+  open,
+  onOpenChange,
+  tenantId,
+  session,
+  cloningId,
+  setCloningId,
+  onSuccess,
+}: CloneProjectDialogProps) {
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [description, setDescription] = useState('');
+  const [copyLatest, setCopyLatest] = useState(true);
+  const [versionName, setVersionName] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const nextName = `${source.name} (copy)`;
+    setName(nextName);
+    setSlug(nameToSlug(nextName));
+    setDescription(source.description ?? '');
+    setCopyLatest(true);
+    setVersionName('');
+    setFormError(null);
+  }, [open, source]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session) return;
+    setFormError(null);
+    const trimmedName = name.trim();
+    const trimmedSlug = slug.trim().toLowerCase();
+    if (!trimmedName) {
+      setFormError('Name is required.');
+      return;
+    }
+    const err = slugError(trimmedSlug);
+    if (err) {
+      setFormError(err);
+      return;
+    }
+    setCloningId(source.id);
+    try {
+      const result = await cloneProject(
+        tenantId,
+        source.id,
+        {
+          name: trimmedName,
+          slug: trimmedSlug,
+          description: description.trim() || undefined,
+          copy_latest_version: copyLatest,
+          cloned_version_name: versionName.trim() || undefined,
+        },
+        getRestClientOptions((session as { accessToken?: string } | null) ?? null)
+      );
+      onOpenChange(false);
+      onSuccess(result.project.id);
+    } catch (err) {
+      setFormError(
+        isForbiddenError(err)
+          ? 'You do not have permission to duplicate this project.'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to duplicate project'
+      );
+    } finally {
+      setCloningId(null);
+    }
+  };
+
+  const busy = cloningId === source.id;
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
+        <Dialog.Content
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 p-6"
+          aria-describedby={undefined}
+          onEscapeKeyDown={() => onOpenChange(false)}
+          onPointerDownOutside={() => onOpenChange(false)}
+        >
+          <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+            <Copy className="h-5 w-5 text-indigo-500" aria-hidden />
+            Duplicate project
+          </Dialog.Title>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+            Create a new project with a unique slug. You can optionally copy the latest
+            version&apos;s schema (classes, properties, and canvas) into the new project.
+          </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {formError && (
+              <div
+                className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm"
+                role="alert"
+              >
+                {formError}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label.Root htmlFor="clone-project-name" className={labelClass}>
+                New project name *
+              </Label.Root>
+              <input
+                id="clone-project-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className={inputClass}
+                disabled={busy}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label.Root htmlFor="clone-project-slug" className={labelClass}>
+                New slug *
+              </Label.Root>
+              <input
+                id="clone-project-slug"
+                type="text"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                className={`${inputClass} font-mono`}
+                disabled={busy}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label.Root htmlFor="clone-project-description" className={labelClass}>
+                Description (optional)
+              </Label.Root>
+              <textarea
+                id="clone-project-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className={inputClass}
+                rows={2}
+                disabled={busy}
+              />
+            </div>
+            <div className="flex items-start gap-2 rounded-lg border border-slate-200 dark:border-slate-600 p-3">
+              <Checkbox.Root
+                id="clone-copy-version"
+                checked={copyLatest}
+                onCheckedChange={(v) => setCopyLatest(v === true)}
+                disabled={busy}
+                className="mt-0.5 flex h-4 w-4 items-center justify-center rounded border border-slate-400 dark:border-slate-500 bg-white dark:bg-slate-800 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=checked]:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <Checkbox.Indicator className="flex items-center justify-center text-white">
+                  <Check className="h-3 w-3" />
+                </Checkbox.Indicator>
+              </Checkbox.Root>
+              <div>
+                <Label.Root htmlFor="clone-copy-version" className={labelClass}>
+                  Copy latest version schema
+                </Label.Root>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Duplicates classes, properties, and canvas from the newest version. If the
+                  project has no versions, only the project shell is created.
+                </p>
+              </div>
+            </div>
+            {copyLatest && (
+              <div className="space-y-2">
+                <Label.Root htmlFor="clone-version-name" className={labelClass}>
+                  Name for copied version (optional)
+                </Label.Root>
+                <input
+                  id="clone-version-name"
+                  type="text"
+                  value={versionName}
+                  onChange={(e) => setVersionName(e.target.value)}
+                  className={inputClass}
+                  placeholder="Defaults to source name with (copy)"
+                  disabled={busy}
+                  autoComplete="off"
+                />
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors"
+                disabled={busy}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 transition-colors"
+              >
+                {busy ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Duplicating…
+                  </>
+                ) : (
+                  'Duplicate'
+                )}
+              </button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

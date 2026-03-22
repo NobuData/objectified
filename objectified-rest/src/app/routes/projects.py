@@ -1,5 +1,6 @@
 """REST routes for /v1/tenants/{tenant_id}/projects — Project CRUD."""
 
+import copy
 import json
 import logging
 import re
@@ -9,9 +10,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_authenticated, require_tenant_permission
 from app.database import db
-from app.quotas import ensure_project_quota_allows_create
+from app.quotas import ensure_project_quota_allows_create, ensure_version_quota_allows_create
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
-from app.schemas.project import ProjectCreate, ProjectHistorySchema, ProjectSchema, ProjectUpdate
+from app.routes.version_commits import _apply_snapshot_state, _create_snapshot
+from app.routes.versions import (
+    _VERSION_COLUMNS,
+    _capture_version_state,
+    _insert_version_row,
+    _normalize_code_generation_tag,
+    _record_history as _record_version_history,
+)
+from app.schemas.project import (
+    ProjectClone,
+    ProjectCloneResult,
+    ProjectCreate,
+    ProjectHistorySchema,
+    ProjectSchema,
+    ProjectUpdate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +249,238 @@ def create_project(
     )
 
     return ProjectSchema(**dict(row))
+
+
+@router.post(
+    "/tenants/{tenant_id}/projects/{project_id}/clone",
+    response_model=ProjectCloneResult,
+    status_code=201,
+    summary="Clone project",
+    description=(
+        "Create a new project as a copy of an existing project in the same tenant. "
+        "When ``copy_latest_version`` is true and the source has at least one version, "
+        "the newest version's schema (classes, properties, and canvas metadata) is "
+        "copied into an initial version on the new project."
+    ),
+)
+def clone_project(
+    tenant_id: str,
+    project_id: str,
+    payload: ProjectClone,
+    _perm: Annotated[dict[str, Any], Depends(require_tenant_permission("project:write"))] = None,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> ProjectCloneResult:
+    """Clone a project, optionally copying the latest version's schema state."""
+    _assert_tenant_exists(tenant_id)
+    _assert_project_exists(project_id, tenant_id)
+    ensure_project_quota_allows_create(tenant_id)
+
+    source_rows = db.execute_query(
+        f"SELECT {_PROJECT_COLUMNS} FROM objectified.project "
+        "WHERE id = %s AND tenant_id = %s AND deleted_at IS NULL",
+        (project_id, tenant_id),
+    )
+    if not source_rows:
+        raise _not_found("Project", project_id)
+    source_row = dict(source_rows[0])
+
+    if not payload.name or not payload.name.strip():
+        raise HTTPException(status_code=400, detail="Project name is required")
+
+    caller_user_id = caller.get("user_id") if caller else None
+    creator_id = caller_user_id
+    if not creator_id:
+        raise HTTPException(status_code=400, detail="creator_id is required when not authenticated")
+
+    slug = _validate_slug(payload.slug)
+
+    existing = db.execute_query(
+        "SELECT id FROM objectified.project "
+        "WHERE tenant_id = %s AND slug = %s AND deleted_at IS NULL",
+        (tenant_id, slug),
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Slug already in use within this tenant: {slug}")
+
+    description = (
+        payload.description.strip()
+        if payload.description is not None
+        else (source_row.get("description") or "")
+    )
+    meta: dict[str, Any]
+    if payload.metadata is not None:
+        meta = dict(payload.metadata)
+    else:
+        raw_meta = source_row.get("metadata")
+        meta = copy.deepcopy(raw_meta) if isinstance(raw_meta, dict) else {}
+
+    latest_rows = db.execute_query(
+        f"""
+        SELECT {_VERSION_COLUMNS}
+        FROM objectified.version
+        WHERE project_id = %s AND deleted_at IS NULL
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT 1
+        """,
+        (project_id,),
+    )
+    source_version: Optional[dict[str, Any]] = dict(latest_rows[0]) if latest_rows else None
+
+    snapshot_state: Optional[dict[str, Any]] = None
+    if payload.copy_latest_version and source_version is not None:
+        sv_id = str(source_version["id"])
+        snapshot_state = _capture_version_state(sv_id)
+        vm = source_version.get("metadata")
+        if isinstance(vm, dict):
+            snapshot_state["canvas_metadata"] = vm.get("canvas_metadata")
+        else:
+            snapshot_state["canvas_metadata"] = None
+
+    def _insert_new_project_row(_conn: Any = None) -> dict[str, Any]:
+        row = db.execute_mutation(
+            f"""
+            INSERT INTO objectified.project
+                (tenant_id, creator_id, name, description, slug, enabled, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+            RETURNING {_PROJECT_COLUMNS}
+            """,
+            (
+                tenant_id,
+                creator_id,
+                payload.name.strip(),
+                description,
+                slug,
+                True,
+                json.dumps(meta),
+            ),
+            _conn=_conn,
+        )
+        if not row:
+            raise HTTPException(status_code=500, detail="Failed to clone project")
+        return dict(row)
+
+    cloned_version_id: Optional[str] = None
+
+    if snapshot_state is None:
+        try:
+            new_row = _insert_new_project_row()
+        except Exception as exc:
+            if "23505" in str(exc) or "unique constraint" in str(exc).lower():
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"A project with slug '{slug}' already exists in this tenant",
+                ) from exc
+            raise HTTPException(status_code=500, detail="Failed to clone project") from exc
+
+        _record_history(
+            project_id=str(new_row["id"]),
+            tenant_id=tenant_id,
+            changed_by=caller_user_id,
+            operation="CLONE",
+            old_data={"source_project_id": project_id},
+            new_data=new_row,
+        )
+        return ProjectCloneResult(project=ProjectSchema(**new_row), cloned_version_id=None)
+
+    sv = source_version
+    assert sv is not None
+
+    raw_tag = sv.get("code_generation_tag")
+    try:
+        code_tag = _normalize_code_generation_tag(raw_tag) if raw_tag else None
+    except HTTPException:
+        code_tag = None
+
+    version_name = (payload.cloned_version_name or "").strip()
+    if not version_name:
+        base = (sv.get("name") or "Version").strip() or "Version"
+        version_name = f"{base} (copy)"
+
+    vm_insert = sv.get("metadata")
+    version_metadata: dict[str, Any]
+    if isinstance(vm_insert, dict):
+        version_metadata = copy.deepcopy(vm_insert)
+    else:
+        version_metadata = {}
+
+    with db.transaction() as conn:
+        try:
+            new_row = _insert_new_project_row(_conn=conn)
+        except Exception as exc:
+            if "23505" in str(exc) or "unique constraint" in str(exc).lower():
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"A project with slug '{slug}' already exists in this tenant",
+                ) from exc
+            raise HTTPException(status_code=500, detail="Failed to clone project") from exc
+
+        new_project_id = str(new_row["id"])
+        ensure_version_quota_allows_create(tenant_id, new_project_id)
+
+        _record_history(
+            project_id=new_project_id,
+            tenant_id=tenant_id,
+            changed_by=caller_user_id,
+            operation="CLONE",
+            old_data={"source_project_id": project_id},
+            new_data=new_row,
+            _conn=conn,
+        )
+
+        try:
+            ver_row = _insert_version_row(
+                project_id=new_project_id,
+                creator_id=creator_id,
+                name=version_name,
+                description=sv.get("description") or "",
+                code_generation_tag=code_tag,
+                change_log=sv.get("change_log"),
+                enabled=bool(sv.get("enabled", True)),
+                published=False,
+                visibility=sv.get("visibility"),
+                metadata=version_metadata,
+                source_version_id=str(sv["id"]),
+                _conn=conn,
+            )
+        except Exception as exc:
+            if "23505" in str(exc) or "unique constraint" in str(exc).lower():
+                raise HTTPException(
+                    status_code=409,
+                    detail="code_generation_tag is already used by another version in this project.",
+                ) from exc
+            raise
+
+        if not ver_row:
+            raise HTTPException(status_code=500, detail="Failed to create cloned version")
+
+        new_version_id = str(ver_row["id"])
+        cloned_version_id = new_version_id
+
+        _record_version_history(
+            version_id=new_version_id,
+            project_id=new_project_id,
+            changed_by=caller_user_id,
+            operation="INSERT",
+            old_data=None,
+            new_data=dict(ver_row),
+            _conn=conn,
+        )
+
+        _apply_snapshot_state(new_version_id, new_project_id, snapshot_state, _conn=conn)
+
+        _create_snapshot(
+            version_id=new_version_id,
+            project_id=new_project_id,
+            committed_by=caller_user_id,
+            label="clone",
+            description=f"Cloned from project {project_id} version {sv['id']}",
+            _conn=conn,
+        )
+
+    return ProjectCloneResult(
+        project=ProjectSchema(**new_row),
+        cloned_version_id=cloned_version_id,
+    )
 
 
 @router.put(
@@ -518,6 +766,7 @@ def _record_history(
     operation: str,
     old_data: Optional[dict[str, Any]],
     new_data: Optional[dict[str, Any]],
+    _conn: Any = None,
 ) -> None:
     """Insert a row into project_history. Failures are logged but not raised."""
     try:
@@ -536,6 +785,7 @@ def _record_history(
                 json.dumps(new_data, default=str) if new_data is not None else None,
             ),
             returning=False,
+            _conn=_conn,
         )
     except Exception:
         logger.exception(

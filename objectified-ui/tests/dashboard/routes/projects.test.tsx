@@ -14,6 +14,10 @@ jest.mock('next-auth/react', () => ({
   useSession: jest.fn(() => SESSION),
 }));
 
+jest.mock('next/navigation', () => ({
+  useRouter: jest.fn(() => ({ push: jest.fn() })),
+}));
+
 jest.mock('@/app/contexts/TenantSelectionContext', () => ({
   useTenantSelection: jest.fn(),
 }));
@@ -22,6 +26,7 @@ jest.mock('@lib/api/rest-client', () => ({
   listProjects: jest.fn(),
   listVersions: jest.fn(),
   createProject: jest.fn(),
+  cloneProject: jest.fn(),
   updateProject: jest.fn(),
   deleteProject: jest.fn(),
   restoreProject: jest.fn(),

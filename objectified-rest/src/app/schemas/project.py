@@ -52,6 +52,24 @@ class ProjectUpdate(BaseModel):
     metadata: Optional[dict[str, Any]] = None
 
 
+class ProjectClone(BaseModel):
+    """Clone an existing project into a new project within the same tenant."""
+
+    name: str
+    slug: str
+    description: Optional[str] = None
+    copy_latest_version: bool = True
+    cloned_version_name: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
+class ProjectCloneResult(BaseModel):
+    """Response for a successful project clone."""
+
+    project: ProjectSchema
+    cloned_version_id: Optional[str] = None
+
+
 class ProjectHistorySchema(BaseModel):
     """Response schema for objectified.project_history."""
 

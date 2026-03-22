@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.30
+  version: 1.0.31
 paths:
   /v1/auth/login:
     post:
@@ -4308,6 +4308,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/projects/{project_id}/clone:
+    post:
+      tags:
+      - Projects
+      summary: Clone project
+      description: Create a new project as a copy of an existing project in the same
+        tenant. When ``copy_latest_version`` is true and the source has at least one
+        version, the newest version's schema (classes, properties, and canvas metadata)
+        is copied into an initial version on the new project.
+      operationId: clone_project_v1_tenants__tenant_id__projects__project_id__clone_post
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Project Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectClone'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectCloneResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/tenants/{tenant_id}/projects/{project_id}/restore:
     post:
       tags:
@@ -8046,6 +8104,54 @@ components:
       type: object
       title: ProfileUpdate
       description: Update payload for current user profile (name and metadata only).
+    ProjectClone:
+      properties:
+        name:
+          type: string
+          title: Name
+        slug:
+          type: string
+          title: Slug
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        copy_latest_version:
+          type: boolean
+          title: Copy Latest Version
+          default: true
+        cloned_version_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cloned Version Name
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+      type: object
+      required:
+      - name
+      - slug
+      title: ProjectClone
+      description: Clone an existing project into a new project within the same tenant.
+    ProjectCloneResult:
+      properties:
+        project:
+          $ref: '#/components/schemas/ProjectSchema'
+        cloned_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cloned Version Id
+      type: object
+      required:
+      - project
+      title: ProjectCloneResult
+      description: Response for a successful project clone.
     ProjectCreate:
       properties:
         tenant_id:
