@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   Loader2,
@@ -117,6 +117,7 @@ function shortId(id: string): string {
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
   const { tenants, selectedTenantId, setSelectedTenantId } = useTenantSelection();
@@ -146,6 +147,7 @@ export default function ProjectsPage() {
   const [cloneSource, setCloneSource] = useState<ProjectSchema | null>(null);
   const [cloningId, setCloningId] = useState<string | null>(null);
   const [quotaStatus, setQuotaStatus] = useState<TenantQuotaStatusSchema | null>(null);
+  const consumedQuickActionRef = useRef(false);
 
   const perms = useTenantPermissions(selectedTenantId);
   const canReadProjects = perms.has('project:read');
@@ -236,6 +238,14 @@ export default function ProjectsPage() {
     setSortField('updated_at');
     setSortDir('desc');
   }, [selectedTenantId]);
+
+  useEffect(() => {
+    if (consumedQuickActionRef.current) return;
+    if (searchParams.get('new') !== '1') return;
+    consumedQuickActionRef.current = true;
+    if (!canWriteProjects || !selectedTenantId) return;
+    setCreateOpen(true);
+  }, [searchParams, canWriteProjects, selectedTenantId]);
 
   const allDistinctTags = useMemo(() => {
     const s = new Set<string>();

@@ -77,6 +77,7 @@ function formatDateTime(dateString: string): string {
 const CODEGEN_TAG_PRESETS = ['staging', 'production', 'development'] as const;
 /** @deprecated Use CODEGEN_TAG_PRESETS instead */
 const VERSION_TAG_PRESETS = CODEGEN_TAG_PRESETS;
+const LAST_OPENED_VERSION_STORAGE_KEY = 'objectified:dashboard:last-opened-version';
 
 type VersionStatusFilter = 'all' | 'draft' | 'published' | 'disabled';
 type PublishedTargetFilter = 'all' | (typeof VERSION_PUBLISH_TARGETS)[number];
@@ -625,6 +626,21 @@ export default function VersionsPage() {
 
   const openStudioForVersion = (v: VersionSchema) => {
     if (!selectedTenantId || !selectedProjectId) return;
+    try {
+      window.localStorage.setItem(
+        LAST_OPENED_VERSION_STORAGE_KEY,
+        JSON.stringify({
+          tenantId: selectedTenantId,
+          projectId: selectedProjectId,
+          projectName: selectedProject?.name,
+          versionId: v.id,
+          versionName: v.name,
+          readOnly: !!v.published,
+        })
+      );
+    } catch {
+      // Ignore localStorage write failures.
+    }
     router.push(
       dataDesignerDeepLink({
         tenantId: selectedTenantId,
