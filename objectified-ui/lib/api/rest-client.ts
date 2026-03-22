@@ -247,6 +247,9 @@ export interface ProjectCloneResult {
 export interface VersionSchema {
   id: string;
   project_id: string;
+  /** When set, this version was branched or copied from this source version (same project). */
+  source_version_id?: string | null;
+  creator_id?: string;
   name: string;
   /** Stable label for code generation (e.g. v1, api-v2); unique per project (case-insensitive). */
   code_generation_tag?: string | null;
@@ -256,6 +259,7 @@ export interface VersionSchema {
   published_at?: string | null;
   visibility?: string | null;
   enabled?: boolean;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string | null;
   deleted_at?: string | null;

@@ -16,16 +16,23 @@ import {
   History,
   Tag,
   Upload,
+  Search,
+  GitMerge,
+  ListTree,
+  Check,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as Checkbox from '@radix-ui/react-checkbox';
 import {
   listProjects,
   listVersions,
   createVersion,
   updateVersion,
   deleteVersion,
+  publishVersion,
+  unpublishVersion,
   getTenantQuotaStatus,
   getRestClientOptions,
   isForbiddenError,
@@ -38,6 +45,7 @@ import {
 import { atQuotaLimit, formatUsageLine, quotaSeverity } from '@lib/quotaDisplay';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
+import VersionCompareDialog from '@/app/dashboard/components/VersionCompareDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 import RelationshipGraphDialog from '@/app/dashboard/components/RelationshipGraphDialog';
 import SchemaImportDialog from '@/app/dashboard/components/SchemaImportDialog';
@@ -56,6 +64,34 @@ function formatDateTime(dateString: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+const VERSION_TAG_PRESETS = ['staging', 'production', 'development'] as const;
+
+type VersionStatusFilter = 'all' | 'draft' | 'published' | 'disabled';
+type VersionSortKey =
+  | 'updated_desc'
+  | 'updated_asc'
+  | 'created_desc'
+  | 'created_asc'
+  | 'name_asc'
+  | 'published_desc';
+
+function buildLineageChain(
+  start: VersionSchema,
+  byId: Map<string, VersionSchema>
+): VersionSchema[] {
+  const chain: VersionSchema[] = [];
+  let cur: VersionSchema | undefined = start;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    chain.push(cur);
+    const sid = cur.source_version_id;
+    if (!sid) break;
+    cur = byId.get(sid);
+  }
+  return chain;
 }
 
 export default function VersionsPage() {
@@ -78,6 +114,18 @@ export default function VersionsPage() {
   const [tagDialogValue, setTagDialogValue] = useState('');
   const [tagDialogSubmitting, setTagDialogSubmitting] = useState(false);
   const [tagDialogError, setTagDialogError] = useState<string | null>(null);
+
+  const [versionSearch, setVersionSearch] = useState('');
+  const [versionStatusFilter, setVersionStatusFilter] =
+    useState<VersionStatusFilter>('all');
+  const [versionSort, setVersionSort] = useState<VersionSortKey>('updated_desc');
+  const [selectedVersionIds, setSelectedVersionIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [compareDialogOpen, setCompareDialogOpen] = useState(false);
+  const [compareDialogBaseId, setCompareDialogBaseId] = useState('');
+  const [lineageDialogVersion, setLineageDialogVersion] =
+    useState<VersionSchema | null>(null);
 
   // Create form
   const [createName, setCreateName] = useState('');
@@ -169,6 +217,78 @@ export default function VersionsPage() {
     }
   }, [status, selectedTenantId, selectedProjectId, opts]);
 
+  const versionById = useMemo(
+    () => new Map(versions.map((v) => [v.id, v])),
+    [versions]
+  );
+
+  const filteredSortedVersions = useMemo(() => {
+    let rows = [...versions];
+    const q = versionSearch.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(
+        (v) =>
+          v.name.toLowerCase().includes(q) ||
+          (v.description ?? '').toLowerCase().includes(q) ||
+          (v.code_generation_tag ?? '').toLowerCase().includes(q)
+      );
+    }
+    if (versionStatusFilter === 'draft') rows = rows.filter((v) => !v.published);
+    else if (versionStatusFilter === 'published')
+      rows = rows.filter((v) => !!v.published);
+    else if (versionStatusFilter === 'disabled')
+      rows = rows.filter((v) => v.enabled === false);
+
+    const pubTime = (v: VersionSchema) => {
+      if (!v.published_at) return 0;
+      const t = new Date(v.published_at).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    const updatedTime = (v: VersionSchema) => {
+      const u = v.updated_at ?? v.created_at;
+      if (!u) return 0;
+      const t = new Date(u).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    const createdTime = (v: VersionSchema) => {
+      if (!v.created_at) return 0;
+      const t = new Date(v.created_at).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+
+    rows.sort((a, b) => {
+      switch (versionSort) {
+        case 'name_asc':
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        case 'updated_desc':
+          return updatedTime(b) - updatedTime(a);
+        case 'updated_asc':
+          return updatedTime(a) - updatedTime(b);
+        case 'created_desc':
+          return createdTime(b) - createdTime(a);
+        case 'created_asc':
+          return createdTime(a) - createdTime(b);
+        case 'published_desc':
+          return pubTime(b) - pubTime(a);
+        default:
+          return 0;
+      }
+    });
+    return rows;
+  }, [versions, versionSearch, versionStatusFilter, versionSort]);
+
+  const lineageChain = useMemo(() => {
+    if (!lineageDialogVersion) return [];
+    return buildLineageChain(lineageDialogVersion, versionById);
+  }, [lineageDialogVersion, versionById]);
+
+  const allFilteredSelected = useMemo(
+    () =>
+      filteredSortedVersions.length > 0 &&
+      filteredSortedVersions.every((v) => selectedVersionIds.has(v.id)),
+    [filteredSortedVersions, selectedVersionIds]
+  );
+
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
@@ -184,6 +304,19 @@ export default function VersionsPage() {
   useEffect(() => {
     void fetchQuota();
   }, [fetchQuota]);
+
+  useEffect(() => {
+    setSelectedVersionIds(new Set());
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    const valid = new Set(versions.map((v) => v.id));
+    setSelectedVersionIds((prev) => {
+      const next = new Set([...prev].filter((id) => valid.has(id)));
+      if (next.size === prev.size && [...prev].every((id) => next.has(id))) return prev;
+      return next;
+    });
+  }, [versions]);
 
   const versionQuotaBlocksCreate = useMemo(() => {
     if (!quotaStatus || quotaStatus.active_version_count_for_project == null) {
@@ -333,6 +466,160 @@ export default function VersionsPage() {
       setDeletingId(null);
     }
   };
+
+  const toggleVersionSelected = (id: string, checked: boolean) => {
+    setSelectedVersionIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    if (allFilteredSelected) {
+      setSelectedVersionIds((prev) => {
+        const next = new Set(prev);
+        filteredSortedVersions.forEach((v) => next.delete(v.id));
+        return next;
+      });
+    } else {
+      setSelectedVersionIds((prev) => {
+        const next = new Set(prev);
+        filteredSortedVersions.forEach((v) => next.add(v.id));
+        return next;
+      });
+    }
+  };
+
+  const handlePublishOne = async (v: VersionSchema, visibility: 'private' | 'public') => {
+    try {
+      await publishVersion(v.id, { visibility }, opts);
+      await fetchVersions();
+      await alertDialog({ message: 'Version published.', variant: 'success' });
+    } catch (e) {
+      await alertDialog({
+        message: e instanceof Error ? e.message : 'Publish failed.',
+        variant: 'error',
+      });
+    }
+  };
+
+  const handleUnpublishOne = async (v: VersionSchema) => {
+    try {
+      await unpublishVersion(v.id, opts);
+      await fetchVersions();
+      await alertDialog({ message: 'Version unpublished.', variant: 'success' });
+    } catch (e) {
+      await alertDialog({
+        message: e instanceof Error ? e.message : 'Unpublish failed.',
+        variant: 'error',
+      });
+    }
+  };
+
+  const handleBulkPublish = async (visibility: 'private' | 'public') => {
+    const targets = versions.filter((v) => selectedVersionIds.has(v.id) && !v.published);
+    if (targets.length === 0) {
+      await alertDialog({ message: 'No draft versions in selection.', variant: 'warning' });
+      return;
+    }
+    const ok = await confirm({
+      title: 'Publish versions',
+      message: `Publish ${targets.length} draft version(s) with ${visibility} visibility?`,
+      variant: 'info',
+      confirmLabel: 'Publish',
+    });
+    if (!ok) return;
+    let okN = 0;
+    let fail = 0;
+    for (const v of targets) {
+      try {
+        await publishVersion(v.id, { visibility }, opts);
+        okN++;
+      } catch {
+        fail++;
+      }
+    }
+    await fetchVersions();
+    void fetchQuota();
+    setSelectedVersionIds(new Set());
+    await alertDialog({
+      message:
+        fail === 0
+          ? `Published ${okN} version(s).`
+          : `Published ${okN} version(s); ${fail} failed.`,
+      variant: fail ? 'warning' : 'success',
+    });
+  };
+
+  const handleBulkUnpublish = async () => {
+    const targets = versions.filter((v) => selectedVersionIds.has(v.id) && !!v.published);
+    if (targets.length === 0) {
+      await alertDialog({ message: 'No published versions in selection.', variant: 'warning' });
+      return;
+    }
+    const ok = await confirm({
+      title: 'Unpublish versions',
+      message: `Unpublish ${targets.length} version(s)? Drafts can be edited again.`,
+      variant: 'info',
+      confirmLabel: 'Unpublish',
+    });
+    if (!ok) return;
+    let okN = 0;
+    let fail = 0;
+    for (const v of targets) {
+      try {
+        await unpublishVersion(v.id, opts);
+        okN++;
+      } catch {
+        fail++;
+      }
+    }
+    await fetchVersions();
+    setSelectedVersionIds(new Set());
+    await alertDialog({
+      message:
+        fail === 0
+          ? `Unpublished ${okN} version(s).`
+          : `Unpublished ${okN} version(s); ${fail} failed.`,
+      variant: fail ? 'warning' : 'success',
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const targets = versions.filter((v) => selectedVersionIds.has(v.id));
+    if (targets.length === 0) return;
+    const ok = await confirm({
+      title: 'Delete versions',
+      message: `Permanently delete ${targets.length} version(s)? This cannot be undone.`,
+      variant: 'danger',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
+    let okN = 0;
+    let fail = 0;
+    for (const v of targets) {
+      try {
+        await deleteVersion(v.id, opts);
+        okN++;
+      } catch {
+        fail++;
+      }
+    }
+    await fetchVersions();
+    void fetchQuota();
+    setSelectedVersionIds(new Set());
+    await alertDialog({
+      message:
+        fail === 0
+          ? `Deleted ${okN} version(s).`
+          : `Deleted ${okN} version(s); ${fail} failed.`,
+      variant: fail ? 'warning' : 'success',
+    });
+  };
+
+  const selectedVersionCount = selectedVersionIds.size;
 
   if (status === 'loading') {
     return (
@@ -512,180 +799,405 @@ export default function VersionsPage() {
         </div>
       ) : (
         <div className="dashboard-print-area rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden print:border-slate-400 print:shadow-none">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-              <thead className="bg-slate-50 dark:bg-slate-800/50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Version
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Code gen tag
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Description
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Created
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider print:hidden">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {versions.map((v) => (
-                  <tr
-                    key={v.id}
-                    className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-3 p-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 print:hidden">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="search"
+                  value={versionSearch}
+                  onChange={(e) => setVersionSearch(e.target.value)}
+                  placeholder="Search name, tag, or description"
+                  aria-label="Search versions"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <select
+                value={versionStatusFilter}
+                onChange={(e) =>
+                  setVersionStatusFilter(e.target.value as VersionStatusFilter)
+                }
+                aria-label="Filter by status"
+                className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="all">All statuses</option>
+                <option value="draft">Draft only</option>
+                <option value="published">Published only</option>
+                <option value="disabled">Disabled only</option>
+              </select>
+              <select
+                value={versionSort}
+                onChange={(e) => setVersionSort(e.target.value as VersionSortKey)}
+                aria-label="Sort versions"
+                className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="updated_desc">Updated (newest)</option>
+                <option value="updated_asc">Updated (oldest)</option>
+                <option value="published_desc">Published date</option>
+                <option value="created_desc">Created (newest)</option>
+                <option value="created_asc">Created (oldest)</option>
+                <option value="name_asc">Name (A–Z)</option>
+              </select>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Showing {filteredSortedVersions.length} of {versions.length} version
+              {versions.length === 1 ? '' : 's'}
+              {versionSearch.trim() || versionStatusFilter !== 'all' ? ' (filtered)' : ''}
+            </p>
+          </div>
+          {selectedVersionCount > 0 && (
+            <div
+              className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-indigo-50/90 dark:bg-indigo-950/30 print:hidden"
+              role="status"
+            >
+              <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                {selectedVersionCount} selected
+              </span>
+              <button
+                type="button"
+                onClick={() => void handleBulkPublish('private')}
+                className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+              >
+                Publish (private)
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkPublish('public')}
+                className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+              >
+                Publish (public)
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkUnpublish()}
+                className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+              >
+                Unpublish
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkDelete()}
+                className="px-3 py-1.5 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700"
+              >
+                Delete (archive)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedVersionIds(new Set())}
+                className="px-3 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-400 hover:underline"
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
+          {filteredSortedVersions.length === 0 ? (
+            <div className="p-10 text-center text-slate-600 dark:text-slate-400">
+              <p className="font-medium">No versions match the current filters.</p>
+              <button
+                type="button"
+                className="mt-3 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                onClick={() => {
+                  setVersionSearch('');
+                  setVersionStatusFilter('all');
+                }}
+              >
+                Clear search and status filter
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                <thead className="bg-slate-50 dark:bg-slate-800/50">
+                  <tr>
+                    <th
+                      scope="col"
+                      className="w-12 px-3 py-3 text-left print:hidden"
+                    >
+                      <Checkbox.Root
+                        checked={
+                          allFilteredSelected
+                            ? true
+                            : filteredSortedVersions.some((v) =>
+                                  selectedVersionIds.has(v.id)
+                                )
+                              ? 'indeterminate'
+                              : false
+                        }
+                        onCheckedChange={() => toggleSelectAllFiltered()}
+                        className="flex h-4 w-4 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=indeterminate]:bg-indigo-600 data-[state=indeterminate]:border-indigo-600"
+                        aria-label="Select all visible versions"
+                      >
+                        <Checkbox.Indicator className="flex items-center justify-center text-white">
+                          <Check className="h-3 w-3" />
+                        </Checkbox.Indicator>
+                      </Checkbox.Root>
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Version
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Branched from
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Code gen tag
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Description
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Updated
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Created
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider print:hidden">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredSortedVersions.map((v) => (
+                    <tr
+                      key={v.id}
+                      className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
+                    >
+                      <td className="px-3 py-3 print:hidden">
+                        <Checkbox.Root
+                          checked={selectedVersionIds.has(v.id)}
+                          onCheckedChange={(c) =>
+                            toggleVersionSelected(v.id, c === true)
+                          }
+                          className="flex h-4 w-4 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+                          aria-label={`Select version ${v.name}`}
+                        >
+                          <Checkbox.Indicator className="flex items-center justify-center text-white">
+                            <Check className="h-3 w-3" />
+                          </Checkbox.Indicator>
+                        </Checkbox.Root>
+                      </td>
+                      <td className="px-4 py-3">
                         <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">
                           {v.name}
                         </span>
-                        {v.published && (
-                          <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
-                            title="Published"
-                          >
-                            <Lock className="h-3 w-3" />
-                            Published
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {v.code_generation_tag ? (
-                        <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
-                          {v.code_generation_tag}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 dark:text-slate-500 text-sm">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-slate-700 dark:text-slate-300 max-w-xs truncate">
-                        {v.description ?? '—'}
-                      </div>
-                      {v.change_log && (
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-xs truncate">
-                          {v.change_log}
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {v.published && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200">
+                              <CheckCircle className="h-3 w-3" />
+                              Published
+                            </span>
+                          )}
+                          {v.published && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
+                              title="Published versions are locked for metadata edits until unpublished."
+                            >
+                              <Lock className="h-3 w-3" />
+                              Locked
+                            </span>
+                          )}
+                          {v.visibility === 'public' && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200">
+                              Public
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {v.published ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                            <CheckCircle className="h-3.5 w-3.5" />
-                            Published
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                        {v.source_version_id ? (
+                          <span
+                            className="font-mono text-xs"
+                            title={v.source_version_id}
+                          >
+                            {versionById.get(v.source_version_id)?.name ??
+                              `${v.source_version_id.slice(0, 8)}…`}
                           </span>
                         ) : (
-                          <span className="text-xs text-slate-500 dark:text-slate-400">
-                            Draft
-                          </span>
+                          <span className="text-slate-400 dark:text-slate-500">—</span>
                         )}
-                        {v.enabled === false && (
-                          <span className="text-xs text-amber-600 dark:text-amber-400">
-                            Disabled
+                      </td>
+                      <td className="px-4 py-3">
+                        {v.code_generation_tag ? (
+                          <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/35 text-violet-900 dark:text-violet-100">
+                            {v.code_generation_tag}
                           </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500 text-sm">—</span>
                         )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
-                      {formatDateTime(v.created_at)}
-                    </td>
-                    <td className="px-4 py-3 text-right print:hidden">
-                      <DropdownMenu.Root>
-                        <DropdownMenu.Trigger asChild>
-                          <button
-                            type="button"
-                            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            aria-label="Version actions"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                        </DropdownMenu.Trigger>
-                        <DropdownMenu.Portal>
-                          <DropdownMenu.Content
-                            className="min-w-[160px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg z-50 py-1"
-                            sideOffset={4}
-                            align="end"
-                          >
-                            <DropdownMenu.Item
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
-                              onSelect={() => handleEditOpen(v)}
-                              disabled={!!v.published}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm text-slate-700 dark:text-slate-300 max-w-xs truncate">
+                          {v.description ?? '—'}
+                        </div>
+                        {v.change_log && (
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-xs truncate">
+                            {v.change_log}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            {v.published ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                                <CheckCircle className="h-3.5 w-3.5" />
+                                Live
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-500 dark:text-slate-400">
+                                Draft
+                              </span>
+                            )}
+                            {v.enabled === false && (
+                              <span className="text-xs text-amber-600 dark:text-amber-400">
+                                Disabled
+                              </span>
+                            )}
+                          </div>
+                          {v.published && v.published_at && (
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {formatDateTime(v.published_at)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        {formatDateTime(v.updated_at ?? v.created_at)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        {formatDateTime(v.created_at)}
+                      </td>
+                      <td className="px-4 py-3 text-right print:hidden">
+                        <DropdownMenu.Root>
+                          <DropdownMenu.Trigger asChild>
+                            <button
+                              type="button"
+                              className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              aria-label="Version actions"
                             >
-                              <Pencil className="h-4 w-4" />
-                              Edit
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
-                              onSelect={() => setDiffDialogVersion(v)}
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Portal>
+                            <DropdownMenu.Content
+                              className="min-w-[200px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg z-50 py-1"
+                              sideOffset={4}
+                              align="end"
                             >
-                              <GitCompare className="h-4 w-4" />
-                              View diff
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
-                              onSelect={() => setGraphDialogVersion(v)}
-                            >
-                              <Network className="h-4 w-4" />
-                              Relationship graph
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
-                              onSelect={() => setHistoryDialogVersion(v)}
-                            >
-                              <History className="h-4 w-4" />
-                              Version history
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
-                              onSelect={() => setImportDialogVersion(v)}
-                              disabled={!!v.published}
-                            >
-                              <Upload className="h-4 w-4" />
-                              Import schema…
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                              onSelect={() => {
-                                setTagDialogVersion(v);
-                                setTagDialogValue(v.code_generation_tag ?? '');
-                                setTagDialogError(null);
-                              }}
-                            >
-                              <Tag className="h-4 w-4" />
-                              Code generation tag…
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
-                            <DropdownMenu.Item
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 data-[disabled]:opacity-50"
-                              onSelect={() => handleDelete(v)}
-                              disabled={deletingId === v.id}
-                            >
-                              {deletingId === v.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                              Delete
-                            </DropdownMenu.Item>
-                          </DropdownMenu.Content>
-                        </DropdownMenu.Portal>
-                      </DropdownMenu.Root>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => handleEditOpen(v)}
+                                disabled={!!v.published}
+                              >
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => void handlePublishOne(v, 'private')}
+                                disabled={!!v.published}
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                                Publish (private)
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => void handlePublishOne(v, 'public')}
+                                disabled={!!v.published}
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                                Publish (public)
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => void handleUnpublishOne(v)}
+                                disabled={!v.published}
+                              >
+                                <Lock className="h-4 w-4" />
+                                Unpublish
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => setDiffDialogVersion(v)}
+                              >
+                                <GitCompare className="h-4 w-4" />
+                                Revision diff
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => {
+                                  setCompareDialogBaseId(v.id);
+                                  setCompareDialogOpen(true);
+                                }}
+                              >
+                                <GitMerge className="h-4 w-4" />
+                                Compare with another version…
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => setGraphDialogVersion(v)}
+                              >
+                                <Network className="h-4 w-4" />
+                                Relationship graph
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => setLineageDialogVersion(v)}
+                              >
+                                <ListTree className="h-4 w-4" />
+                                Branch lineage
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => setHistoryDialogVersion(v)}
+                              >
+                                <History className="h-4 w-4" />
+                                Version history
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                                onSelect={() => setImportDialogVersion(v)}
+                                disabled={!!v.published}
+                              >
+                                <Upload className="h-4 w-4" />
+                                Import schema…
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                                onSelect={() => {
+                                  setTagDialogVersion(v);
+                                  setTagDialogValue(v.code_generation_tag ?? '');
+                                  setTagDialogError(null);
+                                }}
+                              >
+                                <Tag className="h-4 w-4" />
+                                Code generation tag…
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 data-[disabled]:opacity-50"
+                                onSelect={() => handleDelete(v)}
+                                disabled={deletingId === v.id}
+                              >
+                                {deletingId === v.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                                Delete
+                              </DropdownMenu.Item>
+                            </DropdownMenu.Content>
+                          </DropdownMenu.Portal>
+                        </DropdownMenu.Root>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -746,7 +1258,7 @@ export default function VersionsPage() {
                   <option value="">Create blank version</option>
                   {versions.map((ver) => (
                     <option key={ver.id} value={ver.id}>
-                      {ver.published ? '🔒 ' : ''}
+                      {ver.published ? '[published] ' : ''}
                       {ver.name} – {ver.description ?? 'No description'}
                     </option>
                   ))}
@@ -808,6 +1320,19 @@ export default function VersionsPage() {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   Stable label for Generate code in Studio; unique per project (case-insensitive).
                 </p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {VERSION_TAG_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      disabled={createSubmitting}
+                      onClick={() => setCreateCodegenTag(preset)}
+                      className="px-2 py-1 rounded-md text-xs font-mono bg-violet-100 dark:bg-violet-900/40 text-violet-900 dark:text-violet-100 hover:opacity-90 disabled:opacity-50"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 pt-4 border-t border-slate-200 dark:border-slate-700">
@@ -998,6 +1523,19 @@ export default function VersionsPage() {
               disabled={tagDialogSubmitting}
               placeholder="api-v2"
             />
+            <div className="flex flex-wrap gap-2 mt-2">
+              {VERSION_TAG_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  disabled={tagDialogSubmitting}
+                  onClick={() => setTagDialogValue(preset)}
+                  className="px-2 py-1 rounded-md text-xs font-mono bg-violet-100 dark:bg-violet-900/40 text-violet-900 dark:text-violet-100 hover:opacity-90 disabled:opacity-50"
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
             <div className="flex justify-end gap-2 mt-6">
               <button
                 type="button"
@@ -1043,6 +1581,71 @@ export default function VersionsPage() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      <Dialog.Root
+        open={!!lineageDialogVersion}
+        onOpenChange={(open) => !open && setLineageDialogVersion(null)}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md max-h-[85vh] overflow-auto bg-white dark:bg-slate-900 rounded-xl shadow-xl p-6 border border-slate-200 dark:border-slate-700"
+            aria-describedby={undefined}
+            onEscapeKeyDown={() => setLineageDialogVersion(null)}
+            onPointerDownOutside={() => setLineageDialogVersion(null)}
+          >
+            <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Branch lineage
+            </Dialog.Title>
+            {lineageDialogVersion && (
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-mono">
+                {lineageDialogVersion.name}
+              </p>
+            )}
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-3">
+              Versions copied or branched from another version show the chain from this row up to the
+              root (no parent).
+            </p>
+            <ol className="mt-4 space-y-2 list-decimal list-inside text-sm text-slate-800 dark:text-slate-200">
+              {lineageChain.map((node, idx) => (
+                <li key={node.id}>
+                  <span className="font-mono font-medium">{node.name}</span>
+                  {idx === 0 ? (
+                    <span className="text-slate-500 dark:text-slate-400"> (this version)</span>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+            {lineageChain.length === 1 && !lineageChain[0]?.source_version_id && (
+              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+                No parent version is recorded for this row.
+              </p>
+            )}
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setLineageDialogVersion(null)}
+                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {versions.length > 0 && (
+        <VersionCompareDialog
+          open={compareDialogOpen}
+          onOpenChange={(open) => {
+            setCompareDialogOpen(open);
+            if (!open) setCompareDialogBaseId('');
+          }}
+          versions={versions}
+          initialBaseVersionId={compareDialogBaseId || versions[0]?.id || ''}
+          options={opts}
+        />
+      )}
 
       <VersionDiffDialog
         open={!!diffDialogVersion}

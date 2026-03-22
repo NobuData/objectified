@@ -23,6 +23,9 @@ jest.mock('@lib/api/rest-client', () => ({
   createVersion: jest.fn(),
   updateVersion: jest.fn(),
   deleteVersion: jest.fn(),
+  publishVersion: jest.fn(),
+  unpublishVersion: jest.fn(),
+  mergePreview: jest.fn(),
   listVersionSnapshotsMetadata: jest.fn(),
   getRestClientOptions: jest.fn(() => ({})),
   isForbiddenError: jest.fn(() => false),
@@ -46,6 +49,7 @@ jest.mock('@/app/components/providers/DialogProvider', () => ({
 const sampleVersion = {
   id: 'v1',
   project_id: 'p1',
+  source_version_id: null as string | null,
   name: 'v1.0.0',
   description: 'First version',
   change_log: '',
@@ -55,6 +59,22 @@ const sampleVersion = {
   metadata: {},
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
+};
+
+const sampleVersionTwo = {
+  id: 'v2',
+  project_id: 'p1',
+  source_version_id: 'v1',
+  name: 'v2.0.0',
+  description: 'Second version',
+  change_log: '',
+  enabled: true,
+  published: true,
+  published_at: '2026-01-02T00:00:00Z',
+  visibility: 'private',
+  metadata: {},
+  created_at: '2026-01-02T00:00:00Z',
+  updated_at: '2026-01-03T00:00:00Z',
 };
 
 describe('VersionsPage', () => {
@@ -144,6 +164,18 @@ describe('VersionsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /version actions/i }));
     await waitFor(() => {
       expect(screen.getByText(/version history/i)).toBeInTheDocument();
+    });
+  });
+
+  it('filters versions by search text', async () => {
+    const { listVersions } = require('@lib/api/rest-client');
+    listVersions.mockResolvedValue([sampleVersion, sampleVersionTwo]);
+    render(<VersionsPage />);
+    const search = await screen.findByRole('searchbox', { name: /search versions/i });
+    await userEvent.type(search, 'Second version');
+    await waitFor(() => {
+      expect(screen.getByText('v2.0.0')).toBeInTheDocument();
+      expect(screen.getAllByRole('row')).toHaveLength(2);
     });
   });
 
