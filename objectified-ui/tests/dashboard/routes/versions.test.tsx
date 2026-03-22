@@ -34,6 +34,7 @@ jest.mock('@lib/api/rest-client', () => ({
   deleteVersion: jest.fn(),
   publishVersion: jest.fn(),
   unpublishVersion: jest.fn(),
+  listVersionPublishHistory: jest.fn(() => Promise.resolve([])),
   mergePreview: jest.fn(),
   listVersionSnapshotsMetadata: jest.fn(),
   getRestClientOptions: jest.fn(() => ({})),
@@ -46,6 +47,7 @@ jest.mock('@lib/api/rest-client', () => ({
       active_version_count_for_project: 0,
     })
   ),
+  VERSION_PUBLISH_TARGETS: ['development', 'staging', 'production'],
 }));
 
 jest.mock('@/app/components/providers/DialogProvider', () => ({
@@ -109,7 +111,7 @@ describe('VersionsPage', () => {
     const { listProjects, listVersions } =
       require('@lib/api/rest-client');
     listProjects.mockResolvedValue([
-      { id: 'p1', name: 'Project One', project_id: 'p1', description: '' },
+      { id: 'p1', name: 'Project One', slug: 'project-one', description: '' },
     ]);
     listVersions.mockResolvedValue([]);
   });
@@ -241,7 +243,11 @@ describe('VersionsPage', () => {
     const publishBtn = screen.getByRole('button', { name: /publish \(private\)/i });
     await userEvent.click(publishBtn);
     await waitFor(() => {
-      expect(publishVersion).toHaveBeenCalledWith('v1', { visibility: 'private' }, expect.anything());
+      expect(publishVersion).toHaveBeenCalledWith(
+        'v1',
+        { visibility: 'private', target: 'production' },
+        expect.anything()
+      );
     });
     await waitFor(() => {
       expect(screen.queryByRole('status')).toBeNull();

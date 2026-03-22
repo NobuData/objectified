@@ -57,6 +57,7 @@ class CatalogVersionSummary(BaseModel):
     published_at: Optional[datetime] = None
     visibility: Optional[str] = None
     code_generation_tag: Optional[str] = None
+    publish_target: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     classes: List[CatalogClassSummary] = Field(default_factory=list)
 

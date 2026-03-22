@@ -22,6 +22,7 @@ import {
   ListTree,
   Check,
   Minus,
+  ExternalLink,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -35,7 +36,9 @@ import {
   deleteVersion,
   publishVersion,
   unpublishVersion,
+  listVersionPublishHistory,
   getTenantQuotaStatus,
+  VERSION_PUBLISH_TARGETS,
   getRestClientOptions,
   isForbiddenError,
   type ProjectSchema,
@@ -43,6 +46,7 @@ import {
   type VersionSchema,
   type VersionCreate,
   type VersionMetadataUpdate,
+  type VersionPublishEventSchema,
 } from '@lib/api/rest-client';
 import { atQuotaLimit, formatUsageLine, quotaSeverity } from '@lib/quotaDisplay';
 import { useDialog } from '@/app/components/providers/DialogProvider';
@@ -74,6 +78,7 @@ const CODEGEN_TAG_PRESETS = ['staging', 'production', 'development'] as const;
 const VERSION_TAG_PRESETS = CODEGEN_TAG_PRESETS;
 
 type VersionStatusFilter = 'all' | 'draft' | 'published' | 'disabled';
+type PublishedTargetFilter = 'all' | (typeof VERSION_PUBLISH_TARGETS)[number];
 type VersionSortKey =
   | 'updated_desc'
   | 'updated_asc'
@@ -125,6 +130,10 @@ export default function VersionsPage() {
   const [versionStatusFilter, setVersionStatusFilter] =
     useState<VersionStatusFilter>('all');
   const [versionSort, setVersionSort] = useState<VersionSortKey>('updated_desc');
+  const [publishedTargetFilter, setPublishedTargetFilter] =
+    useState<PublishedTargetFilter>('all');
+  const [bulkPublishTarget, setBulkPublishTarget] =
+    useState<(typeof VERSION_PUBLISH_TARGETS)[number]>('production');
   const [selectedVersionIds, setSelectedVersionIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -133,6 +142,21 @@ export default function VersionsPage() {
   const [lineageDialogVersion, setLineageDialogVersion] =
     useState<VersionSchema | null>(null);
   const [bulkWorking, setBulkWorking] = useState(false);
+
+  const [publishDialogVersion, setPublishDialogVersion] = useState<VersionSchema | null>(null);
+  const [publishDialogVisibility, setPublishDialogVisibility] = useState<'private' | 'public'>(
+    'private'
+  );
+  const [publishDialogTarget, setPublishDialogTarget] =
+    useState<(typeof VERSION_PUBLISH_TARGETS)[number]>('production');
+  const [publishDialogNote, setPublishDialogNote] = useState('');
+  const [publishDialogSubmitting, setPublishDialogSubmitting] = useState(false);
+  const [publishDialogError, setPublishDialogError] = useState<string | null>(null);
+
+  const [publishHistoryVersion, setPublishHistoryVersion] = useState<VersionSchema | null>(null);
+  const [publishHistoryRows, setPublishHistoryRows] = useState<VersionPublishEventSchema[]>([]);
+  const [publishHistoryLoading, setPublishHistoryLoading] = useState(false);
+  const [publishHistoryError, setPublishHistoryError] = useState<string | null>(null);
 
   // Create form
   const [createName, setCreateName] = useState('');
@@ -237,7 +261,8 @@ export default function VersionsPage() {
         (v) =>
           v.name.toLowerCase().includes(q) ||
           (v.description ?? '').toLowerCase().includes(q) ||
-          (v.code_generation_tag ?? '').toLowerCase().includes(q)
+          (v.code_generation_tag ?? '').toLowerCase().includes(q) ||
+          (v.publish_target ?? '').toLowerCase().includes(q)
       );
     }
     if (versionStatusFilter === 'draft') rows = rows.filter((v) => !v.published);
@@ -245,6 +270,13 @@ export default function VersionsPage() {
       rows = rows.filter((v) => !!v.published);
     else if (versionStatusFilter === 'disabled')
       rows = rows.filter((v) => v.enabled === false);
+
+    if (versionStatusFilter === 'published' && publishedTargetFilter !== 'all') {
+      rows = rows.filter((v) => {
+        const ch = v.publish_target ?? 'production';
+        return ch === publishedTargetFilter;
+      });
+    }
 
     const pubTime = (v: VersionSchema) => {
       if (!v.published_at) return 0;
@@ -282,7 +314,7 @@ export default function VersionsPage() {
       }
     });
     return rows;
-  }, [versions, versionSearch, versionStatusFilter, versionSort]);
+  }, [versions, versionSearch, versionStatusFilter, versionSort, publishedTargetFilter]);
 
   const lineageChain = useMemo(() => {
     if (!lineageDialogVersion) return [];
@@ -313,6 +345,41 @@ export default function VersionsPage() {
   }, [fetchQuota]);
 
   useEffect(() => {
+    if (versionStatusFilter !== 'published') setPublishedTargetFilter('all');
+  }, [versionStatusFilter]);
+
+  useEffect(() => {
+    if (!publishHistoryVersion) {
+      setPublishHistoryRows([]);
+      setPublishHistoryError(null);
+      setPublishHistoryLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPublishHistoryLoading(true);
+    setPublishHistoryError(null);
+    void listVersionPublishHistory(publishHistoryVersion.id, opts)
+      .then((rows) => {
+        if (!cancelled) {
+          setPublishHistoryRows(rows);
+          setPublishHistoryLoading(false);
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setPublishHistoryError(
+            e instanceof Error ? e.message : 'Failed to load publish history.'
+          );
+          setPublishHistoryRows([]);
+          setPublishHistoryLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [publishHistoryVersion, opts]);
+
+  useEffect(() => {
     setSelectedVersionIds(new Set());
   }, [selectedProjectId]);
 
@@ -334,6 +401,11 @@ export default function VersionsPage() {
       quotaStatus.active_version_count_for_project
     );
   }, [quotaStatus]);
+
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId]
+  );
 
   const versionQuotaBanner = useMemo(() => {
     if (
@@ -499,20 +571,48 @@ export default function VersionsPage() {
     }
   };
 
-  const handlePublishOne = async (v: VersionSchema, visibility: 'private' | 'public') => {
+  const openPublishDialog = (v: VersionSchema) => {
+    if (v.published) return;
+    setPublishDialogVersion(v);
+    setPublishDialogVisibility('private');
+    setPublishDialogTarget('production');
+    setPublishDialogNote('');
+    setPublishDialogError(null);
+  };
+
+  const handlePublishDialogSubmit = async () => {
+    if (!publishDialogVersion) return;
+    setPublishDialogSubmitting(true);
+    setPublishDialogError(null);
     try {
-      await publishVersion(v.id, { visibility }, opts);
+      await publishVersion(
+        publishDialogVersion.id,
+        {
+          visibility: publishDialogVisibility,
+          target: publishDialogTarget,
+          publish_note: publishDialogNote.trim() || undefined,
+        },
+        opts
+      );
+      setPublishDialogVersion(null);
       await fetchVersions();
       await alertDialog({ message: 'Version published.', variant: 'success' });
     } catch (e) {
-      await alertDialog({
-        message: e instanceof Error ? e.message : 'Publish failed.',
-        variant: 'error',
-      });
+      setPublishDialogError(e instanceof Error ? e.message : 'Publish failed.');
+    } finally {
+      setPublishDialogSubmitting(false);
     }
   };
 
   const handleUnpublishOne = async (v: VersionSchema) => {
+    const ok = await confirm({
+      title: 'Unpublish version',
+      message: `Unpublish "${v.name}"? The version can be edited again after unpublishing.`,
+      variant: 'warning',
+      confirmLabel: 'Unpublish',
+      cancelLabel: 'Cancel',
+    });
+    if (!ok) return;
     try {
       await unpublishVersion(v.id, opts);
       await fetchVersions();
@@ -525,6 +625,59 @@ export default function VersionsPage() {
     }
   };
 
+  const openStudioForVersion = (v: VersionSchema) => {
+    if (!selectedTenantId || !selectedProjectId) return;
+    router.push(
+      dataDesignerDeepLink({
+        tenantId: selectedTenantId,
+        projectId: selectedProjectId,
+        versionId: v.id,
+        readOnly: !!v.published,
+      })
+    );
+  };
+
+  const handleExportPublishedCsv = () => {
+    const publishedRows = filteredSortedVersions.filter((v) => v.published);
+    if (publishedRows.length === 0) return;
+    const esc = (cell: string) => {
+      if (/[",\n\r]/.test(cell)) return `"${cell.replace(/"/g, '""')}"`;
+      return cell;
+    };
+    const headers = [
+      'project_name',
+      'project_id',
+      'version_name',
+      'version_id',
+      'code_generation_tag',
+      'publish_target',
+      'visibility',
+      'published_at',
+    ];
+    const lines = [
+      headers.join(','),
+      ...publishedRows.map((v) =>
+        [
+          esc(selectedProject?.name ?? ''),
+          esc(selectedProjectId ?? ''),
+          esc(v.name),
+          esc(v.id),
+          esc(v.code_generation_tag ?? ''),
+          esc(v.publish_target ?? 'production'),
+          esc(v.visibility ?? ''),
+          esc(v.published_at ?? ''),
+        ].join(',')
+      ),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `published-versions-${selectedProject?.slug ?? selectedProjectId ?? 'export'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleBulkPublish = async (visibility: 'private' | 'public') => {
     const targets = versions.filter((v) => selectedVersionIds.has(v.id) && !v.published);
     if (targets.length === 0) {
@@ -533,7 +686,7 @@ export default function VersionsPage() {
     }
     const ok = await confirm({
       title: 'Publish versions',
-      message: `Publish ${targets.length} draft version(s) with ${visibility} visibility?`,
+      message: `Publish ${targets.length} draft version(s) with ${visibility} visibility to channel "${bulkPublishTarget}"?`,
       variant: 'info',
       confirmLabel: 'Publish',
     });
@@ -543,7 +696,7 @@ export default function VersionsPage() {
     let fail = 0;
     for (const v of targets) {
       try {
-        await publishVersion(v.id, { visibility }, opts);
+        await publishVersion(v.id, { visibility, target: bulkPublishTarget }, opts);
         okN++;
       } catch {
         fail++;
@@ -838,6 +991,23 @@ export default function VersionsPage() {
                 <option value="published">Published only</option>
                 <option value="disabled">Disabled only</option>
               </select>
+              {versionStatusFilter === 'published' && (
+                <select
+                  value={publishedTargetFilter}
+                  onChange={(e) =>
+                    setPublishedTargetFilter(e.target.value as PublishedTargetFilter)
+                  }
+                  aria-label="Filter published by channel"
+                  className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">All channels</option>
+                  {VERSION_PUBLISH_TARGETS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              )}
               <select
                 value={versionSort}
                 onChange={(e) => setVersionSort(e.target.value as VersionSortKey)}
@@ -852,11 +1022,22 @@ export default function VersionsPage() {
                 <option value="name_asc">Name (A–Z)</option>
               </select>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Showing {filteredSortedVersions.length} of {versions.length} version
-              {versions.length === 1 ? '' : 's'}
-              {versionSearch.trim() || versionStatusFilter !== 'all' ? ' (filtered)' : ''}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Showing {filteredSortedVersions.length} of {versions.length} version
+                {versions.length === 1 ? '' : 's'}
+                {versionSearch.trim() || versionStatusFilter !== 'all' ? ' (filtered)' : ''}
+              </p>
+              {versionStatusFilter === 'published' && filteredSortedVersions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleExportPublishedCsv}
+                  className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline print:hidden"
+                >
+                  Export published list (CSV)
+                </button>
+              )}
+            </div>
           </div>
           {selectedVersionCount > 0 && (
             <div
@@ -873,6 +1054,21 @@ export default function VersionsPage() {
                   `${selectedVersionCount} selected`
                 )}
               </span>
+              <select
+                value={bulkPublishTarget}
+                onChange={(e) =>
+                  setBulkPublishTarget(e.target.value as (typeof VERSION_PUBLISH_TARGETS)[number])
+                }
+                disabled={bulkWorking}
+                aria-label="Bulk publish channel"
+                className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+              >
+                {VERSION_PUBLISH_TARGETS.map((t) => (
+                  <option key={t} value={t}>
+                    Channel: {t}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 disabled={bulkWorking}
@@ -924,6 +1120,7 @@ export default function VersionsPage() {
                 onClick={() => {
                   setVersionSearch('');
                   setVersionStatusFilter('all');
+                  setPublishedTargetFilter('all');
                 }}
               >
                 Clear search and status filter
@@ -1048,6 +1245,11 @@ export default function VersionsPage() {
                               Public
                             </span>
                           )}
+                          {v.published && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100/90 dark:bg-amber-900/35 text-amber-900 dark:text-amber-100">
+                              {v.publish_target ?? 'production'}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
@@ -1117,6 +1319,11 @@ export default function VersionsPage() {
                               {formatDateTime(v.published_at)}
                             </span>
                           )}
+                          {v.published && (
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                              Channel: {v.publish_target ?? 'production'}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
@@ -1168,19 +1375,11 @@ export default function VersionsPage() {
                               </DropdownMenu.Item>
                               <DropdownMenu.Item
                                 className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
-                                onSelect={() => void handlePublishOne(v, 'private')}
+                                onSelect={() => openPublishDialog(v)}
                                 disabled={!!v.published}
                               >
                                 <CheckCircle className="h-4 w-4" />
-                                Publish (private)
-                              </DropdownMenu.Item>
-                              <DropdownMenu.Item
-                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
-                                onSelect={() => void handlePublishOne(v, 'public')}
-                                disabled={!!v.published}
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                                Publish (public)
+                                Publish…
                               </DropdownMenu.Item>
                               <DropdownMenu.Item
                                 className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
@@ -1189,6 +1388,20 @@ export default function VersionsPage() {
                               >
                                 <Lock className="h-4 w-4" />
                                 Unpublish
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                                onSelect={() => setPublishHistoryVersion(v)}
+                              >
+                                <History className="h-4 w-4" />
+                                Publish history
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                                onSelect={() => openStudioForVersion(v)}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                Open in Studio
                               </DropdownMenu.Item>
                               <DropdownMenu.Item
                                 className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
@@ -1272,6 +1485,236 @@ export default function VersionsPage() {
           )}
         </div>
       )}
+
+      <Dialog.Root
+        open={!!publishDialogVersion}
+        onOpenChange={(open) => {
+          if (!open && !publishDialogSubmitting) setPublishDialogVersion(null);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-0 flex flex-col max-h-[90vh]"
+            onEscapeKeyDown={(event) => {
+              if (publishDialogSubmitting) event.preventDefault();
+            }}
+            onPointerDownOutside={(event) => {
+              if (publishDialogSubmitting) event.preventDefault();
+            }}
+          >
+            <div className="p-6 pb-2">
+              <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                Publish version
+              </Dialog.Title>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                {publishDialogVersion ? (
+                  <>
+                    <span className="font-mono">{publishDialogVersion.name}</span>
+                  </>
+                ) : null}
+              </p>
+            </div>
+            <div className="px-6 py-2 flex-1 overflow-auto space-y-4">
+              {publishDialogError && (
+                <div
+                  className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm"
+                  role="alert"
+                >
+                  {publishDialogError}
+                </div>
+              )}
+              <div>
+                <span className={labelClass}>Visibility</span>
+                <div className="mt-2 flex gap-4">
+                  <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pub-vis"
+                      checked={publishDialogVisibility === 'private'}
+                      onChange={() => setPublishDialogVisibility('private')}
+                      className="text-indigo-600"
+                    />
+                    Private
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pub-vis"
+                      checked={publishDialogVisibility === 'public'}
+                      onChange={() => setPublishDialogVisibility('public')}
+                      className="text-indigo-600"
+                    />
+                    Public
+                  </label>
+                </div>
+              </div>
+              <div>
+                <Label.Root htmlFor="pub-target" className={labelClass}>
+                  Publish channel
+                </Label.Root>
+                <select
+                  id="pub-target"
+                  value={publishDialogTarget}
+                  onChange={(e) =>
+                    setPublishDialogTarget(
+                      e.target.value as (typeof VERSION_PUBLISH_TARGETS)[number]
+                    )
+                  }
+                  className={`${inputClass} mt-1`}
+                >
+                  {VERSION_PUBLISH_TARGETS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label.Root htmlFor="pub-note" className={labelClass}>
+                  Publish note (optional)
+                </Label.Root>
+                <textarea
+                  id="pub-note"
+                  value={publishDialogNote}
+                  onChange={(e) => setPublishDialogNote(e.target.value)}
+                  rows={3}
+                  placeholder="Changelog or release note for this publish…"
+                  className={`${inputClass} mt-1 resize-y min-h-[4rem]`}
+                />
+              </div>
+            </div>
+            <div className="p-6 pt-2 flex justify-end gap-2 border-t border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                disabled={publishDialogSubmitting}
+                onClick={() => setPublishDialogVersion(null)}
+                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={publishDialogSubmitting}
+                onClick={() => void handlePublishDialogSubmit()}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {publishDialogSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4" />
+                )}
+                Publish
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root
+        open={!!publishHistoryVersion}
+        onOpenChange={(open) => !open && setPublishHistoryVersion(null)}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-lg bg-white dark:bg-gray-900 rounded-xl shadow-xl p-0 flex flex-col max-h-[85vh]">
+            <div className="p-6 pb-2">
+              <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                Publish history
+              </Dialog.Title>
+              {publishHistoryVersion ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-mono">
+                  {publishHistoryVersion.name}
+                </p>
+              ) : null}
+            </div>
+            <div className="px-6 flex-1 overflow-auto pb-4 min-h-[120px]">
+              {publishHistoryLoading ? (
+                <div className="flex items-center justify-center py-8 text-slate-500">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+              ) : publishHistoryError ? (
+                <p className="text-sm text-red-600 dark:text-red-400">{publishHistoryError}</p>
+              ) : publishHistoryRows.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  No publish or unpublish events recorded yet.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {publishHistoryRows.map((ev) => (
+                    <li
+                      key={ev.id}
+                      className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 text-sm"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 font-medium text-slate-800 dark:text-slate-200">
+                        <span
+                          className={
+                            ev.event_type === 'publish'
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-amber-700 dark:text-amber-300'
+                          }
+                        >
+                          {ev.event_type === 'publish' ? 'Published' : 'Unpublished'}
+                        </span>
+                        <span className="text-slate-400">·</span>
+                        <span className="text-slate-500 dark:text-slate-400">
+                          {formatDateTime(ev.created_at)}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-slate-600 dark:text-slate-300 space-y-0.5">
+                        {(ev.actor_name || ev.actor_email) && (
+                          <div>
+                            By {ev.actor_name ?? '—'}
+                            {ev.actor_email ? (
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {' '}
+                                ({ev.actor_email})
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
+                        {ev.event_type === 'publish' && (
+                          <>
+                            {ev.target && (
+                              <div>
+                                Channel: <span className="font-mono">{ev.target}</span>
+                              </div>
+                            )}
+                            {ev.visibility && (
+                              <div>
+                                Visibility: <span className="capitalize">{ev.visibility}</span>
+                              </div>
+                            )}
+                            {ev.note ? (
+                              <div className="mt-1 text-slate-500 dark:text-slate-400 whitespace-pre-wrap">
+                                {ev.note}
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+                        {ev.event_type === 'unpublish' && ev.target && (
+                          <div>
+                            Previous channel: <span className="font-mono">{ev.target}</span>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPublishHistoryVersion(null)}
+                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* Create dialog */}
       <Dialog.Root open={createOpen} onOpenChange={setCreateOpen}>

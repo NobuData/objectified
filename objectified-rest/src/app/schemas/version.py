@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class VersionVisibility(str, Enum):
@@ -12,6 +12,12 @@ class VersionVisibility(str, Enum):
 
     PRIVATE = "private"
     PUBLIC = "public"
+
+
+ALLOWED_PUBLISH_TARGETS: frozenset[str] = frozenset(
+    {"development", "staging", "production"}
+)
+DEFAULT_PUBLISH_TARGET: str = "production"
 
 
 class VersionSchema(BaseModel):
@@ -35,6 +41,10 @@ class VersionSchema(BaseModel):
     updated_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
     published_at: Optional[datetime] = None
+    publish_target: Optional[str] = Field(
+        None,
+        description="Active publish channel when published (development, staging, production).",
+    )
     last_revision: Optional[int] = None
     last_committed_at: Optional[datetime] = None
 
@@ -93,6 +103,49 @@ class VersionPublishRequest(BaseModel):
     """Payload for publishing a version."""
 
     visibility: Optional[VersionVisibility] = VersionVisibility.PRIVATE
+    target: Optional[str] = Field(
+        None,
+        description="Publish channel: development, staging, or production (default: production).",
+    )
+    publish_note: Optional[str] = Field(
+        None,
+        description="Optional note or changelog entry recorded with this publish.",
+        max_length=2048,
+    )
+
+    @field_validator("target", mode="before")
+    @classmethod
+    def _normalize_target(cls, v: Any) -> Any:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
+    @model_validator(mode="after")
+    def _validate_target(self) -> "VersionPublishRequest":
+        if self.target is not None and self.target not in ALLOWED_PUBLISH_TARGETS:
+            allowed = ", ".join(sorted(ALLOWED_PUBLISH_TARGETS))
+            raise ValueError(f"target must be one of: {allowed}")
+        return self
+
+
+class VersionPublishEventSchema(BaseModel):
+    """A publish or unpublish audit row for a version."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    version_id: str
+    project_id: str
+    event_type: Literal["publish", "unpublish"]
+    target: Optional[str] = None
+    visibility: Optional[str] = None
+    note: Optional[str] = None
+    actor_id: Optional[str] = None
+    actor_name: Optional[str] = None
+    actor_email: Optional[str] = None
+    created_at: datetime
 
 
 class VersionSnapshotCreate(BaseModel):

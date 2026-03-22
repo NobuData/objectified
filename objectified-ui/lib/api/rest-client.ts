@@ -257,6 +257,8 @@ export interface VersionSchema {
   change_log?: string;
   published?: boolean;
   published_at?: string | null;
+  /** Active publish channel when published (development, staging, production). */
+  publish_target?: string | null;
   visibility?: string | null;
   enabled?: boolean;
   metadata: Record<string, unknown>;
@@ -292,8 +294,28 @@ export interface VersionMetadataUpdate {
   code_generation_tag?: string | null;
 }
 
+/** Supported publish channels (must match REST validation). */
+export const VERSION_PUBLISH_TARGETS = ['development', 'staging', 'production'] as const;
+export type VersionPublishTarget = (typeof VERSION_PUBLISH_TARGETS)[number];
+
 export interface VersionPublishRequest {
   visibility?: 'private' | 'public';
+  target?: VersionPublishTarget | null;
+  publish_note?: string | null;
+}
+
+export interface VersionPublishEventSchema {
+  id: string;
+  version_id: string;
+  project_id: string;
+  event_type: 'publish' | 'unpublish';
+  target?: string | null;
+  visibility?: string | null;
+  note?: string | null;
+  actor_id?: string | null;
+  actor_name?: string | null;
+  actor_email?: string | null;
+  created_at: string;
 }
 
 export interface ClassSchema {
@@ -1584,6 +1606,18 @@ export async function unpublishVersion(
   return request<VersionSchema>(
     'POST',
     `/versions/${versionId}/unpublish`,
+    undefined,
+    options
+  );
+}
+
+export async function listVersionPublishHistory(
+  versionId: string,
+  options: RestClientOptions = {}
+): Promise<VersionPublishEventSchema[]> {
+  return request<VersionPublishEventSchema[]>(
+    'GET',
+    `/versions/${versionId}/publish-history`,
     undefined,
     options
   );
