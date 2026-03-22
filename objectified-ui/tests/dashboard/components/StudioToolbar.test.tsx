@@ -47,6 +47,13 @@ jest.mock('@lib/api/rest-client', () => ({
   getTenantQuotaStatus: (...args: unknown[]) => mockGetTenantQuotaStatus(...args),
 }));
 
+const mockSavePullStash = jest.fn(() => true);
+jest.mock('@lib/studio/stashStorage', () => ({
+  savePullStash: (...args: unknown[]) => mockSavePullStash(...args),
+  clearPullStash: jest.fn(),
+  pullStashStorageKey: jest.fn((id: string) => `objectified:studio:pull-stash:${id}`),
+}));
+
 const mockUndo = jest.fn();
 const mockRedo = jest.fn();
 const mockSave = jest.fn();
@@ -123,6 +130,7 @@ describe('StudioToolbar', () => {
       diff: null,
     });
     mockPush.mockResolvedValue([]);
+    mockSavePullStash.mockReturnValue(true);
     useStudioOptional.mockReturnValue(null);
     useStudio.mockImplementation(() => useStudioOptional());
   });
@@ -533,6 +541,48 @@ describe('StudioToolbar', () => {
     await user.click(screen.getByRole('button', { name: /pull from server/i }));
     await user.click(screen.getByRole('button', { name: /^cancel$/i }));
     expect(mockLoadFromServer).not.toHaveBeenCalled();
+  });
+
+  it('Pull when dirty and Stash and pull persists stash and calls loadFromServer', async () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      isDirty: true,
+    });
+    const user = userEvent.setup();
+    render(<StudioToolbar />);
+    await user.click(screen.getByRole('button', { name: /pull from server/i }));
+    expect(screen.getByText(/unsaved local changes/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^stash and pull$/i }));
+    expect(mockSavePullStash).toHaveBeenCalledWith('v1', studioState);
+    await waitFor(() => expect(mockLoadFromServer).toHaveBeenCalledTimes(1));
+  });
+
+  it('Pull when dirty and Stash and pull shows error and blocks pull when stash save fails', async () => {
+    mockSavePullStash.mockReturnValue(false);
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      isDirty: true,
+    });
+    const user = userEvent.setup();
+    render(<StudioToolbar />);
+    await user.click(screen.getByRole('button', { name: /pull from server/i }));
+    await user.click(screen.getByRole('button', { name: /^stash and pull$/i }));
+    await waitFor(() => expect(mockAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ title: expect.stringMatching(/could not save local stash/i) })
+    ));
+    expect(mockLoadFromServer).not.toHaveBeenCalled();
+  });
+
+  it('Pull not_modified (304) shows up-to-date alert and does not reload state', async () => {
+    mockLoadFromServer.mockResolvedValueOnce({ status: 'not_modified' as const });
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    const user = userEvent.setup();
+    render(<StudioToolbar />);
+    await user.click(screen.getByRole('button', { name: /pull from server/i }));
+    await waitFor(() => expect(mockLoadFromServer).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringMatching(/already up to date/i) })
+    ));
   });
 
   it('Undo button tooltip includes keyboard shortcut hint', () => {

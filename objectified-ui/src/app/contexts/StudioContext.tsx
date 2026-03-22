@@ -485,6 +485,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         );
         if (requestId !== loadRequestIdRef.current) return;
         if (pullOutcome.notModified) {
+          if (revision == null && pullOutcome.etag) {
+            pullIfNoneMatchRef.current.set(versionId, pullOutcome.etag);
+          }
+          setServerHasNewChanges(false);
           opts?.onNotModified?.();
           return { status: 'not_modified' as const };
         }

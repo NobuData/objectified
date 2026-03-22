@@ -11,9 +11,9 @@ export function pullStashStorageKey(versionId: string): string {
   return `${STASH_PREFIX}${versionId}`;
 }
 
-export function savePullStash(versionId: string, state: LocalVersionState): void {
+export function savePullStash(versionId: string, state: LocalVersionState): boolean {
   try {
-    if (typeof localStorage === 'undefined') return;
+    if (typeof localStorage === 'undefined') return false;
     localStorage.setItem(
       pullStashStorageKey(versionId),
       JSON.stringify({
@@ -21,8 +21,9 @@ export function savePullStash(versionId: string, state: LocalVersionState): void
         state,
       })
     );
+    return true;
   } catch {
-    // Ignore quota / private mode errors
+    return false;
   }
 }
 
