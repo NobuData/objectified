@@ -31,7 +31,7 @@ type BackupLoadStatus =
   | 'invalid'
   | 'expired';
 
-interface BackupLoadResult {
+export interface BackupLoadResult {
   state: LocalVersionState | null;
   status: BackupLoadStatus;
   warning: string | null;
@@ -108,13 +108,27 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
           savedAt: null,
         };
       }
+      // Preserve the original savedAt so migration does not extend TTL or make
+      // an old draft appear newer than it is.  Fall back to now only when the
+      // v1 record carries no parseable timestamp.
+      const originalSavedAt = normalizeSavedAt((parsed as { savedAt?: string }).savedAt);
+      if (originalSavedAt && isBackupExpired(originalSavedAt)) {
+        removeBackup(versionId);
+        return {
+          state: null,
+          status: 'expired',
+          warning: 'A local Studio draft expired after 7 days and was cleared.',
+          savedAt: null,
+        };
+      }
+      const migratedSavedAt = originalSavedAt ?? new Date().toISOString();
       // Migrate: rewrite as v2 envelope so subsequent loads are version-checked.
-      saveStateBackup(v1State);
+      saveStateBackup(v1State, { savedAt: migratedSavedAt });
       return {
         state: v1State,
         status: 'ok',
         warning: null,
-        savedAt: normalizeSavedAt((parsed as { savedAt?: string }).savedAt),
+        savedAt: migratedSavedAt,
       };
     }
 
@@ -194,7 +208,7 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
 /** Persist current state to localStorage as a backup, keyed by state.versionId. */
 export function saveStateBackup(
   state: LocalVersionState,
-  opts?: { sourceTabId?: string }
+  opts?: { sourceTabId?: string; savedAt?: string }
 ): void {
   try {
     if (typeof localStorage === 'undefined') return;
@@ -202,7 +216,7 @@ export function saveStateBackup(
       formatVersion: BACKUP_FORMAT_VERSION,
       checksum: computeStateChecksum(state),
       state,
-      savedAt: new Date().toISOString(),
+      savedAt: opts?.savedAt ?? new Date().toISOString(),
       sourceTabId: opts?.sourceTabId,
     };
     localStorage.setItem(backupStorageKey(state.versionId), JSON.stringify(data));

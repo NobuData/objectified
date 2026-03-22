@@ -32,6 +32,7 @@ import {
   loadStateBackup,
   loadStateBackupWithDiagnostics,
   clearStateBackup,
+  type BackupLoadResult,
 } from '@lib/studio/stateBackup';
 import { getCanvasGroups, saveCanvasGroups } from '@lib/studio/canvasGroupStorage';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
@@ -456,6 +457,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         revision?: number;
         readOnly?: boolean;
         draftBehavior?: 'restore' | 'discard';
+        preloadedBackupResult?: BackupLoadResult;
       }
     ) => {
       const requestId = (loadRequestIdRef.current += 1);
@@ -480,7 +482,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         const storedGroups = getCanvasGroups(versionId);
         if (storedGroups.length > 0) newState.groups = storedGroups;
         const draftBackup =
-          !newState.readOnly ? loadStateBackupWithDiagnostics(versionId) : null;
+          !newState.readOnly
+            ? (opts?.preloadedBackupResult ?? loadStateBackupWithDiagnostics(versionId))
+            : null;
         if (draftBackup?.warning) {
           setBackupWarning(draftBackup.warning);
         }
@@ -501,9 +505,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         } else {
           if (!newState.readOnly && opts?.draftBehavior === 'discard') {
             clearStateBackup(versionId);
+            clearPersistedUndoSessionState(versionId);
           }
           const restoredStack =
-            !newState.readOnly
+            !newState.readOnly && opts?.draftBehavior !== 'discard'
               ? readPersistedUndoSessionState(versionId, newState.revision ?? null)
               : null;
           const nextStack = restoredStack ?? {
