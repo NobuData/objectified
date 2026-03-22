@@ -20,6 +20,7 @@ import {
   type RestClientOptions,
 } from '@lib/api/rest-client';
 import type { LocalVersionState } from '@lib/studio/types';
+import { getStableClassId } from '@lib/studio/types';
 import {
   pullResponseToState,
   stateToCommitPayload,
@@ -75,6 +76,121 @@ function deepClone<T>(x: T): T {
     return structuredClone(x) as T;
   }
   return JSON.parse(JSON.stringify(x)) as T;
+}
+
+export interface StudioMutationAudit {
+  addedClassCount: number;
+  removedClassCount: number;
+  modifiedClassCount: number;
+  modifiedGroupCount: number;
+  projectPropertiesChanged: boolean;
+  canvasMetadataChanged: boolean;
+}
+
+const EMPTY_MUTATION_AUDIT: StudioMutationAudit = {
+  addedClassCount: 0,
+  removedClassCount: 0,
+  modifiedClassCount: 0,
+  modifiedGroupCount: 0,
+  projectPropertiesChanged: false,
+  canvasMetadataChanged: false,
+};
+
+function isEqualJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function pluralize(word: string, count: number): string {
+  return `${count} ${word}${count === 1 ? '' : 's'}`;
+}
+
+function computeMutationAudit(
+  baseline: LocalVersionState | null,
+  current: LocalVersionState | null
+): StudioMutationAudit {
+  if (!baseline || !current) return EMPTY_MUTATION_AUDIT;
+
+  const baselineClasses = new Map(
+    baseline.classes.map((c) => [getStableClassId(c), c])
+  );
+  const currentClasses = new Map(
+    current.classes.map((c) => [getStableClassId(c), c])
+  );
+  let addedClassCount = 0;
+  let removedClassCount = 0;
+  let modifiedClassCount = 0;
+
+  for (const [id, cls] of currentClasses.entries()) {
+    const before = baselineClasses.get(id);
+    if (!before) {
+      addedClassCount += 1;
+      continue;
+    }
+    if (!isEqualJson(before, cls)) {
+      modifiedClassCount += 1;
+    }
+  }
+
+  for (const id of baselineClasses.keys()) {
+    if (!currentClasses.has(id)) {
+      removedClassCount += 1;
+    }
+  }
+
+  const baselineGroups = new Map(baseline.groups.map((g) => [g.id, g]));
+  const currentGroups = new Map(current.groups.map((g) => [g.id, g]));
+  let modifiedGroupCount = 0;
+  for (const [id, group] of currentGroups.entries()) {
+    const before = baselineGroups.get(id);
+    if (!before || !isEqualJson(before, group)) {
+      modifiedGroupCount += 1;
+    }
+  }
+  for (const id of baselineGroups.keys()) {
+    if (!currentGroups.has(id)) {
+      modifiedGroupCount += 1;
+    }
+  }
+
+  return {
+    addedClassCount,
+    removedClassCount,
+    modifiedClassCount,
+    modifiedGroupCount,
+    projectPropertiesChanged: !isEqualJson(baseline.properties, current.properties),
+    canvasMetadataChanged: !isEqualJson(
+      baseline.canvas_metadata,
+      current.canvas_metadata
+    ),
+  };
+}
+
+function buildPendingChangesSummary(audit: StudioMutationAudit): string | null {
+  const parts: string[] = [];
+  if (audit.addedClassCount > 0) {
+    parts.push(`${pluralize('class', audit.addedClassCount)} added`);
+  }
+  if (audit.removedClassCount > 0) {
+    parts.push(`${pluralize('class', audit.removedClassCount)} removed`);
+  }
+  if (audit.modifiedClassCount > 0) {
+    parts.push(`${pluralize('class', audit.modifiedClassCount)} modified`);
+  }
+  if (audit.modifiedGroupCount > 0) {
+    parts.push(`${pluralize('group', audit.modifiedGroupCount)} modified`);
+  }
+  if (audit.projectPropertiesChanged) {
+    parts.push('project properties modified');
+  }
+  if (audit.canvasMetadataChanged) {
+    parts.push('canvas metadata updated');
+  }
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
+function buildSuggestedCommitMessage(summary: string | null): string | null {
+  if (!summary) return null;
+  return `Update studio: ${summary}`;
 }
 
 export interface StudioContextValue {
@@ -138,6 +254,12 @@ export interface StudioContextValue {
   backupWarning: string | null;
   /** Clear backup warning after user reviews it. */
   clearBackupWarning: () => void;
+  /** In-memory audit of changes since last load/save. */
+  mutationAudit: StudioMutationAudit;
+  /** Human-readable summary for pending changes in commit UX. */
+  pendingChangesSummary: string | null;
+  /** Optional suggested commit message based on current mutations. */
+  suggestedCommitMessage: string | null;
 }
 
 const StudioContext = createContext<StudioContextValue | null>(null);
@@ -158,6 +280,7 @@ const initialStack: StudioStackState = {
 
 export function StudioProvider({ children }: { children: ReactNode }) {
   const [stack, setStack] = useState<StudioStackState>(initialStack);
+  const [baselineState, setBaselineState] = useState<LocalVersionState | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serverHasNewChanges, setServerHasNewChanges] = useState(false);
@@ -181,6 +304,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const clear = useCallback(() => {
     setStack(initialStack);
+    setBaselineState(null);
     setError(null);
     setServerHasNewChanges(false);
     setHasUnpushedCommits(false);
@@ -225,6 +349,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           undoStack: [],
           redoStack: [],
         });
+        setBaselineState(deepClone(newState));
         // Do not persist read-only revision views to the backup; the backup
         // represents the user's editable working copy, and restoring a
         // read-only state on a failed server load would lock the user out.
@@ -262,6 +387,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           undoStack: [],
           redoStack: [],
         });
+        setBaselineState(
+          deepClone(
+            backup.state ?? {
+              versionId,
+              revision: null,
+              classes: [],
+              properties: [],
+              canvas_metadata: null,
+              groups: [],
+            }
+          )
+        );
       } finally {
         if (requestId === loadRequestIdRef.current) {
           setLoading(false);
@@ -354,6 +491,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               }
             : s
         );
+        setBaselineState({
+          ...deepClone(current),
+          revision: res.revision,
+        });
         saveStateBackup(
           { ...current, revision: res.revision },
           { sourceTabId: tabIdRef.current }
@@ -488,6 +629,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const canUndo = stack.undoStack.length > 0;
   const canRedo = stack.redoStack.length > 0;
   const isDirty = stack.undoStack.length > 0;
+  const mutationAudit = useMemo(
+    () => computeMutationAudit(baselineState, state),
+    [baselineState, state]
+  );
+  const pendingChangesSummary = useMemo(
+    () => buildPendingChangesSummary(mutationAudit),
+    [mutationAudit]
+  );
+  const suggestedCommitMessage = useMemo(
+    () => buildSuggestedCommitMessage(pendingChangesSummary),
+    [pendingChangesSummary]
+  );
 
   // Refs to track latest checksum and isDirty without re-registering the storage listener.
   const checksumRef = useRef<string | null>(null);
@@ -552,6 +705,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       clearPushConflict409,
       backupWarning,
       clearBackupWarning,
+      mutationAudit,
+      pendingChangesSummary,
+      suggestedCommitMessage,
     }),
     [
       state,
@@ -575,6 +731,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       clearPushConflict409,
       backupWarning,
       clearBackupWarning,
+      mutationAudit,
+      pendingChangesSummary,
+      suggestedCommitMessage,
     ]
   );
 

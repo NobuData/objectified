@@ -55,6 +55,8 @@ function TestConsumer() {
       <span data-testid="version-id">{studio.state?.versionId ?? ''}</span>
       <span data-testid="read-only">{studio.state?.readOnly ? 'yes' : 'no'}</span>
       <span data-testid="backup-warning">{studio.backupWarning ?? ''}</span>
+      <span data-testid="pending-summary">{studio.pendingChangesSummary ?? ''}</span>
+      <span data-testid="suggested-message">{studio.suggestedCommitMessage ?? ''}</span>
       <button type="button" onClick={studio.undo} data-testid="undo">
         Undo
       </button>
@@ -391,6 +393,46 @@ describe('StudioContext', () => {
     });
 
     expect(screen.getByTestId('is-dirty').textContent).toBe('yes');
+  });
+
+  it('builds pending change summary and suggested commit message from mutations', async () => {
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('class-count').textContent).toBe('1');
+    });
+
+    expect(screen.getByTestId('pending-summary').textContent).toBe('');
+    expect(screen.getByTestId('suggested-message').textContent).toBe('');
+
+    await act(async () => {
+      screen.getByTestId('add-class').click();
+    });
+
+    expect(screen.getByTestId('pending-summary').textContent).toContain('1 class added');
+    expect(screen.getByTestId('suggested-message').textContent).toContain(
+      'Update studio:'
+    );
   });
 
   it('checkServerForUpdates sets serverHasNewChanges when server has newer revision', async () => {

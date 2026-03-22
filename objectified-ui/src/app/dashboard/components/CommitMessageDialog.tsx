@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { GitCommit } from 'lucide-react';
 
@@ -13,6 +13,8 @@ export interface CommitMessageDialogProps {
   onOpenChange: (open: boolean) => void;
   onCommit: (message: string | null) => void;
   loading?: boolean;
+  suggestedMessage?: string | null;
+  pendingChangesSummary?: string | null;
 }
 
 export default function CommitMessageDialog({
@@ -20,8 +22,15 @@ export default function CommitMessageDialog({
   onOpenChange,
   onCommit,
   loading = false,
+  suggestedMessage = null,
+  pendingChangesSummary = null,
 }: CommitMessageDialogProps) {
   const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setMessage(suggestedMessage ?? '');
+  }, [open, suggestedMessage]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -57,6 +66,11 @@ export default function CommitMessageDialog({
           <Dialog.Description className="text-sm text-slate-500 dark:text-slate-400 mb-3">
             Snapshot local state to the server. Optional message below.
           </Dialog.Description>
+          {pendingChangesSummary && (
+            <p className="text-xs text-slate-600 dark:text-slate-300 mb-3">
+              Pending changes: {pendingChangesSummary}
+            </p>
+          )}
           <label htmlFor="commit-message" className={labelClass}>
             Message (optional)
           </label>
