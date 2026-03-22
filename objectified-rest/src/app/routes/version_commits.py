@@ -818,25 +818,27 @@ def push_version(
         )
 
     # Reject push when target has a newer revision than source (server has new changes).
-    rev_rows = db.execute_query(
-        """
-        SELECT version_id, MAX(revision) AS max_revision
-        FROM objectified.version_snapshot
-        WHERE version_id IN (%s, %s)
-        GROUP BY version_id
-        """,
-        (version_id, target_version_id),
-    )
-    rev_by_id = {str(r["version_id"]): r["max_revision"] for r in rev_rows}
-    source_rev = rev_by_id.get(version_id)
-    target_rev = rev_by_id.get(target_version_id)
-    # Reject if target has snapshots and either source has none (target is clearly newer)
-    # or target's max revision exceeds source's.
-    if target_rev is not None and (source_rev is None or target_rev > source_rev):
-        raise HTTPException(
-            status_code=409,
-            detail="Target version has newer changes on the server; pull then merge first.",
+    # Skip this check when overwrite=True (caller has confirmed intent to overwrite).
+    if not payload.overwrite:
+        rev_rows = db.execute_query(
+            """
+            SELECT version_id, MAX(revision) AS max_revision
+            FROM objectified.version_snapshot
+            WHERE version_id IN (%s, %s)
+            GROUP BY version_id
+            """,
+            (version_id, target_version_id),
         )
+        rev_by_id = {str(r["version_id"]): r["max_revision"] for r in rev_rows}
+        source_rev = rev_by_id.get(version_id)
+        target_rev = rev_by_id.get(target_version_id)
+        # Reject if target has snapshots and either source has none (target is clearly newer)
+        # or target's max revision exceeds source's.
+        if target_rev is not None and (source_rev is None or target_rev > source_rev):
+            raise HTTPException(
+                status_code=409,
+                detail="Target version has newer changes on the server; pull then merge first.",
+            )
 
     user_id = caller.get("user_id") if caller else None
     logger.info(

@@ -258,7 +258,7 @@ export interface StudioContextValue {
   push: (
     targetVersionId: string,
     options: RestClientOptions,
-    commitOpts?: { message?: string | null }
+    commitOpts?: { message?: string | null; overwrite?: boolean }
   ) => Promise<void>;
   /** Merge server changes (e.g. after diverged/conflicts). */
   merge: (options: RestClientOptions, message?: string | null) => Promise<void>;
@@ -737,7 +737,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     async (
       targetVersionId: string,
       options: RestClientOptions,
-      commitOpts?: { message?: string | null }
+      commitOpts?: { message?: string | null; overwrite?: boolean }
     ) => {
       const current = state;
       if (!current) {
@@ -755,6 +755,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         const payload = stateToCommitPayload(current, {
           message: commitOpts?.message ?? null,
           label: 'push',
+          overwrite: commitOpts?.overwrite,
         });
         await pushVersion(current.versionId, targetVersionId, payload, options);
         clearStateBackup(current.versionId);

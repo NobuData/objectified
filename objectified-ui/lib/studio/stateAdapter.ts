@@ -154,6 +154,7 @@ export interface CommitPayloadOptions {
   label?: string | null;
   description?: string | null;
   message?: string | null;
+  overwrite?: boolean;
 }
 
 /** Build VersionCommitPayload from LocalVersionState for commit/push. */
@@ -198,5 +199,6 @@ export function stateToCommitPayload(
     label: options.label ?? 'save',
     description: options.description ?? null,
     message: options.message ?? null,
+    overwrite: options.overwrite,
   };
 }

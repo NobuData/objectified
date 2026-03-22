@@ -179,13 +179,40 @@ export default function StudioToolbar() {
     async (targetVersionId: string): Promise<boolean> => {
       const sourceRevision = studio?.state?.revision;
       if (!studio || sourceRevision == null) return false;
-      const res = await pullVersion(targetVersionId, options, undefined, sourceRevision);
-      const serverRev = res.revision ?? 0;
-      const hasDiff =
-        Boolean(res.diff?.added_class_names?.length) ||
-        Boolean(res.diff?.removed_class_names?.length) ||
-        Boolean(res.diff?.modified_classes?.length);
-      return serverRev > sourceRevision || hasDiff;
+      try {
+        const res = await pullVersion(targetVersionId, options, undefined, sourceRevision);
+        const serverRev = res.revision ?? 0;
+        const hasDiff =
+          Boolean(res.diff?.added_class_names?.length) ||
+          Boolean(res.diff?.removed_class_names?.length) ||
+          Boolean(res.diff?.modified_classes?.length);
+        return serverRev > sourceRevision || hasDiff;
+      } catch (error: unknown) {
+        const anyError = error as { status?: number; response?: { status?: number } };
+        const status = anyError?.status ?? anyError?.response?.status;
+
+        // If the revision from the source does not exist on the target, treat it as an
+        // independent history: fetch the target's current revision without since_revision
+        // and compare revisions instead of failing the push flow.
+        if (status === 404) {
+          try {
+            const res = await pullVersion(targetVersionId, options);
+            const serverRev = res.revision ?? 0;
+            return serverRev > sourceRevision;
+          } catch (fallbackError) {
+            // If we cannot determine the target revision, log and treat as "not ahead"
+            // so we don't block push with an unrelated error.
+            // eslint-disable-next-line no-console
+            console.error('Failed to check target server revision (fallback).', fallbackError);
+            return false;
+          }
+        }
+
+        // For non-404 errors, log and treat as "not ahead" to avoid blocking the push.
+        // eslint-disable-next-line no-console
+        console.error('Failed to check if target server is ahead.', error);
+        return false;
+      }
     },
     [studio, options]
   );
@@ -207,6 +234,7 @@ export default function StudioToolbar() {
       if (!studio) return;
       await studio.push(targetVersionId, options, {
         message: 'Overwrite push after server-ahead confirmation',
+        overwrite: true,
       });
     },
     [studio, options]
