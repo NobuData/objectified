@@ -152,16 +152,27 @@ function computeMutationAudit(
     }
   }
 
+  let perClassCanvasMetadataChanged = false;
+  for (const [id, cls] of currentClasses.entries()) {
+    const before = baselineClasses.get(id);
+    if (
+      before &&
+      !isEqualJson(before.canvas_metadata, cls.canvas_metadata)
+    ) {
+      perClassCanvasMetadataChanged = true;
+      break;
+    }
+  }
+
   return {
     addedClassCount,
     removedClassCount,
     modifiedClassCount,
     modifiedGroupCount,
     projectPropertiesChanged: !isEqualJson(baseline.properties, current.properties),
-    canvasMetadataChanged: !isEqualJson(
-      baseline.canvas_metadata,
-      current.canvas_metadata
-    ),
+    canvasMetadataChanged:
+      !isEqualJson(baseline.canvas_metadata, current.canvas_metadata) ||
+      perClassCanvasMetadataChanged,
   };
 }
 

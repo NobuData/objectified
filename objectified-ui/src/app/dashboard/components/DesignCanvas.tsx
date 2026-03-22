@@ -353,22 +353,27 @@ export default function DesignCanvas() {
 
   useEffect(() => {
     return () => {
+      // Flush any pending node mutations before clearing the debounce timer on unmount
+      flushPendingNodeMutations();
       if (pendingNodeMutationsTimerRef.current) {
         clearTimeout(pendingNodeMutationsTimerRef.current);
+        pendingNodeMutationsTimerRef.current = null;
       }
     };
-  }, []);
+  }, [flushPendingNodeMutations]);
 
   useEffect(() => {
-    pendingNodeMutationsRef.current.classPositions.clear();
-    pendingNodeMutationsRef.current.classDimensions.clear();
-    pendingNodeMutationsRef.current.groupPositions.clear();
-    pendingNodeMutationsRef.current.groupDimensions.clear();
+    // When the version changes, flush any pending mutations for the previous version
+    flushPendingNodeMutations();
     if (pendingNodeMutationsTimerRef.current) {
       clearTimeout(pendingNodeMutationsTimerRef.current);
       pendingNodeMutationsTimerRef.current = null;
     }
-  }, [versionId]);
+    pendingNodeMutationsRef.current.classPositions.clear();
+    pendingNodeMutationsRef.current.classDimensions.clear();
+    pendingNodeMutationsRef.current.groupPositions.clear();
+    pendingNodeMutationsRef.current.groupDimensions.clear();
+  }, [versionId, flushPendingNodeMutations]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
