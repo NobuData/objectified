@@ -2044,7 +2044,7 @@ export async function pushVersion(
   targetVersionId: string | string[],
   payload: VersionCommitPayload,
   options: RestClientOptions = {}
-): Promise<VersionCommitResponse | VersionCommitResponse[]> {
+): Promise<VersionCommitResponse[]> {
   const targets = Array.isArray(targetVersionId)
     ? [...new Set(targetVersionId.map((target) => target.trim()).filter(Boolean))]
     : [targetVersionId.trim()].filter(Boolean);
@@ -2079,10 +2079,6 @@ export async function pushVersion(
       }
     }
   };
-
-  if (targets.length === 1) {
-    return pushSingleTarget(targets[0]);
-  }
 
   const responses: VersionCommitResponse[] = [];
   for (const targetId of targets) {

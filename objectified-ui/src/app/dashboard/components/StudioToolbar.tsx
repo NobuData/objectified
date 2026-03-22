@@ -142,7 +142,7 @@ export default function StudioToolbar() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [activeOperation, setActiveOperation] = useState<ToolbarOperation | null>(null);
   const [pushBatchProgress, setPushBatchProgress] = useState<{
-    completed: number;
+    current: number;
     total: number;
   } | null>(null);
   const [requireCommitMessage, setRequireCommitMessage] = useState(false);
@@ -269,7 +269,7 @@ export default function StudioToolbar() {
         await runWithOperation('push', async () => {
           for (let index = 0; index < targetVersionIds.length; index += 1) {
             const targetId = targetVersionIds[index];
-            setPushBatchProgress({ completed: index + 1, total: targetVersionIds.length });
+            setPushBatchProgress({ current: index + 1, total: targetVersionIds.length });
             const responses = await studio.push(targetId, options);
             const latestResponse = responses[responses.length - 1];
             if (latestResponse?.revision != null) {
@@ -429,7 +429,7 @@ export default function StudioToolbar() {
     if (activeOperation === 'commit') return 'Committing...';
     if (activeOperation === 'push') {
       if (pushBatchProgress && pushBatchProgress.total > 1) {
-        return `Pushing ${pushBatchProgress.completed}/${pushBatchProgress.total}...`;
+        return `Pushing ${pushBatchProgress.current}/${pushBatchProgress.total}...`;
       }
       return 'Pushing...';
     }

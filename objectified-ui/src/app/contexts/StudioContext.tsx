@@ -800,8 +800,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           label: 'push',
           overwrite: commitOpts?.overwrite,
         });
-        const pushResult = await pushVersion(current.versionId, targetVersionId, payload, options);
-        const responses = Array.isArray(pushResult) ? pushResult : [pushResult];
+        const responses = await pushVersion(current.versionId, targetVersionId, payload, options);
         clearStateBackup(current.versionId);
         setServerHasNewChanges(false);
         setHasUnpushedCommits(false);

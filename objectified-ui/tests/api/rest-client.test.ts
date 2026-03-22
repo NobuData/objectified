@@ -840,15 +840,19 @@ describe('pushVersion', () => {
   });
 
   it('retries transient network failures with backoff', async () => {
+    jest.useFakeTimers();
     const response = { revision: 2, snapshot_id: 's2', version_id: 'v2', committed_at: '2024-01-01' };
     mockFetch
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(makeFetchResponse(response));
     const payload = { classes: [{ name: 'MyClass' }] };
 
-    const result = await pushVersion('v1', 'v2', payload, {});
+    const promise = pushVersion('v1', 'v2', payload, {});
+    await jest.runAllTimersAsync();
+    const result = await promise;
 
-    expect(result).toEqual(response);
+    jest.useRealTimers();
+    expect(result).toEqual([response]);
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
@@ -857,6 +861,17 @@ describe('pushVersion', () => {
     const payload = { classes: [{ name: 'MyClass' }] };
 
     await expect(pushVersion('v1', 'v2', payload, {})).rejects.toThrow('Server has new changes');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('pushes a single target and returns a single-element array', async () => {
+    const response = { revision: 5, snapshot_id: 's5', version_id: 'v2', committed_at: '2024-01-01' };
+    mockFetch.mockResolvedValueOnce(makeFetchResponse(response));
+    const payload = { classes: [{ name: 'MyClass' }] };
+
+    const result = await pushVersion('v1', 'v2', payload, {});
+
+    expect(result).toEqual([response]);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
