@@ -222,6 +222,21 @@ export interface ProjectUpdate {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface ProjectCloneRequest {
+  name: string;
+  slug: string;
+  description?: string;
+  copy_latest_version?: boolean;
+  /** When copying the latest version, optional name for the new version (default: "{source name} (copy)"). */
+  cloned_version_name?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ProjectCloneResult {
+  project: ProjectSchema;
+  cloned_version_id?: string | null;
+}
+
 export interface VersionSchema {
   id: string;
   project_id: string;
@@ -1322,6 +1337,20 @@ export async function createProject(
     'POST',
     `/tenants/${tenantId}/projects`,
     { ...body, tenant_id: tenantId },
+    options
+  );
+}
+
+export async function cloneProject(
+  tenantId: string,
+  projectId: string,
+  body: ProjectCloneRequest,
+  options: RestClientOptions = {}
+): Promise<ProjectCloneResult> {
+  return request<ProjectCloneResult>(
+    'POST',
+    `/tenants/${tenantId}/projects/${projectId}/clone`,
+    body,
     options
   );
 }

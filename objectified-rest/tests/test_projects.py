@@ -363,6 +363,167 @@ def test_create_project_tenant_not_found_returns_404(client):
 
 
 # ---------------------------------------------------------------------------
+# Clone project
+# ---------------------------------------------------------------------------
+
+
+def test_clone_project_without_schema_copy_returns_201(client):
+    """POST .../projects/{id}/clone creates a project when no version is copied."""
+    new_row = {
+        **_PROJECT_ROW,
+        "id": "00000000-0000-0000-0000-000000000013",
+        "slug": "cloned-slug",
+        "name": "Cloned",
+    }
+    with mock_db_all() as mock_db:
+        # Note: ensure_project_quota_allows_create uses app.quotas.db (not patched here),
+        # so its tenant quota query does not consume execute_query side_effect entries.
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+            [_PROJECT_ROW],
+            [],
+            [],
+        ]
+        mock_db.execute_mutation.return_value = new_row
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/clone",
+            json={
+                "name": "Cloned",
+                "slug": "cloned-slug",
+                "copy_latest_version": False,
+            },
+        )
+    assert r.status_code == 201
+    data = r.json()
+    assert data["project"]["slug"] == "cloned-slug"
+    assert data["cloned_version_id"] is None
+
+
+def test_clone_project_slug_conflict_returns_409(client):
+    """POST .../clone returns 409 when the new slug is already taken."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}],
+            [_PROJECT_ROW],
+            [{"id": "other-id"}],
+        ]
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/clone",
+            json={
+                "name": "Cloned",
+                "slug": "taken-slug",
+                "copy_latest_version": False,
+            },
+        )
+    assert r.status_code == 409
+
+
+def test_clone_project_with_schema_copy_creates_version_and_returns_cloned_version_id(client):
+    """POST .../clone with copy_latest_version=True creates a new version and returns its id."""
+    cloned_project_id = "00000000-0000-0000-0000-000000000013"
+    source_version_id = "00000000-0000-0000-0000-000000000020"
+    cloned_version_id = "00000000-0000-0000-0000-000000000014"
+
+    new_project_row = {
+        **_PROJECT_ROW,
+        "id": cloned_project_id,
+        "name": "Cloned Project",
+        "slug": "my-project-clone",
+    }
+
+    source_ver_row = {
+        "id": source_version_id,
+        "project_id": _PROJECT_ID,
+        "source_version_id": None,
+        "creator_id": _ACCOUNT_ID,
+        "name": "Version 1",
+        "code_generation_tag": None,
+        "description": "",
+        "change_log": None,
+        "enabled": True,
+        "published": False,
+        "visibility": None,
+        "metadata": {},
+        "created_at": _NOW,
+        "updated_at": None,
+        "deleted_at": None,
+        "published_at": None,
+    }
+
+    ver_row = {
+        "id": cloned_version_id,
+        "project_id": cloned_project_id,
+        "source_version_id": source_version_id,
+        "creator_id": _ACCOUNT_ID,
+        "name": "Version 1 (copy)",
+        "code_generation_tag": None,
+        "description": "",
+        "change_log": None,
+        "enabled": True,
+        "published": False,
+        "visibility": None,
+        "metadata": {},
+        "created_at": _NOW,
+        "updated_at": None,
+        "deleted_at": None,
+        "published_at": None,
+    }
+
+    snapshot_row = {
+        "id": "00000000-0000-0000-0000-000000000021",
+        "version_id": cloned_version_id,
+        "project_id": cloned_project_id,
+        "committed_by": _ACCOUNT_ID,
+        "revision": 1,
+        "label": "clone",
+        "description": f"Cloned from project {_PROJECT_ID} version {source_version_id}",
+        "snapshot": {},
+        "created_at": _NOW,
+    }
+
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],                           # 1. tenant exists check
+            [{"id": _PROJECT_ID, "tenant_id": _TENANT_ID}], # 2. project exists check
+            [_PROJECT_ROW],                                  # 3. source project row
+            [],                                              # 4. slug conflict check
+            [source_ver_row],                                # 5. latest version fetch
+            [],                                              # 6. _capture_version_state (source): class rows
+            [],                                              # 7. _apply_snapshot_state: current class rows
+            [],                                              # 8. _create_snapshot -> _capture_version_state (new): class rows
+            [{"metadata": {}}],                              # 9. _create_snapshot: version metadata
+        ]
+        mock_db.execute_mutation.side_effect = [
+            new_project_row,  # 1. INSERT project
+            None,             # 2. INSERT project_history (returning=False)
+            ver_row,          # 3. INSERT version
+            None,             # 4. INSERT version_history (returning=False)
+            None,             # 5. UPDATE version canvas_metadata (returning=False)
+            snapshot_row,     # 6. INSERT version_snapshot
+        ]
+        r = client.post(
+            f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/clone",
+            json={
+                "name": "Cloned Project",
+                "slug": "my-project-clone",
+                "copy_latest_version": True,
+            },
+        )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["project"]["id"] == cloned_project_id
+    assert body["project"]["id"] != _PROJECT_ID
+    assert body["cloned_version_id"] == cloned_version_id
+
+    # Verify version and snapshot mutations were exercised
+    mutation_sql = " ".join(str(c.args[0]).lower() for c in mock_db.execute_mutation.mock_calls)
+    assert "objectified.version" in mutation_sql
+    assert "objectified.version_snapshot" in mutation_sql
+
+
+# ---------------------------------------------------------------------------
 # Update project
 # ---------------------------------------------------------------------------
 

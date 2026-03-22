@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import ProjectsPage from '../../../src/app/dashboard/projects/ProjectsPageClient';
 
 const SESSION = {
@@ -14,6 +15,10 @@ jest.mock('next-auth/react', () => ({
   useSession: jest.fn(() => SESSION),
 }));
 
+jest.mock('next/navigation', () => ({
+  useRouter: jest.fn(() => ({ push: jest.fn() })),
+}));
+
 jest.mock('@/app/contexts/TenantSelectionContext', () => ({
   useTenantSelection: jest.fn(),
 }));
@@ -22,6 +27,7 @@ jest.mock('@lib/api/rest-client', () => ({
   listProjects: jest.fn(),
   listVersions: jest.fn(),
   createProject: jest.fn(),
+  cloneProject: jest.fn(),
   updateProject: jest.fn(),
   deleteProject: jest.fn(),
   restoreProject: jest.fn(),
@@ -334,6 +340,58 @@ describe('ProjectsPage', () => {
     render(<ProjectsPage />);
     await waitFor(() => {
       expect(screen.getByLabelText(/^sort$/i)).toBeInTheDocument();
+    });
+  });
+
+  it('opens clone dialog, calls cloneProject with correct payload, and navigates to new project settings', async () => {
+    const { listProjects, cloneProject } = require('@lib/api/rest-client');
+    const { useRouter } = require('next/navigation');
+    const pushMock = jest.fn();
+    useRouter.mockReturnValue({ push: pushMock });
+
+    const newProjectId = 'p-new';
+    listProjects.mockResolvedValue([SAMPLE_PROJECTS[0]]);
+    cloneProject.mockResolvedValue({
+      project: {
+        ...SAMPLE_PROJECTS[0],
+        id: newProjectId,
+        name: 'Alpha Project (copy)',
+        slug: 'alpha-project-copy',
+      },
+      cloned_version_id: null,
+    });
+
+    render(<ProjectsPage />);
+    await waitFor(() => expect(screen.getByText('Alpha Project')).toBeInTheDocument());
+
+    // Open the actions dropdown
+    await userEvent.click(screen.getByRole('button', { name: /actions for alpha project/i }));
+
+    // Click "Duplicate project" in the dropdown
+    await waitFor(() => expect(screen.getByText('Duplicate project')).toBeInTheDocument());
+    await userEvent.click(screen.getByText('Duplicate project'));
+
+    // Clone dialog should open
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: /duplicate project/i })).toBeInTheDocument()
+    );
+
+    // Submit the pre-filled form
+    await userEvent.click(screen.getByRole('button', { name: /^duplicate$/i }));
+
+    // Assert cloneProject was called with the expected payload
+    await waitFor(() => {
+      expect(cloneProject).toHaveBeenCalledWith(
+        't1',
+        'p1',
+        expect.objectContaining({ name: 'Alpha Project (copy)' }),
+        expect.anything()
+      );
+    });
+
+    // Assert navigation to the new project's settings page
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith(`/dashboard/projects/${newProjectId}/settings`);
     });
   });
 });
