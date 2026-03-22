@@ -552,6 +552,35 @@ describe('StudioToolbar', () => {
     expect(screen.getByRole('dialog', { name: /commit/i })).toBeInTheDocument();
   });
 
+  it('Ctrl+S always calls preventDefault even when commit is disabled', () => {
+    useTenantPermissions.mockReturnValue({
+      loading: false,
+      permissions: { is_tenant_admin: false },
+      has: () => false,
+    });
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true });
+    const preventDefaultSpy = jest.spyOn(event, 'preventDefault');
+    document.dispatchEvent(event);
+    expect(preventDefaultSpy).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: /commit/i })).not.toBeInTheDocument();
+  });
+
+  it('Ctrl+Shift+P always calls preventDefault even when push is disabled', () => {
+    useTenantPermissions.mockReturnValue({
+      loading: false,
+      permissions: { is_tenant_admin: false },
+      has: () => false,
+    });
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    const event = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true });
+    const preventDefaultSpy = jest.spyOn(event, 'preventDefault');
+    document.dispatchEvent(event);
+    expect(preventDefaultSpy).toHaveBeenCalled();
+  });
+
   it('Ctrl+Shift+P keyboard shortcut opens push dialog', async () => {
     useStudioOptional.mockReturnValue(defaultStudioWithState);
     render(<StudioToolbar />);
@@ -576,6 +605,28 @@ describe('StudioToolbar', () => {
     expect(screen.getByRole('button', { name: /push to another version/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /pull from server/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /merge from another version/i })).toBeDisabled();
+  });
+
+  it('shows "Checking permissions…" tooltip while tenant permissions are loading', () => {
+    useTenantPermissions.mockReturnValue({
+      loading: true,
+      permissions: null,
+      has: () => false,
+    });
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    expect(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    ).toHaveAttribute('title', 'Checking permissions…');
+    expect(
+      screen.getByRole('button', { name: /push to another version/i })
+    ).toHaveAttribute('title', 'Checking permissions…');
+    expect(
+      screen.getByRole('button', { name: /pull from server/i })
+    ).toHaveAttribute('title', 'Checking permissions…');
+    expect(
+      screen.getByRole('button', { name: /merge from another version/i })
+    ).toHaveAttribute('title', 'Checking permissions…');
   });
 
   it('shows committing progress indicator while commit request is in flight', async () => {

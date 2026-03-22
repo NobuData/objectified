@@ -325,16 +325,16 @@ export default function StudioToolbar() {
       if (!withPrimaryModifier || event.altKey) return;
 
       if (event.key.toLowerCase() === 's' && !event.shiftKey) {
+        event.preventDefault();
         if (canCommitPushMerge && !studio?.loading) {
-          event.preventDefault();
           setCommitDialogOpen(true);
         }
         return;
       }
 
       if (event.key.toLowerCase() === 'p' && event.shiftKey) {
+        event.preventDefault();
         if (canCommitPushMerge && !studio?.loading && tenantId && projectId) {
-          event.preventDefault();
           setPushDialogOpen(true);
         }
       }
@@ -476,9 +476,11 @@ export default function StudioToolbar() {
         title={
           isReadOnly
             ? 'Cannot commit (read-only)'
-            : !hasSchemaWrite
-              ? 'Cannot commit (schema:write permission required)'
-              : `Commit local state to server (optional message) (${modLabel}+S)`
+            : tenantPerms.loading
+              ? 'Checking permissions…'
+              : !hasSchemaWrite
+                ? 'Cannot commit (schema:write permission required)'
+                : `Commit local state to server (optional message) (${modLabel}+S)`
         }
       >
         {activeOperation === 'commit' ? (
@@ -509,9 +511,11 @@ export default function StudioToolbar() {
         title={
           isReadOnly
             ? 'Cannot push (read-only)'
-            : !hasSchemaWrite
-              ? 'Cannot push (schema:write permission required)'
-              : `Push current state to another version (${modLabel}+Shift+P)`
+            : tenantPerms.loading
+              ? 'Checking permissions…'
+              : !hasSchemaWrite
+                ? 'Cannot push (schema:write permission required)'
+                : `Push current state to another version (${modLabel}+Shift+P)`
         }
       >
         {activeOperation === 'push' ? (
@@ -527,7 +531,13 @@ export default function StudioToolbar() {
         disabled={studio!.loading || !canPull}
         className={btnBase}
         aria-label="Pull from server"
-        title={canPull ? 'Reload from server' : 'Cannot pull (schema:read permission required)'}
+        title={
+          tenantPerms.loading
+            ? 'Checking permissions…'
+            : canPull
+              ? 'Reload from server'
+              : 'Cannot pull (schema:read permission required)'
+        }
       >
         {activeOperation === 'pull' ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -545,9 +555,11 @@ export default function StudioToolbar() {
         title={
           isReadOnly
             ? 'Cannot merge (read-only)'
-            : !hasSchemaWrite
-              ? 'Cannot merge (schema:write permission required)'
-              : 'Merge changes from another version'
+            : tenantPerms.loading
+              ? 'Checking permissions…'
+              : !hasSchemaWrite
+                ? 'Cannot merge (schema:write permission required)'
+                : 'Merge changes from another version'
         }
       >
         {activeOperation === 'merge' ? (
