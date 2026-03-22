@@ -15,9 +15,15 @@ export interface PushTargetDialogProps {
   currentVersionId: string;
   options: RestClientOptions;
   onPush: (targetVersionId: string) => void | Promise<void>;
+  /** Optional pre-push check; when true, show pull/merge guidance before attempting push. */
+  onCheckServerAhead?: (targetVersionId: string) => Promise<boolean>;
   onPull?: () => void;
   /** When push failed with 409, call with the selected target version id to open Merge UI. */
   onMerge?: (sourceVersionId: string) => void;
+  /** Optional overwrite action shown only when policy allows it. */
+  onOverwrite?: (targetVersionId: string) => void | Promise<void>;
+  /** Policy-gated overwrite affordance for server-ahead conflicts. */
+  allowOverwriteOnServerAhead?: boolean;
   loading?: boolean;
   /** When true, push failed with 409 (target has newer changes); show Pull then Merge suggestion. */
   pushConflict409?: boolean;
@@ -34,8 +40,11 @@ export default function PushTargetDialog({
   currentVersionId,
   options,
   onPush,
+  onCheckServerAhead,
   onPull,
   onMerge,
+  onOverwrite,
+  allowOverwriteOnServerAhead = false,
   loading = false,
   pushConflict409 = false,
   pushError = null,
@@ -45,7 +54,11 @@ export default function PushTargetDialog({
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [selectedId, setSelectedId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const showConflictSuggestion = pushConflict409 && Boolean(onPull || onMerge) && Boolean(selectedId);
+  const [serverAheadDetected, setServerAheadDetected] = useState(false);
+  const showConflictSuggestion =
+    (pushConflict409 || serverAheadDetected) &&
+    Boolean(onPull || onMerge || (allowOverwriteOnServerAhead && onOverwrite)) &&
+    Boolean(selectedId);
   const displayError = pushError ?? error;
 
   useEffect(() => {
@@ -66,13 +79,26 @@ export default function PushTargetDialog({
 
   const handlePush = useCallback(async () => {
     if (!selectedId) return;
+    if (onCheckServerAhead) {
+      try {
+        const hasServerChanges = await onCheckServerAhead(selectedId);
+        if (hasServerChanges) {
+          setServerAheadDetected(true);
+          return;
+        }
+        setServerAheadDetected(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to check server changes');
+        return;
+      }
+    }
     try {
       await onPush(selectedId);
       onOpenChange(false);
     } catch {
       // Keep dialog open so the error/conflict suggestion remains visible.
     }
-  }, [selectedId, onPush, onOpenChange]);
+  }, [selectedId, onCheckServerAhead, onPush, onOpenChange]);
 
   const targets = versions.filter((v) => v.id !== currentVersionId);
 
@@ -112,7 +138,7 @@ export default function PushTargetDialog({
             >
               <p className="font-medium mb-2">Server has newer changes</p>
               <p className="mb-3 text-slate-600 dark:text-slate-400">
-                Pull to refresh your version, then merge to combine changes before pushing again.
+                Server has new changes. Pull first, then merge before pushing again.
               </p>
               <div className="flex flex-wrap gap-2">
                 {onPull && (
@@ -120,6 +146,7 @@ export default function PushTargetDialog({
                     type="button"
                     onClick={() => {
                       onPull();
+                      setServerAheadDetected(false);
                       clearPushConflict409?.();
                       onOpenChange(false);
                     }}
@@ -134,6 +161,7 @@ export default function PushTargetDialog({
                     type="button"
                     onClick={() => {
                       onMerge(selectedId);
+                      setServerAheadDetected(false);
                       clearPushConflict409?.();
                       onOpenChange(false);
                     }}
@@ -141,6 +169,24 @@ export default function PushTargetDialog({
                   >
                     <GitMerge className="h-4 w-4" />
                     Merge
+                  </button>
+                )}
+                {allowOverwriteOnServerAhead && onOverwrite && selectedId && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await onOverwrite(selectedId);
+                        setServerAheadDetected(false);
+                        clearPushConflict409?.();
+                        onOpenChange(false);
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : 'Failed to overwrite');
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 text-sm font-medium hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                  >
+                    Overwrite
                   </button>
                 )}
               </div>
@@ -152,7 +198,10 @@ export default function PushTargetDialog({
           <select
             id="push-target"
             value={selectedId}
-            onChange={(e) => setSelectedId(e.target.value)}
+            onChange={(e) => {
+              setSelectedId(e.target.value);
+              setServerAheadDetected(false);
+            }}
             disabled={loadingVersions || loading || targets.length === 0}
             className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             aria-label="Select target version"

@@ -167,4 +167,55 @@ describe('PushTargetDialog', () => {
     await waitFor(() => screen.getByRole('option', { name: 'Version 2' }));
     expect(screen.getByRole('button', { name: /^push$/i })).toBeDisabled();
   });
+
+  it('checks server-ahead before pushing and shows guidance instead of pushing', async () => {
+    const user = userEvent.setup();
+    const onPush = jest.fn().mockResolvedValue(undefined);
+    const onCheckServerAhead = jest.fn().mockResolvedValue(true);
+    render(
+      <PushTargetDialog
+        {...baseProps}
+        onPush={onPush}
+        onCheckServerAhead={onCheckServerAhead}
+        onPull={jest.fn()}
+      />
+    );
+    await waitFor(() => screen.getByRole('option', { name: 'Version 2' }));
+    await user.selectOptions(screen.getByRole('combobox'), 'v2');
+    await user.click(screen.getByRole('button', { name: /^push$/i }));
+    await waitFor(() => {
+      expect(onCheckServerAhead).toHaveBeenCalledWith('v2');
+    });
+    expect(onPush).not.toHaveBeenCalled();
+    expect(screen.getByText('Server has newer changes')).toBeInTheDocument();
+    expect(screen.getByText(/server has new changes\. pull first/i)).toBeInTheDocument();
+  });
+
+  it('shows overwrite action only when overwrite policy allows it', async () => {
+    const user = userEvent.setup();
+    const onCheckServerAhead = jest.fn().mockResolvedValue(true);
+    const onOverwrite = jest.fn().mockResolvedValue(undefined);
+    const onOpenChange = jest.fn();
+    render(
+      <PushTargetDialog
+        {...baseProps}
+        onOpenChange={onOpenChange}
+        onCheckServerAhead={onCheckServerAhead}
+        allowOverwriteOnServerAhead={true}
+        onOverwrite={onOverwrite}
+        onPull={jest.fn()}
+      />
+    );
+    await waitFor(() => screen.getByRole('option', { name: 'Version 2' }));
+    await user.selectOptions(screen.getByRole('combobox'), 'v2');
+    await user.click(screen.getByRole('button', { name: /^push$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /overwrite/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /overwrite/i }));
+    await waitFor(() => {
+      expect(onOverwrite).toHaveBeenCalledWith('v2');
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
 });

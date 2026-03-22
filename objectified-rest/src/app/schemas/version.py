@@ -235,6 +235,7 @@ class VersionCommitPayload(BaseModel):
     label: Optional[str] = None
     description: Optional[str] = None
     message: Optional[str] = None
+    overwrite: Optional[bool] = False
 
 
 class VersionCommitResponse(BaseModel):

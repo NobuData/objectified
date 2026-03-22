@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
-import { getRestClientOptions } from '@lib/api/rest-client';
+import { getRestClientOptions, pullVersion } from '@lib/api/rest-client';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
@@ -171,6 +171,71 @@ export default function StudioToolbar() {
       } catch {
         // Error and pushConflict409 set in context; dialog stays open for Pull then Merge suggestion
       }
+    },
+    [studio, options]
+  );
+
+  const checkTargetServerAhead = useCallback(
+    async (targetVersionId: string): Promise<boolean> => {
+      const sourceRevision = studio?.state?.revision;
+      if (!studio || sourceRevision == null) return false;
+      try {
+        const res = await pullVersion(targetVersionId, options, undefined, sourceRevision);
+        const serverRev = res.revision ?? 0;
+        const hasDiff =
+          Boolean(res.diff?.added_class_names?.length) ||
+          Boolean(res.diff?.removed_class_names?.length) ||
+          Boolean(res.diff?.modified_classes?.length);
+        return serverRev > sourceRevision || hasDiff;
+      } catch (error: unknown) {
+        const anyError = error as { status?: number; response?: { status?: number } };
+        const status = anyError?.status ?? anyError?.response?.status;
+
+        // If the revision from the source does not exist on the target, treat it as an
+        // independent history: fetch the target's current revision without since_revision
+        // and compare revisions instead of failing the push flow.
+        if (status === 404) {
+          try {
+            const res = await pullVersion(targetVersionId, options);
+            const serverRev = res.revision ?? 0;
+            return serverRev > sourceRevision;
+          } catch (fallbackError) {
+            // If we cannot determine the target revision, log and treat as "not ahead"
+            // so we don't block push with an unrelated error.
+            // eslint-disable-next-line no-console
+            console.error('Failed to check target server revision (fallback).', fallbackError);
+            return false;
+          }
+        }
+
+        // For non-404 errors, log and treat as "not ahead" to avoid blocking the push.
+        // eslint-disable-next-line no-console
+        console.error('Failed to check if target server is ahead.', error);
+        return false;
+      }
+    },
+    [studio, options]
+  );
+
+  const pushOverwriteAllowedByPolicy = useMemo(() => {
+    const metadata = workspace?.project?.metadata;
+    if (!metadata || typeof metadata !== 'object') return false;
+    const policy = (metadata as Record<string, unknown>).push_policy;
+    if (!policy || typeof policy !== 'object') return false;
+    const policyRecord = policy as Record<string, unknown>;
+    return (
+      policyRecord.allow_overwrite === true ||
+      policyRecord.allow_overwrite_on_server_ahead === true
+    );
+  }, [workspace?.project?.metadata]);
+
+  const handleOverwriteToTarget = useCallback(
+    async (targetVersionId: string) => {
+      if (!studio) return;
+      await studio.push(targetVersionId, options, {
+        message: 'Overwrite push after server-ahead confirmation',
+        overwrite: true,
+      });
     },
     [studio, options]
   );
@@ -523,8 +588,11 @@ export default function StudioToolbar() {
         currentVersionId={versionId}
         options={options}
         onPush={handlePushToTarget}
+        onCheckServerAhead={checkTargetServerAhead}
         onPull={handlePull}
         onMerge={handleMergeFromPush}
+        onOverwrite={handleOverwriteToTarget}
+        allowOverwriteOnServerAhead={pushOverwriteAllowedByPolicy}
         loading={studio!.loading}
         pushConflict409={studio!.pushConflict409}
         pushError={studio!.error}
