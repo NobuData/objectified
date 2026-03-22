@@ -44,6 +44,7 @@ _VERSION_ROW: dict[str, Any] = {
     "updated_at": None,
     "deleted_at": None,
     "published_at": None,
+    "publish_target": None,
 }
 
 _CLASS_ROW: dict[str, Any] = {

@@ -23,6 +23,7 @@ jest.mock('@lib/api/rest-client', () => ({
   unpublishVersion: jest.fn(),
   getRestClientOptions: jest.fn(() => ({})),
   isForbiddenError: jest.fn(() => false),
+  VERSION_PUBLISH_TARGETS: ['development', 'staging', 'production'],
 }));
 
 jest.mock('@/app/components/providers/DialogProvider', () => ({
@@ -53,7 +54,7 @@ describe('PublishPage', () => {
     const { listProjects, listVersions } =
       require('@lib/api/rest-client');
     listProjects.mockResolvedValue([
-      { id: 'p1', name: 'Project One', project_id: 'p1', description: '' },
+      { id: 'p1', name: 'Project One', slug: 'project-one', description: '' },
     ]);
     listVersions.mockResolvedValue([]);
   });

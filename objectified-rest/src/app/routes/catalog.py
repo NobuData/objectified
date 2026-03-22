@@ -40,7 +40,7 @@ _TENANT_CATALOG_COLUMNS = "id, name, slug, description"
 _PROJECT_CATALOG_COLUMNS = "id, name, slug, description, metadata"
 _VERSION_CATALOG_COLUMNS = (
     "id, name, description, published, published_at, visibility, "
-    "code_generation_tag, metadata"
+    "code_generation_tag, metadata, publish_target"
 )
 _CLASS_CATALOG_COLUMNS = "id, name, description, schema"
 

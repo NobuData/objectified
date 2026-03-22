@@ -1441,6 +1441,8 @@ paths:
                 $ref: '#/components/schemas/FetchImportUrlResponse'
         '400':
           description: Invalid URL, unsafe host, or unparseable body
+        '502':
+          description: Upstream HTTP error or timeout when fetching the URL
         '422':
           description: Validation Error
           content:
@@ -6576,6 +6578,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/versions/{version_id}/publish-history:
+    get:
+      tags:
+      - Versions
+      summary: List publish and unpublish history for a version
+      description: 'Return audit events for when a version was published or unpublished:
+        timestamp, actor, target channel, visibility, and optional publish note when
+        supplied.'
+      operationId: list_version_publish_history_v1_versions__version_id__publish_history_get
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VersionPublishEventSchema'
+                title: Response List Version Publish History V1 Versions  Version
+                  Id  Publish History Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/versions/{version_id}/publish:
     post:
       tags:
@@ -6583,6 +6634,8 @@ paths:
       summary: Publish a version
       description: Mark a version as published. Published versions are visible for
         pull by others according to the specified visibility policy (private or public).
+        Optional target selects the publish channel (development, staging, production;
+        default production). Optional publish_note is stored on the audit trail.
       operationId: publish_version_v1_versions__version_id__publish_post
       parameters:
       - name: version_id
@@ -7594,6 +7647,11 @@ components:
           - type: string
           - type: 'null'
           title: Code Generation Tag
+        publish_target:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Publish Target
         metadata:
           additionalProperties: true
           type: object
@@ -10533,6 +10591,66 @@ components:
       type: object
       title: VersionMetadataUpdate
       description: Metadata update payload for objectified.version.
+    VersionPublishEventSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+        version_id:
+          type: string
+          title: Version Id
+        project_id:
+          type: string
+          title: Project Id
+        event_type:
+          type: string
+          enum:
+          - publish
+          - unpublish
+          title: Event Type
+        target:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Target
+        visibility:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Visibility
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+        actor_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Id
+        actor_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Name
+        actor_email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Email
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - version_id
+      - project_id
+      - event_type
+      - created_at
+      title: VersionPublishEventSchema
+      description: A publish or unpublish audit row for a version.
     VersionPublishRequest:
       properties:
         visibility:
@@ -10540,6 +10658,20 @@ components:
           - $ref: '#/components/schemas/VersionVisibility'
           - type: 'null'
           default: private
+        target:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Target
+          description: 'Publish channel: development, staging, or production (default:
+            production).'
+        publish_note:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Publish Note
+          description: Optional note or changelog entry recorded with this publish.
       type: object
       title: VersionPublishRequest
       description: Payload for publishing a version.
@@ -10713,19 +10845,27 @@ components:
             format: date-time
           - type: 'null'
           title: Published At
+        publish_target:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Publish Target
+          description: Active publish channel when published (development, staging,
+            production).
         last_revision:
           anyOf:
           - type: integer
           - type: 'null'
           title: Last Revision
-          description: Highest snapshot revision for this version (list endpoint only).
+          description: The most recent snapshot revision number committed for this
+            version.
         last_committed_at:
           anyOf:
           - type: string
             format: date-time
           - type: 'null'
           title: Last Committed At
-          description: Timestamp of the latest snapshot commit (list endpoint only).
+          description: Timestamp of the most recent snapshot commit for this version.
       type: object
       required:
       - id

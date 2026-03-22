@@ -322,7 +322,7 @@ def load_version_row(version_id: str) -> Optional[dict[str, Any]]:
     rows = db.execute_query(
         """
         SELECT id, project_id, name, description, published, visibility, published_at,
-               code_generation_tag, source_version_id
+               code_generation_tag, source_version_id, publish_target
         FROM objectified.version
         WHERE id = %s AND deleted_at IS NULL
         LIMIT 1

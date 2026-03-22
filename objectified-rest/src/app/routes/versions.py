@@ -22,9 +22,11 @@ from app.schema_webhook_service import (
     try_emit_schema_webhook,
 )
 from app.schemas.version import (
+    DEFAULT_PUBLISH_TARGET,
     VersionCreate,
     VersionHistorySchema,
     VersionMetadataUpdate,
+    VersionPublishEventSchema,
     VersionPublishRequest,
     VersionPullDiff,
     VersionPullModifiedClass,
@@ -44,7 +46,7 @@ _CODE_GENERATION_TAG_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$")
 _VERSION_COLUMNS = (
     "id, project_id, source_version_id, creator_id, name, code_generation_tag, description, "
     "change_log, enabled, published, visibility, metadata, created_at, updated_at, "
-    "deleted_at, published_at"
+    "deleted_at, published_at, publish_target"
 )
 
 
@@ -69,6 +71,32 @@ def _normalize_code_generation_tag(raw: Optional[str]) -> Optional[str]:
 def _qualify_columns(columns: str, alias: str) -> str:
     """Prefix each column in a comma-separated list with a table alias."""
     return ", ".join(f"{alias}.{col.strip()}" for col in columns.split(","))
+
+
+def _resolved_publish_target(payload: VersionPublishRequest) -> str:
+    """Return normalized publish channel (defaults to production)."""
+    return payload.target if payload.target is not None else DEFAULT_PUBLISH_TARGET
+
+
+def _insert_version_publish_event(
+    *,
+    version_id: str,
+    project_id: str,
+    event_type: str,
+    target: Optional[str],
+    visibility: Optional[str],
+    note: Optional[str],
+    actor_id: str,
+) -> None:
+    db.execute_mutation(
+        """
+        INSERT INTO objectified.version_publish_event
+            (version_id, project_id, event_type, target, visibility, note, actor_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        (version_id, project_id, event_type, target, visibility, note, actor_id),
+        returning=False,
+    )
 
 
 def _get_version_by_id(
@@ -510,6 +538,46 @@ def get_version_by_revision(
     return VersionHistorySchema(**dict(rows[0]))
 
 
+@router.get(
+    "/versions/{version_id}/publish-history",
+    response_model=List[VersionPublishEventSchema],
+    summary="List publish and unpublish history for a version",
+    description=(
+        "Return audit events for when a version was published or unpublished: timestamp, "
+        "actor, target channel, visibility, and optional publish note when supplied."
+    ),
+)
+def list_version_publish_history(
+    version_id: str,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
+    caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
+) -> List[VersionPublishEventSchema]:
+    """List publish/unpublish audit rows for a version."""
+    _assert_version_exists(version_id, include_deleted=False)
+
+    rows = db.execute_query(
+        """
+        SELECT e.id,
+               e.version_id,
+               e.project_id,
+               e.event_type,
+               e.target,
+               e.visibility,
+               e.note,
+               e.actor_id,
+               a.name AS actor_name,
+               a.email AS actor_email,
+               e.created_at
+        FROM objectified.version_publish_event e
+        LEFT JOIN objectified.account a ON a.id = e.actor_id
+        WHERE e.version_id = %s
+        ORDER BY e.created_at DESC
+        """,
+        (version_id,),
+    )
+    return [VersionPublishEventSchema(**dict(r)) for r in rows]
+
+
 # ---------------------------------------------------------------------------
 # Publish / Unpublish / Freeze-schema
 # ---------------------------------------------------------------------------
@@ -521,7 +589,9 @@ def get_version_by_revision(
     summary="Publish a version",
     description=(
         "Mark a version as published. Published versions are visible for pull by others "
-        "according to the specified visibility policy (private or public)."
+        "according to the specified visibility policy (private or public). "
+        "Optional target selects the publish channel (development, staging, production; "
+        "default production). Optional publish_note is stored on the audit trail."
     ),
 )
 def publish_version(
@@ -547,21 +617,34 @@ def publish_version(
         )
 
     visibility = payload.visibility.value if payload.visibility else "private"
+    target = _resolved_publish_target(payload)
+    publish_note = (payload.publish_note or "").strip() or None
 
     row = db.execute_mutation(
         f"""
         UPDATE objectified.version
         SET published = true,
             published_at = timezone('utc', clock_timestamp()),
-            visibility = %s::objectified.version_visibility
+            visibility = %s::objectified.version_visibility,
+            publish_target = %s
         WHERE id = %s
           AND deleted_at IS NULL
         RETURNING {_VERSION_COLUMNS}
         """,
-        (visibility, version_id),
+        (visibility, target, version_id),
     )
     if not row:
         raise _not_found("Version", version_id)
+
+    _insert_version_publish_event(
+        version_id=version_id,
+        project_id=str(row["project_id"]),
+        event_type="publish",
+        target=target,
+        visibility=visibility,
+        note=publish_note,
+        actor_id=user_id,
+    )
 
     _record_history(
         version_id=version_id,
@@ -583,7 +666,10 @@ def publish_version(
             version_row=vrow,
             actor_user_id=user_id,
             snapshot_row=None,
-            extra={"visibility": row.get("visibility")},
+            extra={
+                "visibility": row.get("visibility"),
+                "publish_target": row.get("publish_target"),
+            },
         )
         try_emit_schema_webhook(
             project_id=pid,
@@ -620,11 +706,14 @@ def unpublish_version(
             detail="Unpublishing requires user authentication (JWT token)",
         )
 
+    previous_target = old_row.get("publish_target")
+
     row = db.execute_mutation(
         f"""
         UPDATE objectified.version
         SET published = false,
-            published_at = NULL
+            published_at = NULL,
+            publish_target = NULL
         WHERE id = %s
           AND deleted_at IS NULL
         RETURNING {_VERSION_COLUMNS}
@@ -633,6 +722,16 @@ def unpublish_version(
     )
     if not row:
         raise _not_found("Version", version_id)
+
+    _insert_version_publish_event(
+        version_id=version_id,
+        project_id=str(row["project_id"]),
+        event_type="unpublish",
+        target=str(previous_target) if previous_target else None,
+        visibility=None,
+        note=None,
+        actor_id=user_id,
+    )
 
     _record_history(
         version_id=version_id,

@@ -38,6 +38,7 @@ _VERSION_ROW: dict[str, Any] = {
     "updated_at": None,
     "deleted_at": None,
     "published_at": None,
+    "publish_target": None,
 }
 _HISTORY_ROW: dict[str, Any] = {
     "id": "00000000-0000-0000-0000-000000000050",
@@ -71,6 +72,7 @@ def _version_row_for_webhook(version_row: dict[str, Any]) -> dict[str, Any]:
         "published_at": version_row.get("published_at"),
         "code_generation_tag": version_row.get("code_generation_tag"),
         "source_version_id": version_row.get("source_version_id"),
+        "publish_target": version_row.get("publish_target"),
     }
 
 
@@ -727,13 +729,19 @@ def test_get_version_snapshot_by_revision_not_found_returns_404(client):
 
 def test_publish_version_returns_200(client):
     """POST /v1/versions/{id}/publish publishes the version."""
-    published_row = {**_VERSION_ROW, "published": True, "published_at": _NOW, "visibility": "private"}
+    published_row = {
+        **_VERSION_ROW,
+        "published": True,
+        "published_at": _NOW,
+        "visibility": "private",
+        "publish_target": "production",
+    }
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
             *_publish_webhook_queries(published_row),
         ]
-        mock_db.execute_mutation.side_effect = [published_row, None]
+        mock_db.execute_mutation.side_effect = [published_row, None, None]
         r = client.post(
             f"/v1/versions/{_VERSION_ID}/publish",
             json={"visibility": "private"},
@@ -746,13 +754,19 @@ def test_publish_version_returns_200(client):
 
 def test_publish_version_with_public_visibility(client):
     """POST /v1/versions/{id}/publish publishes the version as public."""
-    published_row = {**_VERSION_ROW, "published": True, "published_at": _NOW, "visibility": "public"}
+    published_row = {
+        **_VERSION_ROW,
+        "published": True,
+        "published_at": _NOW,
+        "visibility": "public",
+        "publish_target": "production",
+    }
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
             *_publish_webhook_queries(published_row),
         ]
-        mock_db.execute_mutation.side_effect = [published_row, None]
+        mock_db.execute_mutation.side_effect = [published_row, None, None]
         r = client.post(
             f"/v1/versions/{_VERSION_ID}/publish",
             json={"visibility": "public"},
@@ -783,13 +797,19 @@ def test_publish_version_not_found_returns_404(client):
 
 def test_publish_version_no_body_defaults_to_private(client):
     """POST /v1/versions/{id}/publish without body defaults to private visibility."""
-    published_row = {**_VERSION_ROW, "published": True, "published_at": _NOW, "visibility": "private"}
+    published_row = {
+        **_VERSION_ROW,
+        "published": True,
+        "published_at": _NOW,
+        "visibility": "private",
+        "publish_target": "production",
+    }
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
             *_publish_webhook_queries(published_row),
         ]
-        mock_db.execute_mutation.side_effect = [published_row, None]
+        mock_db.execute_mutation.side_effect = [published_row, None, None]
         r = client.post(f"/v1/versions/{_VERSION_ID}/publish")
     assert r.status_code == 200
     body = r.json()
@@ -798,11 +818,23 @@ def test_publish_version_no_body_defaults_to_private(client):
 
 def test_unpublish_version_returns_200(client):
     """POST /v1/versions/{id}/unpublish unpublishes the version."""
-    published_lookup = {**_version_lookup_row(), "published": True, "published_at": _NOW, "visibility": "private"}
-    unpublished_row = {**_VERSION_ROW, "published": False, "published_at": None, "visibility": "private"}
+    published_lookup = {
+        **_version_lookup_row(),
+        "published": True,
+        "published_at": _NOW,
+        "visibility": "private",
+        "publish_target": "staging",
+    }
+    unpublished_row = {
+        **_VERSION_ROW,
+        "published": False,
+        "published_at": None,
+        "visibility": "private",
+        "publish_target": None,
+    }
     with mock_db_all() as mock_db:
         mock_db.execute_query.return_value = [published_lookup]
-        mock_db.execute_mutation.side_effect = [unpublished_row, None]
+        mock_db.execute_mutation.side_effect = [unpublished_row, None, None]
         r = client.post(f"/v1/versions/{_VERSION_ID}/unpublish")
     assert r.status_code == 200
     body = r.json()
@@ -825,6 +857,70 @@ def test_unpublish_version_not_found_returns_404(client):
         mock_db.execute_query.return_value = []
         r = client.post(f"/v1/versions/{_VERSION_ID}/unpublish")
     assert r.status_code == 404
+
+
+def test_publish_version_invalid_target_returns_422(client):
+    """POST /v1/versions/{id}/publish returns 422 for an unknown publish target."""
+    r = client.post(
+        f"/v1/versions/{_VERSION_ID}/publish",
+        json={"visibility": "private", "target": "prod"},
+    )
+    assert r.status_code == 422
+
+
+def test_publish_version_with_explicit_target(client):
+    """POST /v1/versions/{id}/publish stores the requested publish channel."""
+    published_row = {
+        **_VERSION_ROW,
+        "published": True,
+        "published_at": _NOW,
+        "visibility": "private",
+        "publish_target": "staging",
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            *_publish_webhook_queries(published_row),
+        ]
+        mock_db.execute_mutation.side_effect = [published_row, None, None]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/publish",
+            json={"visibility": "private", "target": "staging", "publish_note": "RC1"},
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["publish_target"] == "staging"
+
+
+_PUBLISH_HISTORY_ROW: dict[str, Any] = {
+    "id": "00000000-0000-0000-0000-000000000060",
+    "version_id": _VERSION_ID,
+    "project_id": _PROJECT_ID,
+    "event_type": "publish",
+    "target": "production",
+    "visibility": "private",
+    "note": "Initial publish",
+    "actor_id": _ACCOUNT_ID,
+    "actor_name": "Test User",
+    "actor_email": "creator@example.com",
+    "created_at": _NOW,
+}
+
+
+def test_list_publish_history_returns_200(client):
+    """GET /v1/versions/{id}/publish-history returns audit rows."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [_PUBLISH_HISTORY_ROW],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/publish-history")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 1
+    assert body[0]["event_type"] == "publish"
+    assert body[0]["target"] == "production"
+    assert body[0]["note"] == "Initial publish"
 
 
 def test_freeze_schema_returns_201(client):

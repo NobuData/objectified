@@ -19,6 +19,7 @@ import {
   publishVersion,
   unpublishVersion,
   getRestClientOptions,
+  VERSION_PUBLISH_TARGETS,
   isForbiddenError,
   type ProjectSchema,
   type VersionSchema,
@@ -60,6 +61,9 @@ export default function PublishPage() {
 
   const [publishVersionRow, setPublishVersionRow] = useState<VersionSchema | null>(null);
   const [publishVisibility, setPublishVisibility] = useState<'private' | 'public'>('private');
+  const [publishTarget, setPublishTarget] =
+    useState<(typeof VERSION_PUBLISH_TARGETS)[number]>('production');
+  const [publishNote, setPublishNote] = useState('');
   const [publishSubmitting, setPublishSubmitting] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
 
@@ -139,6 +143,8 @@ export default function PublishPage() {
     if (v.published) return;
     setPublishVersionRow(v);
     setPublishVisibility('private');
+    setPublishTarget('production');
+    setPublishNote('');
     setPublishError(null);
   };
 
@@ -147,7 +153,11 @@ export default function PublishPage() {
     setPublishSubmitting(true);
     setPublishError(null);
     try {
-      const body: VersionPublishRequest = { visibility: publishVisibility };
+      const body: VersionPublishRequest = {
+        visibility: publishVisibility,
+        target: publishTarget,
+        publish_note: publishNote.trim() || undefined,
+      };
       await publishVersion(publishVersionRow.id, body, opts);
       setPublishVersionRow(null);
       await fetchVersions();
@@ -334,6 +344,9 @@ export default function PublishPage() {
                     Visibility
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Channel
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Published at
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -382,6 +395,9 @@ export default function PublishPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
                       {v.published ? getVisibilityLabel(v.visibility) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400 font-mono text-xs">
+                      {v.published ? (v.publish_target ?? '—') : '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
                       {v.published_at
@@ -512,6 +528,40 @@ export default function PublishPage() {
                     ? 'Only you and users with access can pull this version.'
                     : 'Anyone can discover and pull this version.'}
                 </p>
+              </div>
+              <div>
+                <Label.Root htmlFor="publish-target" className={labelClass}>
+                  Publish channel
+                </Label.Root>
+                <select
+                  id="publish-target"
+                  value={publishTarget}
+                  onChange={(e) =>
+                    setPublishTarget(e.target.value as (typeof VERSION_PUBLISH_TARGETS)[number])
+                  }
+                  className={inputClass}
+                  disabled={publishSubmitting}
+                >
+                  {VERSION_PUBLISH_TARGETS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label.Root htmlFor="publish-note" className={labelClass}>
+                  Publish note (optional)
+                </Label.Root>
+                <textarea
+                  id="publish-note"
+                  value={publishNote}
+                  onChange={(e) => setPublishNote(e.target.value)}
+                  rows={3}
+                  disabled={publishSubmitting}
+                  className={`${inputClass} resize-y min-h-[4rem]`}
+                  placeholder="Changelog or release note…"
+                />
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 pt-4 border-t border-slate-200 dark:border-slate-700">
