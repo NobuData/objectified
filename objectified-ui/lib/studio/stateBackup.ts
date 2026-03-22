@@ -72,7 +72,24 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
     const formatVersion =
       typeof (parsed as Partial<StateBackupEnvelopeV2>).formatVersion === 'number'
         ? (parsed as Partial<StateBackupEnvelopeV2>).formatVersion
-        : 1;
+        : undefined;
+
+    // v1 migration: old backup shape was { state, savedAt } with no formatVersion.
+    // Migrate to v2 rather than discarding, to avoid losing unsynced work on upgrade.
+    if (formatVersion === undefined) {
+      const v1State = (parsed as { state?: LocalVersionState }).state;
+      if (!v1State || typeof v1State !== 'object' || v1State.versionId !== versionId) {
+        removeBackup(versionId);
+        return {
+          state: null,
+          status: 'invalid',
+          warning: 'A local Studio backup was invalid and has been cleared.',
+        };
+      }
+      // Migrate: rewrite as v2 envelope so subsequent loads are version-checked.
+      saveStateBackup(v1State);
+      return { state: v1State, status: 'ok', warning: null };
+    }
 
     if (formatVersion !== BACKUP_FORMAT_VERSION) {
       removeBackup(versionId);
