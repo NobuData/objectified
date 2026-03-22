@@ -69,7 +69,7 @@ function buildPreCommitValidationSummary(
   if (!state) return { errors: [], warnings: [] };
   const errors: string[] = [];
   const warnings: string[] = [];
-  const classNames = new Map<string, number>();
+  const classNames = new Map<string, string[]>();
 
   state.classes.forEach((cls, classIndex) => {
     const className = cls.name?.trim() ?? '';
@@ -77,7 +77,9 @@ function buildPreCommitValidationSummary(
       errors.push(`Class #${classIndex + 1} is missing a name.`);
     } else {
       const key = normalizeName(className);
-      classNames.set(key, (classNames.get(key) ?? 0) + 1);
+      const existing = classNames.get(key) ?? [];
+      existing.push(className);
+      classNames.set(key, existing);
     }
     cls.properties.forEach((prop, propertyIndex) => {
       if ((prop.name?.trim() ?? '').length === 0) {
@@ -88,9 +90,10 @@ function buildPreCommitValidationSummary(
     });
   });
 
-  for (const [name, count] of classNames.entries()) {
-    if (count > 1) {
-      warnings.push(`Class name "${name}" appears ${count} times.`);
+  for (const [, names] of classNames.entries()) {
+    if (names.length > 1) {
+      const displayNames = [...new Set(names)].map((n) => `"${n}"`).join(', ');
+      warnings.push(`Class names ${displayNames} are duplicates (case-insensitive, ${names.length} occurrences).`);
     }
   }
 

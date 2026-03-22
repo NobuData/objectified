@@ -114,16 +114,18 @@ export default function CommitMessageDialog({
               Pending changes: {pendingChangesSummary}
             </p>
           )}
-          <label className="mb-3 inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
-            <input
-              type="checkbox"
-              checked={requireMessage}
-              onChange={(e) => onRequireMessageChange?.(e.target.checked)}
-              disabled={loading}
-              aria-label="Require commit message"
-            />
-            Require commit message before committing
-          </label>
+          {onRequireMessageChange && (
+            <label className="mb-3 inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={requireMessage}
+                onChange={(e) => onRequireMessageChange(e.target.checked)}
+                disabled={loading}
+                aria-label="Require commit message"
+              />
+              Require commit message before committing
+            </label>
+          )}
           <label htmlFor="commit-message" className={labelClass}>
             Message {requireMessage ? '(required)' : '(optional)'}
           </label>
