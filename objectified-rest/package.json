@@ -1,6 +1,6 @@
 {
   "name": "objectified-rest",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "private": true,
   "scripts": {
     "dev": "uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",

@@ -726,6 +726,43 @@ def test_get_tenant_activity_summary(jwt_client):
     assert body["dashboard_page_visits_last_7_days"] == 4
 
 
+def test_get_tenant_quota_status(jwt_client):
+    """GET /v1/tenants/{id}/quota-status returns project usage vs caps."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ROW["id"]}],
+            [{"max_projects": 5, "max_versions_per_project": 10}],
+            [{"c": 3}],
+        ]
+        r = jwt_client.get(f"/v1/tenants/{_TENANT_ROW['id']}/quota-status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["max_projects"] == 5
+    assert body["active_project_count"] == 3
+    assert body["max_versions_per_project"] == 10
+    assert body["active_version_count_for_project"] is None
+
+
+def test_get_tenant_quota_status_with_project_id(jwt_client):
+    """GET /v1/tenants/{id}/quota-status?project_id= includes version count."""
+    pid = "00000000-0000-0000-0000-000000000099"
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ROW["id"]}],
+            [{"max_projects": None, "max_versions_per_project": 3}],
+            [{"c": 1}],
+            [{"id": pid, "tenant_id": _TENANT_ROW["id"]}],
+            [{"c": 2}],
+        ]
+        r = jwt_client.get(
+            f"/v1/tenants/{_TENANT_ROW['id']}/quota-status?project_id={pid}"
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["active_project_count"] == 1
+    assert body["active_version_count_for_project"] == 2
+
+
 def test_put_tenant_appearance_updates_metadata(jwt_client):
     """PUT /v1/tenants/{id}/appearance merges branding into metadata."""
     updated = dict(_TENANT_ROW)

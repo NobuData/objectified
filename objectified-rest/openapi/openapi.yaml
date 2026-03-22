@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.31
+  version: 1.0.32
 paths:
   /v1/auth/login:
     post:
@@ -2355,6 +2355,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TenantActivitySummarySchema'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tenants/{tenant_id}/quota-status:
+    get:
+      tags:
+      - Tenants
+      summary: Tenant quota usage vs limits
+      description: Returns active project count and configured caps. When ``project_id``
+        is provided, also returns the active version count for that project (the project
+        must belong to the tenant). Requires project:read.
+      operationId: get_tenant_quota_status_v1_tenants__tenant_id__quota_status_get
+      parameters:
+      - name: tenant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant Id
+      - name: project_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Optional project UUID; when set, includes active version count
+            for that project.
+          title: Project Id
+        description: Optional project UUID; when set, includes active version count
+          for that project.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: X-API-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantQuotaStatusSchema'
         '422':
           description: Validation Error
           content:
@@ -9638,6 +9695,38 @@ components:
       - confirm_tenant_slug
       title: TenantPrimaryAdminTransfer
       description: Transfer primary (designated) tenant administrator to another administrator.
+    TenantQuotaStatusSchema:
+      properties:
+        max_projects:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Projects
+          description: Tenant cap on active projects; null means unlimited.
+        active_project_count:
+          type: integer
+          minimum: 0.0
+          title: Active Project Count
+          description: Non-deleted projects for this tenant.
+        max_versions_per_project:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Versions Per Project
+          description: Tenant cap on active versions per project; null means unlimited.
+        active_version_count_for_project:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Active Version Count For Project
+          description: Non-deleted versions for the selected project when project_id
+            was requested; otherwise null.
+      type: object
+      required:
+      - active_project_count
+      title: TenantQuotaStatusSchema
+      description: 'Active counts vs tenant-configured caps for UI quota display (GitHub
+        #199).'
     TenantSchema:
       properties:
         id:

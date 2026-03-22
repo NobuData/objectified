@@ -25,13 +25,16 @@ import {
   createVersion,
   updateVersion,
   deleteVersion,
+  getTenantQuotaStatus,
   getRestClientOptions,
   isForbiddenError,
   type ProjectSchema,
+  type TenantQuotaStatusSchema,
   type VersionSchema,
   type VersionCreate,
   type VersionMetadataUpdate,
 } from '@lib/api/rest-client';
+import { atQuotaLimit, formatUsageLine, quotaSeverity } from '@lib/quotaDisplay';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
@@ -81,6 +84,7 @@ export default function VersionsPage() {
   const [createSourceVersionId, setCreateSourceVersionId] = useState<string>('');
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [quotaStatus, setQuotaStatus] = useState<TenantQuotaStatusSchema | null>(null);
 
   // Edit form
   const [editDescription, setEditDescription] = useState('');
@@ -147,6 +151,19 @@ export default function VersionsPage() {
     }
   }, [status, selectedTenantId, selectedProjectId, opts]);
 
+  const fetchQuota = useCallback(async () => {
+    if (status !== 'authenticated' || !selectedTenantId || !selectedProjectId) {
+      setQuotaStatus(null);
+      return;
+    }
+    try {
+      const q = await getTenantQuotaStatus(selectedTenantId, opts, selectedProjectId);
+      setQuotaStatus(q);
+    } catch {
+      setQuotaStatus(null);
+    }
+  }, [status, selectedTenantId, selectedProjectId, opts]);
+
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
@@ -158,6 +175,40 @@ export default function VersionsPage() {
       setVersions([]);
     }
   }, [selectedProjectId, fetchVersions]);
+
+  useEffect(() => {
+    void fetchQuota();
+  }, [fetchQuota]);
+
+  const versionQuotaBlocksCreate = useMemo(() => {
+    if (!quotaStatus || quotaStatus.active_version_count_for_project == null) {
+      return false;
+    }
+    return atQuotaLimit(
+      quotaStatus.max_versions_per_project,
+      quotaStatus.active_version_count_for_project
+    );
+  }, [quotaStatus]);
+
+  const versionQuotaBanner = useMemo(() => {
+    if (
+      !quotaStatus ||
+      quotaStatus.max_versions_per_project == null ||
+      quotaStatus.active_version_count_for_project == null
+    ) {
+      return null;
+    }
+    const line = formatUsageLine(
+      'Versions (this project)',
+      quotaStatus.active_version_count_for_project,
+      quotaStatus.max_versions_per_project
+    );
+    const level = quotaSeverity(
+      quotaStatus.max_versions_per_project,
+      quotaStatus.active_version_count_for_project
+    );
+    return { line, level };
+  }, [quotaStatus]);
 
   const handleCreateOpen = () => {
     setCreateName('');
@@ -171,6 +222,12 @@ export default function VersionsPage() {
 
   const handleCreateSubmit = async () => {
     if (!selectedTenantId || !selectedProjectId) return;
+    if (versionQuotaBlocksCreate) {
+      setCreateError(
+        'This project has reached the maximum number of versions allowed for the tenant. Remove a version or ask an administrator to raise the quota.'
+      );
+      return;
+    }
     const name = createName.trim();
     if (!name) {
       setCreateError('Version name is required (e.g. 1.0.0).');
@@ -194,6 +251,7 @@ export default function VersionsPage() {
       await createVersion(selectedTenantId, selectedProjectId, body, opts);
       setCreateOpen(false);
       await fetchVersions();
+      void fetchQuota();
       await alertDialog({ message: 'Version created.', variant: 'success' });
     } catch (e) {
       setCreateError(
@@ -259,6 +317,7 @@ export default function VersionsPage() {
     try {
       await deleteVersion(v.id, opts);
       await fetchVersions();
+      void fetchQuota();
       await alertDialog({ message: 'Version deleted.', variant: 'success' });
     } catch (e) {
       await alertDialog({
@@ -320,63 +379,93 @@ export default function VersionsPage() {
 
   return (
     <div className="p-6 dashboard-print-area">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-400/10 flex items-center justify-center print:hidden">
-            <GitBranch className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+      <div className="mb-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-400/10 flex items-center justify-center print:hidden">
+              <GitBranch className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100 print:text-black">
+                Versions
+              </h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400 print:hidden">
+                Manage specification versions by project
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100 print:text-black">
-              Versions
-            </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 print:hidden">
-              Manage specification versions by project
-            </p>
+          <div className="flex flex-wrap items-center gap-3 print:hidden">
+            <select
+              value={selectedTenantId ?? ''}
+              onChange={(e) => {
+                const newTenantId = e.target.value || null;
+                setSelectedTenantId(newTenantId);
+                setSelectedProjectId(null);
+                setProjects([]);
+                setVersions([]);
+              }}
+              className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-label="Select tenant"
+            >
+              <option value="">Select tenant</option>
+              {tenants.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedProjectId ?? ''}
+              onChange={(e) => setSelectedProjectId(e.target.value || null)}
+              className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-label="Select project"
+            >
+              <option value="">Select project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleCreateOpen}
+              disabled={!selectedProjectId || versionQuotaBlocksCreate}
+              title={
+                versionQuotaBlocksCreate
+                  ? 'Version quota reached for this project'
+                  : undefined
+              }
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <Plus className="h-4 w-4" />
+              New Version
+            </button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3 print:hidden">
-          <select
-            value={selectedTenantId ?? ''}
-            onChange={(e) => {
-              const newTenantId = e.target.value || null;
-              setSelectedTenantId(newTenantId);
-              setSelectedProjectId(null);
-              setProjects([]);
-              setVersions([]);
-            }}
-            className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            aria-label="Select tenant"
+        {versionQuotaBanner && (
+          <div
+            className={
+              versionQuotaBanner.level === 'block'
+                ? 'rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-800 dark:text-red-200 print:hidden'
+                : versionQuotaBanner.level === 'warn'
+                  ? 'rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100 print:hidden'
+                  : 'rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/40 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 print:hidden'
+            }
+            role="status"
           >
-            <option value="">Select tenant</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={selectedProjectId ?? ''}
-            onChange={(e) => setSelectedProjectId(e.target.value || null)}
-            className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            aria-label="Select project"
-          >
-            <option value="">Select project</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={handleCreateOpen}
-            disabled={!selectedProjectId}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
-          >
-            <Plus className="h-4 w-4" />
-            New Version
-          </button>
-        </div>
+            <div className="font-medium">{versionQuotaBanner.line}</div>
+            {versionQuotaBanner.level === 'block' && (
+              <p className="mt-1 text-xs opacity-90">
+                Version quota is full for this project. Delete a version or ask an administrator to
+                raise the limit.
+              </p>
+            )}
+            {versionQuotaBanner.level === 'warn' && (
+              <p className="mt-1 text-xs opacity-90">You are near the version limit for this project.</p>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -404,7 +493,13 @@ export default function VersionsPage() {
           <button
             type="button"
             onClick={handleCreateOpen}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+            disabled={versionQuotaBlocksCreate}
+            title={
+              versionQuotaBlocksCreate
+                ? 'Version quota reached for this project'
+                : undefined
+            }
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:pointer-events-none"
           >
             <Plus className="h-4 w-4" />
             New Version
@@ -616,6 +711,15 @@ export default function VersionsPage() {
                   {createError}
                 </div>
               )}
+              {versionQuotaBlocksCreate && (
+                <div
+                  className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100 text-sm"
+                  role="alert"
+                >
+                  Version quota reached for this project. Delete a version or ask an administrator to
+                  raise the limit before creating another.
+                </div>
+              )}
               <div>
                 <Label.Root htmlFor="create-source" className={labelClass}>
                   Copy from version (optional)
@@ -706,7 +810,7 @@ export default function VersionsPage() {
               <button
                 type="button"
                 onClick={handleCreateSubmit}
-                disabled={createSubmitting}
+                disabled={createSubmitting || versionQuotaBlocksCreate}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 inline-flex items-center gap-2"
               >
                 {createSubmitting && (
