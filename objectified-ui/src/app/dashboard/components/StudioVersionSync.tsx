@@ -7,7 +7,7 @@ import { getRestClientOptions } from '@lib/api/rest-client';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
-import { loadStateBackupWithMetadata } from '@lib/studio/stateBackup';
+import { loadStateBackupWithDiagnostics } from '@lib/studio/stateBackup';
 
 function isDraftNewerThanLastPushed(
   draftSavedAt: string,
@@ -73,36 +73,42 @@ function StudioVersionSyncInner() {
       studioValue.clear({ clearBackup: true });
       if (!versionId) return;
       void (async () => {
+        const capturedVersionId = versionId;
         let draftBehavior: 'restore' | 'discard' | undefined;
         const canPromptForDraft =
           !hasUrlRevision && !urlReadOnly;
-        if (canPromptForDraft) {
-          const draft = loadStateBackupWithMetadata(versionId);
-          if (
-            draft &&
-            isDraftNewerThanLastPushed(
-              draft.savedAt,
-              workspaceVersionLastCommittedAt
-            )
-          ) {
-            const restore = await confirm({
-              title: 'Restore unsaved draft?',
-              message:
-                'A newer local draft was found for this version. Restore it now? Choosing "Discard draft" loads the latest server state and removes the local draft.',
-              variant: 'warning',
-              confirmLabel: 'Restore draft',
-              cancelLabel: 'Discard draft',
-            });
-            draftBehavior = restore ? 'restore' : 'discard';
-          }
+        const backupResult = canPromptForDraft
+          ? loadStateBackupWithDiagnostics(capturedVersionId)
+          : null;
+        if (
+          backupResult?.state &&
+          backupResult.savedAt &&
+          isDraftNewerThanLastPushed(
+            backupResult.savedAt,
+            workspaceVersionLastCommittedAt
+          )
+        ) {
+          const restore = await confirm({
+            title: 'Restore unsaved draft?',
+            message:
+              'A newer local draft was found for this version. Restore it now? Choosing "Discard draft" loads the latest server state and removes the local draft.',
+            variant: 'warning',
+            confirmLabel: 'Restore draft',
+            cancelLabel: 'Discard draft',
+          });
+          draftBehavior = restore ? 'restore' : 'discard';
         }
-        await studioValue.loadFromServer(versionId, optionsRef.current, {
+        // Abort if the workspace version changed while the user was responding
+        // to the confirm prompt, to prevent overwriting a newer load.
+        if (capturedVersionId !== lastVersionIdRef.current) return;
+        await studioValue.loadFromServer(capturedVersionId, optionsRef.current, {
           tenantId: tenantId ?? undefined,
           projectId: projectId ?? undefined,
           ...(hasUrlRevision
             ? { revision: revisionParsed, readOnly: urlReadOnly }
             : {}),
           ...(draftBehavior ? { draftBehavior } : {}),
+          ...(backupResult ? { preloadedBackupResult: backupResult } : {}),
         });
       })();
     }

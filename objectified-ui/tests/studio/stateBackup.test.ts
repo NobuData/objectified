@@ -107,6 +107,15 @@ describe('saveStateBackup', () => {
     });
     expect(() => saveStateBackup(makeState())).not.toThrow();
   });
+
+  it('uses an explicit savedAt when provided in opts', () => {
+    const state = makeState();
+    const customSavedAt = '2024-01-15T10:00:00.000Z';
+    saveStateBackup(state, { savedAt: customSavedAt });
+    const [, value] = localStorageMock.setItem.mock.calls[0];
+    const parsed = JSON.parse(value);
+    expect(parsed.savedAt).toBe(customSavedAt);
+  });
 });
 
 describe('loadStateBackup', () => {
@@ -148,8 +157,9 @@ describe('loadStateBackup', () => {
 
   it('migrates a v1 backup (no formatVersion) to v2 and returns the state', () => {
     const state = makeState({ revision: 7 });
+    const originalSavedAt = new Date().toISOString();
     localStorageMock.getItem.mockReturnValueOnce(
-      JSON.stringify({ savedAt: new Date().toISOString(), state })
+      JSON.stringify({ savedAt: originalSavedAt, state })
     );
     const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
     expect(loaded.state).toEqual(state);
@@ -161,6 +171,40 @@ describe('loadStateBackup', () => {
     const parsed = JSON.parse(value);
     expect(parsed.formatVersion).toBe(2);
     expect(typeof parsed.checksum).toBe('string');
+    // Migrated v2 must preserve the original savedAt, not reset to now
+    expect(parsed.savedAt).toBe(originalSavedAt);
+    expect(loaded.savedAt).toBe(originalSavedAt);
+  });
+
+  it('treats an expired v1 backup as expired without resetting TTL', () => {
+    const state = makeState({ revision: 7 });
+    const nineDaysAgo = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString();
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({ savedAt: nineDaysAgo, state })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('expired');
+    expect(loaded.warning).toContain('expired');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
+    // Must not have re-saved (which would extend TTL)
+    expect(localStorageMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it('migrates a v1 backup with no savedAt using current time', () => {
+    const state = makeState({ revision: 7 });
+    const before = Date.now();
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({ state })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    const after = Date.now();
+    expect(loaded.state).toEqual(state);
+    expect(loaded.status).toBe('ok');
+    expect(loaded.savedAt).not.toBeNull();
+    const savedAtMs = Date.parse(loaded.savedAt!);
+    expect(savedAtMs).toBeGreaterThanOrEqual(before);
+    expect(savedAtMs).toBeLessThanOrEqual(after);
   });
 
   it('clears a v1 backup when state versionId does not match', () => {
