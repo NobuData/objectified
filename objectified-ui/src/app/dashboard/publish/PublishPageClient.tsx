@@ -397,7 +397,7 @@ export default function PublishPage() {
                       {v.published ? getVisibilityLabel(v.visibility) : '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400 font-mono text-xs">
-                      {v.published ? (v.publish_target ?? 'production') : '—'}
+                      {v.published ? (v.publish_target ?? '—') : '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
                       {v.published_at

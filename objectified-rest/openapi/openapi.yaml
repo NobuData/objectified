@@ -10857,12 +10857,15 @@ components:
           - type: integer
           - type: 'null'
           title: Last Revision
+          description: The most recent snapshot revision number committed for this
+            version.
         last_committed_at:
           anyOf:
           - type: string
             format: date-time
           - type: 'null'
           title: Last Committed At
+          description: Timestamp of the most recent snapshot commit for this version.
       type: object
       required:
       - id

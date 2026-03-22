@@ -57,6 +57,7 @@ import RelationshipGraphDialog from '@/app/dashboard/components/RelationshipGrap
 import SchemaImportDialog from '@/app/dashboard/components/SchemaImportDialog';
 import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
 import { dataDesignerDeepLink } from '@/lib/dashboard/deepLinks';
+import { buildCsvContent, downloadCsvFile } from '@/app/components/dashboard/ListTableToolbar';
 
 const inputClass =
   'w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
@@ -272,10 +273,7 @@ export default function VersionsPage() {
       rows = rows.filter((v) => v.enabled === false);
 
     if (versionStatusFilter === 'published' && publishedTargetFilter !== 'all') {
-      rows = rows.filter((v) => {
-        const ch = v.publish_target ?? 'production';
-        return ch === publishedTargetFilter;
-      });
+      rows = rows.filter((v) => v.publish_target === publishedTargetFilter);
     }
 
     const pubTime = (v: VersionSchema) => {
@@ -640,10 +638,6 @@ export default function VersionsPage() {
   const handleExportPublishedCsv = () => {
     const publishedRows = filteredSortedVersions.filter((v) => v.published);
     if (publishedRows.length === 0) return;
-    const esc = (cell: string) => {
-      if (/[",\n\r]/.test(cell)) return `"${cell.replace(/"/g, '""')}"`;
-      return cell;
-    };
     const headers = [
       'project_name',
       'project_id',
@@ -654,28 +648,19 @@ export default function VersionsPage() {
       'visibility',
       'published_at',
     ];
-    const lines = [
-      headers.join(','),
-      ...publishedRows.map((v) =>
-        [
-          esc(selectedProject?.name ?? ''),
-          esc(selectedProjectId ?? ''),
-          esc(v.name),
-          esc(v.id),
-          esc(v.code_generation_tag ?? ''),
-          esc(v.publish_target ?? 'production'),
-          esc(v.visibility ?? ''),
-          esc(v.published_at ?? ''),
-        ].join(',')
-      ),
-    ];
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `published-versions-${selectedProject?.slug ?? selectedProjectId ?? 'export'}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const rows = publishedRows.map((v) => [
+      selectedProject?.name ?? '',
+      selectedProjectId ?? '',
+      v.name,
+      v.id,
+      v.code_generation_tag ?? '',
+      v.publish_target ?? '',
+      v.visibility ?? '',
+      v.published_at ?? '',
+    ]);
+    const content = buildCsvContent(headers, rows);
+    const filename = `published-versions-${selectedProject?.slug ?? selectedProjectId ?? 'export'}.csv`;
+    downloadCsvFile(filename, content);
   };
 
   const handleBulkPublish = async (visibility: 'private' | 'public') => {
@@ -1245,9 +1230,9 @@ export default function VersionsPage() {
                               Public
                             </span>
                           )}
-                          {v.published && (
+                          {v.published && v.publish_target && (
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100/90 dark:bg-amber-900/35 text-amber-900 dark:text-amber-100">
-                              {v.publish_target ?? 'production'}
+                              {v.publish_target}
                             </span>
                           )}
                         </div>
@@ -1319,9 +1304,9 @@ export default function VersionsPage() {
                               {formatDateTime(v.published_at)}
                             </span>
                           )}
-                          {v.published && (
+                          {v.published && v.publish_target && (
                             <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                              Channel: {v.publish_target ?? 'production'}
+                              Channel: {v.publish_target}
                             </span>
                           )}
                         </div>
@@ -1495,6 +1480,7 @@ export default function VersionsPage() {
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
           <Dialog.Content
+            aria-describedby={undefined}
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-0 flex flex-col max-h-[90vh]"
             onEscapeKeyDown={(event) => {
               if (publishDialogSubmitting) event.preventDefault();
@@ -1617,7 +1603,7 @@ export default function VersionsPage() {
       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-lg bg-white dark:bg-gray-900 rounded-xl shadow-xl p-0 flex flex-col max-h-[85vh]">
+          <Dialog.Content aria-describedby={undefined} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-lg bg-white dark:bg-gray-900 rounded-xl shadow-xl p-0 flex flex-col max-h-[85vh]">
             <div className="p-6 pb-2">
               <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                 Publish history

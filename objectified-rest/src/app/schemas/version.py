@@ -45,8 +45,14 @@ class VersionSchema(BaseModel):
         None,
         description="Active publish channel when published (development, staging, production).",
     )
-    last_revision: Optional[int] = None
-    last_committed_at: Optional[datetime] = None
+    last_revision: Optional[int] = Field(
+        None,
+        description="The most recent snapshot revision number committed for this version.",
+    )
+    last_committed_at: Optional[datetime] = Field(
+        None,
+        description="Timestamp of the most recent snapshot commit for this version.",
+    )
 
 
 class VersionCreate(BaseModel):

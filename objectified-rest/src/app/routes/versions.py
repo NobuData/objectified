@@ -549,7 +549,7 @@ def get_version_by_revision(
 )
 def list_version_publish_history(
     version_id: str,
-    _perm: Annotated[dict[str, Any], Depends(require_version_permission("version:read"))] = None,
+    _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
 ) -> List[VersionPublishEventSchema]:
     """List publish/unpublish audit rows for a version."""
