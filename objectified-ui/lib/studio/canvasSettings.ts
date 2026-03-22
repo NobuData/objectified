@@ -37,6 +37,10 @@ export interface CanvasSettings {
   edgeStrokeColor: string;
   /** Animate edges. */
   edgeAnimated: boolean;
+  /** Persist studio undo/redo stacks in sessionStorage for page refresh recovery. */
+  persistUndoStackInSession: boolean;
+  /** Maximum number of undo steps kept in memory. */
+  maxUndoDepth: number;
 }
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
@@ -53,6 +57,8 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   edgePathType: 'smoothstep',
   edgeStrokeColor: '',
   edgeAnimated: false,
+  persistUndoStackInSession: false,
+  maxUndoDepth: 50,
 };
 
 interface StoredCanvasSettings {
@@ -70,9 +76,18 @@ export function getCanvasSettings(): CanvasSettings {
     const raw = localStorage.getItem(CANVAS_SETTINGS_KEY);
     if (!raw) return DEFAULT_CANVAS_SETTINGS;
     const data = JSON.parse(raw) as StoredCanvasSettings;
-    return {
+    const merged = {
       ...DEFAULT_CANVAS_SETTINGS,
       ...data.settings,
+    };
+    return {
+      ...merged,
+      maxUndoDepth:
+        typeof merged.maxUndoDepth === 'number' &&
+        Number.isFinite(merged.maxUndoDepth) &&
+        merged.maxUndoDepth >= 1
+          ? Math.floor(merged.maxUndoDepth)
+          : DEFAULT_CANVAS_SETTINGS.maxUndoDepth,
     };
   } catch {
     return DEFAULT_CANVAS_SETTINGS;

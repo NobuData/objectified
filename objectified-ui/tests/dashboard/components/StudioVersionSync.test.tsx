@@ -42,10 +42,28 @@ function SetVersionButton() {
   );
 }
 
+function SetVersionTwoButton() {
+  const workspace = useWorkspace();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        workspace.setTenant({ id: 't1', name: 'T1' } as never);
+        workspace.setProject({ id: 'p1', name: 'P1' } as never);
+        workspace.setVersion({ id: 'v2', name: 'V2' } as never);
+      }}
+    >
+      Set version two
+    </button>
+  );
+}
+
 describe('StudioVersionSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockListProperties.mockResolvedValue([]);
+    const { useSearchParams } = require('next/navigation');
+    useSearchParams.mockReturnValue(new URLSearchParams());
   });
 
   it('renders without crashing when no version selected', () => {
@@ -78,7 +96,7 @@ describe('StudioVersionSync', () => {
       </WorkspaceProvider>
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /set version/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
 
     await waitFor(
       () => {
@@ -109,7 +127,7 @@ describe('StudioVersionSync', () => {
       </WorkspaceProvider>
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /set version/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
 
     await waitFor(
       () => {
@@ -140,7 +158,7 @@ describe('StudioVersionSync', () => {
       </WorkspaceProvider>
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /set version/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
 
     await waitFor(
       () => {
@@ -148,5 +166,46 @@ describe('StudioVersionSync', () => {
       },
       { timeout: 2000 }
     );
+  });
+
+  it('clears previous version backup when switching versions', async () => {
+    mockPullVersion
+      .mockResolvedValueOnce({
+        version_id: 'v1',
+        revision: 1,
+        classes: [],
+        canvas_metadata: null,
+        pulled_at: new Date().toISOString(),
+      })
+      .mockResolvedValueOnce({
+        version_id: 'v2',
+        revision: 1,
+        classes: [],
+        canvas_metadata: null,
+        pulled_at: new Date().toISOString(),
+      });
+    const removeSpy = jest.spyOn(Storage.prototype, 'removeItem');
+
+    render(
+      <WorkspaceProvider>
+        <StudioProvider>
+          <StudioVersionSync />
+          <SetVersionButton />
+          <SetVersionTwoButton />
+        </StudioProvider>
+      </WorkspaceProvider>
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
+    await waitFor(() => {
+      expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined);
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /set version two/i }));
+    await waitFor(() => {
+      expect(mockPullVersion).toHaveBeenCalledWith('v2', expect.any(Object), undefined);
+    });
+    expect(removeSpy).toHaveBeenCalledWith('objectified:studio:backup:v1');
+    removeSpy.mockRestore();
   });
 });
