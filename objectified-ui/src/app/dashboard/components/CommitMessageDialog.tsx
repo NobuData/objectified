@@ -29,7 +29,9 @@ export default function CommitMessageDialog({
 
   useEffect(() => {
     if (!open) return;
-    setMessage(suggestedMessage ?? '');
+    setMessage((prev) =>
+      prev.trim() === '' ? suggestedMessage ?? '' : prev
+    );
   }, [open, suggestedMessage]);
 
   const handleOpenChange = useCallback(
