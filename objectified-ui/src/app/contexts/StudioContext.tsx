@@ -45,6 +45,8 @@ interface PersistedCommitInfo {
   revision: number | null;
   lastCommittedAt: string;
   hasUnpushedCommits: boolean;
+  message?: string | null;
+  externalId?: string | null;
 }
 
 function commitStorageKey(versionId: string): string {
@@ -240,7 +242,11 @@ export interface StudioContextValue {
   /** Persist current state to server via commit. Updates revision on success. */
   save: (
     options: RestClientOptions,
-    commitOpts?: { message?: string | null; label?: string | null }
+    commitOpts?: {
+      message?: string | null;
+      label?: string | null;
+      externalId?: string | null;
+    }
   ) => Promise<void>;
   /** Whether undo is available. */
   canUndo: boolean;
@@ -278,6 +284,13 @@ export interface StudioContextValue {
   pendingChangesSummary: string | null;
   /** Optional suggested commit message based on current mutations. */
   suggestedCommitMessage: string | null;
+  /** Most recent commit details for toolbar/status display. */
+  lastCommitInfo: {
+    revision: number | null;
+    committedAt: string | null;
+    message: string | null;
+    externalId: string | null;
+  } | null;
 }
 
 const StudioContext = createContext<StudioContextValue | null>(null);
@@ -415,6 +428,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [hasUnpushedCommits, setHasUnpushedCommits] = useState(false);
   const [pushConflict409, setPushConflict409] = useState(false);
   const [backupWarning, setBackupWarning] = useState<string | null>(null);
+  const [lastCommitInfo, setLastCommitInfo] = useState<{
+    revision: number | null;
+    committedAt: string | null;
+    message: string | null;
+    externalId: string | null;
+  } | null>(null);
   const loadRequestIdRef = useRef(0);
   const tabIdRef = useRef(
     `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -445,6 +464,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setHasUnpushedCommits(false);
     setPushConflict409(false);
     setBackupWarning(null);
+    setLastCommitInfo(null);
   }, [stack.state?.versionId]);
 
   const loadFromServer = useCallback(
@@ -535,6 +555,16 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         const persisted = loadPersistedCommitInfo(versionId);
         const revisionMatches = typeof persisted?.revision === 'number' && persisted.revision === newState.revision;
         setHasUnpushedCommits(revisionMatches ? (persisted?.hasUnpushedCommits ?? false) : false);
+        setLastCommitInfo(
+          revisionMatches && persisted
+            ? {
+                revision: persisted.revision ?? null,
+                committedAt: persisted.lastCommittedAt ?? null,
+                message: persisted.message ?? null,
+                externalId: persisted.externalId ?? null,
+              }
+            : null
+        );
       } catch (e) {
         if (requestId !== loadRequestIdRef.current) return;
         const message = e instanceof Error ? e.message : 'Failed to load version';
@@ -650,7 +680,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const save = useCallback(
     async (
       options: RestClientOptions,
-      commitOpts?: { message?: string | null; label?: string | null }
+      commitOpts?: {
+        message?: string | null;
+        label?: string | null;
+        externalId?: string | null;
+      }
     ) => {
       const current = state;
       if (!current) {
@@ -694,6 +728,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           revision: res.revision,
           lastCommittedAt: res.committed_at,
           hasUnpushedCommits: true,
+          message: commitOpts?.message ?? null,
+          externalId: commitOpts?.externalId ?? null,
+        });
+        setLastCommitInfo({
+          revision: res.revision,
+          committedAt: res.committed_at,
+          message: commitOpts?.message ?? null,
+          externalId: commitOpts?.externalId ?? null,
         });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to save');
@@ -898,6 +940,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       mutationAudit,
       pendingChangesSummary,
       suggestedCommitMessage,
+      lastCommitInfo,
     }),
     [
       state,
@@ -924,6 +967,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       mutationAudit,
       pendingChangesSummary,
       suggestedCommitMessage,
+      lastCommitInfo,
     ]
   );
 

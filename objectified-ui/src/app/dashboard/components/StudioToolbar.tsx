@@ -54,6 +54,64 @@ const selectTrigger =
 
 type ToolbarOperation = 'commit' | 'push' | 'pull' | 'merge';
 
+interface PreCommitValidationSummary {
+  errors: string[];
+  warnings: string[];
+}
+
+function normalizeName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function buildPreCommitValidationSummary(
+  state: (NonNullable<ReturnType<typeof useStudioOptional>>['state']) | null | undefined
+): PreCommitValidationSummary {
+  if (!state) return { errors: [], warnings: [] };
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const classNames = new Map<string, string[]>();
+
+  state.classes.forEach((cls, classIndex) => {
+    const className = cls.name?.trim() ?? '';
+    if (className.length === 0) {
+      errors.push(`Class #${classIndex + 1} is missing a name.`);
+    } else {
+      const key = normalizeName(className);
+      const existing = classNames.get(key) ?? [];
+      existing.push(className);
+      classNames.set(key, existing);
+    }
+    cls.properties.forEach((prop, propertyIndex) => {
+      if ((prop.name?.trim() ?? '').length === 0) {
+        errors.push(
+          `Class "${className || `#${classIndex + 1}`}" has a property #${propertyIndex + 1} with no name.`
+        );
+      }
+    });
+  });
+
+  for (const [, names] of classNames.entries()) {
+    if (names.length > 1) {
+      const displayNames = [...new Set(names)].map((n) => `"${n}"`).join(', ');
+      warnings.push(`Class names ${displayNames} are duplicates (case-insensitive, ${names.length} occurrences).`);
+    }
+  }
+
+  return { errors, warnings };
+}
+
+function composeCommitMessage(
+  message: string | null,
+  externalId: string | null
+): string | null {
+  const cleanMessage = message?.trim() ?? '';
+  const cleanExternalId = externalId?.trim() ?? '';
+  if (cleanMessage && cleanExternalId) return `${cleanMessage} [external:${cleanExternalId}]`;
+  if (cleanMessage) return cleanMessage;
+  if (cleanExternalId) return `[external:${cleanExternalId}]`;
+  return null;
+}
+
 export default function StudioToolbar() {
   const router = useRouter();
   const studio = useStudioOptional();
@@ -83,6 +141,7 @@ export default function StudioToolbar() {
   const [canvasSettingsDialogOpen, setCanvasSettingsDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [activeOperation, setActiveOperation] = useState<ToolbarOperation | null>(null);
+  const [requireCommitMessage, setRequireCommitMessage] = useState(false);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
@@ -178,10 +237,14 @@ export default function StudioToolbar() {
   );
 
   const handleCommitWithMessage = useCallback(
-    async (message: string | null) => {
+    async ({ message, externalId }: { message: string | null; externalId: string | null }) => {
       if (!studio) return;
+      const composedMessage = composeCommitMessage(message, externalId);
       await runWithOperation('commit', async () => {
-        await studio.save(options, { message });
+        await studio.save(options, {
+          message: composedMessage,
+          externalId: externalId?.trim() || null,
+        });
       });
     },
     [studio, options, runWithOperation]
@@ -282,6 +345,31 @@ export default function StudioToolbar() {
   );
 
   const modLabel = useMemo(() => getModifierLabel(), []);
+  const preCommitValidation = useMemo(
+    () => buildPreCommitValidationSummary(studio?.state),
+    [studio?.state]
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem('objectified:studio:commit-message-required');
+      setRequireCommitMessage(raw === 'true');
+    } catch {
+      // Ignore localStorage read failures.
+    }
+  }, []);
+  const updateRequireCommitMessage = useCallback((required: boolean) => {
+    setRequireCommitMessage(required);
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        'objectified:studio:commit-message-required',
+        required ? 'true' : 'false'
+      );
+    } catch {
+      // Ignore localStorage write failures.
+    }
+  }, []);
   const progressLabel = useMemo(() => {
     if (activeOperation === 'commit') return 'Committing...';
     if (activeOperation === 'push') return 'Pushing...';
@@ -406,6 +494,22 @@ export default function StudioToolbar() {
         >
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           {progressLabel}
+        </span>
+      )}
+      {showGitToolbar && studio!.lastCommitInfo && (
+        <span
+          className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 max-w-[28rem]"
+          title={
+            studio!.lastCommitInfo.committedAt
+              ? `Last commit at ${studio!.lastCommitInfo.committedAt}`
+              : 'Last commit'
+          }
+        >
+          <GitCommit className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">
+            Last commit r{studio!.lastCommitInfo.revision ?? '?'}:{' '}
+            {studio!.lastCommitInfo.message ?? 'No message'}
+          </span>
         </span>
       )}
       {showGitToolbar && isReadOnly && !studio!.state?.readOnly && (
@@ -697,6 +801,10 @@ export default function StudioToolbar() {
         loading={studio!.loading}
         suggestedMessage={studio!.suggestedCommitMessage}
         pendingChangesSummary={studio!.pendingChangesSummary}
+        validationErrors={preCommitValidation.errors}
+        validationWarnings={preCommitValidation.warnings}
+        requireMessage={requireCommitMessage}
+        onRequireMessageChange={updateRequireCommitMessage}
       />
       <PushTargetDialog
         open={pushDialogOpen}

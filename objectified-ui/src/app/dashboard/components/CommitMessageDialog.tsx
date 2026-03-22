@@ -11,10 +11,14 @@ const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-300';
 export interface CommitMessageDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCommit: (message: string | null) => void;
+  onCommit: (payload: { message: string | null; externalId: string | null }) => void;
   loading?: boolean;
   suggestedMessage?: string | null;
   pendingChangesSummary?: string | null;
+  validationErrors?: string[];
+  validationWarnings?: string[];
+  requireMessage?: boolean;
+  onRequireMessageChange?: (required: boolean) => void;
 }
 
 export default function CommitMessageDialog({
@@ -24,8 +28,15 @@ export default function CommitMessageDialog({
   loading = false,
   suggestedMessage = null,
   pendingChangesSummary = null,
+  validationErrors = [],
+  validationWarnings = [],
+  requireMessage = false,
+  onRequireMessageChange,
 }: CommitMessageDialogProps) {
   const [message, setMessage] = useState('');
+  const [externalId, setExternalId] = useState('');
+  const hasValidationIssues = validationErrors.length > 0 || validationWarnings.length > 0;
+  const messageMissing = requireMessage && message.trim() === '';
 
   useEffect(() => {
     if (!open) return;
@@ -36,17 +47,25 @@ export default function CommitMessageDialog({
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
-      if (!next) setMessage('');
+      if (!next) {
+        setMessage('');
+        setExternalId('');
+      }
       onOpenChange(next);
     },
     [onOpenChange]
   );
 
   const handleCommit = useCallback(() => {
-    onCommit(message.trim() || null);
+    if (messageMissing) return;
+    onCommit({
+      message: message.trim() || null,
+      externalId: externalId.trim() || null,
+    });
     setMessage('');
+    setExternalId('');
     onOpenChange(false);
-  }, [message, onCommit, onOpenChange]);
+  }, [message, externalId, messageMissing, onCommit, onOpenChange]);
 
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
@@ -66,15 +85,49 @@ export default function CommitMessageDialog({
             </Dialog.Title>
           </div>
           <Dialog.Description className="text-sm text-slate-500 dark:text-slate-400 mb-3">
-            Snapshot local state to the server. Optional message below.
+            Snapshot local state to the server. Add an optional message and external id
+            (for example ticket id or CI run id).
           </Dialog.Description>
+          {hasValidationIssues && (
+            <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50/80 dark:bg-amber-900/20 p-3 text-xs">
+              <div className="font-semibold text-amber-900 dark:text-amber-200">
+                Pre-commit validation summary
+              </div>
+              {validationErrors.length > 0 && (
+                <ul className="mt-2 list-disc pl-5 text-red-700 dark:text-red-300">
+                  {validationErrors.map((item) => (
+                    <li key={`commit-error-${item}`}>Error: {item}</li>
+                  ))}
+                </ul>
+              )}
+              {validationWarnings.length > 0 && (
+                <ul className="mt-2 list-disc pl-5 text-amber-800 dark:text-amber-200">
+                  {validationWarnings.map((item) => (
+                    <li key={`commit-warning-${item}`}>Warning: {item}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {pendingChangesSummary && (
             <p className="text-xs text-slate-600 dark:text-slate-300 mb-3">
               Pending changes: {pendingChangesSummary}
             </p>
           )}
+          {onRequireMessageChange && (
+            <label className="mb-3 inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={requireMessage}
+                onChange={(e) => onRequireMessageChange(e.target.checked)}
+                disabled={loading}
+                aria-label="Require commit message"
+              />
+              Require commit message before committing
+            </label>
+          )}
           <label htmlFor="commit-message" className={labelClass}>
-            Message (optional)
+            Message {requireMessage ? '(required)' : '(optional)'}
           </label>
           <input
             id="commit-message"
@@ -89,22 +142,40 @@ export default function CommitMessageDialog({
             disabled={loading}
             aria-label="Commit message"
           />
+          {messageMissing && (
+            <p className="mt-2 text-xs text-red-600 dark:text-red-300" role="alert">
+              Commit message is required.
+            </p>
+          )}
+          <label htmlFor="commit-external-id" className={`${labelClass} mt-3`}>
+            External id (optional)
+          </label>
+          <input
+            id="commit-external-id"
+            type="text"
+            value={externalId}
+            onChange={(e) => setExternalId(e.target.value)}
+            placeholder="ticket-212 / ci-12345"
+            className={`${inputClass} mt-1`}
+            disabled={loading}
+            aria-label="Commit external id"
+          />
           <div className="flex justify-end gap-2 mt-4">
             <Dialog.Close asChild>
               <button
                 type="button"
                 className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                Cancel
+                {hasValidationIssues ? 'Fix issues' : 'Cancel'}
               </button>
             </Dialog.Close>
             <button
               type="button"
               onClick={handleCommit}
-              disabled={loading}
+              disabled={loading || messageMissing}
               className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
             >
-              {loading ? 'Committing…' : 'Commit'}
+              {loading ? 'Committing…' : hasValidationIssues ? 'Commit anyway' : 'Commit'}
             </button>
           </div>
         </Dialog.Content>
