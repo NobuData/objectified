@@ -288,7 +288,8 @@ def clone_project(
         raise HTTPException(status_code=400, detail="Project name is required")
 
     caller_user_id = caller.get("user_id") if caller else None
-    creator_id = caller_user_id
+    caller_account_id = caller.get("account_id") if caller else None
+    creator_id = caller_user_id or caller_account_id
     if not creator_id:
         raise HTTPException(status_code=400, detail="creator_id is required when not authenticated")
 

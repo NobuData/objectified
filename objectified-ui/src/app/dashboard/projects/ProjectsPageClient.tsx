@@ -1247,7 +1247,6 @@ export default function ProjectsPage() {
           setCloningId={setCloningId}
           onSuccess={(newProjectId) => {
             setCloneSource(null);
-            void fetchProjects();
             router.push(`/dashboard/projects/${newProjectId}/settings`);
           }}
         />

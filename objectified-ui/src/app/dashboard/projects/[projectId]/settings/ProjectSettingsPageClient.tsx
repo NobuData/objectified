@@ -105,7 +105,11 @@ export default function ProjectSettingsPageClient() {
       setProject(null);
       return;
     }
-    if (perms.loading) return;
+    if (perms.loading) {
+      setProject(null);
+      setError(null);
+      return;
+    }
     if (!canReadProjects) {
       setLoading(false);
       setError('You do not have permission to view this project.');
