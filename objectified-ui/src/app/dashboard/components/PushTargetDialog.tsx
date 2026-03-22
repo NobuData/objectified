@@ -14,16 +14,18 @@ export interface PushTargetDialogProps {
   projectId: string;
   currentVersionId: string;
   options: RestClientOptions;
-  onPush: (targetVersionId: string) => void | Promise<void>;
+  onPush: (targetVersionId: string | string[]) => void | Promise<void>;
   /** Optional pre-push check; when true, show pull/merge guidance before attempting push. */
-  onCheckServerAhead?: (targetVersionId: string) => Promise<boolean>;
+  onCheckServerAhead?: (targetVersionId: string | string[]) => Promise<boolean>;
   onPull?: () => void;
   /** When push failed with 409, call with the selected target version id to open Merge UI. */
   onMerge?: (sourceVersionId: string) => void;
   /** Optional overwrite action shown only when policy allows it. */
-  onOverwrite?: (targetVersionId: string) => void | Promise<void>;
+  onOverwrite?: (targetVersionId: string | string[]) => void | Promise<void>;
   /** Policy-gated overwrite affordance for server-ahead conflicts. */
   allowOverwriteOnServerAhead?: boolean;
+  /** Optional multi-target push selector. */
+  allowMultiTarget?: boolean;
   loading?: boolean;
   /** When true, push failed with 409 (target has newer changes); show Pull then Merge suggestion. */
   pushConflict409?: boolean;
@@ -45,6 +47,7 @@ export default function PushTargetDialog({
   onMerge,
   onOverwrite,
   allowOverwriteOnServerAhead = false,
+  allowMultiTarget = false,
   loading = false,
   pushConflict409 = false,
   pushError = null,
@@ -52,13 +55,16 @@ export default function PushTargetDialog({
 }: PushTargetDialogProps) {
   const [versions, setVersions] = useState<VersionSchema[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
-  const [selectedId, setSelectedId] = useState<string>('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [serverAheadDetected, setServerAheadDetected] = useState(false);
+  const selectedId = selectedIds[0] ?? '';
+  const selectValue = allowMultiTarget ? selectedIds : selectedId;
+  const hasSelection = selectedIds.length > 0;
   const showConflictSuggestion =
     (pushConflict409 || serverAheadDetected) &&
     Boolean(onPull || onMerge || (allowOverwriteOnServerAhead && onOverwrite)) &&
-    Boolean(selectedId);
+    hasSelection;
   const displayError = pushError ?? error;
 
   useEffect(() => {
@@ -68,7 +74,7 @@ export default function PushTargetDialog({
     listVersions(tenantId, projectId, options)
       .then((list) => {
         setVersions(list);
-        setSelectedId('');
+        setSelectedIds([]);
       })
       .catch((e) => {
         setError(e instanceof Error ? e.message : 'Failed to load versions');
@@ -78,10 +84,13 @@ export default function PushTargetDialog({
   }, [open, tenantId, projectId, options.jwt, options.apiKey]);
 
   const handlePush = useCallback(async () => {
-    if (!selectedId) return;
+    if (!hasSelection) return;
+    const pushTarget = allowMultiTarget
+      ? selectedIds
+      : selectedIds[0]!;
     if (onCheckServerAhead) {
       try {
-        const hasServerChanges = await onCheckServerAhead(selectedId);
+        const hasServerChanges = await onCheckServerAhead(pushTarget);
         if (hasServerChanges) {
           setServerAheadDetected(true);
           return;
@@ -93,12 +102,12 @@ export default function PushTargetDialog({
       }
     }
     try {
-      await onPush(selectedId);
+      await onPush(pushTarget);
       onOpenChange(false);
     } catch {
       // Keep dialog open so the error/conflict suggestion remains visible.
     }
-  }, [selectedId, onCheckServerAhead, onPush, onOpenChange]);
+  }, [allowMultiTarget, hasSelection, selectedIds, onCheckServerAhead, onPush, onOpenChange]);
 
   const targets = versions.filter((v) => v.id !== currentVersionId);
 
@@ -156,7 +165,7 @@ export default function PushTargetDialog({
                     Pull
                   </button>
                 )}
-                {onMerge && selectedId && (
+                {onMerge && selectedIds.length === 1 && selectedId && (
                   <button
                     type="button"
                     onClick={() => {
@@ -171,7 +180,7 @@ export default function PushTargetDialog({
                     Merge
                   </button>
                 )}
-                {allowOverwriteOnServerAhead && onOverwrite && selectedId && (
+                {allowOverwriteOnServerAhead && onOverwrite && selectedIds.length === 1 && selectedId && (
                   <button
                     type="button"
                     onClick={async () => {
@@ -193,32 +202,46 @@ export default function PushTargetDialog({
             </div>
           )}
           <label htmlFor="push-target" className={labelClass}>
-            Target version
+            {allowMultiTarget ? 'Target versions' : 'Target version'}
           </label>
           <select
             id="push-target"
-            value={selectedId}
+            value={selectValue}
+            multiple={allowMultiTarget}
+            size={allowMultiTarget ? Math.min(Math.max(targets.length, 4), 8) : undefined}
             onChange={(e) => {
-              setSelectedId(e.target.value);
+              if (allowMultiTarget) {
+                const ids = Array.from(e.target.selectedOptions).map((option) => option.value);
+                setSelectedIds(ids);
+              } else {
+                setSelectedIds(e.target.value ? [e.target.value] : []);
+              }
               setServerAheadDetected(false);
             }}
             disabled={loadingVersions || loading || targets.length === 0}
             className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             aria-label="Select target version"
           >
-            <option value="">
-              {loadingVersions
-                ? 'Loading…'
-                : targets.length === 0
-                  ? 'No other versions'
-                  : 'Select version'}
-            </option>
+            {!allowMultiTarget && (
+              <option value="">
+                {loadingVersions
+                  ? 'Loading…'
+                  : targets.length === 0
+                    ? 'No other versions'
+                    : 'Select version'}
+              </option>
+            )}
             {targets.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.name}
               </option>
             ))}
           </select>
+          {allowMultiTarget && (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Select one or more targets. Hold Cmd/Ctrl to toggle individual versions.
+            </p>
+          )}
           <div className="flex justify-end gap-2 mt-4">
             <Dialog.Close asChild>
               <button
@@ -231,7 +254,7 @@ export default function PushTargetDialog({
             <button
               type="button"
               onClick={handlePush}
-              disabled={loading || !selectedId}
+              disabled={loading || !hasSelection}
               className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
             >
               {loading ? (
@@ -240,7 +263,9 @@ export default function PushTargetDialog({
                   Pushing…
                 </>
               ) : (
-                'Push'
+                allowMultiTarget && selectedIds.length > 1
+                  ? `Push (${selectedIds.length})`
+                  : 'Push'
               )}
             </button>
           </div>

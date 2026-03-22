@@ -118,6 +118,7 @@ describe('StudioToolbar', () => {
       pulled_at: '2026-03-22T00:00:00Z',
       diff: null,
     });
+    mockPush.mockResolvedValue([]);
     useStudioOptional.mockReturnValue(null);
     useStudio.mockImplementation(() => useStudioOptional());
   });

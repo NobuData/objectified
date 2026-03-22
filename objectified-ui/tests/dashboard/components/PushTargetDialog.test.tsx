@@ -218,4 +218,37 @@ describe('PushTargetDialog', () => {
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it('supports selecting multiple targets when allowMultiTarget is enabled', async () => {
+    const user = userEvent.setup();
+    const onPush = jest.fn().mockResolvedValue(undefined);
+    render(<PushTargetDialog {...baseProps} onPush={onPush} allowMultiTarget={true} />);
+    await waitFor(() => screen.getByRole('option', { name: 'Version 2' }));
+    await user.selectOptions(screen.getByRole('listbox'), ['v2', 'v3']);
+    await user.click(screen.getByRole('button', { name: /push \(2\)/i }));
+    await waitFor(() => {
+      expect(onPush).toHaveBeenCalledWith(['v2', 'v3']);
+    });
+  });
+
+  it('checks server-ahead for multi-target selection before pushing', async () => {
+    const user = userEvent.setup();
+    const onPush = jest.fn().mockResolvedValue(undefined);
+    const onCheckServerAhead = jest.fn().mockResolvedValue(false);
+    render(
+      <PushTargetDialog
+        {...baseProps}
+        onPush={onPush}
+        allowMultiTarget={true}
+        onCheckServerAhead={onCheckServerAhead}
+      />
+    );
+    await waitFor(() => screen.getByRole('option', { name: 'Version 2' }));
+    await user.selectOptions(screen.getByRole('listbox'), ['v2', 'v3']);
+    await user.click(screen.getByRole('button', { name: /push \(2\)/i }));
+    await waitFor(() => {
+      expect(onCheckServerAhead).toHaveBeenCalledWith(['v2', 'v3']);
+      expect(onPush).toHaveBeenCalledWith(['v2', 'v3']);
+    });
+  });
 });

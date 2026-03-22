@@ -132,7 +132,7 @@ export default function StudioToolbar() {
     () => getRestClientOptions((session as { accessToken?: string } | null) ?? null),
     [(session as { accessToken?: string } | null)?.accessToken]
   );
-  const { confirm } = useDialog();
+  const { confirm, alert: alertDialog } = useDialog();
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
@@ -141,6 +141,10 @@ export default function StudioToolbar() {
   const [canvasSettingsDialogOpen, setCanvasSettingsDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [activeOperation, setActiveOperation] = useState<ToolbarOperation | null>(null);
+  const [pushBatchProgress, setPushBatchProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [requireCommitMessage, setRequireCommitMessage] = useState(false);
 
   const versionId = studio?.state?.versionId ?? '';
@@ -160,6 +164,9 @@ export default function StudioToolbar() {
       try {
         await action();
       } finally {
+        if (operation === 'push') {
+          setPushBatchProgress(null);
+        }
         setActiveOperation((current) => (current === operation ? null : current));
       }
     },
@@ -251,58 +258,80 @@ export default function StudioToolbar() {
   );
 
   const handlePushToTarget = useCallback(
-    async (targetVersionId: string) => {
+    async (targetVersionId: string | string[]) => {
       if (!studio) return;
+      const targetVersionIds = Array.isArray(targetVersionId)
+        ? targetVersionId.filter(Boolean)
+        : [targetVersionId].filter(Boolean);
+      if (targetVersionIds.length === 0) return;
+      const revisions: number[] = [];
       try {
         await runWithOperation('push', async () => {
-          await studio.push(targetVersionId, options);
+          for (let index = 0; index < targetVersionIds.length; index += 1) {
+            const targetId = targetVersionIds[index];
+            setPushBatchProgress({ current: index + 1, total: targetVersionIds.length });
+            const responses = await studio.push(targetId, options);
+            const latestResponse = responses[responses.length - 1];
+            if (latestResponse?.revision != null) {
+              revisions.push(latestResponse.revision);
+            }
+          }
         });
         setPushDialogOpen(false);
+        const revisionSummary = revisions.length > 0 ? ` Revision(s): ${revisions.join(', ')}.` : '';
+        await alertDialog({
+          message:
+            targetVersionIds.length > 1
+              ? `Pushed to ${targetVersionIds.length} targets successfully.${revisionSummary}`
+              : `Push completed successfully.${revisionSummary}`,
+          variant: 'success',
+        });
       } catch {
         // Error and pushConflict409 set in context; dialog stays open for Pull then Merge suggestion
       }
     },
-    [studio, options, runWithOperation]
+    [studio, options, runWithOperation, alertDialog]
   );
 
   const checkTargetServerAhead = useCallback(
-    async (targetVersionId: string): Promise<boolean> => {
+    async (targetVersionId: string | string[]): Promise<boolean> => {
       const sourceRevision = studio?.state?.revision;
       if (!studio || sourceRevision == null) return false;
-      try {
-        const res = await pullVersion(targetVersionId, options, undefined, sourceRevision);
-        const serverRev = res.revision ?? 0;
-        const hasDiff =
-          Boolean(res.diff?.added_class_names?.length) ||
-          Boolean(res.diff?.removed_class_names?.length) ||
-          Boolean(res.diff?.modified_classes?.length);
-        return serverRev > sourceRevision || hasDiff;
-      } catch (error: unknown) {
-        const anyError = error as { status?: number; response?: { status?: number } };
-        const status = anyError?.status ?? anyError?.response?.status;
+      const targetVersionIds = Array.isArray(targetVersionId) ? targetVersionId : [targetVersionId];
+      for (const targetId of targetVersionIds) {
+        try {
+          const res = await pullVersion(targetId, options, undefined, sourceRevision);
+          const serverRev = res.revision ?? 0;
+          const hasDiff =
+            Boolean(res.diff?.added_class_names?.length) ||
+            Boolean(res.diff?.removed_class_names?.length) ||
+            Boolean(res.diff?.modified_classes?.length);
+          if (serverRev > sourceRevision || hasDiff) return true;
+        } catch (error: unknown) {
+          const anyError = error as { status?: number; response?: { status?: number } };
+          const status = anyError?.status ?? anyError?.response?.status;
 
-        // If the revision from the source does not exist on the target, treat it as an
-        // independent history: fetch the target's current revision without since_revision
-        // and compare revisions instead of failing the push flow.
-        if (status === 404) {
-          try {
-            const res = await pullVersion(targetVersionId, options);
-            const serverRev = res.revision ?? 0;
-            return serverRev > sourceRevision;
-          } catch (fallbackError) {
-            // If we cannot determine the target revision, log and treat as "not ahead"
-            // so we don't block push with an unrelated error.
-            // eslint-disable-next-line no-console
-            console.error('Failed to check target server revision (fallback).', fallbackError);
-            return false;
+          // If the revision from the source does not exist on the target, treat it as an
+          // independent history: fetch the target's current revision without since_revision
+          // and compare revisions instead of failing the push flow.
+          if (status === 404) {
+            try {
+              const res = await pullVersion(targetId, options);
+              const serverRev = res.revision ?? 0;
+              if (serverRev > sourceRevision) return true;
+              continue;
+            } catch (fallbackError) {
+              // eslint-disable-next-line no-console
+              console.error('Failed to check target server revision (fallback).', fallbackError);
+              continue;
+            }
           }
-        }
 
-        // For non-404 errors, log and treat as "not ahead" to avoid blocking the push.
-        // eslint-disable-next-line no-console
-        console.error('Failed to check if target server is ahead.', error);
-        return false;
+          // eslint-disable-next-line no-console
+          console.error('Failed to check if target server is ahead.', error);
+        }
       }
+      return false;
     },
     [studio, options]
   );
@@ -319,14 +348,40 @@ export default function StudioToolbar() {
     );
   }, [workspace?.project?.metadata]);
 
+  const pushMultiTargetAllowedByPolicy = useMemo(() => {
+    const metadata = workspace?.project?.metadata;
+    if (!metadata || typeof metadata !== 'object') return false;
+    const rootMetadata = metadata as Record<string, unknown>;
+    if (
+      rootMetadata.allow_multi_target_push === true ||
+      rootMetadata.allow_multi_target === true
+    ) {
+      return true;
+    }
+    const policy = rootMetadata.push_policy;
+    if (!policy || typeof policy !== 'object') return false;
+    const policyRecord = policy as Record<string, unknown>;
+    return (
+      policyRecord.allow_multi_target_push === true ||
+      policyRecord.allow_multi_target === true ||
+      policyRecord.multi_target_enabled === true
+    );
+  }, [workspace?.project?.metadata]);
+
   const handleOverwriteToTarget = useCallback(
-    async (targetVersionId: string) => {
+    async (targetVersionId: string | string[]) => {
       if (!studio) return;
+      const targetVersionIds = Array.isArray(targetVersionId)
+        ? targetVersionId.filter(Boolean)
+        : [targetVersionId].filter(Boolean);
+      if (targetVersionIds.length === 0) return;
       await runWithOperation('push', async () => {
-        await studio.push(targetVersionId, options, {
-          message: 'Overwrite push after server-ahead confirmation',
-          overwrite: true,
-        });
+        for (const targetId of targetVersionIds) {
+          await studio.push(targetId, options, {
+            message: 'Overwrite push after server-ahead confirmation',
+            overwrite: true,
+          });
+        }
       });
     },
     [studio, options, runWithOperation]
@@ -372,11 +427,16 @@ export default function StudioToolbar() {
   }, []);
   const progressLabel = useMemo(() => {
     if (activeOperation === 'commit') return 'Committing...';
-    if (activeOperation === 'push') return 'Pushing...';
+    if (activeOperation === 'push') {
+      if (pushBatchProgress && pushBatchProgress.total > 1) {
+        return `Pushing ${pushBatchProgress.current}/${pushBatchProgress.total}...`;
+      }
+      return 'Pushing...';
+    }
     if (activeOperation === 'pull') return 'Pulling...';
     if (activeOperation === 'merge') return 'Merging...';
     return null;
-  }, [activeOperation]);
+  }, [activeOperation, pushBatchProgress]);
 
   useUndoKeyboard({
     onUndo: () => {
@@ -822,6 +882,7 @@ export default function StudioToolbar() {
         onMerge={handleMergeFromPush}
         onOverwrite={handleOverwriteToTarget}
         allowOverwriteOnServerAhead={pushOverwriteAllowedByPolicy}
+        allowMultiTarget={pushMultiTargetAllowedByPolicy}
         loading={studio!.loading}
         pushConflict409={studio!.pushConflict409}
         pushError={studio!.error}
