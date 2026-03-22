@@ -5,11 +5,13 @@ import DashboardPage from '../../src/app/dashboard/page';
 
 const pushMock = jest.fn();
 
+const SESSION_AUTHENTICATED = {
+  status: 'authenticated',
+  data: { user: { email: 'test@example.com' }, accessToken: 'token' },
+};
+
 jest.mock('next-auth/react', () => ({
-  useSession: jest.fn(() => ({
-    status: 'authenticated',
-    data: { user: { email: 'test@example.com' }, accessToken: 'token' },
-  })),
+  useSession: jest.fn(() => SESSION_AUTHENTICATED),
 }));
 
 jest.mock('next/navigation', () => ({

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Clock3, ExternalLink, FolderPlus, History, Layers3, Loader2 } from 'lucide-react';
@@ -132,6 +132,7 @@ export default function DashboardHomePage() {
   const [recentVersions, setRecentVersions] = useState<RecentVersion[]>([]);
   const [metricsByVersionId, setMetricsByVersionId] = useState<Record<string, VersionMetrics>>({});
   const [lastOpenedVersion, setLastOpenedVersion] = useState<LastOpenedVersion | null>(null);
+  const fetchRequestIdRef = useRef(0);
 
   const options = useMemo(
     () =>
@@ -171,24 +172,59 @@ export default function DashboardHomePage() {
       return;
     }
 
+    fetchRequestIdRef.current += 1;
+    const requestId = fetchRequestIdRef.current;
+
     setLoading(true);
     setError(null);
     try {
       const projects = await listProjects(selectedTenantId, options);
+      if (requestId !== fetchRequestIdRef.current) return;
+
       const versionsByProject = await Promise.all(
         projects.map(async (project) => ({
           project,
           versions: await listVersions(selectedTenantId, project.id, options),
         }))
       );
-      const flattened = versionsByProject
-        .flatMap(({ project, versions }) => versions.map((version) => ({ project, version })))
-        .sort((a, b) => {
-          const left = new Date(a.version.updated_at ?? a.version.created_at).getTime();
-          const right = new Date(b.version.updated_at ?? b.version.created_at).getTime();
-          return right - left;
+      if (requestId !== fetchRequestIdRef.current) return;
+
+      const top: { project: ProjectSchema; version: VersionSchema }[] = [];
+
+      versionsByProject.forEach(({ project, versions }) => {
+        versions.forEach((version) => {
+          const timestamp = new Date(version.updated_at ?? version.created_at).getTime();
+
+          // Skip versions that can't displace the oldest entry when the heap is full.
+          if (top.length >= RECENT_LIMIT) {
+            const oldest = top[top.length - 1];
+            const oldestTimestamp = new Date(
+              oldest.version.updated_at ?? oldest.version.created_at
+            ).getTime();
+            if (timestamp < oldestTimestamp) return;
+          }
+
+          let insertIndex = 0;
+          while (insertIndex < top.length) {
+            const currentTimestamp = new Date(
+              top[insertIndex].version.updated_at ?? top[insertIndex].version.created_at
+            ).getTime();
+            if (timestamp >= currentTimestamp) {
+              break;
+            }
+            insertIndex += 1;
+          }
+
+          top.splice(insertIndex, 0, { project, version });
+          if (top.length > RECENT_LIMIT) {
+            top.pop();
+          }
         });
-      const recent = flattened.slice(0, RECENT_LIMIT);
+      });
+
+      const recent = top;
+
+      if (requestId !== fetchRequestIdRef.current) return;
       setRecentVersions(recent);
       setMetricsByVersionId({});
 
@@ -198,6 +234,7 @@ export default function DashboardHomePage() {
             const pulled = await pullVersion(version.id, options);
             const classes = Array.isArray(pulled.classes) ? pulled.classes : [];
             const metrics = computeSchemaMetrics(classes);
+            if (requestId !== fetchRequestIdRef.current) return;
             setMetricsByVersionId((prev) => ({ ...prev, [version.id]: metrics }));
           } catch {
             // Keep metrics optional on cards if fetch/parse fails.
@@ -205,11 +242,14 @@ export default function DashboardHomePage() {
         })
       );
     } catch (e) {
+      if (requestId !== fetchRequestIdRef.current) return;
       setError(e instanceof Error ? e.message : 'Failed to load recent activity.');
       setRecentVersions([]);
       setMetricsByVersionId({});
     } finally {
-      setLoading(false);
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [options, selectedTenantId, status]);
 
