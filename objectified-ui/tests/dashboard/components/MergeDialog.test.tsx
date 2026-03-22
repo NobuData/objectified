@@ -77,7 +77,7 @@ describe('MergeDialog', () => {
 
   it('shows merging from name and loads preview when initialSourceVersionId is set', async () => {
     mergePreview.mockResolvedValue({
-      merged_state: { classes: [], canvas_metadata: null },
+      merged_state: { classes: [{ name: 'A' }], canvas_metadata: null },
       conflicts: [],
     });
     render(<MergeDialog {...baseProps} initialSourceVersionId="v2" />);
@@ -93,6 +93,8 @@ describe('MergeDialog', () => {
       );
       // Source version name should be resolved from the versions list (not 'Selected version')
       expect(screen.getByText('Version 2')).toBeInTheDocument();
+      expect(screen.getByText('Merge preview (dry-run)')).toBeInTheDocument();
+      expect(screen.getByText(/class\(es\) in merged result/i)).toBeInTheDocument();
     });
   });
 
@@ -118,8 +120,74 @@ describe('MergeDialog', () => {
       expect(screen.getByText('Use theirs')).toBeInTheDocument();
       expect(screen.getByText('Edit manually')).toBeInTheDocument();
     });
-    expect(screen.getByText('Mine')).toBeInTheDocument();
-    expect(screen.getByText('Theirs')).toBeInTheDocument();
+    expect(screen.getByText('Merge preview (dry-run)')).toBeInTheDocument();
+    expect(screen.getAllByText(/^Mine$/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/^Theirs$/).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows bulk actions when multiple conflicts share the same field key', async () => {
+    mergePreview.mockResolvedValue({
+      merged_state: { classes: [], canvas_metadata: null },
+      conflicts: [
+        {
+          path: 'Person.email.description',
+          description: 'd1',
+          class_name: 'Person',
+          property_name: 'email',
+          field: 'email.description',
+          local_value: 'a',
+          remote_value: 'b',
+        },
+        {
+          path: 'Person.phone.description',
+          description: 'd2',
+          class_name: 'Person',
+          property_name: 'phone',
+          field: 'phone.description',
+          local_value: 'c',
+          remote_value: 'd',
+        },
+      ],
+    });
+    render(<MergeDialog {...baseProps} initialSourceVersionId="v2" />);
+    await waitFor(() => {
+      expect(screen.getByText(/Bulk actions/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('dialog').textContent).toMatch(/All\s+2\s+on\s+"description"/);
+  });
+
+  it('calls mergeResolve with apply false then true when applying with conflicts', async () => {
+    mergeResolve.mockResolvedValue({
+      merged_state: { classes: [], canvas_metadata: null },
+      revision: 2,
+      snapshot_id: 'snap',
+      version_id: 'v1',
+      committed_at: new Date().toISOString(),
+    });
+    mergePreview.mockResolvedValue({
+      merged_state: { classes: [], canvas_metadata: null },
+      conflicts: [
+        {
+          path: 'Person.description',
+          description: 'Different descriptions',
+          class_name: 'Person',
+          property_name: null,
+          field: 'Person.description',
+          local_value: 'Mine',
+          remote_value: 'Theirs',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<MergeDialog {...baseProps} initialSourceVersionId="v2" />);
+    await waitFor(() => expect(screen.getByText('Use mine')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /Use mine/i }));
+    await user.click(screen.getByRole('button', { name: /Validate & apply merge/i }));
+    await waitFor(() => {
+      expect(mergeResolve).toHaveBeenCalledTimes(2);
+      expect(mergeResolve.mock.calls[0][1]).toMatchObject({ apply: false });
+      expect(mergeResolve.mock.calls[1][1]).toMatchObject({ apply: true });
+    });
   });
 
   it('shows No conflicts when preview has no conflicts', async () => {
