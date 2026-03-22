@@ -20,6 +20,7 @@ import {
   GitMerge,
   ListTree,
   Check,
+  Minus,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -66,7 +67,9 @@ function formatDateTime(dateString: string): string {
   });
 }
 
-const VERSION_TAG_PRESETS = ['staging', 'production', 'development'] as const;
+const CODEGEN_TAG_PRESETS = ['staging', 'production', 'development'] as const;
+/** @deprecated Use CODEGEN_TAG_PRESETS instead */
+const VERSION_TAG_PRESETS = CODEGEN_TAG_PRESETS;
 
 type VersionStatusFilter = 'all' | 'draft' | 'published' | 'disabled';
 type VersionSortKey =
@@ -126,6 +129,7 @@ export default function VersionsPage() {
   const [compareDialogBaseId, setCompareDialogBaseId] = useState('');
   const [lineageDialogVersion, setLineageDialogVersion] =
     useState<VersionSchema | null>(null);
+  const [bulkWorking, setBulkWorking] = useState(false);
 
   // Create form
   const [createName, setCreateName] = useState('');
@@ -531,6 +535,7 @@ export default function VersionsPage() {
       confirmLabel: 'Publish',
     });
     if (!ok) return;
+    setBulkWorking(true);
     let okN = 0;
     let fail = 0;
     for (const v of targets) {
@@ -544,6 +549,7 @@ export default function VersionsPage() {
     await fetchVersions();
     void fetchQuota();
     setSelectedVersionIds(new Set());
+    setBulkWorking(false);
     await alertDialog({
       message:
         fail === 0
@@ -566,6 +572,7 @@ export default function VersionsPage() {
       confirmLabel: 'Unpublish',
     });
     if (!ok) return;
+    setBulkWorking(true);
     let okN = 0;
     let fail = 0;
     for (const v of targets) {
@@ -578,6 +585,7 @@ export default function VersionsPage() {
     }
     await fetchVersions();
     setSelectedVersionIds(new Set());
+    setBulkWorking(false);
     await alertDialog({
       message:
         fail === 0
@@ -591,12 +599,13 @@ export default function VersionsPage() {
     const targets = versions.filter((v) => selectedVersionIds.has(v.id));
     if (targets.length === 0) return;
     const ok = await confirm({
-      title: 'Delete versions',
-      message: `Permanently delete ${targets.length} version(s)? This cannot be undone.`,
+      title: 'Archive versions',
+      message: `Archive ${targets.length} version(s)? The versions will be disabled and hidden but can be restored by an administrator.`,
       variant: 'danger',
-      confirmLabel: 'Delete',
+      confirmLabel: 'Archive',
     });
     if (!ok) return;
+    setBulkWorking(true);
     let okN = 0;
     let fail = 0;
     for (const v of targets) {
@@ -610,11 +619,12 @@ export default function VersionsPage() {
     await fetchVersions();
     void fetchQuota();
     setSelectedVersionIds(new Set());
+    setBulkWorking(false);
     await alertDialog({
       message:
         fail === 0
-          ? `Deleted ${okN} version(s).`
-          : `Deleted ${okN} version(s); ${fail} failed.`,
+          ? `Archived ${okN} version(s).`
+          : `Archived ${okN} version(s); ${fail} failed.`,
       variant: fail ? 'warning' : 'success',
     });
   };
@@ -851,40 +861,52 @@ export default function VersionsPage() {
               role="status"
             >
               <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                {selectedVersionCount} selected
+                {bulkWorking ? (
+                  <span className="flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Working…
+                  </span>
+                ) : (
+                  `${selectedVersionCount} selected`
+                )}
               </span>
               <button
                 type="button"
+                disabled={bulkWorking}
                 onClick={() => void handleBulkPublish('private')}
-                className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Publish (private)
               </button>
               <button
                 type="button"
+                disabled={bulkWorking}
                 onClick={() => void handleBulkPublish('public')}
-                className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Publish (public)
               </button>
               <button
                 type="button"
+                disabled={bulkWorking}
                 onClick={() => void handleBulkUnpublish()}
-                className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Unpublish
               </button>
               <button
                 type="button"
+                disabled={bulkWorking}
                 onClick={() => void handleBulkDelete()}
-                className="px-3 py-1.5 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700"
+                className="px-3 py-1.5 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Delete (archive)
+                Archive
               </button>
               <button
                 type="button"
+                disabled={bulkWorking}
                 onClick={() => setSelectedVersionIds(new Set())}
-                className="px-3 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-400 hover:underline"
+                className="px-3 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Clear selection
               </button>
@@ -928,7 +950,13 @@ export default function VersionsPage() {
                         aria-label="Select all visible versions"
                       >
                         <Checkbox.Indicator className="flex items-center justify-center text-white">
-                          <Check className="h-3 w-3" />
+                          {filteredSortedVersions.every((v) =>
+                            selectedVersionIds.has(v.id)
+                          ) ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <Minus className="h-3 w-3" />
+                          )}
                         </Checkbox.Indicator>
                       </Checkbox.Root>
                     </th>

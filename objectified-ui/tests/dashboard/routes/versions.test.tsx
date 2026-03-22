@@ -50,6 +50,7 @@ const sampleVersion = {
   id: 'v1',
   project_id: 'p1',
   source_version_id: null as string | null,
+  creator_id: 'user1',
   name: 'v1.0.0',
   description: 'First version',
   change_log: '',
@@ -65,6 +66,7 @@ const sampleVersionTwo = {
   id: 'v2',
   project_id: 'p1',
   source_version_id: 'v1',
+  creator_id: 'user1',
   name: 'v2.0.0',
   description: 'Second version',
   change_log: '',
@@ -195,5 +197,128 @@ describe('VersionsPage', () => {
     await waitFor(() => {
       expect(listVersionSnapshotsMetadata).toHaveBeenCalledWith('v1', expect.anything());
     });
+  });
+
+  it('selects a version row via checkbox and shows bulk action bar', async () => {
+    const { listVersions } = require('@lib/api/rest-client');
+    listVersions.mockResolvedValue([sampleVersion, sampleVersionTwo]);
+    render(<VersionsPage />);
+    const checkbox = await screen.findByRole('checkbox', {
+      name: /select version v1\.0\.0/i,
+    });
+    await userEvent.click(checkbox);
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('1 selected');
+    });
+  });
+
+  it('bulk publish calls publishVersion for each draft version in selection and clears selection', async () => {
+    const { listVersions, publishVersion } = require('@lib/api/rest-client');
+    const { useDialog } = require('@/app/components/providers/DialogProvider');
+    useDialog.mockReturnValue({
+      confirm: jest.fn(() => Promise.resolve(true)),
+      alert: jest.fn(() => Promise.resolve()),
+    });
+    publishVersion.mockResolvedValue({});
+    listVersions.mockResolvedValue([sampleVersion, sampleVersionTwo]);
+    render(<VersionsPage />);
+    const checkbox = await screen.findByRole('checkbox', {
+      name: /select version v1\.0\.0/i,
+    });
+    await userEvent.click(checkbox);
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('1 selected');
+    });
+    const publishBtn = screen.getByRole('button', { name: /publish \(private\)/i });
+    await userEvent.click(publishBtn);
+    await waitFor(() => {
+      expect(publishVersion).toHaveBeenCalledWith('v1', { visibility: 'private' }, expect.anything());
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+  });
+
+  it('bulk unpublish calls unpublishVersion for each published version in selection and clears selection', async () => {
+    const { listVersions, unpublishVersion } = require('@lib/api/rest-client');
+    const { useDialog } = require('@/app/components/providers/DialogProvider');
+    useDialog.mockReturnValue({
+      confirm: jest.fn(() => Promise.resolve(true)),
+      alert: jest.fn(() => Promise.resolve()),
+    });
+    unpublishVersion.mockResolvedValue({});
+    listVersions.mockResolvedValue([sampleVersion, sampleVersionTwo]);
+    render(<VersionsPage />);
+    const checkbox = await screen.findByRole('checkbox', {
+      name: /select version v2\.0\.0/i,
+    });
+    await userEvent.click(checkbox);
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('1 selected');
+    });
+    const unpublishBtn = screen.getByRole('button', { name: /unpublish/i });
+    await userEvent.click(unpublishBtn);
+    await waitFor(() => {
+      expect(unpublishVersion).toHaveBeenCalledWith('v2', expect.anything());
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+  });
+
+  it('bulk delete (archive) calls deleteVersion for each selected version and clears selection', async () => {
+    const { listVersions, deleteVersion } = require('@lib/api/rest-client');
+    const { useDialog } = require('@/app/components/providers/DialogProvider');
+    useDialog.mockReturnValue({
+      confirm: jest.fn(() => Promise.resolve(true)),
+      alert: jest.fn(() => Promise.resolve()),
+    });
+    deleteVersion.mockResolvedValue({});
+    listVersions.mockResolvedValue([sampleVersion, sampleVersionTwo]);
+    render(<VersionsPage />);
+    const checkboxV1 = await screen.findByRole('checkbox', {
+      name: /select version v1\.0\.0/i,
+    });
+    await userEvent.click(checkboxV1);
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('1 selected');
+    });
+    const archiveBtn = screen.getByRole('button', { name: /^archive$/i });
+    await userEvent.click(archiveBtn);
+    await waitFor(() => {
+      expect(deleteVersion).toHaveBeenCalledWith('v1', expect.anything());
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+  });
+
+  it('bulk action buttons are disabled while operation is in flight', async () => {
+    const { listVersions, publishVersion } = require('@lib/api/rest-client');
+    const { useDialog } = require('@/app/components/providers/DialogProvider');
+    let resolvePublish!: () => void;
+    const pendingPublish = new Promise<void>((resolve) => {
+      resolvePublish = resolve;
+    });
+    useDialog.mockReturnValue({
+      confirm: jest.fn(() => Promise.resolve(true)),
+      alert: jest.fn(() => Promise.resolve()),
+    });
+    publishVersion.mockReturnValue(pendingPublish.then(() => ({})));
+    listVersions.mockResolvedValue([sampleVersion]);
+    render(<VersionsPage />);
+    const checkbox = await screen.findByRole('checkbox', {
+      name: /select version v1\.0\.0/i,
+    });
+    await userEvent.click(checkbox);
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('1 selected');
+    });
+    const publishBtn = screen.getByRole('button', { name: /publish \(private\)/i });
+    void userEvent.click(publishBtn);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /publish \(private\)/i })).toBeDisabled();
+    });
+    resolvePublish();
   });
 });
