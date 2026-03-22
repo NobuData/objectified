@@ -9,8 +9,9 @@ import { useStudioOptional } from '@/app/contexts/StudioContext';
 
 /**
  * When workspace version changes, loads that version into studio local state (or clears studio).
- * Honors `revision` and `readOnly` query params when `versionId` in the URL matches the
- * workspace version (deep link from Versions → history → open at revision).
+ * Honors `revision` and `readOnly` query params when the `versionId` URL query param matches the
+ * workspace version, or when no `versionId` is present in the URL (deep link from Versions →
+ * history → open at revision).
  * Must be rendered inside both WorkspaceProvider and StudioProvider.
  */
 function StudioVersionSyncInner() {

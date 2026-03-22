@@ -176,16 +176,20 @@ def list_versions(
                    vs.created_at AS last_committed_at
             FROM objectified.version_snapshot vs
             INNER JOIN (
-                SELECT version_id, MAX(revision) AS max_rev
-                FROM objectified.version_snapshot
-                GROUP BY version_id
+                SELECT
+                    vs2.version_id,
+                    MAX(vs2.revision) AS max_rev
+                FROM objectified.version_snapshot vs2
+                JOIN objectified.version v2 ON v2.id = vs2.version_id
+                WHERE v2.project_id = %s
+                GROUP BY vs2.version_id
             ) m ON m.version_id = vs.version_id AND vs.revision = m.max_rev
         ) lm ON lm.version_id = v.id
         WHERE v.project_id = %s
           AND v.deleted_at IS NULL
         ORDER BY v.created_at ASC
         """,
-        (project_id,),
+        (project_id, project_id),
     )
     return [VersionSchema(**dict(r)) for r in rows]
 
