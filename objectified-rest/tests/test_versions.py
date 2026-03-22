@@ -104,11 +104,35 @@ def test_list_versions_returns_list(client):
         mock_db.execute_query.side_effect = [
             [{"id": _TENANT_ID}],
             [_PROJECT_ROW],
-            [_VERSION_ROW],
+            [{**_VERSION_ROW, "last_revision": None, "last_committed_at": None}],
         ]
         r = client.get(f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/versions")
     assert r.status_code == 200
     assert len(r.json()) == 1
+    body = r.json()[0]
+    assert body.get("last_revision") is None
+    assert body.get("last_committed_at") is None
+
+
+def test_list_versions_includes_last_commit_when_present(client):
+    """List versions includes last_revision and last_committed_at from snapshot aggregate."""
+    committed = _NOW
+    row = {
+        **_VERSION_ROW,
+        "last_revision": 3,
+        "last_committed_at": committed,
+    }
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [{"id": _TENANT_ID}],
+            [_PROJECT_ROW],
+            [row],
+        ]
+        r = client.get(f"/v1/tenants/{_TENANT_ID}/projects/{_PROJECT_ID}/versions")
+    assert r.status_code == 200
+    body = r.json()[0]
+    assert body["last_revision"] == 3
+    assert "T" in body["last_committed_at"]
 
 
 def test_create_version_returns_201(client):

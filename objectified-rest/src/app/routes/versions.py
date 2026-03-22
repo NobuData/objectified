@@ -166,11 +166,24 @@ def list_versions(
 
     rows = db.execute_query(
         f"""
-        SELECT {_VERSION_COLUMNS}
-        FROM objectified.version
-        WHERE project_id = %s
-          AND deleted_at IS NULL
-        ORDER BY created_at ASC
+        SELECT {_qualify_columns(_VERSION_COLUMNS, "v")},
+               lm.last_revision,
+               lm.last_committed_at
+        FROM objectified.version v
+        LEFT JOIN (
+            SELECT vs.version_id,
+                   vs.revision AS last_revision,
+                   vs.created_at AS last_committed_at
+            FROM objectified.version_snapshot vs
+            INNER JOIN (
+                SELECT version_id, MAX(revision) AS max_rev
+                FROM objectified.version_snapshot
+                GROUP BY version_id
+            ) m ON m.version_id = vs.version_id AND vs.revision = m.max_rev
+        ) lm ON lm.version_id = v.id
+        WHERE v.project_id = %s
+          AND v.deleted_at IS NULL
+        ORDER BY v.created_at ASC
         """,
         (project_id,),
     )

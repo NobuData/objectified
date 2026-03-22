@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Loader2 } from 'lucide-react';
 import {
@@ -30,8 +30,12 @@ type ResolveState =
 export default function DashboardProjectVersionDeepLinkPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const projectId = typeof params?.projectId === 'string' ? params.projectId : '';
   const versionId = typeof params?.versionId === 'string' ? params.versionId : '';
+  const revisionFromUrl = searchParams.get('revision');
+  const readOnlyFromUrl = searchParams.get('readOnly');
+  const viewFromUrl = searchParams.get('view');
   const { data: session, status } = useSession();
   const { setSelectedTenantId, tenants, tenantsLoading } = useTenantSelection();
   const [state, setState] = useState<ResolveState>({ kind: 'loading' });
@@ -80,8 +84,15 @@ export default function DashboardProjectVersionDeepLinkPage() {
           tenantId,
           projectId,
           versionId: version.id,
-        }).toString();
-        router.replace(`/data-designer?${qs}`);
+        });
+        const rev = revisionFromUrl;
+        if (rev && /^\d+$/.test(rev)) {
+          qs.set('revision', rev);
+          if (readOnlyFromUrl === '1' || viewFromUrl === '1') {
+            qs.set('readOnly', '1');
+          }
+        }
+        router.replace(`/data-designer?${qs.toString()}`);
       } catch (e) {
         if (controller.signal.aborted) return;
         if (isForbiddenError(e)) {
@@ -102,7 +113,19 @@ export default function DashboardProjectVersionDeepLinkPage() {
     return () => {
       controller.abort();
     };
-  }, [status, accessToken, projectId, versionId, router, setSelectedTenantId, tenants, tenantsLoading]);
+  }, [
+    status,
+    accessToken,
+    projectId,
+    versionId,
+    router,
+    setSelectedTenantId,
+    tenants,
+    tenantsLoading,
+    revisionFromUrl,
+    readOnlyFromUrl,
+    viewFromUrl,
+  ]);
 
   if (status === 'loading') {
     return (

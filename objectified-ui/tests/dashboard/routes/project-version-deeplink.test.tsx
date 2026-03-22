@@ -47,6 +47,7 @@ const SESSION_UNAUTH = { status: 'unauthenticated' as const, data: null };
 jest.mock('next/navigation', () => ({
   useParams: jest.fn(),
   useRouter: jest.fn(() => STABLE_ROUTER),
+  useSearchParams: jest.fn(() => new URLSearchParams()),
 }));
 
 // ---------------------------------------------------------------------------

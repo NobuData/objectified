@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   Loader2,
@@ -51,6 +52,7 @@ import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialo
 import RelationshipGraphDialog from '@/app/dashboard/components/RelationshipGraphDialog';
 import SchemaImportDialog from '@/app/dashboard/components/SchemaImportDialog';
 import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
+import { dataDesignerDeepLink } from '@/lib/dashboard/deepLinks';
 
 const inputClass =
   'w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
@@ -98,6 +100,7 @@ function buildLineageChain(
 }
 
 export default function VersionsPage() {
+  const router = useRouter();
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
   const { tenants, tenantsLoading, selectedTenantId, setSelectedTenantId } = useTenantSelection();
@@ -976,6 +979,9 @@ export default function VersionsPage() {
                       Status
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Last commit
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Updated
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -1007,9 +1013,20 @@ export default function VersionsPage() {
                         </Checkbox.Root>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">
-                          {v.name}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {v.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setHistoryDialogVersion(v)}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 focus:outline-none focus:ring-2 focus:ring-indigo-500 print:hidden"
+                            title="Version history (revisions, rollback, open at revision)"
+                          >
+                            <History className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            History
+                          </button>
+                        </div>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {v.published && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200">
@@ -1034,17 +1051,28 @@ export default function VersionsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                        {v.source_version_id ? (
-                          <span
-                            className="font-mono text-xs"
-                            title={v.source_version_id}
+                        <div className="flex items-center gap-2">
+                          {v.source_version_id ? (
+                            <span
+                              className="font-mono text-xs"
+                              title={v.source_version_id}
+                            >
+                              {versionById.get(v.source_version_id)?.name ??
+                                `${v.source_version_id.slice(0, 8)}…`}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-500">—</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setLineageDialogVersion(v)}
+                            className="inline-flex shrink-0 rounded-md p-1 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 print:hidden"
+                            title="Branch lineage"
+                            aria-label={`Branch lineage for ${v.name}`}
                           >
-                            {versionById.get(v.source_version_id)?.name ??
-                              `${v.source_version_id.slice(0, 8)}…`}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-500">—</span>
-                        )}
+                            <ListTree className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         {v.code_generation_tag ? (
@@ -1090,6 +1118,22 @@ export default function VersionsPage() {
                             </span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {v.last_revision != null && v.last_revision > 0 ? (
+                          <div>
+                            <span className="font-mono text-slate-800 dark:text-slate-200">
+                              r{v.last_revision}
+                            </span>
+                            {v.last_committed_at ? (
+                              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                {formatDateTime(v.last_committed_at)}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         {formatDateTime(v.updated_at ?? v.created_at)}
@@ -1695,6 +1739,31 @@ export default function VersionsPage() {
         versionId={historyDialogVersion?.id ?? ''}
         versionName={historyDialogVersion?.name}
         options={opts}
+        tenantId={selectedTenantId ?? undefined}
+        projectId={selectedProjectId ?? undefined}
+        onLoadRevision={(revision, readOnly) => {
+          if (!selectedTenantId || !selectedProjectId || !historyDialogVersion) return;
+          router.push(
+            dataDesignerDeepLink({
+              tenantId: selectedTenantId,
+              projectId: selectedProjectId,
+              versionId: historyDialogVersion.id,
+              revision,
+              readOnly,
+            })
+          );
+        }}
+        onRollbackSuccess={() => {
+          void fetchVersions();
+        }}
+        onBranchSuccess={(newVersion) => {
+          void fetchVersions();
+          void fetchQuota();
+          void alertDialog({
+            message: `Created version "${newVersion.name}" from history.`,
+            variant: 'success',
+          });
+        }}
         onDeleteSuccess={async () => {
           setHistoryDialogVersion(null);
           await fetchVersions();

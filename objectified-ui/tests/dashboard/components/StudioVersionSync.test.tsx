@@ -22,6 +22,10 @@ jest.mock('@lib/api/rest-client', () => ({
   listProperties: (...args: unknown[]) => mockListProperties(...args),
 }));
 
+jest.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 function SetVersionButton() {
   const workspace = useWorkspace();
   return (

@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.33
+  version: 1.0.34
 paths:
   /v1/auth/login:
     post:
@@ -10713,6 +10713,19 @@ components:
             format: date-time
           - type: 'null'
           title: Published At
+        last_revision:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Last Revision
+          description: Highest snapshot revision for this version (list endpoint only).
+        last_committed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Committed At
+          description: Timestamp of the latest snapshot commit (list endpoint only).
       type: object
       required:
       - id
