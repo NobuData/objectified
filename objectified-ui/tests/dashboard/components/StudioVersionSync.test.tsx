@@ -11,6 +11,7 @@ import StudioVersionSync from '@/app/dashboard/components/StudioVersionSync';
 import { computeStateChecksum } from '@lib/studio/stateBackup';
 
 const mockPullVersion = jest.fn();
+const mockPullVersionWithEtag = jest.fn();
 const mockListProperties = jest.fn();
 const mockConfirm = jest.fn(() => Promise.resolve(true));
 
@@ -21,6 +22,8 @@ jest.mock('next-auth/react', () => ({
 jest.mock('@lib/api/rest-client', () => ({
   getRestClientOptions: () => ({}),
   pullVersion: (...args: unknown[]) => mockPullVersion(...args),
+  pullVersionWithEtag: (...args: unknown[]) => mockPullVersionWithEtag(...args),
+  buildPullEtag: () => 'W/"m"',
   listProperties: (...args: unknown[]) => mockListProperties(...args),
 }));
 
@@ -69,6 +72,17 @@ function SetVersionTwoButton() {
 describe('StudioVersionSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPullVersionWithEtag.mockImplementation(
+      async (
+        versionId: string,
+        options: unknown,
+        revision?: number | null,
+        sinceRevision?: number | null
+      ) => {
+        const data = await mockPullVersion(versionId, options, revision, sinceRevision);
+        return { notModified: false, data, etag: null };
+      }
+    );
     mockListProperties.mockResolvedValue([]);
     mockConfirm.mockResolvedValue(true);
     window.localStorage.clear();
@@ -110,7 +124,7 @@ describe('StudioVersionSync', () => {
 
     await waitFor(
       () => {
-        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined);
+        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined, undefined);
       },
       { timeout: 2000 }
     );
@@ -141,7 +155,7 @@ describe('StudioVersionSync', () => {
 
     await waitFor(
       () => {
-        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), 3);
+        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), 3, undefined);
       },
       { timeout: 2000 }
     );
@@ -172,7 +186,7 @@ describe('StudioVersionSync', () => {
 
     await waitFor(
       () => {
-        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), 7);
+        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), 7, undefined);
       },
       { timeout: 2000 }
     );
@@ -208,12 +222,12 @@ describe('StudioVersionSync', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
     await waitFor(() => {
-      expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined);
+      expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined, undefined);
     });
 
     await userEvent.click(screen.getByRole('button', { name: /set version two/i }));
     await waitFor(() => {
-      expect(mockPullVersion).toHaveBeenCalledWith('v2', expect.any(Object), undefined);
+      expect(mockPullVersion).toHaveBeenCalledWith('v2', expect.any(Object), undefined, undefined);
     });
     expect(removeSpy).toHaveBeenCalledWith('objectified:studio:backup:v1');
     removeSpy.mockRestore();
@@ -327,7 +341,7 @@ describe('StudioVersionSync', () => {
 
     await waitFor(() => {
       // v2 should have been loaded
-      expect(mockPullVersion).toHaveBeenCalledWith('v2', expect.any(Object), undefined);
+      expect(mockPullVersion).toHaveBeenCalledWith('v2', expect.any(Object), undefined, undefined);
     });
 
     // v1's loadFromServer must NOT have been called after the version changed
@@ -377,7 +391,7 @@ describe('StudioVersionSync', () => {
     await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
 
     await waitFor(() => {
-      expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined);
+      expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined, undefined);
     });
     expect(removeSpy).toHaveBeenCalledWith('objectified:studio:backup:v1');
     removeSpy.mockRestore();

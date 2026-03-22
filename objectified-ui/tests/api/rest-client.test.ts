@@ -42,6 +42,8 @@ import {
   commitVersion,
   pushVersion,
   pullVersion,
+  pullVersionWithEtag,
+  buildPullEtag,
   mergeVersion,
   isForbiddenError,
   RestApiError,
@@ -72,6 +74,7 @@ function makeFetchResponse(
   return {
     ok,
     status,
+    headers: new Headers(),
     text: jest.fn().mockResolvedValue(body !== undefined ? JSON.stringify(body) : ''),
   } as unknown as Response;
 }
@@ -918,6 +921,51 @@ describe('pullVersion', () => {
     await pullVersion('v1', {}, null, 2);
     const [url] = mockFetch.mock.calls[0];
     expect(url).toContain('since_revision=2');
+  });
+});
+
+describe('pullVersionWithEtag', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns notModified when server responds with 304', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 304,
+      headers: new Headers({ ETag: 'W/"v1:er=3:r=head:since=none"' }),
+      text: jest.fn().mockResolvedValue(''),
+    } as unknown as Response);
+    const r = await pullVersionWithEtag('v1', { ifNoneMatch: 'W/"v1:er=3:r=head:since=none"' });
+    expect(r).toEqual({
+      notModified: true,
+      etag: 'W/"v1:er=3:r=head:since=none"',
+    });
+  });
+
+  it('sends If-None-Match when options.ifNoneMatch is set', async () => {
+    const response = { version_id: 'v1', pulled_at: '2024-01-01', classes: [] };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ ETag: 'W/"e"' }),
+      text: jest.fn().mockResolvedValue(JSON.stringify(response)),
+    } as unknown as Response);
+    await pullVersionWithEtag('v1', { ifNoneMatch: 'W/"prior"' });
+    const [, init] = mockFetch.mock.calls[0];
+    const h = (init as RequestInit).headers as Record<string, string>;
+    expect(h['If-None-Match']).toBe('W/"prior"');
+  });
+});
+
+describe('buildPullEtag', () => {
+  it('matches server weak ETag shape for latest pull', () => {
+    expect(buildPullEtag('vid-1', 5, undefined, undefined)).toBe(
+      'W/"vid-1:er=5:r=head:since=none"'
+    );
+    expect(buildPullEtag('vid-1', null, undefined, undefined)).toBe(
+      'W/"vid-1:er=null:r=head:since=none"'
+    );
   });
 });
 

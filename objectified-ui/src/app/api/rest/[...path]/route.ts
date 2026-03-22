@@ -82,6 +82,10 @@ export async function GET(
   const { path } = await context.params;
   const url = buildBackendUrl(path, request);
   const headers = buildAuthHeaders({ accessToken: sessionWithToken.accessToken });
+  const ifNoneMatch = request.headers.get('if-none-match');
+  if (ifNoneMatch) {
+    headers['If-None-Match'] = ifNoneMatch;
+  }
   try {
     const res = await fetch(url, { method: 'GET', headers });
     return proxyResponse(res);

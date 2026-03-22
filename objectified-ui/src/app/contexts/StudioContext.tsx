@@ -12,6 +12,8 @@ import {
 } from 'react';
 import {
   pullVersion,
+  pullVersionWithEtag,
+  buildPullEtag,
   listProperties,
   commitVersion,
   pushVersion,
@@ -27,6 +29,11 @@ import {
   stateToCommitPayload,
 } from '@lib/studio/stateAdapter';
 import {
+  loadPersistedCommitInfo,
+  savePersistedCommitInfo,
+  type PersistedCommitInfo,
+} from '@lib/studio/commitStorage';
+import {
   backupStorageKey,
   computeStateChecksum,
   saveStateBackup,
@@ -37,42 +44,6 @@ import {
 } from '@lib/studio/stateBackup';
 import { getCanvasGroups, saveCanvasGroups } from '@lib/studio/canvasGroupStorage';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
-
-// ─── localStorage helpers ─────────────────────────────────────────────────────
-
-const STORAGE_KEY_PREFIX = 'objectified:studio:';
-
-interface PersistedCommitInfo {
-  revision: number | null;
-  lastCommittedAt: string;
-  hasUnpushedCommits: boolean;
-  message?: string | null;
-  externalId?: string | null;
-}
-
-function commitStorageKey(versionId: string): string {
-  return `${STORAGE_KEY_PREFIX}${versionId}:lastCommit`;
-}
-
-function loadPersistedCommitInfo(versionId: string): PersistedCommitInfo | null {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem(commitStorageKey(versionId));
-    if (!raw) return null;
-    return JSON.parse(raw) as PersistedCommitInfo;
-  } catch {
-    return null;
-  }
-}
-
-function savePersistedCommitInfo(versionId: string, info: PersistedCommitInfo): void {
-  try {
-    if (typeof localStorage === 'undefined') return;
-    localStorage.setItem(commitStorageKey(versionId), JSON.stringify(info));
-  } catch {
-    // Ignore localStorage errors (e.g. private browsing quota exceeded)
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -232,8 +203,18 @@ export interface StudioContextValue {
        * loading server state. Used by restore-draft UX after refresh/crash.
        */
       draftBehavior?: 'restore' | 'discard';
+      /** Weak ETag from a prior pull (latest only); enables 304 Not Modified. */
+      ifNoneMatch?: string;
+      /** Called when the server returns 304 (latest pull only). */
+      onNotModified?: () => void;
     }
-  ) => Promise<void>;
+  ) => Promise<
+    | { status: 'not_modified' }
+    | { status: 'loaded'; revision: number | null }
+    | undefined
+  >;
+  /** Last ETag used for conditional GET /pull (latest); for toolbar pull. */
+  peekPullIfNoneMatch: (versionId: string) => string | undefined;
   /** Apply a mutation to state; pushes current state to undo stack and clears redo. */
   applyChange: (updater: (draft: LocalVersionState) => void) => void;
   /** Undo last change. */
@@ -436,9 +417,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     externalId: string | null;
   } | null>(null);
   const loadRequestIdRef = useRef(0);
+  const pullIfNoneMatchRef = useRef<Map<string, string>>(new Map());
   const tabIdRef = useRef(
     `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
   );
+
+  const peekPullIfNoneMatch = useCallback((vid: string) => pullIfNoneMatchRef.current.get(vid), []);
 
   const state = stack.state;
 
@@ -454,6 +438,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const currentVersionId = stack.state?.versionId ?? null;
     if (currentVersionId) {
       clearPersistedUndoSessionState(currentVersionId);
+      pullIfNoneMatchRef.current.delete(currentVersionId);
       if (opts?.clearBackup) {
         clearStateBackup(currentVersionId);
       }
@@ -479,22 +464,43 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         readOnly?: boolean;
         draftBehavior?: 'restore' | 'discard';
         preloadedBackupResult?: BackupLoadResult;
+        ifNoneMatch?: string;
+        onNotModified?: () => void;
       }
     ) => {
       const requestId = (loadRequestIdRef.current += 1);
       setLoading(true);
       setError(null);
       setBackupWarning(null);
-      setStack(initialStack);
       try {
         const revision = opts?.revision;
-        const [pullRes, propertiesList] = await Promise.all([
-          pullVersion(versionId, options, revision ?? undefined),
-          opts?.tenantId && opts?.projectId
-            ? listProperties(opts.tenantId, opts.projectId, options)
-            : Promise.resolve([]),
-        ]);
+        const pullOptions: RestClientOptions = { ...options };
+        if (opts?.ifNoneMatch != null && revision == null) {
+          pullOptions.ifNoneMatch = opts.ifNoneMatch;
+        }
+        const pullOutcome = await pullVersionWithEtag(
+          versionId,
+          pullOptions,
+          revision ?? undefined
+        );
         if (requestId !== loadRequestIdRef.current) return;
+        if (pullOutcome.notModified) {
+          opts?.onNotModified?.();
+          return { status: 'not_modified' as const };
+        }
+        setStack(initialStack);
+        const pullRes = pullOutcome.data;
+        const propertiesList =
+          opts?.tenantId && opts?.projectId
+            ? await listProperties(opts.tenantId, opts.projectId, options)
+            : [];
+        if (requestId !== loadRequestIdRef.current) return;
+        if (revision == null) {
+          const etag =
+            pullOutcome.etag ??
+            buildPullEtag(versionId, pullRes.revision ?? null, undefined, undefined);
+          pullIfNoneMatchRef.current.set(versionId, etag);
+        }
         const newState = pullResponseToState(pullRes, propertiesList, {
           readOnly: revision != null ? (opts?.readOnly ?? false) : false,
         });
@@ -566,6 +572,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               }
             : null
         );
+        return { status: 'loaded' as const, revision: newState.revision ?? null };
       } catch (e) {
         if (requestId !== loadRequestIdRef.current) return;
         const message = e instanceof Error ? e.message : 'Failed to load version';
@@ -732,6 +739,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           message: commitOpts?.message ?? null,
           externalId: commitOpts?.externalId ?? null,
         });
+        pullIfNoneMatchRef.current.set(
+          current.versionId,
+          buildPullEtag(current.versionId, res.revision, undefined, undefined)
+        );
         setLastCommitInfo({
           revision: res.revision,
           committedAt: res.committed_at,
@@ -922,6 +933,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       loadFromServer,
+      peekPullIfNoneMatch,
       applyChange,
       undo,
       redo,
@@ -949,6 +961,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       loadFromServer,
+      peekPullIfNoneMatch,
       applyChange,
       undo,
       redo,
