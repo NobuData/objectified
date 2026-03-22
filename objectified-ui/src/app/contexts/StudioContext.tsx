@@ -223,6 +223,11 @@ export interface StudioContextValue {
       revision?: number;
       /** When true and revision is set, loaded state is read-only (no commit/edit). */
       readOnly?: boolean;
+      /**
+       * Controls whether a local draft backup should be restored or discarded while
+       * loading server state. Used by restore-draft UX after refresh/crash.
+       */
+      draftBehavior?: 'restore' | 'discard';
     }
   ) => Promise<void>;
   /** Apply a mutation to state; pushes current state to undo stack and clears redo. */
@@ -450,6 +455,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         projectId?: string;
         revision?: number;
         readOnly?: boolean;
+        draftBehavior?: 'restore' | 'discard';
       }
     ) => {
       const requestId = (loadRequestIdRef.current += 1);
@@ -473,25 +479,49 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         // Hydrate groups from localStorage (not yet returned by API)
         const storedGroups = getCanvasGroups(versionId);
         if (storedGroups.length > 0) newState.groups = storedGroups;
-        const restoredStack =
-          !newState.readOnly
-            ? readPersistedUndoSessionState(versionId, newState.revision ?? null)
-            : null;
-        const nextStack = restoredStack ?? {
-          state: newState,
-          undoStack: [],
-          redoStack: [],
-        };
-        setStack(nextStack);
-        if (!restoredStack) {
-          clearPersistedUndoSessionState(versionId);
+        const draftBackup =
+          !newState.readOnly ? loadStateBackupWithDiagnostics(versionId) : null;
+        if (draftBackup?.warning) {
+          setBackupWarning(draftBackup.warning);
         }
-        setBaselineState(deepClone(newState));
-        // Do not persist read-only revision views to the backup; the backup
-        // represents the user's editable working copy, and restoring a
-        // read-only state on a failed server load would lock the user out.
-        if (!newState.readOnly) {
-          saveStateBackup(newState, { sourceTabId: tabIdRef.current });
+        const shouldRestoreDraft =
+          !newState.readOnly &&
+          opts?.draftBehavior === 'restore' &&
+          draftBackup?.state != null;
+        if (shouldRestoreDraft && draftBackup?.state) {
+          // Mark restored draft as dirty by keeping the server snapshot on the undo stack.
+          setStack({
+            state: draftBackup.state,
+            undoStack: [deepClone(newState)],
+            redoStack: [],
+          });
+          clearPersistedUndoSessionState(versionId);
+          setBaselineState(deepClone(newState));
+          saveStateBackup(draftBackup.state, { sourceTabId: tabIdRef.current });
+        } else {
+          if (!newState.readOnly && opts?.draftBehavior === 'discard') {
+            clearStateBackup(versionId);
+          }
+          const restoredStack =
+            !newState.readOnly
+              ? readPersistedUndoSessionState(versionId, newState.revision ?? null)
+              : null;
+          const nextStack = restoredStack ?? {
+            state: newState,
+            undoStack: [],
+            redoStack: [],
+          };
+          setStack(nextStack);
+          if (!restoredStack) {
+            clearPersistedUndoSessionState(versionId);
+          }
+          setBaselineState(deepClone(newState));
+          // Do not persist read-only revision views to the backup; the backup
+          // represents the user's editable working copy, and restoring a
+          // read-only state on a failed server load would lock the user out.
+          if (!newState.readOnly) {
+            saveStateBackup(newState, { sourceTabId: tabIdRef.current });
+          }
         }
         setServerHasNewChanges(false);
         setPushConflict409(false);

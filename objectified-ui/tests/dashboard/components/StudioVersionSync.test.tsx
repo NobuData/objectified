@@ -8,9 +8,11 @@ import userEvent from '@testing-library/user-event';
 import { WorkspaceProvider, useWorkspace } from '@/app/contexts/WorkspaceContext';
 import { StudioProvider } from '@/app/contexts/StudioContext';
 import StudioVersionSync from '@/app/dashboard/components/StudioVersionSync';
+import { computeStateChecksum } from '@lib/studio/stateBackup';
 
 const mockPullVersion = jest.fn();
 const mockListProperties = jest.fn();
+const mockConfirm = jest.fn(() => Promise.resolve(true));
 
 jest.mock('next-auth/react', () => ({
   useSession: () => ({ data: { accessToken: 'token' } }),
@@ -24,6 +26,12 @@ jest.mock('@lib/api/rest-client', () => ({
 
 jest.mock('next/navigation', () => ({
   useSearchParams: jest.fn(() => new URLSearchParams()),
+}));
+
+jest.mock('@/app/components/providers/DialogProvider', () => ({
+  useDialog: () => ({
+    confirm: (...args: unknown[]) => mockConfirm(...args),
+  }),
 }));
 
 function SetVersionButton() {
@@ -62,6 +70,8 @@ describe('StudioVersionSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockListProperties.mockResolvedValue([]);
+    mockConfirm.mockResolvedValue(true);
+    window.localStorage.clear();
     const { useSearchParams } = require('next/navigation');
     useSearchParams.mockReturnValue(new URLSearchParams());
   });
@@ -204,6 +214,98 @@ describe('StudioVersionSync', () => {
     await userEvent.click(screen.getByRole('button', { name: /set version two/i }));
     await waitFor(() => {
       expect(mockPullVersion).toHaveBeenCalledWith('v2', expect.any(Object), undefined);
+    });
+    expect(removeSpy).toHaveBeenCalledWith('objectified:studio:backup:v1');
+    removeSpy.mockRestore();
+  });
+
+  it('prompts to restore local draft when a newer draft exists', async () => {
+    mockPullVersion.mockResolvedValue({
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+    const backupState = {
+      versionId: 'v1',
+      revision: 1,
+      classes: [],
+      properties: [],
+      canvas_metadata: null,
+      groups: [],
+    };
+    window.localStorage.setItem(
+      'objectified:studio:backup:v1',
+      JSON.stringify({
+        formatVersion: 2,
+        checksum: computeStateChecksum(backupState),
+        savedAt: new Date().toISOString(),
+        state: backupState,
+      })
+    );
+
+    render(
+      <WorkspaceProvider>
+        <StudioProvider>
+          <StudioVersionSync />
+          <SetVersionButton />
+        </StudioProvider>
+      </WorkspaceProvider>
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
+
+    await waitFor(() => {
+      expect(mockConfirm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: expect.stringMatching(/restore unsaved draft/i),
+        })
+      );
+    });
+  });
+
+  it('discarding draft clears backup and loads server state', async () => {
+    mockConfirm.mockResolvedValue(false);
+    mockPullVersion.mockResolvedValue({
+      version_id: 'v1',
+      revision: 1,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+    const backupState = {
+      versionId: 'v1',
+      revision: 1,
+      classes: [],
+      properties: [],
+      canvas_metadata: null,
+      groups: [],
+    };
+    window.localStorage.setItem(
+      'objectified:studio:backup:v1',
+      JSON.stringify({
+        formatVersion: 2,
+        checksum: computeStateChecksum(backupState),
+        savedAt: new Date().toISOString(),
+        state: backupState,
+      })
+    );
+    const removeSpy = jest.spyOn(Storage.prototype, 'removeItem');
+
+    render(
+      <WorkspaceProvider>
+        <StudioProvider>
+          <StudioVersionSync />
+          <SetVersionButton />
+        </StudioProvider>
+      </WorkspaceProvider>
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
+
+    await waitFor(() => {
+      expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined);
     });
     expect(removeSpy).toHaveBeenCalledWith('objectified:studio:backup:v1');
     removeSpy.mockRestore();

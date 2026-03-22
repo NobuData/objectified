@@ -9,6 +9,7 @@ import {
   saveStateBackup,
   loadStateBackup,
   loadStateBackupWithDiagnostics,
+  loadStateBackupWithMetadata,
   clearStateBackup,
 } from '@lib/studio/stateBackup';
 import type { LocalVersionState } from '@lib/studio/types';
@@ -125,6 +126,14 @@ describe('loadStateBackup', () => {
     expect(loaded).toEqual(state);
   });
 
+  it('returns saved state with metadata timestamp', () => {
+    const state = makeState({ revision: 42 });
+    saveStateBackup(state);
+    const loaded = loadStateBackupWithMetadata(VERSION_ID);
+    expect(loaded?.state).toEqual(state);
+    expect(typeof loaded?.savedAt).toBe('string');
+  });
+
   it('returns null when stored value is invalid JSON', () => {
     localStorageMock.getItem.mockReturnValueOnce('not-json');
     expect(loadStateBackup(VERSION_ID)).toBeNull();
@@ -217,6 +226,24 @@ describe('loadStateBackup', () => {
     expect(loaded.state).toBeNull();
     expect(loaded.status).toBe('incompatible');
     expect(loaded.warning).toContain('incompatible');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
+  });
+
+  it('expires drafts older than 7 days', () => {
+    const state = makeState({ revision: 9 });
+    const nineDaysAgo = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString();
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({
+        formatVersion: 2,
+        checksum: computeStateChecksum(state),
+        savedAt: nineDaysAgo,
+        state,
+      })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('expired');
+    expect(loaded.warning).toContain('expired');
     expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
   });
 });
