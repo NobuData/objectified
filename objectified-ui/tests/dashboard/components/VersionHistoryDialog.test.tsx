@@ -19,6 +19,14 @@ jest.mock('@lib/api/rest-client', () => ({
   deleteVersion: (...args: unknown[]) => mockDeleteVersion(...args),
   rollbackVersion: jest.fn(() => Promise.resolve()),
   createVersionFromRevision: jest.fn(() => Promise.resolve({ id: 'new-v' })),
+  getTenantQuotaStatus: jest.fn(() =>
+    Promise.resolve({
+      max_projects: null,
+      active_project_count: 0,
+      max_versions_per_project: null,
+      active_version_count_for_project: 0,
+    })
+  ),
 }));
 
 const mockConfirm = jest.fn(() => Promise.resolve(true));

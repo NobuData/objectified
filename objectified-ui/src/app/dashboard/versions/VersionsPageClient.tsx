@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   Loader2,
@@ -85,6 +85,7 @@ export default function VersionsPage() {
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [quotaStatus, setQuotaStatus] = useState<TenantQuotaStatusSchema | null>(null);
+  const quotaRequestIdRef = useRef(0);
 
   // Edit form
   const [editDescription, setEditDescription] = useState('');
@@ -156,11 +157,12 @@ export default function VersionsPage() {
       setQuotaStatus(null);
       return;
     }
+    const requestId = ++quotaRequestIdRef.current;
     try {
       const q = await getTenantQuotaStatus(selectedTenantId, opts, selectedProjectId);
-      setQuotaStatus(q);
+      if (requestId === quotaRequestIdRef.current) setQuotaStatus(q);
     } catch {
-      setQuotaStatus(null);
+      if (requestId === quotaRequestIdRef.current) setQuotaStatus(null);
     }
   }, [status, selectedTenantId, selectedProjectId, opts]);
 

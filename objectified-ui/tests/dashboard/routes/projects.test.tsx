@@ -35,6 +35,14 @@ jest.mock('@lib/api/rest-client', () => ({
   getUser: jest.fn(),
   getRestClientOptions: jest.fn(() => ({})),
   isForbiddenError: jest.fn(() => false),
+  getTenantQuotaStatus: jest.fn(() =>
+    Promise.resolve({
+      max_projects: null,
+      active_project_count: 0,
+      max_versions_per_project: null,
+      active_version_count_for_project: null,
+    })
+  ),
 }));
 
 jest.mock('@/app/components/providers/DialogProvider', () => ({

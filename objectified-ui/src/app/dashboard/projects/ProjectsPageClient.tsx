@@ -198,7 +198,10 @@ export default function ProjectsPage() {
       setQuotaStatus(null);
       return;
     }
-    if (perms.loading) return;
+    if (perms.loading) {
+      setQuotaStatus(null);
+      return;
+    }
     if (!canReadProjects) {
       setQuotaStatus(null);
       return;
