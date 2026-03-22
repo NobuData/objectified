@@ -263,6 +263,10 @@ export interface VersionSchema {
   created_at: string;
   updated_at: string | null;
   deleted_at?: string | null;
+  /** Highest snapshot revision; set on project version list responses. */
+  last_revision?: number | null;
+  /** Timestamp of the latest snapshot commit; set on project version list responses. */
+  last_committed_at?: string | null;
 }
 
 export interface VersionCreate {

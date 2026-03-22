@@ -47,6 +47,7 @@ const SESSION_UNAUTH = { status: 'unauthenticated' as const, data: null };
 jest.mock('next/navigation', () => ({
   useParams: jest.fn(),
   useRouter: jest.fn(() => STABLE_ROUTER),
+  useSearchParams: jest.fn(() => new URLSearchParams()),
 }));
 
 // ---------------------------------------------------------------------------
@@ -259,5 +260,89 @@ describe('DashboardProjectVersionDeepLinkPage', () => {
 
     // Should not have called getVersion yet while tenants are loading
     expect(getVersion).not.toHaveBeenCalled();
+  });
+
+  it('forwards revision and readOnly query params to data-designer redirect', async () => {
+    setupMocks();
+    const { useSearchParams } = require('next/navigation');
+    useSearchParams.mockReturnValue(new URLSearchParams('revision=5&readOnly=1'));
+
+    const { getVersion, resolveTenantIdForProject, getTenant, getProject } =
+      require('@lib/api/rest-client');
+
+    getVersion.mockResolvedValue({ id: 'ver-1', project_id: 'proj-1' });
+    resolveTenantIdForProject.mockResolvedValue('t1');
+    getTenant.mockResolvedValue({ id: 't1', name: 'Tenant One' });
+    getProject.mockResolvedValue({ id: 'proj-1', name: 'Project One' });
+
+    render(<DeepLinkPage />);
+
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith(
+        expect.stringContaining('/data-designer?')
+      );
+    });
+
+    const callArg: string = mockRouterReplace.mock.calls[0][0];
+    const qs = new URLSearchParams(callArg.split('?')[1]);
+    expect(qs.get('tenantId')).toBe('t1');
+    expect(qs.get('projectId')).toBe('proj-1');
+    expect(qs.get('versionId')).toBe('ver-1');
+    expect(qs.get('revision')).toBe('5');
+    expect(qs.get('readOnly')).toBe('1');
+  });
+
+  it('forwards revision and view query params (view=1) to data-designer redirect', async () => {
+    setupMocks();
+    const { useSearchParams } = require('next/navigation');
+    useSearchParams.mockReturnValue(new URLSearchParams('revision=3&view=1'));
+
+    const { getVersion, resolveTenantIdForProject, getTenant, getProject } =
+      require('@lib/api/rest-client');
+
+    getVersion.mockResolvedValue({ id: 'ver-1', project_id: 'proj-1' });
+    resolveTenantIdForProject.mockResolvedValue('t1');
+    getTenant.mockResolvedValue({ id: 't1', name: 'Tenant One' });
+    getProject.mockResolvedValue({ id: 'proj-1', name: 'Project One' });
+
+    render(<DeepLinkPage />);
+
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith(
+        expect.stringContaining('/data-designer?')
+      );
+    });
+
+    const callArg: string = mockRouterReplace.mock.calls[0][0];
+    const qs = new URLSearchParams(callArg.split('?')[1]);
+    expect(qs.get('revision')).toBe('3');
+    expect(qs.get('readOnly')).toBe('1');
+  });
+
+  it('does not forward revision when only readOnly is present without revision', async () => {
+    setupMocks();
+    const { useSearchParams } = require('next/navigation');
+    useSearchParams.mockReturnValue(new URLSearchParams('readOnly=1'));
+
+    const { getVersion, resolveTenantIdForProject, getTenant, getProject } =
+      require('@lib/api/rest-client');
+
+    getVersion.mockResolvedValue({ id: 'ver-1', project_id: 'proj-1' });
+    resolveTenantIdForProject.mockResolvedValue('t1');
+    getTenant.mockResolvedValue({ id: 't1', name: 'Tenant One' });
+    getProject.mockResolvedValue({ id: 'proj-1', name: 'Project One' });
+
+    render(<DeepLinkPage />);
+
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith(
+        expect.stringContaining('/data-designer?')
+      );
+    });
+
+    const callArg: string = mockRouterReplace.mock.calls[0][0];
+    const qs = new URLSearchParams(callArg.split('?')[1]);
+    expect(qs.get('revision')).toBeNull();
+    expect(qs.get('readOnly')).toBeNull();
   });
 });

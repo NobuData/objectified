@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import DashboardPageSkeleton from '../../../../components/DashboardPageSkeleton';
 
@@ -10,5 +11,9 @@ const ProjectVersionPageClient = dynamic(
 );
 
 export default function ProjectVersionPage() {
-  return <ProjectVersionPageClient />;
+  return (
+    <Suspense fallback={<DashboardPageSkeleton />}>
+      <ProjectVersionPageClient />
+    </Suspense>
+  );
 }

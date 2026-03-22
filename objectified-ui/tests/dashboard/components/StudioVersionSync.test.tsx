@@ -22,6 +22,10 @@ jest.mock('@lib/api/rest-client', () => ({
   listProperties: (...args: unknown[]) => mockListProperties(...args),
 }));
 
+jest.mock('next/navigation', () => ({
+  useSearchParams: jest.fn(() => new URLSearchParams()),
+}));
+
 function SetVersionButton() {
   const workspace = useWorkspace();
   return (
@@ -79,6 +83,68 @@ describe('StudioVersionSync', () => {
     await waitFor(
       () => {
         expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), undefined);
+      },
+      { timeout: 2000 }
+    );
+  });
+
+  it('forwards revision and readOnly to loadFromServer when URL params match workspace version', async () => {
+    const { useSearchParams } = require('next/navigation');
+    useSearchParams.mockReturnValue(new URLSearchParams('versionId=v1&revision=3&readOnly=1'));
+
+    mockPullVersion.mockResolvedValue({
+      version_id: 'v1',
+      revision: 3,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    render(
+      <WorkspaceProvider>
+        <StudioProvider>
+          <StudioVersionSync />
+          <SetVersionButton />
+        </StudioProvider>
+      </WorkspaceProvider>
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /set version/i }));
+
+    await waitFor(
+      () => {
+        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), 3);
+      },
+      { timeout: 2000 }
+    );
+  });
+
+  it('forwards revision to loadFromServer when no versionId is present in URL (missing = match)', async () => {
+    const { useSearchParams } = require('next/navigation');
+    useSearchParams.mockReturnValue(new URLSearchParams('revision=7'));
+
+    mockPullVersion.mockResolvedValue({
+      version_id: 'v1',
+      revision: 7,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    render(
+      <WorkspaceProvider>
+        <StudioProvider>
+          <StudioVersionSync />
+          <SetVersionButton />
+        </StudioProvider>
+      </WorkspaceProvider>
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /set version/i }));
+
+    await waitFor(
+      () => {
+        expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), 7);
       },
       { timeout: 2000 }
     );

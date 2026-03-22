@@ -3,6 +3,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VersionsPage from '../../../src/app/dashboard/versions/VersionsPageClient';
 
+const mockRouterPush = jest.fn();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockRouterPush,
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+  }),
+}));
+
 jest.mock('next-auth/react', () => ({
   useSession: jest.fn(() => ({
     status: 'authenticated',

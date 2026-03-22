@@ -35,6 +35,8 @@ class VersionSchema(BaseModel):
     updated_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
     published_at: Optional[datetime] = None
+    last_revision: Optional[int] = None
+    last_committed_at: Optional[datetime] = None
 
 
 class VersionCreate(BaseModel):
