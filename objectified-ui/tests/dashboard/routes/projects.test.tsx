@@ -1,15 +1,17 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import ProjectsPage from '../../../src/app/dashboard/projects/ProjectsPageClient';
 
+const SESSION = {
+  status: 'authenticated',
+  data: {
+    user: { name: 'User', email: 'user@example.com' },
+    accessToken: 'token',
+  },
+};
+
 jest.mock('next-auth/react', () => ({
-  useSession: jest.fn(() => ({
-    status: 'authenticated',
-    data: {
-      user: { name: 'User', email: 'user@example.com' },
-      accessToken: 'token',
-    },
-  })),
+  useSession: jest.fn(() => SESSION),
 }));
 
 jest.mock('@/app/contexts/TenantSelectionContext', () => ({
@@ -46,16 +48,49 @@ jest.mock('@/app/hooks/useTenantPermissions', () => ({
   })),
 }));
 
+const SAMPLE_PROJECTS = [
+  {
+    id: 'p1',
+    name: 'Alpha Project',
+    slug: 'alpha-project',
+    enabled: true,
+    deleted_at: null,
+    creator_id: 'u1',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-06-01T00:00:00Z',
+    metadata: { tags: ['frontend', 'react'] },
+    description: 'First project',
+  },
+  {
+    id: 'p2',
+    name: 'Beta Project',
+    slug: 'beta-project',
+    enabled: false,
+    deleted_at: null,
+    creator_id: 'u2',
+    created_at: '2024-02-01T00:00:00Z',
+    updated_at: '2024-07-01T00:00:00Z',
+    metadata: { tags: ['backend'] },
+    description: 'Second project',
+  },
+  {
+    id: 'p3',
+    name: 'Gamma Project',
+    slug: 'gamma-project',
+    enabled: true,
+    deleted_at: '2024-08-01T00:00:00Z',
+    creator_id: 'u1',
+    created_at: '2024-03-01T00:00:00Z',
+    updated_at: '2024-08-01T00:00:00Z',
+    metadata: {},
+    description: null,
+  },
+];
+
 describe('ProjectsPage', () => {
   beforeEach(() => {
     const { useSession } = require('next-auth/react');
-    useSession.mockReturnValue({
-      status: 'authenticated',
-      data: {
-        user: { name: 'User', email: 'user@example.com' },
-        accessToken: 'token',
-      },
-    });
+    useSession.mockReturnValue(SESSION);
     const { useTenantSelection } = require('@/app/contexts/TenantSelectionContext');
     useTenantSelection.mockReturnValue({
       tenants: [{ id: 't1', name: 'Tenant One', slug: 'tenant-one' }],
@@ -67,6 +102,10 @@ describe('ProjectsPage', () => {
     listProjects.mockResolvedValue([]);
     listVersions.mockResolvedValue([]);
     getUser.mockResolvedValue({ name: 'User', email: 'user@example.com' });
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   it('renders projects heading', async () => {
@@ -121,6 +160,180 @@ describe('ProjectsPage', () => {
     render(<ProjectsPage />);
     await waitFor(() => {
       expect(listProjects).toHaveBeenCalledWith('t1', expect.anything(), false);
+    });
+  });
+
+  it('renders project rows when projects are loaded', async () => {
+    const { listProjects } = require('@lib/api/rest-client');
+    listProjects.mockResolvedValue(SAMPLE_PROJECTS);
+    render(<ProjectsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Alpha Project')).toBeInTheDocument();
+      expect(screen.getByText('Beta Project')).toBeInTheDocument();
+    });
+  });
+
+  it('filters projects by search query', async () => {
+    const { listProjects } = require('@lib/api/rest-client');
+    listProjects.mockResolvedValue(SAMPLE_PROJECTS);
+    render(<ProjectsPage />);
+    await waitFor(() => expect(screen.getByText('Alpha Project')).toBeInTheDocument());
+
+    const searchInput = screen.getByPlaceholderText(/name or slug/i);
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: 'alpha' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Alpha Project')).toBeInTheDocument();
+      expect(screen.queryByText('Beta Project')).not.toBeInTheDocument();
+    });
+  });
+
+  it('filters projects by status', async () => {
+    const { listProjects } = require('@lib/api/rest-client');
+    listProjects.mockResolvedValue(SAMPLE_PROJECTS);
+    render(<ProjectsPage />);
+    await waitFor(() => expect(screen.getByText('Alpha Project')).toBeInTheDocument());
+
+    const statusSelect = screen.getByLabelText(/status/i);
+    await act(async () => {
+      fireEvent.change(statusSelect, { target: { value: 'active' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Alpha Project')).toBeInTheDocument();
+      expect(screen.queryByText('Beta Project')).not.toBeInTheDocument();
+    });
+  });
+
+  it('filters projects by tag', async () => {
+    const { listProjects } = require('@lib/api/rest-client');
+    listProjects.mockResolvedValue(SAMPLE_PROJECTS);
+    render(<ProjectsPage />);
+    await waitFor(() => expect(screen.getByText('Alpha Project')).toBeInTheDocument());
+
+    const tagInput = screen.getByPlaceholderText(/filter by tag/i);
+    await act(async () => {
+      fireEvent.change(tagInput, { target: { value: 'backend' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument();
+      expect(screen.getByText('Beta Project')).toBeInTheDocument();
+    });
+  });
+
+  it('bulk archive button is not visible when no projects are selected', async () => {
+    const { listProjects } = require('@lib/api/rest-client');
+    listProjects.mockResolvedValue(SAMPLE_PROJECTS);
+    render(<ProjectsPage />);
+    await waitFor(() => expect(screen.getByText('Alpha Project')).toBeInTheDocument());
+
+    // With no selections, the bulk action bar should not be visible
+    expect(screen.queryByRole('button', { name: /^archive$/i })).not.toBeInTheDocument();
+  });
+
+  it('bulk archive button is visible when projects are selected', async () => {
+    const { listProjects } = require('@lib/api/rest-client');
+    listProjects.mockResolvedValue([SAMPLE_PROJECTS[0]]);
+    render(<ProjectsPage />);
+    await waitFor(() => expect(screen.getByText('Alpha Project')).toBeInTheDocument());
+
+    const checkbox = screen.getByRole('checkbox', { name: /select alpha project/i });
+    await act(async () => {
+      fireEvent.click(checkbox);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^archive$/i })).toBeInTheDocument();
+    });
+  });
+
+  it('selectedWritableProjects excludes disabled projects', async () => {
+    const { listProjects, deleteProject } = require('@lib/api/rest-client');
+    const { useDialog } = require('@/app/components/providers/DialogProvider');
+    const alertMock = jest.fn(() => Promise.resolve());
+    useDialog.mockReturnValue({
+      confirm: jest.fn(() => Promise.resolve(true)),
+      alert: alertMock,
+    });
+
+    // Only the disabled project
+    listProjects.mockResolvedValue([SAMPLE_PROJECTS[1]]);
+    render(<ProjectsPage />);
+    await waitFor(() => expect(screen.getByText('Beta Project')).toBeInTheDocument());
+
+    const checkbox = screen.getByRole('checkbox', { name: /select beta project/i });
+    await act(async () => {
+      fireEvent.click(checkbox);
+    });
+
+    // The bulk action bar should appear since a project is selected
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^archive$/i })).toBeInTheDocument();
+    });
+
+    // Clicking archive with only a disabled project selected should show the info alert,
+    // NOT call deleteProject (since selectedWritableProjects is empty for disabled projects)
+    const archiveButton = screen.getByRole('button', { name: /^archive$/i });
+    await act(async () => {
+      fireEvent.click(archiveButton);
+    });
+
+    expect(deleteProject).not.toHaveBeenCalled();
+    expect(alertMock).toHaveBeenCalledWith(expect.objectContaining({ variant: 'info' }));
+  });
+
+  it('renders project tags as badges', async () => {
+    const { listProjects } = require('@lib/api/rest-client');
+    listProjects.mockResolvedValue([SAMPLE_PROJECTS[0]]);
+    render(<ProjectsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('frontend')).toBeInTheDocument();
+      expect(screen.getByText('react')).toBeInTheDocument();
+    });
+  });
+
+  it('deduplicates tags so each unique tag renders only once', async () => {
+    const { listProjects } = require('@lib/api/rest-client');
+    const projectWithDuplicateTags = {
+      ...SAMPLE_PROJECTS[0],
+      metadata: { tags: ['react', 'react', 'frontend'] },
+    };
+    listProjects.mockResolvedValue([projectWithDuplicateTags]);
+    render(<ProjectsPage />);
+    await waitFor(() => expect(screen.getByText('react')).toBeInTheDocument());
+
+    // With deduplication, 'react' should appear exactly once in the tag badges
+    const reactBadges = screen.getAllByText('react');
+    expect(reactBadges).toHaveLength(1);
+  });
+
+  it('calls listVersions for visible project IDs', async () => {
+    const { listProjects, listVersions } = require('@lib/api/rest-client');
+    listProjects.mockResolvedValue([SAMPLE_PROJECTS[0]]);
+    listVersions.mockResolvedValue([{ id: 'v1' }, { id: 'v2' }]);
+    render(<ProjectsPage />);
+    await waitFor(() => {
+      expect(listVersions).toHaveBeenCalledWith('t1', 'p1', expect.anything());
+    });
+  });
+
+  it('shows version count for each visible project', async () => {
+    const { listProjects, listVersions } = require('@lib/api/rest-client');
+    listProjects.mockResolvedValue([SAMPLE_PROJECTS[0]]);
+    listVersions.mockResolvedValue([{ id: 'v1' }, { id: 'v2' }]);
+    render(<ProjectsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('2')).toBeInTheDocument();
+    });
+  });
+
+  it('shows sort controls', async () => {
+    render(<ProjectsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^sort$/i)).toBeInTheDocument();
     });
   });
 });
