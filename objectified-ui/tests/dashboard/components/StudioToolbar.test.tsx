@@ -33,9 +33,16 @@ const mockPullVersion = jest.fn(() =>
     diff: null,
   })
 );
+const mockListVersions = jest.fn(() =>
+  Promise.resolve([
+    { id: 'v1', name: 'Current' },
+    { id: 'v2', name: 'Target' },
+  ])
+);
 jest.mock('@lib/api/rest-client', () => ({
   getRestClientOptions: () => ({}),
   pullVersion: (...args: unknown[]) => mockPullVersion(...args),
+  listVersions: (...args: unknown[]) => mockListVersions(...args),
   listVersionSnapshotsMetadata: (...args: unknown[]) => mockListVersionSnapshotsMetadata(...args),
   getTenantQuotaStatus: (...args: unknown[]) => mockGetTenantQuotaStatus(...args),
 }));
@@ -61,6 +68,13 @@ jest.mock('@/app/contexts/WorkspaceContext', () => ({
     version: { id: 'v1' },
   })),
 }));
+jest.mock('@/app/hooks/useTenantPermissions', () => ({
+  useTenantPermissions: jest.fn(() => ({
+    loading: false,
+    permissions: { is_tenant_admin: false },
+    has: (key: string) => key === 'schema:read' || key === 'schema:write',
+  })),
+}));
 
 const mockConfirm = jest.fn(() => Promise.resolve(true));
 jest.mock('@/app/components/providers/DialogProvider', () => ({
@@ -75,6 +89,9 @@ const { useStudioOptional, useStudio } =
     useStudioOptional: jest.Mock;
     useStudio: jest.Mock;
   };
+const { useTenantPermissions } = require('@/app/hooks/useTenantPermissions') as {
+  useTenantPermissions: jest.Mock;
+};
 
 const studioState = {
   versionId: 'v1',
@@ -88,6 +105,11 @@ const studioState = {
 describe('StudioToolbar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    useTenantPermissions.mockReturnValue({
+      loading: false,
+      permissions: { is_tenant_admin: false },
+      has: (key: string) => key === 'schema:read' || key === 'schema:write',
+    });
     mockConfirm.mockResolvedValue(true);
     mockPullVersion.mockResolvedValue({
       version_id: 'v2',
@@ -521,6 +543,60 @@ describe('StudioToolbar', () => {
     fireEvent.keyDown(document, { key: 'z', ctrlKey: true, shiftKey: true });
     expect(mockUndo).not.toHaveBeenCalled();
     expect(mockRedo).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+S keyboard shortcut opens commit dialog', () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    fireEvent.keyDown(document, { key: 's', ctrlKey: true });
+    expect(screen.getByRole('dialog', { name: /commit/i })).toBeInTheDocument();
+  });
+
+  it('Ctrl+Shift+P keyboard shortcut opens push dialog', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    fireEvent.keyDown(document, { key: 'p', ctrlKey: true, shiftKey: true });
+    expect(screen.getByRole('dialog', { name: /push to version/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText(/select target version/i)).toBeInTheDocument();
+    });
+  });
+
+  it('disables commit, push, pull, and merge when user lacks schema permissions', () => {
+    useTenantPermissions.mockReturnValue({
+      loading: false,
+      permissions: { is_tenant_admin: false },
+      has: () => false,
+    });
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    expect(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: /push to another version/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /pull from server/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /merge from another version/i })).toBeDisabled();
+  });
+
+  it('shows committing progress indicator while commit request is in flight', async () => {
+    let resolveSave: (() => void) | null = null;
+    mockSave.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^commit$/i }));
+    expect(screen.getByText(/committing\.\.\./i)).toBeInTheDocument();
+    resolveSave?.();
+    await waitFor(() => {
+      expect(screen.queryByText(/committing\.\.\./i)).not.toBeInTheDocument();
+    });
   });
 
   it('disables Merge button when tenantId or projectId are empty', () => {
