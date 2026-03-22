@@ -1827,6 +1827,93 @@ export async function validateJsonSchema(
   );
 }
 
+/** Result of POST /versions/{id}/import/openapi|jsonschema (including dry-run). */
+export interface ImportResultSchema {
+  classes_created: number;
+  classes_updated: number;
+  properties_created: number;
+  properties_reused: number;
+  class_properties_created: number;
+  class_properties_skipped: number;
+  detail: string[];
+  dry_run: boolean;
+}
+
+/** Response from POST /validate/openapi-document */
+export interface OpenApiDocumentValidationResponse {
+  valid: boolean;
+  openapi_version: string;
+  title: string;
+  warnings: string[];
+  errors: string[];
+}
+
+export async function validateOpenApiDocument(
+  doc: Record<string, unknown>,
+  options: RestClientOptions = {}
+): Promise<OpenApiDocumentValidationResponse> {
+  return request<OpenApiDocumentValidationResponse>(
+    'POST',
+    '/validate/openapi-document',
+    doc,
+    options
+  );
+}
+
+export async function importOpenApi(
+  versionId: string,
+  doc: Record<string, unknown>,
+  options: RestClientOptions = {},
+  dryRun = false
+): Promise<ImportResultSchema> {
+  const q = dryRun ? '?dry_run=true' : '';
+  return request<ImportResultSchema>(
+    'POST',
+    `/versions/${versionId}/import/openapi${q}`,
+    doc,
+    options
+  );
+}
+
+export async function importJsonSchema(
+  versionId: string,
+  doc: Record<string, unknown>,
+  options: RestClientOptions = {},
+  dryRun = false
+): Promise<ImportResultSchema> {
+  const q = dryRun ? '?dry_run=true' : '';
+  return request<ImportResultSchema>(
+    'POST',
+    `/versions/${versionId}/import/jsonschema${q}`,
+    doc,
+    options
+  );
+}
+
+export interface FetchImportUrlRequest {
+  url: string;
+  headers?: Record<string, string>;
+}
+
+export interface FetchImportUrlResponse {
+  document: Record<string, unknown>;
+  content_type: string | null;
+}
+
+/** HTTPS fetch of JSON/YAML for import (server-side; optional auth headers). */
+export async function fetchImportDocumentUrl(
+  versionId: string,
+  body: FetchImportUrlRequest,
+  options: RestClientOptions = {}
+): Promise<FetchImportUrlResponse> {
+  return request<FetchImportUrlResponse>(
+    'POST',
+    `/versions/${versionId}/import/fetch-url`,
+    body,
+    options
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Class properties (class–property join; list = bulk read)
 // ---------------------------------------------------------------------------

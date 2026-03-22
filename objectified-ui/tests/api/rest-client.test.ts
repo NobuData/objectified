@@ -48,6 +48,8 @@ import {
   resolveTenantIdForProject,
   getProject,
   listMyTenants,
+  importOpenApi,
+  fetchImportDocumentUrl,
   type RestClientOptions,
   type TenantSchema,
   type ProjectSchema,
@@ -1307,5 +1309,55 @@ describe('resolveTenantIdForProject', () => {
     expect(result).toBe('t1');
     const [firstUrl] = mockFetch.mock.calls[0];
     expect(firstUrl).toContain('/tenants/me');
+  });
+});
+
+describe('schema import REST helpers', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it('importOpenApi requests dry_run when true', async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeFetchResponse({
+        classes_created: 0,
+        classes_updated: 1,
+        properties_created: 0,
+        properties_reused: 0,
+        class_properties_created: 0,
+        class_properties_skipped: 0,
+        detail: [],
+        dry_run: true,
+      })
+    );
+    await importOpenApi(
+      'vid-1',
+      { openapi: '3.0.0', info: { title: 'T', version: '1' }, paths: {} },
+      {},
+      true
+    );
+    const [url] = mockFetch.mock.calls[0];
+    expect(String(url)).toContain('dry_run=true');
+  });
+
+  it('fetchImportDocumentUrl posts body to fetch-url', async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeFetchResponse({
+        document: { openapi: '3.0.0' },
+        content_type: 'application/json',
+      })
+    );
+    const res = await fetchImportDocumentUrl(
+      'vid-1',
+      { url: 'https://example.com/spec.json', headers: { Authorization: 'Bearer x' } },
+      {}
+    );
+    expect(res.document.openapi).toBe('3.0.0');
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(String(url)).toContain('/versions/vid-1/import/fetch-url');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      url: 'https://example.com/spec.json',
+      headers: { Authorization: 'Bearer x' },
+    });
   });
 });

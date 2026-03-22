@@ -32,7 +32,7 @@ app = FastAPI(
         "Services are used by the platform and can be exposed externally; "
         "internal use is via a private API key."
     ),
-    version="1.0.32",
+    version="1.0.33",
     openapi_version="3.2.0",
     openapi_url="/openapi.yaml",
 )
