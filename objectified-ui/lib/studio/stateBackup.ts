@@ -13,6 +13,7 @@ import type { LocalVersionState } from './types';
 
 const BACKUP_KEY_PREFIX = 'objectified:studio:backup:';
 const BACKUP_FORMAT_VERSION = 2;
+const BACKUP_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface StateBackupEnvelopeV2 {
   formatVersion: 2;
@@ -22,12 +23,19 @@ interface StateBackupEnvelopeV2 {
   sourceTabId?: string;
 }
 
-type BackupLoadStatus = 'ok' | 'missing' | 'corrupted' | 'incompatible' | 'invalid';
+type BackupLoadStatus =
+  | 'ok'
+  | 'missing'
+  | 'corrupted'
+  | 'incompatible'
+  | 'invalid'
+  | 'expired';
 
-interface BackupLoadResult {
+export interface BackupLoadResult {
   state: LocalVersionState | null;
   status: BackupLoadStatus;
   warning: string | null;
+  savedAt: string | null;
 }
 
 /** Returns the localStorage key for a given versionId backup. */
@@ -56,14 +64,27 @@ function removeBackup(versionId: string): void {
   }
 }
 
+function normalizeSavedAt(value: unknown): string | null {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const millis = Date.parse(value);
+  if (Number.isNaN(millis)) return null;
+  return new Date(millis).toISOString();
+}
+
+function isBackupExpired(savedAtIso: string): boolean {
+  const savedAtMillis = Date.parse(savedAtIso);
+  if (Number.isNaN(savedAtMillis)) return true;
+  return Date.now() - savedAtMillis > BACKUP_TTL_MS;
+}
+
 function tryLoadStateBackup(versionId: string): BackupLoadResult {
   try {
     if (typeof localStorage === 'undefined') {
-      return { state: null, status: 'missing', warning: null };
+      return { state: null, status: 'missing', warning: null, savedAt: null };
     }
     const raw = localStorage.getItem(backupStorageKey(versionId));
     if (!raw) {
-      return { state: null, status: 'missing', warning: null };
+      return { state: null, status: 'missing', warning: null, savedAt: null };
     }
     const parsed = JSON.parse(raw) as
       | Partial<StateBackupEnvelopeV2>
@@ -84,11 +105,31 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
           state: null,
           status: 'invalid',
           warning: 'A local Studio backup was invalid and has been cleared.',
+          savedAt: null,
         };
       }
+      // Preserve the original savedAt so migration does not extend TTL or make
+      // an old draft appear newer than it is.  Fall back to now only when the
+      // v1 record carries no parseable timestamp.
+      const originalSavedAt = normalizeSavedAt((parsed as { savedAt?: string }).savedAt);
+      if (originalSavedAt && isBackupExpired(originalSavedAt)) {
+        removeBackup(versionId);
+        return {
+          state: null,
+          status: 'expired',
+          warning: 'A local Studio draft expired after 7 days and was cleared.',
+          savedAt: null,
+        };
+      }
+      const migratedSavedAt = originalSavedAt ?? new Date().toISOString();
       // Migrate: rewrite as v2 envelope so subsequent loads are version-checked.
-      saveStateBackup(v1State);
-      return { state: v1State, status: 'ok', warning: null };
+      saveStateBackup(v1State, { savedAt: migratedSavedAt });
+      return {
+        state: v1State,
+        status: 'ok',
+        warning: null,
+        savedAt: migratedSavedAt,
+      };
     }
 
     if (formatVersion !== BACKUP_FORMAT_VERSION) {
@@ -98,6 +139,7 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
         status: 'incompatible',
         warning:
           'A local Studio backup was created by an incompatible app version and was ignored.',
+        savedAt: null,
       };
     }
 
@@ -108,6 +150,7 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
         state: null,
         status: 'invalid',
         warning: 'A local Studio backup was invalid and has been cleared.',
+        savedAt: null,
       };
     }
     if (v2.state.versionId !== versionId) {
@@ -116,6 +159,26 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
         state: null,
         status: 'invalid',
         warning: 'A local Studio backup targeted another version and was ignored.',
+        savedAt: null,
+      };
+    }
+    const savedAt = normalizeSavedAt(v2.savedAt);
+    if (!savedAt) {
+      removeBackup(versionId);
+      return {
+        state: null,
+        status: 'invalid',
+        warning: 'A local Studio backup had an invalid timestamp and was cleared.',
+        savedAt: null,
+      };
+    }
+    if (isBackupExpired(savedAt)) {
+      removeBackup(versionId);
+      return {
+        state: null,
+        status: 'expired',
+        warning: 'A local Studio draft expired after 7 days and was cleared.',
+        savedAt: null,
       };
     }
     const expected = computeStateChecksum(v2.state);
@@ -126,9 +189,10 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
         status: 'corrupted',
         warning:
           'A local Studio backup failed integrity checks and was ignored as potentially corrupted.',
+        savedAt: null,
       };
     }
-    return { state: v2.state, status: 'ok', warning: null };
+    return { state: v2.state, status: 'ok', warning: null, savedAt };
   } catch {
     removeBackup(versionId);
     return {
@@ -136,6 +200,7 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
       status: 'corrupted',
       warning:
         'A local Studio backup failed integrity checks and was ignored as potentially corrupted.',
+      savedAt: null,
     };
   }
 }
@@ -143,7 +208,7 @@ function tryLoadStateBackup(versionId: string): BackupLoadResult {
 /** Persist current state to localStorage as a backup, keyed by state.versionId. */
 export function saveStateBackup(
   state: LocalVersionState,
-  opts?: { sourceTabId?: string }
+  opts?: { sourceTabId?: string; savedAt?: string }
 ): void {
   try {
     if (typeof localStorage === 'undefined') return;
@@ -151,7 +216,7 @@ export function saveStateBackup(
       formatVersion: BACKUP_FORMAT_VERSION,
       checksum: computeStateChecksum(state),
       state,
-      savedAt: new Date().toISOString(),
+      savedAt: opts?.savedAt ?? new Date().toISOString(),
       sourceTabId: opts?.sourceTabId,
     };
     localStorage.setItem(backupStorageKey(state.versionId), JSON.stringify(data));
@@ -168,6 +233,18 @@ export function loadStateBackup(versionId: string): LocalVersionState | null {
 /** Load backup with integrity/version diagnostics for UI warnings. */
 export function loadStateBackupWithDiagnostics(versionId: string): BackupLoadResult {
   return tryLoadStateBackup(versionId);
+}
+
+/** Load valid backup state with saved timestamp metadata for restore prompts. */
+export function loadStateBackupWithMetadata(
+  versionId: string
+): { state: LocalVersionState; savedAt: string } | null {
+  const result = tryLoadStateBackup(versionId);
+  if (!result.state || !result.savedAt) return null;
+  return {
+    state: result.state,
+    savedAt: result.savedAt,
+  };
 }
 
 /** Clear the backup for a given versionId (e.g. after a successful push). */
