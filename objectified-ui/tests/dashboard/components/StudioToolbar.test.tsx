@@ -105,6 +105,7 @@ const studioState = {
 describe('StudioToolbar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.localStorage.clear();
     useTenantPermissions.mockReturnValue({
       loading: false,
       permissions: { is_tenant_admin: false },
@@ -296,6 +297,7 @@ describe('StudioToolbar', () => {
     },
     pendingChangesSummary: null,
     suggestedCommitMessage: null,
+    lastCommitInfo: null,
   };
 
   it('calls undo when Undo is clicked', async () => {
@@ -342,6 +344,38 @@ describe('StudioToolbar', () => {
     );
   });
 
+  it('submitting commit dialog with external id adds traceability text and passes external id', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    await userEvent.type(screen.getByRole('textbox', { name: /commit message/i }), 'my commit message');
+    await userEvent.type(screen.getByRole('textbox', { name: /commit external id/i }), 'ticket-212');
+    await userEvent.click(screen.getByRole('button', { name: /^commit$/i }));
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        message: 'my commit message [external:ticket-212]',
+        externalId: 'ticket-212',
+      })
+    );
+  });
+
+  it('requires commit message when requirement toggle is enabled', async () => {
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: /require commit message/i }));
+    const commitButton = screen.getByRole('button', { name: /^commit$/i });
+    expect(commitButton).toBeDisabled();
+    expect(screen.getByText(/commit message is required/i)).toBeInTheDocument();
+    await userEvent.type(screen.getByRole('textbox', { name: /commit message/i }), 'required message');
+    expect(screen.getByRole('button', { name: /^commit$/i })).toBeEnabled();
+  });
+
   it('shows pending changes summary and pre-fills suggested commit message', async () => {
     useStudioOptional.mockReturnValue({
       ...defaultStudioWithState,
@@ -356,6 +390,25 @@ describe('StudioToolbar', () => {
     expect(screen.getByRole('textbox', { name: /commit message/i })).toHaveValue(
       'Update studio: 3 classes modified'
     );
+  });
+
+  it('shows pre-commit validation summary with commit-anyway option when warnings exist', async () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      state: {
+        ...studioState,
+        classes: [
+          { name: 'User', properties: [] },
+          { name: 'user', properties: [] },
+        ],
+      },
+    });
+    render(<StudioToolbar />);
+    await userEvent.click(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    );
+    expect(screen.getByText(/pre-commit validation summary/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /commit anyway/i })).toBeInTheDocument();
   });
 
   it('commit dialog submit button is disabled while loading', async () => {
@@ -424,6 +477,20 @@ describe('StudioToolbar', () => {
     });
     render(<StudioToolbar />);
     expect(screen.getByText('Unpushed commits')).toBeInTheDocument();
+  });
+
+  it('shows last commit message and revision indicator when available', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      lastCommitInfo: {
+        revision: 7,
+        committedAt: '2026-03-22T11:00:00Z',
+        message: 'Ship it',
+        externalId: 'ticket-212',
+      },
+    });
+    render(<StudioToolbar />);
+    expect(screen.getByText(/last commit r7: ship it/i)).toBeInTheDocument();
   });
 
   it('Pull when not dirty calls loadFromServer without confirm', async () => {
