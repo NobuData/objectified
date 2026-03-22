@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.34
+  version: 1.0.35
 paths:
   /v1/auth/login:
     post:
@@ -5965,6 +5965,8 @@ paths:
         properties, and canvas_metadata. By default returns the latest state; use
         optional query param `revision` to get state at a specific snapshot revision.
         Use optional `since_revision` to include a diff of changes since that revision.
+        Responses include a weak `ETag` header; repeat the same value in `If-None-Match`
+        to receive `304 Not Modified` when the representation is unchanged.
       operationId: pull_version_v1_versions__version_id__pull_get
       parameters:
       - name: version_id
@@ -5973,6 +5975,17 @@ paths:
         schema:
           type: string
           title: Version Id
+      - name: If-None-Match
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+        description: Optional weak ETag from a prior pull of the same resource (same
+          path and query). When it matches the current ETag, the server returns 304 with
+          an empty body.
+        title: If-None-Match
       - name: revision
         in: query
         required: false
@@ -6012,10 +6025,22 @@ paths:
       responses:
         '200':
           description: Full version state (and optional diff)
+          headers:
+            ETag:
+              description: Weak entity tag for conditional requests
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/VersionPullResponse'
+        '304':
+          description: Not Modified — same ETag as If-None-Match; body is empty
+          headers:
+            ETag:
+              description: Same weak ETag the client sent in If-None-Match
+              schema:
+                type: string
         '404':
           description: Version or snapshot revision not found
         '422':

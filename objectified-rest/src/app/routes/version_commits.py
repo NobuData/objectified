@@ -15,7 +15,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from app.auth import (
     require_authenticated,
@@ -1081,14 +1081,19 @@ def rollback_version(
         "Pull the full state of a version, including all classes, their "
         "properties, and canvas_metadata. By default returns the latest state; "
         "use optional query param `revision` to get state at a specific snapshot revision. "
-        "Use optional `since_revision` to include a diff of changes since that revision."
+        "Use optional `since_revision` to include a diff of changes since that revision. "
+        "Responses include a weak ETag; send `If-None-Match` with the same value to receive "
+        "304 Not Modified when the representation is unchanged."
     ),
     responses={
         200: {"description": "Full version state (and optional diff)"},
+        304: {"description": "Not Modified (conditional request; body empty)"},
         404: {"description": "Version or snapshot revision not found"},
     },
 )
 def pull_version(
+    request: Request,
+    response: Response,
     version_id: str,
     revision: Optional[int] = Query(
         None,
@@ -1100,7 +1105,7 @@ def pull_version(
     ),
     _perm: Annotated[dict[str, Any], Depends(require_version_permission("schema:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
-) -> VersionPullResponse:
+) -> VersionPullResponse | Response:
     """Pull the full state of a version (latest or at a given revision); optionally include diff since a revision."""
     version = _assert_version_exists(version_id, include_deleted=False)
 
@@ -1141,8 +1146,7 @@ def pull_version(
         if snapshot_rows and snapshot_rows[0].get("max_revision") is not None:
             effective_revision = snapshot_rows[0]["max_revision"]
 
-    diff_since_revision: Optional[int] = None
-    diff_value: Optional[VersionPullDiff] = None
+    since_rows: Optional[list[dict[str, Any]]] = None
     if since_revision is not None:
         since_rows = db.execute_query(
             """
@@ -1158,11 +1162,21 @@ def pull_version(
                 status_code=404,
                 detail=f"Version snapshot not found for since_revision: {version_id} @ revision {since_revision}",
             )
+
+    etag = _build_pull_etag(version_id, effective_revision, revision, since_revision)
+    inm = request.headers.get("if-none-match")
+    if _if_none_match_matches(inm, etag):
+        return Response(status_code=304, headers={"ETag": etag})
+
+    diff_since_revision: Optional[int] = None
+    diff_value: Optional[VersionPullDiff] = None
+    if since_revision is not None and since_rows:
         old_snapshot = since_rows[0].get("snapshot") or {}
         old_classes = old_snapshot.get("classes", [])
         diff_value = _compute_pull_diff(old_classes, classes)
         diff_since_revision = since_revision
 
+    response.headers["ETag"] = etag
     return VersionPullResponse(
         version_id=version_id,
         revision=effective_revision,
@@ -1172,6 +1186,39 @@ def pull_version(
         diff_since_revision=diff_since_revision,
         diff=diff_value,
     )
+
+
+def _build_pull_etag(
+    version_id: str,
+    effective_revision: Optional[int],
+    revision_param: Optional[int],
+    since_revision_param: Optional[int],
+) -> str:
+    """Weak ETag for GET /pull: same inputs imply same representation."""
+    er = "null" if effective_revision is None else str(effective_revision)
+    rp = "head" if revision_param is None else str(revision_param)
+    sr = "none" if since_revision_param is None else str(since_revision_param)
+    return f'W/"{version_id}:er={er}:r={rp}:since={sr}"'
+
+
+def _if_none_match_matches(if_none_match: Optional[str], etag: str) -> bool:
+    """True if If-None-Match matches this ETag (weak comparison)."""
+    if not if_none_match or not str(if_none_match).strip():
+        return False
+
+    def normalize(value: str) -> str:
+        t = value.strip()
+        if t.upper().startswith("W/"):
+            t = t[2:].strip()
+        if t.startswith('"') and t.endswith('"'):
+            t = t[1:-1]
+        return t
+
+    target = normalize(etag)
+    for part in str(if_none_match).split(","):
+        if normalize(part) == target:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------

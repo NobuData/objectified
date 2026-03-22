@@ -355,6 +355,7 @@ class TestPullVersion:
             ]
             r = client.get(f"/v1/versions/{_VERSION_ID}/pull")
         assert r.status_code == 200
+        assert r.headers.get("ETag")
         body = r.json()
         assert body["version_id"] == _VERSION_ID
         assert body["revision"] == 3
@@ -514,6 +515,39 @@ class TestPullVersion:
             r = client.get(f"/v1/versions/{_VERSION_ID}/pull?since_revision=99")
         assert r.status_code == 404
         assert "since_revision" in r.json()["detail"].lower()
+
+    def test_pull_returns_304_when_if_none_match_matches_etag(self, client):
+        """Conditional GET returns 304 with empty body when ETag matches."""
+        class_row = {
+            "id": _CLASS_ID,
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "A person",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": _NOW,
+            "updated_at": None,
+        }
+        seq = [
+            [_version_lookup_row()],
+            [class_row],
+            [],
+            [{"max_revision": 3}],
+        ]
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = seq + seq
+            r1 = client.get(f"/v1/versions/{_VERSION_ID}/pull")
+            etag = r1.headers.get("ETag")
+            assert r1.status_code == 200
+            assert etag
+            r2 = client.get(
+                f"/v1/versions/{_VERSION_ID}/pull",
+                headers={"If-None-Match": etag},
+            )
+        assert r2.status_code == 304
+        assert r2.headers.get("ETag") == etag
+        assert r2.content == b""
 
 
 # ---------------------------------------------------------------------------
