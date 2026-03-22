@@ -428,6 +428,7 @@ export interface VersionCommitPayload {
   label?: string | null;
   description?: string | null;
   message?: string | null;
+  overwrite?: boolean;
 }
 
 export interface VersionCommitResponse {
