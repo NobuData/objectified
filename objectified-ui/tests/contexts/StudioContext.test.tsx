@@ -35,6 +35,16 @@ const localStorageMock = (() => {
   };
 })();
 Object.defineProperty(global, 'localStorage', { value: localStorageMock, writable: true });
+const sessionStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: jest.fn((key: string) => store[key] ?? null),
+    setItem: jest.fn((key: string, value: string) => { store[key] = value; }),
+    removeItem: jest.fn((key: string) => { delete store[key]; }),
+    clear: jest.fn(() => { store = {}; }),
+  };
+})();
+Object.defineProperty(global, 'sessionStorage', { value: sessionStorageMock, writable: true });
 // ────────────────────────────────────────────────────────────────────────────
 
 function TestConsumer() {
@@ -114,6 +124,7 @@ describe('StudioContext', () => {
     jest.clearAllMocks();
     mockListProperties.mockResolvedValue([]);
     localStorageMock.clear();
+    sessionStorageMock.clear();
   });
 
   it('starts with null state and no undo/redo', () => {
@@ -275,6 +286,131 @@ describe('StudioContext', () => {
     });
     expect(screen.getByTestId('class-count').textContent).toBe('1');
     expect(screen.getByTestId('can-redo').textContent).toBe('yes');
+  });
+
+  it('persists undo stack in sessionStorage and restores it after remount when enabled', async () => {
+    localStorageMock.setItem(
+      'objectified:canvas:settings',
+      JSON.stringify({
+        settings: {
+          persistUndoStackInSession: true,
+          maxUndoDepth: 50,
+        },
+        savedAt: new Date().toISOString(),
+      })
+    );
+    mockPullVersion
+      .mockResolvedValueOnce({
+        version_id: 'v1',
+        revision: 1,
+        classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+        canvas_metadata: null,
+        pulled_at: new Date().toISOString(),
+      })
+      .mockResolvedValueOnce({
+        version_id: 'v1',
+        revision: 1,
+        classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+        canvas_metadata: null,
+        pulled_at: new Date().toISOString(),
+      });
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    const first = render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('class-count').textContent).toBe('1');
+    });
+
+    await act(async () => {
+      screen.getByTestId('add-class').click();
+    });
+
+    expect(screen.getByTestId('class-count').textContent).toBe('2');
+    expect(screen.getByTestId('can-undo').textContent).toBe('yes');
+    expect(sessionStorageMock.setItem).toHaveBeenCalledWith(
+      'objectified:studio:undo-stack:v1:v1',
+      expect.any(String)
+    );
+
+    first.unmount();
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('class-count').textContent).toBe('2');
+    });
+    expect(screen.getByTestId('can-undo').textContent).toBe('yes');
+  });
+
+  it('limits undo depth using maxUndoDepth canvas setting', async () => {
+    localStorageMock.setItem(
+      'objectified:canvas:settings',
+      JSON.stringify({
+        settings: {
+          persistUndoStackInSession: true,
+          maxUndoDepth: 1,
+        },
+        savedAt: new Date().toISOString(),
+      })
+    );
+    mockPullVersion.mockResolvedValueOnce({
+      version_id: 'v1',
+      revision: 1,
+      classes: [{ id: 'c1', name: 'User', metadata: {}, properties: [] }],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    function LoadConsumer() {
+      const studio = useStudio();
+      React.useEffect(() => {
+        void studio.loadFromServer('v1', {});
+      }, []);
+      return <TestConsumer />;
+    }
+
+    render(
+      <StudioProvider>
+        <LoadConsumer />
+      </StudioProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('class-count').textContent).toBe('1');
+    });
+
+    await act(async () => {
+      screen.getByTestId('add-class').click();
+      screen.getByTestId('add-class').click();
+    });
+    expect(screen.getByTestId('class-count').textContent).toBe('3');
+
+    await act(async () => {
+      screen.getByTestId('undo').click();
+    });
+    expect(screen.getByTestId('class-count').textContent).toBe('2');
+
+    await act(async () => {
+      screen.getByTestId('undo').click();
+    });
+    // Second undo is unavailable because maxUndoDepth is 1.
+    expect(screen.getByTestId('class-count').textContent).toBe('2');
   });
 
   it('clear resets state and stacks', async () => {

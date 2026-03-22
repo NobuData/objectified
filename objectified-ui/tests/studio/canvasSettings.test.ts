@@ -54,6 +54,8 @@ describe('DEFAULT_CANVAS_SETTINGS', () => {
     expect(DEFAULT_CANVAS_SETTINGS.edgePathType).toBe('smoothstep');
     expect(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor).toBe('');
     expect(DEFAULT_CANVAS_SETTINGS.edgeAnimated).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.persistUndoStackInSession).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.maxUndoDepth).toBe(50);
   });
 });
 
@@ -80,6 +82,7 @@ describe('getCanvasSettings', () => {
       showLayoutHints: true,
       showDependencyOverlay: false,
       showSchemaMetricsPanel: false,
+      persistUndoStackInSession: true,
     };
     localStorageMock.setItem('objectified:canvas:settings', JSON.stringify({ settings: stored, savedAt: new Date().toISOString() }));
     const result = getCanvasSettings();
@@ -90,6 +93,7 @@ describe('getCanvasSettings', () => {
     expect(result.showLayoutHints).toBe(true);
     expect(result.showDependencyOverlay).toBe(false);
     expect(result.showSchemaMetricsPanel).toBe(false);
+    expect(result.persistUndoStackInSession).toBe(true);
     // New fields should be filled from DEFAULT_CANVAS_SETTINGS
     expect(result.gridSize).toBe(DEFAULT_CANVAS_SETTINGS.gridSize);
     expect(result.gridStyle).toBe(DEFAULT_CANVAS_SETTINGS.gridStyle);
@@ -97,6 +101,7 @@ describe('getCanvasSettings', () => {
     expect(result.edgePathType).toBe(DEFAULT_CANVAS_SETTINGS.edgePathType);
     expect(result.edgeStrokeColor).toBe(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor);
     expect(result.edgeAnimated).toBe(DEFAULT_CANVAS_SETTINGS.edgeAnimated);
+    expect(result.maxUndoDepth).toBe(DEFAULT_CANVAS_SETTINGS.maxUndoDepth);
   });
 
   it('merges partial stored settings with defaults', () => {
@@ -113,6 +118,23 @@ describe('getCanvasSettings', () => {
     expect(result.showLayoutHints).toBe(DEFAULT_CANVAS_SETTINGS.showLayoutHints);
     expect(result.showDependencyOverlay).toBe(DEFAULT_CANVAS_SETTINGS.showDependencyOverlay);
     expect(result.showSchemaMetricsPanel).toBe(DEFAULT_CANVAS_SETTINGS.showSchemaMetricsPanel);
+    expect(result.persistUndoStackInSession).toBe(
+      DEFAULT_CANVAS_SETTINGS.persistUndoStackInSession
+    );
+    expect(result.maxUndoDepth).toBe(DEFAULT_CANVAS_SETTINGS.maxUndoDepth);
+  });
+
+  it('sanitizes invalid maxUndoDepth values to the default', () => {
+    localStorageMock.setItem(
+      'objectified:canvas:settings',
+      JSON.stringify({
+        settings: { maxUndoDepth: 0, persistUndoStackInSession: true },
+        savedAt: new Date().toISOString(),
+      })
+    );
+    const result = getCanvasSettings();
+    expect(result.persistUndoStackInSession).toBe(true);
+    expect(result.maxUndoDepth).toBe(DEFAULT_CANVAS_SETTINGS.maxUndoDepth);
   });
 
   it('returns defaults when stored value is invalid JSON', () => {

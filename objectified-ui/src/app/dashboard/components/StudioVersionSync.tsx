@@ -54,7 +54,7 @@ function StudioVersionSyncInner() {
 
     if (versionId !== lastVersionIdRef.current) {
       lastVersionIdRef.current = versionId;
-      studioValue.clear();
+      studioValue.clear({ clearBackup: true });
       if (!versionId) return;
       void studioValue.loadFromServer(versionId, optionsRef.current, {
         tenantId: tenantId ?? undefined,

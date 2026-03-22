@@ -59,6 +59,7 @@ const EDGE_PATH_OPTIONS: { value: CanvasEdgePathType; label: string }[] = [
   { value: 'orthogonal', label: 'Orthogonal' },
   { value: 'smoothstep', label: 'Smooth step' },
 ];
+const UNDO_DEPTH_OPTIONS = [20, 50, 100, 200] as const;
 
 const edgeTypes = { classRef: ClassRefEdge };
 
@@ -359,6 +360,69 @@ export default function CanvasSettingsDialog({
                 >
                   <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
                 </Switch.Root>
+              </div>
+
+              <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Undo history
+                </span>
+                <div className="flex items-center justify-between gap-3">
+                  <Label.Root
+                    htmlFor="canvas-settings-persist-undo-session"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Persist in session
+                  </Label.Root>
+                  <Switch.Root
+                    id="canvas-settings-persist-undo-session"
+                    checked={draft.persistUndoStackInSession}
+                    onCheckedChange={(checked) =>
+                      updateDraft({ persistUndoStackInSession: checked })
+                    }
+                    className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                  >
+                    <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                  </Switch.Root>
+                </div>
+                <div className="space-y-1.5">
+                  <Label.Root
+                    htmlFor="canvas-settings-max-undo-depth"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Max undo depth
+                  </Label.Root>
+                  <Select.Root
+                    value={String(draft.maxUndoDepth)}
+                    onValueChange={(value) =>
+                      updateDraft({ maxUndoDepth: Number(value) })
+                    }
+                  >
+                    <Select.Trigger
+                      id="canvas-settings-max-undo-depth"
+                      className="flex h-9 w-full items-center justify-between rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
+                    >
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="h-4 w-4" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
+                        <Select.Viewport>
+                          {UNDO_DEPTH_OPTIONS.map((depth) => (
+                            <Select.Item
+                              key={depth}
+                              value={String(depth)}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{depth} steps</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
               </div>
 
               {/* Edge styling & routing — GitHub #94 */}

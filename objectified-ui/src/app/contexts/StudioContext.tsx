@@ -34,6 +34,7 @@ import {
   clearStateBackup,
 } from '@lib/studio/stateBackup';
 import { getCanvasGroups, saveCanvasGroups } from '@lib/studio/canvasGroupStorage';
+import { getCanvasSettings } from '@lib/studio/canvasSettings';
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 
@@ -256,7 +257,7 @@ export interface StudioContextValue {
   /** Merge server changes (e.g. after diverged/conflicts). */
   merge: (options: RestClientOptions, message?: string | null) => Promise<void>;
   /** Clear state and stacks (e.g. when switching version). */
-  clear: () => void;
+  clear: (opts?: { clearBackup?: boolean }) => void;
   /** True when last push failed with 409 (target has newer changes); suggest pull then merge. */
   pushConflict409: boolean;
   /** Clear the push 409 suggestion state (e.g. after user dismisses or runs pull/merge). */
@@ -275,10 +276,20 @@ export interface StudioContextValue {
 
 const StudioContext = createContext<StudioContextValue | null>(null);
 
-const MAX_UNDO = 50;
+const DEFAULT_MAX_UNDO = 50;
+const UNDO_STACK_SESSION_KEY_PREFIX = 'objectified:studio:undo-stack:v1';
 
 interface StudioStackState {
   state: LocalVersionState | null;
+  undoStack: LocalVersionState[];
+  redoStack: LocalVersionState[];
+}
+
+interface PersistedUndoStackRecord {
+  versionId: string;
+  savedAt: string;
+  baseRevision: number | null;
+  state: LocalVersionState;
   undoStack: LocalVersionState[];
   redoStack: LocalVersionState[];
 }
@@ -288,6 +299,106 @@ const initialStack: StudioStackState = {
   undoStack: [],
   redoStack: [],
 };
+
+function getUndoStackStorageKey(versionId: string): string {
+  return `${UNDO_STACK_SESSION_KEY_PREFIX}:${versionId}`;
+}
+
+function getUndoSettings(): { persistUndoStackInSession: boolean; maxUndoDepth: number } {
+  const settings = getCanvasSettings();
+  const safeDepth =
+    typeof settings.maxUndoDepth === 'number' &&
+    Number.isFinite(settings.maxUndoDepth) &&
+    settings.maxUndoDepth >= 1
+      ? Math.floor(settings.maxUndoDepth)
+      : DEFAULT_MAX_UNDO;
+  return {
+    persistUndoStackInSession: Boolean(settings.persistUndoStackInSession),
+    maxUndoDepth: safeDepth,
+  };
+}
+
+function trimUndoState(
+  stack: StudioStackState,
+  maxUndoDepth: number
+): StudioStackState {
+  if (stack.undoStack.length <= maxUndoDepth && stack.redoStack.length <= maxUndoDepth) {
+    return stack;
+  }
+  return {
+    state: stack.state,
+    undoStack:
+      stack.undoStack.length > maxUndoDepth
+        ? stack.undoStack.slice(-maxUndoDepth)
+        : stack.undoStack,
+    redoStack:
+      stack.redoStack.length > maxUndoDepth
+        ? stack.redoStack.slice(-maxUndoDepth)
+        : stack.redoStack,
+  };
+}
+
+function persistUndoSessionState(stack: StudioStackState): void {
+  try {
+    if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') return;
+    const state = stack.state;
+    if (!state) return;
+    const { persistUndoStackInSession, maxUndoDepth } = getUndoSettings();
+    const key = getUndoStackStorageKey(state.versionId);
+    if (!persistUndoStackInSession) {
+      window.sessionStorage.removeItem(key);
+      return;
+    }
+    const trimmed = trimUndoState(stack, maxUndoDepth);
+    const payload: PersistedUndoStackRecord = {
+      versionId: state.versionId,
+      savedAt: new Date().toISOString(),
+      baseRevision: state.revision ?? null,
+      state: deepClone(trimmed.state as LocalVersionState),
+      undoStack: trimmed.undoStack.map((entry) => deepClone(entry)),
+      redoStack: trimmed.redoStack.map((entry) => deepClone(entry)),
+    };
+    window.sessionStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    // Ignore sessionStorage write failures.
+  }
+}
+
+function readPersistedUndoSessionState(
+  versionId: string,
+  baseRevision: number | null
+): StudioStackState | null {
+  try {
+    if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') return null;
+    const { persistUndoStackInSession, maxUndoDepth } = getUndoSettings();
+    if (!persistUndoStackInSession) return null;
+    const raw = window.sessionStorage.getItem(getUndoStackStorageKey(versionId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedUndoStackRecord>;
+    if (parsed.versionId !== versionId) return null;
+    if ((parsed.baseRevision ?? null) !== (baseRevision ?? null)) return null;
+    if (!parsed.state || !Array.isArray(parsed.undoStack) || !Array.isArray(parsed.redoStack)) {
+      return null;
+    }
+    const restored: StudioStackState = {
+      state: parsed.state as LocalVersionState,
+      undoStack: parsed.undoStack as LocalVersionState[],
+      redoStack: parsed.redoStack as LocalVersionState[],
+    };
+    return trimUndoState(restored, maxUndoDepth);
+  } catch {
+    return null;
+  }
+}
+
+function clearPersistedUndoSessionState(versionId: string): void {
+  try {
+    if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') return;
+    window.sessionStorage.removeItem(getUndoStackStorageKey(versionId));
+  } catch {
+    // Ignore sessionStorage remove failures.
+  }
+}
 
 export function StudioProvider({ children }: { children: ReactNode }) {
   const [stack, setStack] = useState<StudioStackState>(initialStack);
@@ -313,7 +424,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setBackupWarning(null);
   }, []);
 
-  const clear = useCallback(() => {
+  const clear = useCallback((opts?: { clearBackup?: boolean }) => {
+    const currentVersionId = stack.state?.versionId ?? null;
+    if (currentVersionId) {
+      clearPersistedUndoSessionState(currentVersionId);
+      if (opts?.clearBackup) {
+        clearStateBackup(currentVersionId);
+      }
+    }
     setStack(initialStack);
     setBaselineState(null);
     setError(null);
@@ -321,7 +439,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setHasUnpushedCommits(false);
     setPushConflict409(false);
     setBackupWarning(null);
-  }, []);
+  }, [stack.state?.versionId]);
 
   const loadFromServer = useCallback(
     async (
@@ -355,11 +473,19 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         // Hydrate groups from localStorage (not yet returned by API)
         const storedGroups = getCanvasGroups(versionId);
         if (storedGroups.length > 0) newState.groups = storedGroups;
-        setStack({
+        const restoredStack =
+          !newState.readOnly
+            ? readPersistedUndoSessionState(versionId, newState.revision ?? null)
+            : null;
+        const nextStack = restoredStack ?? {
           state: newState,
           undoStack: [],
           redoStack: [],
-        });
+        };
+        setStack(nextStack);
+        if (!restoredStack) {
+          clearPersistedUndoSessionState(versionId);
+        }
         setBaselineState(deepClone(newState));
         // Do not persist read-only revision views to the backup; the backup
         // represents the user's editable working copy, and restoring a
@@ -398,6 +524,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           undoStack: [],
           redoStack: [],
         });
+        clearPersistedUndoSessionState(versionId);
         setBaselineState(
           deepClone(
             backup.state ?? {
@@ -422,51 +549,66 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const applyChange = useCallback((updater: (draft: LocalVersionState) => void) => {
     setStack((prev) => {
       if (!prev.state || prev.state.readOnly) return prev;
+      const { maxUndoDepth } = getUndoSettings();
       const draft = deepClone(prev.state);
       updater(draft);
       const undoStack = [...prev.undoStack, deepClone(prev.state)];
-      if (undoStack.length > MAX_UNDO) undoStack.shift();
-      saveStateBackup(draft, { sourceTabId: tabIdRef.current });
-      saveCanvasGroups(draft.versionId, draft.groups);
-      return {
+      if (undoStack.length > maxUndoDepth) undoStack.shift();
+      const next: StudioStackState = {
         state: draft,
         undoStack,
         redoStack: [],
       };
+      saveStateBackup(draft, { sourceTabId: tabIdRef.current });
+      saveCanvasGroups(draft.versionId, draft.groups);
+      persistUndoSessionState(next);
+      return next;
     });
   }, []);
 
   const undo = useCallback(() => {
     setStack((prev) => {
       if (prev.undoStack.length === 0) return prev;
+      const { maxUndoDepth } = getUndoSettings();
       const nextState = prev.undoStack[prev.undoStack.length - 1];
       const redoStack = prev.state ? [...prev.redoStack, prev.state] : prev.redoStack;
       if (nextState) {
         saveStateBackup(nextState, { sourceTabId: tabIdRef.current });
         saveCanvasGroups(nextState.versionId, nextState.groups);
       }
-      return {
+      const next = trimUndoState(
+        {
         state: nextState,
         undoStack: prev.undoStack.slice(0, -1),
         redoStack,
-      };
+        },
+        maxUndoDepth
+      );
+      persistUndoSessionState(next);
+      return next;
     });
   }, []);
 
   const redo = useCallback(() => {
     setStack((prev) => {
       if (prev.redoStack.length === 0) return prev;
+      const { maxUndoDepth } = getUndoSettings();
       const nextState = prev.redoStack[prev.redoStack.length - 1];
       const undoStack = prev.state ? [...prev.undoStack, prev.state] : prev.undoStack;
       if (nextState) {
         saveStateBackup(nextState, { sourceTabId: tabIdRef.current });
         saveCanvasGroups(nextState.versionId, nextState.groups);
       }
-      return {
+      const next = trimUndoState(
+        {
         state: nextState,
         undoStack,
         redoStack: prev.redoStack.slice(0, -1),
-      };
+        },
+        maxUndoDepth
+      );
+      persistUndoSessionState(next);
+      return next;
     });
   }, []);
 
@@ -510,6 +652,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           { ...current, revision: res.revision },
           { sourceTabId: tabIdRef.current }
         );
+        clearPersistedUndoSessionState(current.versionId);
         setServerHasNewChanges(false);
         setHasUnpushedCommits(true);
         savePersistedCommitInfo(current.versionId, {
