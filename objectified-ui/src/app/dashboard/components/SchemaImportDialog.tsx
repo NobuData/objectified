@@ -190,7 +190,9 @@ export default function SchemaImportDialog({
       const headers: Record<string, string> = {};
       const tok = bearerToken.trim();
       if (tok) {
-        headers.Authorization = tok.startsWith('Bearer ') ? tok : `Bearer ${tok}`;
+        // Send the value verbatim as the Authorization header so callers can use
+        // any scheme (Bearer, Basic, Token, etc.).
+        headers.Authorization = tok;
       }
       const res = await fetchImportDocumentUrl(version.id, { url: u, headers }, options);
       setDocument(res.document);
@@ -412,7 +414,7 @@ export default function SchemaImportDialog({
                   autoComplete="off"
                 />
                 <Label.Root htmlFor="imp-bearer" className={labelClass}>
-                  Bearer token (optional)
+                  Authorization header value (optional)
                 </Label.Root>
                 <input
                   id="imp-bearer"
@@ -420,7 +422,7 @@ export default function SchemaImportDialog({
                   value={bearerToken}
                   onChange={(e) => setBearerToken(e.target.value)}
                   className={inputClass}
-                  placeholder="Paste token or full Authorization value"
+                  placeholder="e.g. Bearer token123 or Basic dXNlcjpwYXNz"
                   autoComplete="off"
                 />
                 <button

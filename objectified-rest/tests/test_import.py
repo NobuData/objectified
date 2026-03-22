@@ -702,3 +702,54 @@ def test_import_fetch_url_version_not_found_returns_404(client):
             json={"url": "https://example.com/spec.json"},
         )
     assert r.status_code == 404
+
+
+def test_import_fetch_url_rejects_redirect_to_private_ip(client):
+    """fetch-url must reject a redirect that points to a private/loopback address (SSRF bypass)."""
+    from unittest.mock import MagicMock, patch
+
+    import httpx
+
+    # Simulate a 302 redirect from a public URL to an internal address.
+    def _fake_stream(method, url, **kwargs):
+        ctx = MagicMock()
+        response = MagicMock()
+
+        if "example.com" in url:
+            # First request: 302 → private address
+            response.is_redirect = True
+            response.headers = {"location": "https://192.168.1.1/internal.json"}
+            response.status_code = 302
+        else:
+            # Should never be reached – private IP must be blocked before connecting.
+            response.is_redirect = False
+            response.status_code = 200
+
+        ctx.__enter__ = lambda s: response
+        ctx.__exit__ = MagicMock(return_value=False)
+        return ctx
+
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_VERSION_ROW]
+        # Patch the SSRF-validated transport so we control the "network" but
+        # still exercise the redirect-validation logic in the route handler.
+        with patch(
+            "app.routes.import_routes.make_ssrf_validated_transport"
+        ) as mock_transport_factory:
+            mock_client = MagicMock()
+            mock_client.__enter__ = lambda s: mock_client
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.stream = _fake_stream
+            mock_transport = MagicMock()
+            mock_transport_factory.return_value = mock_transport
+
+            with patch("httpx.Client") as mock_httpx_client:
+                mock_httpx_client.return_value = mock_client
+
+                r = client.post(
+                    f"/v1/versions/{_VERSION_ID}/import/fetch-url",
+                    json={"url": "https://example.com/spec.json"},
+                )
+
+    # The redirect target (192.168.1.1) is a private IP → must be rejected with 400.
+    assert r.status_code == 400
