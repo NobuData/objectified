@@ -170,6 +170,7 @@ export default function VersionsPage() {
   const [versions, setVersions] = useState<VersionSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const initialLoadCompleteRef = useRef<boolean>(false);
   const [loadProgressPercent, setLoadProgressPercent] = useState(0);
   const [loadProgressLabel, setLoadProgressLabel] = useState('Preparing dashboard...');
   const [error, setError] = useState<string | null>(null);
@@ -253,7 +254,7 @@ export default function VersionsPage() {
     }
     setError(null);
     setLoading(true);
-    if (!initialLoadComplete) {
+    if (!initialLoadCompleteRef.current) {
       setLoadProgressLabel('Loading projects...');
       setLoadProgressPercent(30);
     }
@@ -264,7 +265,7 @@ export default function VersionsPage() {
         if (prev) return prev;
         return data.length > 0 ? data[0].id : null;
       });
-      if (!initialLoadComplete) {
+      if (!initialLoadCompleteRef.current) {
         setLoadProgressLabel(
           data.length > 0 ? 'Loading versions...' : 'Projects loaded.'
         );
@@ -279,11 +280,12 @@ export default function VersionsPage() {
             : 'Failed to load projects'
       );
       setProjects([]);
+      initialLoadCompleteRef.current = true;
       setInitialLoadComplete(true);
     } finally {
       setLoading(false);
     }
-  }, [status, selectedTenantId, opts, initialLoadComplete]);
+  }, [status, selectedTenantId, opts]);
 
   const fetchVersions = useCallback(async () => {
     if (status !== 'authenticated' || !selectedTenantId || !selectedProjectId) {
@@ -297,7 +299,7 @@ export default function VersionsPage() {
     setLoading(true);
     setUsingCachedDrafts(false);
     setCachedDraftSavedAt(null);
-    if (!initialLoadComplete) {
+    if (!initialLoadCompleteRef.current) {
       setLoadProgressLabel('Loading versions...');
       setLoadProgressPercent(70);
     }
@@ -305,7 +307,7 @@ export default function VersionsPage() {
       const data = await listVersions(selectedTenantId, selectedProjectId, opts);
       setVersions(data);
       writeDraftVersionCache(selectedTenantId, selectedProjectId, data);
-      if (!initialLoadComplete) {
+      if (!initialLoadCompleteRef.current) {
         setLoadProgressLabel('Versions ready.');
         setLoadProgressPercent(100);
       }
@@ -332,9 +334,10 @@ export default function VersionsPage() {
       }
     } finally {
       setLoading(false);
+      initialLoadCompleteRef.current = true;
       setInitialLoadComplete(true);
     }
-  }, [status, selectedTenantId, selectedProjectId, opts, initialLoadComplete]);
+  }, [status, selectedTenantId, selectedProjectId, opts]);
 
   const fetchQuota = useCallback(async () => {
     if (status !== 'authenticated' || !selectedTenantId || !selectedProjectId) {
