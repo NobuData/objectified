@@ -137,6 +137,44 @@ describe('loadStateBackup', () => {
     expect(loadStateBackup(VERSION_ID)).toBeNull();
   });
 
+  it('migrates a v1 backup (no formatVersion) to v2 and returns the state', () => {
+    const state = makeState({ revision: 7 });
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({ savedAt: new Date().toISOString(), state })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toEqual(state);
+    expect(loaded.status).toBe('ok');
+    expect(loaded.warning).toBeNull();
+    // Should have rewritten the backup as a v2 envelope
+    expect(localStorageMock.setItem).toHaveBeenCalled();
+    const [, value] = localStorageMock.setItem.mock.calls[0];
+    const parsed = JSON.parse(value);
+    expect(parsed.formatVersion).toBe(2);
+    expect(typeof parsed.checksum).toBe('string');
+  });
+
+  it('clears a v1 backup when state versionId does not match', () => {
+    const state = makeState({ versionId: 'other-version', revision: 7 });
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({ savedAt: new Date().toISOString(), state })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('invalid');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
+  });
+
+  it('clears a v1 backup when state object is missing', () => {
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({ savedAt: new Date().toISOString() })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('invalid');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
+  });
+
   it('round-trips save and load for multiple versions independently', () => {
     const s1 = makeState({ versionId: 'v1', revision: 1 });
     const s2 = makeState({ versionId: 'v2', revision: 2 });

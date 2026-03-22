@@ -489,17 +489,24 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const canRedo = stack.redoStack.length > 0;
   const isDirty = stack.undoStack.length > 0;
 
+  // Refs to track latest checksum and isDirty without re-registering the storage listener.
+  const checksumRef = useRef<string | null>(null);
+  const isDirtyRef = useRef(isDirty);
+  checksumRef.current = state?.versionId ? computeStateChecksum(state) : null;
+  isDirtyRef.current = isDirty;
+
+  // Re-register only when versionId or readOnly changes (not on every local edit).
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!state?.versionId || state.readOnly) return;
+    const versionId = state?.versionId;
+    if (!versionId || state?.readOnly) return;
 
-    const backupKey = backupStorageKey(state.versionId);
-    const currentChecksum = computeStateChecksum(state);
+    const backupKey = backupStorageKey(versionId);
 
     const onStorage = (event: StorageEvent) => {
       if (event.storageArea && event.storageArea !== window.localStorage) return;
       if (event.key !== backupKey || event.newValue == null) return;
-      const incoming = loadStateBackup(state.versionId);
+      const incoming = loadStateBackup(versionId);
       if (!incoming) {
         setBackupWarning(
           'Another Studio tab changed this version, but the shared backup was invalid or missing.'
@@ -507,9 +514,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         return;
       }
       const incomingChecksum = computeStateChecksum(incoming);
-      if (incomingChecksum === currentChecksum) return;
+      if (incomingChecksum === checksumRef.current) return;
       setBackupWarning(
-        isDirty
+        isDirtyRef.current
           ? 'Another Studio tab updated this version while you have local edits. Review before pushing.'
           : 'Another Studio tab updated this version. Reload to sync the latest backup.'
       );
@@ -519,7 +526,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener('storage', onStorage);
     };
-  }, [isDirty, state]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.versionId, state?.readOnly]);
 
   const value = useMemo<StudioContextValue>(
     () => ({
