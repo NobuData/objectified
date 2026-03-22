@@ -20,7 +20,8 @@ Routes are split across focused modules:
                                    /v1/versions/{version_id}/export/jsonschema,
                                    /v1/versions/{version_id}/export/validation-rules
   - app.routes.import_routes     → /v1/versions/{version_id}/import/openapi,
-                                   /v1/versions/{version_id}/import/jsonschema
+                                   /v1/versions/{version_id}/import/jsonschema,
+                                   /v1/versions/{version_id}/import/fetch-url
   - app.routes.version_commits   → /v1/versions/{version_id}/commit,
                                    /v1/versions/{version_id}/push,
                                    /v1/versions/{version_id}/pull,

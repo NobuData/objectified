@@ -628,3 +628,77 @@ def test_import_openapi_member_without_write_permission_returns_403(member_clien
             json=_OPENAPI_DOC,
         )
     assert r.status_code == 403
+
+
+def test_import_openapi_dry_run_no_database_mutations(client):
+    """dry_run=true runs preview only (no INSERT/UPDATE)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [],
+            [],
+            [],
+            [],
+            [],
+        ]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/import/openapi?dry_run=true",
+            json=_OPENAPI_DOC,
+        )
+    assert r.status_code == 200
+    mock_db.execute_mutation.assert_not_called()
+    body = r.json()
+    assert body["dry_run"] is True
+    assert body["classes_created"] == 1
+
+
+def test_import_jsonschema_dry_run_sets_flag(client):
+    """JSON Schema import with dry_run returns dry_run true."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_VERSION_ROW],
+            [],
+            [],
+            [],
+        ]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/import/jsonschema?dry_run=true",
+            json=_JSONSCHEMA_MULTI_DOC,
+        )
+    assert r.status_code == 200
+    mock_db.execute_mutation.assert_not_called()
+    assert r.json()["dry_run"] is True
+
+
+def test_import_fetch_url_rejects_http_scheme(client):
+    """fetch-url allows only https."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_VERSION_ROW]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/import/fetch-url",
+            json={"url": "http://example.com/spec.json"},
+        )
+    assert r.status_code == 400
+    assert "https" in r.json()["detail"].lower()
+
+
+def test_import_fetch_url_rejects_localhost(client):
+    """fetch-url rejects localhost hostnames (SSRF)."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = [_VERSION_ROW]
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/import/fetch-url",
+            json={"url": "https://localhost/api.json"},
+        )
+    assert r.status_code == 400
+
+
+def test_import_fetch_url_version_not_found_returns_404(client):
+    """fetch-url returns 404 when version is missing."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.return_value = []
+        r = client.post(
+            f"/v1/versions/{_VERSION_ID}/import/fetch-url",
+            json={"url": "https://example.com/spec.json"},
+        )
+    assert r.status_code == 404

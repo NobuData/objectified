@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.32"
+    "version": "1.0.33"
   },
   "paths": {
     "/v1/auth/login": {
@@ -2258,6 +2258,94 @@
         }
       }
     },
+    "/v1/versions/{version_id}/import/fetch-url": {
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Fetch OpenAPI or JSON Schema document from HTTPS URL",
+        "description": "Fetches a document over HTTPS for subsequent import. Supports JSON and YAML bodies. Optional ``headers`` can supply authentication (for example ``Authorization``). URLs must be public HTTPS endpoints; private and loopback addresses are rejected (SSRF mitigation).",
+        "operationId": "fetch_import_url_v1_versions__version_id__import_fetch_url_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FetchImportUrlRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Parsed document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FetchImportUrlResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid URL, unsafe host, or unparseable body"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/versions/{version_id}/import/openapi": {
       "post": {
         "tags": [
@@ -2275,6 +2363,18 @@
               "type": "string",
               "title": "Version Id"
             }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, compute projected changes without persisting to the database.",
+              "default": false,
+              "title": "Dry Run"
+            },
+            "description": "If true, compute projected changes without persisting to the database."
           },
           {
             "name": "authorization",
@@ -2369,6 +2469,18 @@
               "type": "string",
               "title": "Version Id"
             }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, compute projected changes without persisting to the database.",
+              "default": false,
+              "title": "Dry Run"
+            },
+            "description": "If true, compute projected changes without persisting to the database."
           },
           {
             "name": "authorization",
@@ -12883,6 +12995,64 @@
         ],
         "title": "EffectivePermissionsResponse"
       },
+      "FetchImportUrlRequest": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "description": "HTTPS URL to fetch."
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headers",
+            "description": "Optional extra headers (e.g. Authorization: Bearer \u2026)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "FetchImportUrlRequest",
+        "description": "Request body for fetching a JSON or YAML document over HTTPS for import."
+      },
+      "FetchImportUrlResponse": {
+        "properties": {
+          "document": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Document"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document"
+        ],
+        "title": "FetchImportUrlResponse",
+        "description": "Parsed document from a successful fetch."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -12934,6 +13104,12 @@
             },
             "type": "array",
             "title": "Detail"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "description": "True when the operation was a preview and no data was persisted.",
+            "default": false
           }
         },
         "type": "object",

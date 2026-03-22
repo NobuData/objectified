@@ -15,6 +15,7 @@ import {
   Network,
   History,
   Tag,
+  Upload,
 } from 'lucide-react';
 import * as Label from '@radix-ui/react-label';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -39,6 +40,7 @@ import { useDialog } from '@/app/components/providers/DialogProvider';
 import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 import RelationshipGraphDialog from '@/app/dashboard/components/RelationshipGraphDialog';
+import SchemaImportDialog from '@/app/dashboard/components/SchemaImportDialog';
 import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
 
 const inputClass =
@@ -71,6 +73,7 @@ export default function VersionsPage() {
   const [diffDialogVersion, setDiffDialogVersion] = useState<VersionSchema | null>(null);
   const [graphDialogVersion, setGraphDialogVersion] = useState<VersionSchema | null>(null);
   const [historyDialogVersion, setHistoryDialogVersion] = useState<VersionSchema | null>(null);
+  const [importDialogVersion, setImportDialogVersion] = useState<VersionSchema | null>(null);
   const [tagDialogVersion, setTagDialogVersion] = useState<VersionSchema | null>(null);
   const [tagDialogValue, setTagDialogValue] = useState('');
   const [tagDialogSubmitting, setTagDialogSubmitting] = useState(false);
@@ -643,6 +646,14 @@ export default function VersionsPage() {
                               Version history
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
+                              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
+                              onSelect={() => setImportDialogVersion(v)}
+                              disabled={!!v.published}
+                            >
+                              <Upload className="h-4 w-4" />
+                              Import schema…
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
                               className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
                               onSelect={() => {
                                 setTagDialogVersion(v);
@@ -1059,6 +1070,14 @@ export default function VersionsPage() {
           await alertDialog({ message: 'Version deleted.', variant: 'success' });
         }}
       />
+      {importDialogVersion && (
+        <SchemaImportDialog
+          open
+          onOpenChange={(open) => !open && setImportDialogVersion(null)}
+          version={importDialogVersion}
+          options={opts}
+        />
+      )}
     </div>
   );
 }
