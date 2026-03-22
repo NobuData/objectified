@@ -5,8 +5,10 @@
 
 import {
   backupStorageKey,
+  computeStateChecksum,
   saveStateBackup,
   loadStateBackup,
+  loadStateBackupWithDiagnostics,
   clearStateBackup,
 } from '@lib/studio/stateBackup';
 import type { LocalVersionState } from '@lib/studio/types';
@@ -79,6 +81,8 @@ describe('saveStateBackup', () => {
     const [key, value] = localStorageMock.setItem.mock.calls[0];
     expect(key).toBe(backupStorageKey(VERSION_ID));
     const parsed = JSON.parse(value);
+    expect(parsed.formatVersion).toBe(2);
+    expect(typeof parsed.checksum).toBe('string');
     expect(parsed.state).toEqual(state);
     expect(typeof parsed.savedAt).toBe('string');
   });
@@ -133,6 +137,44 @@ describe('loadStateBackup', () => {
     expect(loadStateBackup(VERSION_ID)).toBeNull();
   });
 
+  it('migrates a v1 backup (no formatVersion) to v2 and returns the state', () => {
+    const state = makeState({ revision: 7 });
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({ savedAt: new Date().toISOString(), state })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toEqual(state);
+    expect(loaded.status).toBe('ok');
+    expect(loaded.warning).toBeNull();
+    // Should have rewritten the backup as a v2 envelope
+    expect(localStorageMock.setItem).toHaveBeenCalled();
+    const [, value] = localStorageMock.setItem.mock.calls[0];
+    const parsed = JSON.parse(value);
+    expect(parsed.formatVersion).toBe(2);
+    expect(typeof parsed.checksum).toBe('string');
+  });
+
+  it('clears a v1 backup when state versionId does not match', () => {
+    const state = makeState({ versionId: 'other-version', revision: 7 });
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({ savedAt: new Date().toISOString(), state })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('invalid');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
+  });
+
+  it('clears a v1 backup when state object is missing', () => {
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({ savedAt: new Date().toISOString() })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('invalid');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
+  });
+
   it('round-trips save and load for multiple versions independently', () => {
     const s1 = makeState({ versionId: 'v1', revision: 1 });
     const s2 = makeState({ versionId: 'v2', revision: 2 });
@@ -142,6 +184,40 @@ describe('loadStateBackup', () => {
 
     expect(loadStateBackup('v1')).toEqual(s1);
     expect(loadStateBackup('v2')).toEqual(s2);
+  });
+
+  it('returns null and warning when backup checksum is invalid', () => {
+    const state = makeState({ revision: 11 });
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({
+        formatVersion: 2,
+        checksum: 'deadbeef',
+        savedAt: new Date().toISOString(),
+        state,
+      })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('corrupted');
+    expect(loaded.warning).toContain('integrity');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
+  });
+
+  it('returns null and warning when backup format is incompatible', () => {
+    const state = makeState({ revision: 6 });
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({
+        formatVersion: 99,
+        checksum: computeStateChecksum(state),
+        savedAt: new Date().toISOString(),
+        state,
+      })
+    );
+    const loaded = loadStateBackupWithDiagnostics(VERSION_ID);
+    expect(loaded.state).toBeNull();
+    expect(loaded.status).toBe('incompatible');
+    expect(loaded.warning).toContain('incompatible');
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(backupStorageKey(VERSION_ID));
   });
 });
 

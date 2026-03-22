@@ -1294,6 +1294,15 @@ export default function DesignCanvasSidebar() {
           <span>{studio.error}</span>
         </div>
       )}
+      {studio?.backupWarning && (
+        <div
+          className="flex items-start gap-2 px-3 py-2 bg-sky-50 dark:bg-sky-900/20 border-b border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200 text-xs"
+          role="status"
+        >
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span>{studio.backupWarning}</span>
+        </div>
+      )}
       <Tabs.Root defaultValue="classes" className="flex flex-col flex-1 min-h-0">
         <Tabs.List className="flex shrink-0 border-b border-slate-200 dark:border-slate-700 min-w-0">
           <Tabs.Trigger

@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -24,8 +25,11 @@ import {
   stateToCommitPayload,
 } from '@lib/studio/stateAdapter';
 import {
+  backupStorageKey,
+  computeStateChecksum,
   saveStateBackup,
   loadStateBackup,
+  loadStateBackupWithDiagnostics,
   clearStateBackup,
 } from '@lib/studio/stateBackup';
 import { getCanvasGroups, saveCanvasGroups } from '@lib/studio/canvasGroupStorage';
@@ -130,6 +134,10 @@ export interface StudioContextValue {
   pushConflict409: boolean;
   /** Clear the push 409 suggestion state (e.g. after user dismisses or runs pull/merge). */
   clearPushConflict409: () => void;
+  /** Non-fatal warning for backup integrity/version or cross-tab conflicts. */
+  backupWarning: string | null;
+  /** Clear backup warning after user reviews it. */
+  clearBackupWarning: () => void;
 }
 
 const StudioContext = createContext<StudioContextValue | null>(null);
@@ -155,12 +163,20 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [serverHasNewChanges, setServerHasNewChanges] = useState(false);
   const [hasUnpushedCommits, setHasUnpushedCommits] = useState(false);
   const [pushConflict409, setPushConflict409] = useState(false);
+  const [backupWarning, setBackupWarning] = useState<string | null>(null);
   const loadRequestIdRef = useRef(0);
+  const tabIdRef = useRef(
+    `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  );
 
   const state = stack.state;
 
   const clearPushConflict409 = useCallback(() => {
     setPushConflict409(false);
+  }, []);
+
+  const clearBackupWarning = useCallback(() => {
+    setBackupWarning(null);
   }, []);
 
   const clear = useCallback(() => {
@@ -169,6 +185,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setServerHasNewChanges(false);
     setHasUnpushedCommits(false);
     setPushConflict409(false);
+    setBackupWarning(null);
   }, []);
 
   const loadFromServer = useCallback(
@@ -185,6 +202,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const requestId = (loadRequestIdRef.current += 1);
       setLoading(true);
       setError(null);
+      setBackupWarning(null);
       setStack(initialStack);
       try {
         const revision = opts?.revision;
@@ -211,7 +229,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         // represents the user's editable working copy, and restoring a
         // read-only state on a failed server load would lock the user out.
         if (!newState.readOnly) {
-          saveStateBackup(newState);
+          saveStateBackup(newState, { sourceTabId: tabIdRef.current });
         }
         setServerHasNewChanges(false);
         setPushConflict409(false);
@@ -228,9 +246,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         // on page refresh or when the backend is temporarily unreachable.
         // If no backup exists, initialise with a valid empty state so the UI
         // remains interactive.
-        const backup = loadStateBackup(versionId);
+        const backup = loadStateBackupWithDiagnostics(versionId);
+        if (backup.warning) {
+          setBackupWarning(backup.warning);
+        }
         setStack({
-          state: backup ?? {
+          state: backup.state ?? {
             versionId,
             revision: null,
             classes: [],
@@ -257,7 +278,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       updater(draft);
       const undoStack = [...prev.undoStack, deepClone(prev.state)];
       if (undoStack.length > MAX_UNDO) undoStack.shift();
-      saveStateBackup(draft);
+      saveStateBackup(draft, { sourceTabId: tabIdRef.current });
       saveCanvasGroups(draft.versionId, draft.groups);
       return {
         state: draft,
@@ -273,7 +294,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const nextState = prev.undoStack[prev.undoStack.length - 1];
       const redoStack = prev.state ? [...prev.redoStack, prev.state] : prev.redoStack;
       if (nextState) {
-        saveStateBackup(nextState);
+        saveStateBackup(nextState, { sourceTabId: tabIdRef.current });
         saveCanvasGroups(nextState.versionId, nextState.groups);
       }
       return {
@@ -290,7 +311,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const nextState = prev.redoStack[prev.redoStack.length - 1];
       const undoStack = prev.state ? [...prev.undoStack, prev.state] : prev.undoStack;
       if (nextState) {
-        saveStateBackup(nextState);
+        saveStateBackup(nextState, { sourceTabId: tabIdRef.current });
         saveCanvasGroups(nextState.versionId, nextState.groups);
       }
       return {
@@ -333,7 +354,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               }
             : s
         );
-        saveStateBackup({ ...current, revision: res.revision });
+        saveStateBackup(
+          { ...current, revision: res.revision },
+          { sourceTabId: tabIdRef.current }
+        );
         setServerHasNewChanges(false);
         setHasUnpushedCommits(true);
         savePersistedCommitInfo(current.versionId, {
@@ -465,6 +489,46 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const canRedo = stack.redoStack.length > 0;
   const isDirty = stack.undoStack.length > 0;
 
+  // Refs to track latest checksum and isDirty without re-registering the storage listener.
+  const checksumRef = useRef<string | null>(null);
+  const isDirtyRef = useRef(isDirty);
+  checksumRef.current = state?.versionId ? computeStateChecksum(state) : null;
+  isDirtyRef.current = isDirty;
+
+  // Re-register only when versionId or readOnly changes (not on every local edit).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const versionId = state?.versionId;
+    if (!versionId || state?.readOnly) return;
+
+    const backupKey = backupStorageKey(versionId);
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea && event.storageArea !== window.localStorage) return;
+      if (event.key !== backupKey || event.newValue == null) return;
+      const incoming = loadStateBackup(versionId);
+      if (!incoming) {
+        setBackupWarning(
+          'Another Studio tab changed this version, but the shared backup was invalid or missing.'
+        );
+        return;
+      }
+      const incomingChecksum = computeStateChecksum(incoming);
+      if (incomingChecksum === checksumRef.current) return;
+      setBackupWarning(
+        isDirtyRef.current
+          ? 'Another Studio tab updated this version while you have local edits. Review before pushing.'
+          : 'Another Studio tab updated this version. Reload to sync the latest backup.'
+      );
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.versionId, state?.readOnly]);
+
   const value = useMemo<StudioContextValue>(
     () => ({
       state,
@@ -486,6 +550,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       clear,
       pushConflict409,
       clearPushConflict409,
+      backupWarning,
+      clearBackupWarning,
     }),
     [
       state,
@@ -507,6 +573,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       clear,
       pushConflict409,
       clearPushConflict409,
+      backupWarning,
+      clearBackupWarning,
     ]
   );
 
