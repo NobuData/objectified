@@ -165,7 +165,7 @@ export default function PushTargetDialog({
                     Pull
                   </button>
                 )}
-                {onMerge && selectedId && (
+                {onMerge && selectedIds.length === 1 && selectedId && (
                   <button
                     type="button"
                     onClick={() => {
@@ -180,7 +180,7 @@ export default function PushTargetDialog({
                     Merge
                   </button>
                 )}
-                {allowOverwriteOnServerAhead && onOverwrite && selectedId && (
+                {allowOverwriteOnServerAhead && onOverwrite && selectedIds.length === 1 && selectedId && (
                   <button
                     type="button"
                     onClick={async () => {
