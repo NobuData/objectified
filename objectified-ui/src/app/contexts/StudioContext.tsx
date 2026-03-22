@@ -18,6 +18,7 @@ import {
   mergeVersion,
   isConflictError,
   type RestClientOptions,
+  type VersionCommitResponse,
 } from '@lib/api/rest-client';
 import type { LocalVersionState } from '@lib/studio/types';
 import { getStableClassId } from '@lib/studio/types';
@@ -262,10 +263,10 @@ export interface StudioContextValue {
   checkServerForUpdates: (options: RestClientOptions) => Promise<void>;
   /** Push current state to another version. */
   push: (
-    targetVersionId: string,
+    targetVersionId: string | string[],
     options: RestClientOptions,
     commitOpts?: { message?: string | null; overwrite?: boolean }
-  ) => Promise<void>;
+  ) => Promise<VersionCommitResponse[]>;
   /** Merge server changes (e.g. after diverged/conflicts). */
   merge: (options: RestClientOptions, message?: string | null) => Promise<void>;
   /** Clear state and stacks (e.g. when switching version). */
@@ -777,18 +778,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const push = useCallback(
     async (
-      targetVersionId: string,
+      targetVersionId: string | string[],
       options: RestClientOptions,
       commitOpts?: { message?: string | null; overwrite?: boolean }
-    ) => {
+    ): Promise<VersionCommitResponse[]> => {
       const current = state;
       if (!current) {
         setError('No version state to push');
-        return;
+        return [];
       }
       if (current.readOnly) {
         setError('Cannot push: viewing a past revision (read-only). Load latest to edit.');
-        return;
+        return [];
       }
       setLoading(true);
       setError(null);
@@ -799,7 +800,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           label: 'push',
           overwrite: commitOpts?.overwrite,
         });
-        await pushVersion(current.versionId, targetVersionId, payload, options);
+        const pushResult = await pushVersion(current.versionId, targetVersionId, payload, options);
+        const responses = Array.isArray(pushResult) ? pushResult : [pushResult];
         clearStateBackup(current.versionId);
         setServerHasNewChanges(false);
         setHasUnpushedCommits(false);
@@ -812,6 +814,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             hasUnpushedCommits: false,
           });
         }
+        return responses;
       } catch (e) {
         setPushConflict409(isConflictError(e));
         setError(e instanceof Error ? e.message : 'Failed to push');

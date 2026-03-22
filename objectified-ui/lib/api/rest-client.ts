@@ -438,6 +438,8 @@ export interface VersionCommitResponse {
   committed_at: string;
 }
 
+const PUSH_RETRY_BACKOFF_MS = [400, 1200] as const;
+
 export interface VersionPullModifiedClass {
   class_name: string;
   added_property_names?: string[];
@@ -2039,17 +2041,76 @@ export async function commitVersion(
 
 export async function pushVersion(
   versionId: string,
-  targetVersionId: string,
+  targetVersionId: string | string[],
   payload: VersionCommitPayload,
   options: RestClientOptions = {}
-): Promise<VersionCommitResponse> {
-  const q = `?target_version_id=${encodeURIComponent(targetVersionId)}`;
-  return request<VersionCommitResponse>(
-    'POST',
-    `/versions/${versionId}/push${q}`,
-    payload,
-    options
+): Promise<VersionCommitResponse | VersionCommitResponse[]> {
+  const targets = Array.isArray(targetVersionId)
+    ? [...new Set(targetVersionId.map((target) => target.trim()).filter(Boolean))]
+    : [targetVersionId.trim()].filter(Boolean);
+  if (targets.length === 0) {
+    throw new Error('Push requires at least one target version.');
+  }
+
+  const pushSingleTarget = async (targetId: string): Promise<VersionCommitResponse> => {
+    const q = `?target_version_id=${encodeURIComponent(targetId)}`;
+    let attempt = 0;
+    while (true) {
+      try {
+        return await request<VersionCommitResponse>(
+          'POST',
+          `/versions/${versionId}/push${q}`,
+          payload,
+          options
+        );
+      } catch (error) {
+        const isAbortError =
+          error instanceof DOMException && error.name === 'AbortError';
+        const shouldRetry =
+          !isAbortError &&
+          isLikelyTransientPushNetworkError(error) &&
+          attempt < PUSH_RETRY_BACKOFF_MS.length;
+        if (!shouldRetry) {
+          throw error;
+        }
+        const delayMs = PUSH_RETRY_BACKOFF_MS[attempt];
+        attempt += 1;
+        await sleep(delayMs);
+      }
+    }
+  };
+
+  if (targets.length === 1) {
+    return pushSingleTarget(targets[0]);
+  }
+
+  const responses: VersionCommitResponse[] = [];
+  for (const targetId of targets) {
+    responses.push(await pushSingleTarget(targetId));
+  }
+  return responses;
+}
+
+function isLikelyTransientPushNetworkError(error: unknown): boolean {
+  if (isRestApiError(error)) return false;
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  if (message.includes('aborted')) return false;
+  return (
+    error.name === 'TypeError' ||
+    message.includes('network') ||
+    message.includes('fetch') ||
+    message.includes('load failed') ||
+    message.includes('failed to fetch') ||
+    message.includes('timeout') ||
+    message.includes('econnreset')
   );
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 export async function pullVersion(

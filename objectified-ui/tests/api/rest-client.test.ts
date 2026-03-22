@@ -40,6 +40,7 @@ import {
   listTagsForVersion,
   listProperties,
   commitVersion,
+  pushVersion,
   pullVersion,
   mergeVersion,
   isForbiddenError,
@@ -830,6 +831,47 @@ describe('commitVersion', () => {
     const [, init] = mockFetch.mock.calls[0];
     expect((init as RequestInit).method).toBe('POST');
     expect((init as RequestInit).body).toBe(JSON.stringify(payload));
+  });
+});
+
+describe('pushVersion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('retries transient network failures with backoff', async () => {
+    const response = { revision: 2, snapshot_id: 's2', version_id: 'v2', committed_at: '2024-01-01' };
+    mockFetch
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(makeFetchResponse(response));
+    const payload = { classes: [{ name: 'MyClass' }] };
+
+    const result = await pushVersion('v1', 'v2', payload, {});
+
+    expect(result).toEqual(response);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry 409 API conflicts', async () => {
+    mockFetch.mockResolvedValue(makeErrorFetchResponse('Server has new changes', 409));
+    const payload = { classes: [{ name: 'MyClass' }] };
+
+    await expect(pushVersion('v1', 'v2', payload, {})).rejects.toThrow('Server has new changes');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('pushes to multiple targets sequentially', async () => {
+    const response1 = { revision: 10, snapshot_id: 's10', version_id: 'v2', committed_at: '2024-01-01' };
+    const response2 = { revision: 11, snapshot_id: 's11', version_id: 'v3', committed_at: '2024-01-01' };
+    mockFetch
+      .mockResolvedValueOnce(makeFetchResponse(response1))
+      .mockResolvedValueOnce(makeFetchResponse(response2));
+    const payload = { classes: [{ name: 'MyClass' }] };
+
+    const result = await pushVersion('v1', ['v2', 'v3'], payload, {});
+
+    expect(result).toEqual([response1, response2]);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
 
