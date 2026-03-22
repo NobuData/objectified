@@ -730,7 +730,6 @@ def test_get_tenant_quota_status(jwt_client):
     """GET /v1/tenants/{id}/quota-status returns project usage vs caps."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
-            [{"id": _TENANT_ROW["id"]}],
             [{"max_projects": 5, "max_versions_per_project": 10}],
             [{"c": 3}],
         ]
@@ -748,7 +747,6 @@ def test_get_tenant_quota_status_with_project_id(jwt_client):
     pid = "00000000-0000-0000-0000-000000000099"
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
-            [{"id": _TENANT_ROW["id"]}],
             [{"max_projects": None, "max_versions_per_project": 3}],
             [{"c": 1}],
             [{"id": pid, "tenant_id": _TENANT_ROW["id"]}],

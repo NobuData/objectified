@@ -605,7 +605,6 @@ def get_tenant_quota_status(
     ),
 ) -> TenantQuotaStatusSchema:
     """Usage vs tenant max_projects and max_versions_per_project for dashboard UI."""
-    _assert_tenant_exists(tenant_id)
     cap_rows = db.execute_query(
         """
         SELECT max_projects, max_versions_per_project

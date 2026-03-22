@@ -6,7 +6,8 @@ export function quotaSeverity(
   max: number | null | undefined,
   count: number
 ): QuotaSeverity {
-  if (max == null || max <= 0) return 'ok';
+  if (max == null) return 'ok';
+  if (max <= 0) return 'block';
   if (count >= max) return 'block';
   if (count >= max - 1) return 'warn';
   return 'ok';
