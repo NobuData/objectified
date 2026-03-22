@@ -285,36 +285,41 @@ export default function ProjectsPage() {
   );
 
   useEffect(() => {
-    if (!selectedTenantId || status !== 'authenticated' || projects.length === 0) {
+    if (!selectedTenantId || status !== 'authenticated' || visibleIds.length === 0) {
       setVersionCounts({});
       setVersionCountsLoading(false);
       return;
     }
     let cancelled = false;
     setVersionCountsLoading(true);
-    Promise.all(
-      projects.map((p) =>
-        listVersions(selectedTenantId, p.id, opts).then(
-          (v) => [p.id, v.length] as const
-        )
+
+    Promise.allSettled(
+      visibleIds.map((projectId) =>
+        listVersions(selectedTenantId, projectId, opts).then((versions) => ({
+          id: projectId,
+          count: versions.length,
+        }))
       )
     )
-      .then((rows) => {
+      .then((results) => {
         if (cancelled) return;
         const next: Record<string, number> = {};
-        for (const [id, n] of rows) next[id] = n;
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            const { id, count } = result.value;
+            next[id] = count;
+          }
+        }
         setVersionCounts(next);
-      })
-      .catch(() => {
-        if (!cancelled) setVersionCounts({});
       })
       .finally(() => {
         if (!cancelled) setVersionCountsLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
-  }, [selectedTenantId, status, projects, opts]);
+  }, [selectedTenantId, status, visibleIds, opts]);
 
   useEffect(() => {
     if (!selectedTenantId || status !== 'authenticated' || projects.length === 0) {
@@ -376,7 +381,7 @@ export default function ProjectsPage() {
   const selectedWritableProjects = useMemo(
     () =>
       projects.filter(
-        (p) => selectedIds.has(p.id) && !p.deleted_at
+        (p) => selectedIds.has(p.id) && !p.deleted_at && p.enabled !== false
       ),
     [projects, selectedIds]
   );
@@ -407,21 +412,39 @@ export default function ProjectsPage() {
     if (!ok) return;
     setBulkWorking(true);
     try {
-      for (const p of targets) {
-        await deleteProject(selectedTenantId, p.id, opts);
+      const errors: { projectId: string; error: unknown }[] = [];
+      const concurrencyLimit = 5;
+
+      for (let i = 0; i < targets.length; i += concurrencyLimit) {
+        const batch = targets.slice(i, i + concurrencyLimit);
+        await Promise.all(
+          batch.map(async (p) => {
+            try {
+              await deleteProject(selectedTenantId, p.id, opts);
+            } catch (e) {
+              errors.push({ projectId: p.id, error: e });
+            }
+          }),
+        );
       }
+
       setSelectedIds(new Set());
       await fetchProjects();
-    } catch (e) {
-      await alertDialog({
-        message:
-          isForbiddenError(e)
-            ? 'You do not have permission to archive projects.'
-            : e instanceof Error
-              ? e.message
-              : 'Failed to archive projects',
-        variant: 'error',
-      });
+
+      if (errors.length > 0) {
+        const firstError = errors[0]?.error;
+        const message =
+          isForbiddenError(firstError)
+            ? 'You do not have permission to archive one or more projects.'
+            : firstError instanceof Error && firstError.message
+              ? `Failed to archive ${errors.length} project${errors.length === 1 ? '' : 's'}: ${firstError.message}`
+              : `Failed to archive ${errors.length} project${errors.length === 1 ? '' : 's'}.`;
+
+        await alertDialog({
+          message,
+          variant: 'error',
+        });
+      }
     } finally {
       setBulkWorking(false);
     }
@@ -935,7 +958,7 @@ export default function ProjectsPage() {
                           {getProjectTags(project.metadata).length === 0 ? (
                             <span className="text-slate-400 dark:text-slate-500">—</span>
                           ) : (
-                            getProjectTags(project.metadata).map((t) => (
+                            [...new Set(getProjectTags(project.metadata))].map((t) => (
                               <span
                                 key={t}
                                 className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs text-slate-700 dark:text-slate-200"
