@@ -16,6 +16,7 @@ import {
   Circle,
   Cloud,
   GitBranchPlus,
+  GitCompare,
   Eye,
   Wifi,
   WifiOff,
@@ -27,6 +28,7 @@ import {
   ChevronDown,
   Code2,
   Columns2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
@@ -609,6 +611,53 @@ export default function StudioToolbar() {
 
   return (
     <div className="flex flex-col gap-1.5 min-w-0 shrink-0">
+      {showGitToolbar &&
+        studio!.state?.revision != null &&
+        studio!.serverHeadRevision != null &&
+        studio!.state.revision < studio!.serverHeadRevision && (
+          <div
+            className="w-full flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 px-3 py-2 text-amber-950 dark:text-amber-50"
+            role="alert"
+            aria-live="polite"
+          >
+            <AlertTriangle
+              className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+              aria-hidden
+            />
+            <span className="text-sm font-medium">
+              You are viewing a past revision (r{studio!.state.revision}; server head is r
+              {studio!.serverHeadRevision}).
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={bannerBtnClass}
+                onClick={() => {
+                  void studio!.loadFromServer(versionId, options, {
+                    tenantId: tenantId || undefined,
+                    projectId: projectId || undefined,
+                  });
+                }}
+                disabled={studio!.loading || !versionId}
+              >
+                Load latest to edit
+              </button>
+              <button
+                type="button"
+                className={bannerBtnClass}
+                onClick={() => {
+                  if (studio!.state?.revision != null) {
+                    setHistoryCompareRevision(studio!.state.revision);
+                  }
+                }}
+                disabled={!versionId}
+              >
+                <GitCompare className="h-3.5 w-3.5" aria-hidden />
+                Compare with current
+              </button>
+            </div>
+          </div>
+        )}
       {showGitToolbar && studio!.serverHasNewChanges && (
         <div
           className="w-full flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50/90 dark:bg-sky-950/40 px-3 py-2 text-sky-950 dark:text-sky-50"

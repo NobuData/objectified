@@ -461,6 +461,14 @@ export interface VersionPullResponse {
   classes?: Record<string, unknown>[];
   canvas_metadata?: Record<string, unknown> | null;
   pulled_at: string;
+  /** Highest snapshot revision on the server (head). */
+  latest_revision?: number | null;
+  /** When pulling a specific revision: that snapshot's label. */
+  snapshot_label?: string | null;
+  /** When pulling a specific revision: that snapshot's description. */
+  snapshot_description?: string | null;
+  /** When pulling a specific revision: ISO time that snapshot was created. */
+  snapshot_committed_at?: string | null;
   diff_since_revision?: number | null;
   diff?: VersionPullDiff | null;
 }
@@ -2237,7 +2245,7 @@ export async function pullVersion(
 
 export async function rollbackVersion(
   versionId: string,
-  body: { revision: number },
+  body: { revision: number; message?: string | null },
   options: RestClientOptions = {}
 ): Promise<VersionCommitResponse> {
   return request<VersionCommitResponse>(

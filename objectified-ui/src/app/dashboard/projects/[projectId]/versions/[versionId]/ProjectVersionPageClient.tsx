@@ -36,6 +36,7 @@ export default function DashboardProjectVersionDeepLinkPage() {
   const revisionFromUrl = searchParams.get('revision');
   const readOnlyFromUrl = searchParams.get('readOnly');
   const viewFromUrl = searchParams.get('view');
+  const editFromUrl = searchParams.get('edit');
   const { data: session, status } = useSession();
   const { setSelectedTenantId, tenants, tenantsLoading } = useTenantSelection();
   const [state, setState] = useState<ResolveState>({ kind: 'loading' });
@@ -91,6 +92,9 @@ export default function DashboardProjectVersionDeepLinkPage() {
           if (readOnlyFromUrl === '1' || viewFromUrl === '1') {
             qs.set('readOnly', '1');
           }
+          if (editFromUrl === '1') {
+            qs.set('edit', '1');
+          }
         }
         router.replace(`/data-designer?${qs.toString()}`);
       } catch (e) {
@@ -125,6 +129,7 @@ export default function DashboardProjectVersionDeepLinkPage() {
     revisionFromUrl,
     readOnlyFromUrl,
     viewFromUrl,
+    editFromUrl,
   ]);
 
   if (status === 'loading') {

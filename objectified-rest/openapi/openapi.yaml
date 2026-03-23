@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.37
+  version: 1.0.38
 paths:
   /v1/auth/login:
     post:
@@ -10843,6 +10843,32 @@ components:
           type: string
           format: date-time
           title: Pulled At
+        latest_revision:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Latest Revision
+          description: Highest snapshot revision on the server for this version (current
+            head).
+        snapshot_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Snapshot Label
+          description: When pulling a specific revision, label of that snapshot.
+        snapshot_description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Snapshot Description
+          description: When pulling a specific revision, description of that snapshot.
+        snapshot_committed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Snapshot Committed At
+          description: When pulling a specific revision, when that snapshot was created.
         diff_since_revision:
           anyOf:
           - type: integer
@@ -10867,6 +10893,12 @@ components:
           type: integer
           title: Revision
           description: Snapshot revision to restore version state to.
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message
+          description: Optional note stored on the rollback snapshot description.
       type: object
       required:
       - revision
