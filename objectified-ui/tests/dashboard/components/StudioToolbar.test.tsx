@@ -16,7 +16,9 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
 
-const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve([]));
+const mockListVersionSnapshotsMetadata = jest.fn(() =>
+  Promise.resolve({ items: [], total: 0, latest_revision: null })
+);
 const mockGetTenantQuotaStatus = jest.fn(() =>
   Promise.resolve({
     max_projects: null,
@@ -44,6 +46,7 @@ jest.mock('@lib/api/rest-client', () => ({
   pullVersion: (...args: unknown[]) => mockPullVersion(...args),
   listVersions: (...args: unknown[]) => mockListVersions(...args),
   listVersionSnapshotsMetadata: (...args: unknown[]) => mockListVersionSnapshotsMetadata(...args),
+  listVersionSnapshots: jest.fn(() => Promise.resolve([])),
   getTenantQuotaStatus: (...args: unknown[]) => mockGetTenantQuotaStatus(...args),
 }));
 
@@ -209,17 +212,22 @@ describe('StudioToolbar', () => {
 
   it('opens version history dialog when History is clicked', async () => {
     useStudioOptional.mockReturnValue(defaultStudioWithState);
-    mockListVersionSnapshotsMetadata.mockResolvedValueOnce([
-      {
-        id: 'snap-1',
-        version_id: 'v1',
-        project_id: 'p1',
-        revision: 1,
-        label: 'Initial',
-        description: null,
-        created_at: '2026-03-01T12:00:00Z',
-      },
-    ]);
+    mockListVersionSnapshotsMetadata.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'snap-1',
+          version_id: 'v1',
+          project_id: 'p1',
+          committed_by: null,
+          revision: 1,
+          label: 'Initial',
+          description: null,
+          created_at: '2026-03-01T12:00:00Z',
+        },
+      ],
+      total: 1,
+      latest_revision: 1,
+    });
     render(<StudioToolbar />);
     await userEvent.click(
       screen.getByRole('button', { name: /version history/i })
@@ -227,22 +235,31 @@ describe('StudioToolbar', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /version history/i })).toBeInTheDocument();
     });
-    expect(mockListVersionSnapshotsMetadata).toHaveBeenCalledWith('v1', {});
+    expect(mockListVersionSnapshotsMetadata).toHaveBeenCalledWith(
+      'v1',
+      {},
+      expect.objectContaining({ limit: 25, offset: 0 })
+    );
   });
 
   it('version history Load to edit calls loadFromServer with revision and readOnly false', async () => {
     useStudioOptional.mockReturnValue(defaultStudioWithState);
-    mockListVersionSnapshotsMetadata.mockResolvedValueOnce([
-      {
-        id: 'snap-1',
-        version_id: 'v1',
-        project_id: 'p1',
-        revision: 1,
-        label: 'Initial',
-        description: null,
-        created_at: '2026-03-01T12:00:00Z',
-      },
-    ]);
+    mockListVersionSnapshotsMetadata.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'snap-1',
+          version_id: 'v1',
+          project_id: 'p1',
+          committed_by: null,
+          revision: 1,
+          label: 'Initial',
+          description: null,
+          created_at: '2026-03-01T12:00:00Z',
+        },
+      ],
+      total: 1,
+      latest_revision: 1,
+    });
     render(<StudioToolbar />);
     await userEvent.click(
       screen.getByRole('button', { name: /version history/i })

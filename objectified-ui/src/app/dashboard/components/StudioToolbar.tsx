@@ -43,6 +43,7 @@ import CanvasSettingsDialog from '@/app/dashboard/components/CanvasSettingsDialo
 import MergeDialog from '@/app/dashboard/components/MergeDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
+import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
 import ExportDialog from '@/app/dashboard/components/ExportDialog';
 import GenerateCodeDialog from '@/app/dashboard/components/GenerateCodeDialog';
 import PullDirtyConfirmDialog, {
@@ -159,6 +160,7 @@ export default function StudioToolbar() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeSourceVersionId, setMergeSourceVersionId] = useState<string | null>(null);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historyCompareRevision, setHistoryCompareRevision] = useState<number | null>(null);
   const [canvasSettingsDialogOpen, setCanvasSettingsDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [activeOperation, setActiveOperation] = useState<ToolbarOperation | null>(null);
@@ -1115,6 +1117,10 @@ export default function StudioToolbar() {
         tenantId={tenantId || undefined}
         projectId={projectId || undefined}
         onLoadRevision={handleLoadRevision}
+        studioLoadedRevision={
+          studio?.state?.revision != null ? studio.state.revision : null
+        }
+        onCompareWithCurrent={(rev) => setHistoryCompareRevision(rev)}
         onRollbackSuccess={() => {
           void runPull();
         }}
@@ -1126,6 +1132,14 @@ export default function StudioToolbar() {
           }
         }}
         onDeleteSuccess={() => router.push('/dashboard/versions')}
+      />
+      <VersionDiffDialog
+        open={historyCompareRevision != null && Boolean(versionId)}
+        onOpenChange={(o) => !o && setHistoryCompareRevision(null)}
+        versionId={versionId}
+        versionName={workspace?.version?.name ?? ''}
+        options={options}
+        initialSinceRevision={historyCompareRevision}
       />
         </>
       )}

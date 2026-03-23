@@ -488,6 +488,22 @@ export interface VersionSnapshotMetadataSchema {
   created_at: string;
 }
 
+export interface VersionSnapshotMetadataPageSchema {
+  items: VersionSnapshotMetadataSchema[];
+  total: number;
+  latest_revision?: number | null;
+}
+
+/** Query for GET /versions/{id}/snapshots/metadata (snake_case maps to API). */
+export interface ListVersionSnapshotsMetadataQuery {
+  limit?: number;
+  offset?: number;
+  message_contains?: string;
+  committed_by?: string;
+  created_after?: string;
+  created_before?: string;
+}
+
 export interface VersionSnapshotSchemaChangesAuditSchema {
   id: string;
   version_id: string;
@@ -1533,14 +1549,31 @@ export async function listVersionSnapshots(
 
 export async function listVersionSnapshotsMetadata(
   versionId: string,
-  options: RestClientOptions = {}
-): Promise<VersionSnapshotMetadataSchema[]> {
-  return request<VersionSnapshotMetadataSchema[]>(
-    'GET',
-    `/versions/${versionId}/snapshots/metadata`,
-    undefined,
-    options
-  );
+  options: RestClientOptions = {},
+  query?: ListVersionSnapshotsMetadataQuery
+): Promise<VersionSnapshotMetadataPageSchema> {
+  const params = new URLSearchParams();
+  params.set('paged', 'true');
+  if (query?.limit != null) params.set('limit', String(query.limit));
+  if (query?.offset != null) params.set('offset', String(query.offset));
+  if (query?.message_contains?.trim()) {
+    params.set('message_contains', query.message_contains.trim());
+  }
+  if (query?.committed_by?.trim()) {
+    params.set('committed_by', query.committed_by.trim());
+  }
+  if (query?.created_after?.trim()) {
+    params.set('created_after', query.created_after.trim());
+  }
+  if (query?.created_before?.trim()) {
+    params.set('created_before', query.created_before.trim());
+  }
+  const qs = params.toString();
+  const path =
+    qs.length > 0
+      ? `/versions/${versionId}/snapshots/metadata?${qs}`
+      : `/versions/${versionId}/snapshots/metadata`;
+  return request<VersionSnapshotMetadataPageSchema>('GET', path, undefined, options);
 }
 
 export async function listVersionSnapshotsSchemaChanges(

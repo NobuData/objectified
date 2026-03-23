@@ -243,7 +243,11 @@ describe('VersionsPage', () => {
   it('opens version history dialog and calls listVersionSnapshotsMetadata when Version history is selected', async () => {
     const { listVersions, listVersionSnapshotsMetadata } = require('@lib/api/rest-client');
     listVersions.mockResolvedValue([sampleVersion]);
-    listVersionSnapshotsMetadata.mockResolvedValue([]);
+    listVersionSnapshotsMetadata.mockResolvedValue({
+      items: [],
+      total: 0,
+      latest_revision: null,
+    });
     render(<VersionsPage />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /version actions/i })).toBeInTheDocument();
@@ -254,7 +258,11 @@ describe('VersionsPage', () => {
     });
     await userEvent.click(screen.getByText(/version history/i));
     await waitFor(() => {
-      expect(listVersionSnapshotsMetadata).toHaveBeenCalledWith('v1', expect.anything());
+      expect(listVersionSnapshotsMetadata).toHaveBeenCalledWith(
+        'v1',
+        expect.anything(),
+        expect.objectContaining({ limit: 25, offset: 0 })
+      );
     });
   });
 

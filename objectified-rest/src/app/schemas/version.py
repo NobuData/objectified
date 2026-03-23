@@ -192,6 +192,19 @@ class VersionSnapshotMetadataSchema(BaseModel):
     created_at: datetime
 
 
+class VersionSnapshotMetadataPageSchema(BaseModel):
+    """Paginated snapshot metadata list with optional filters."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    items: list[VersionSnapshotMetadataSchema]
+    total: int
+    latest_revision: Optional[int] = Field(
+        default=None,
+        description="Highest revision number on the server for this version (ignores list filters).",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Version Commit / Push / Pull / Merge schemas
 # ---------------------------------------------------------------------------

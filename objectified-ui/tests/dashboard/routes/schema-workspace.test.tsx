@@ -79,7 +79,11 @@ describe('SchemaWorkspacePage', () => {
       { id: 'p1', name: 'Project One', project_id: 'p1', description: '' },
     ]);
     listVersions.mockResolvedValue([sampleVersion]);
-    listVersionSnapshotsMetadata.mockResolvedValue([]);
+    listVersionSnapshotsMetadata.mockResolvedValue({
+      items: [],
+      total: 0,
+      latest_revision: null,
+    });
   });
 
   it('renders Schema workspace heading', async () => {
