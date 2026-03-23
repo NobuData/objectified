@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from datetime import datetime
-from typing import Annotated, Any, List, Optional
+from typing import Annotated, Any, List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -1131,18 +1131,25 @@ def list_version_snapshots(
 
 @router.get(
     "/versions/{version_id}/snapshots/metadata",
-    response_model=VersionSnapshotMetadataPageSchema,
+    response_model=Union[List[VersionSnapshotMetadataSchema], VersionSnapshotMetadataPageSchema],
     summary="List version snapshot metadata",
     description=(
         "Return metadata (revision, date, author, label, description, snapshot id) for committed "
         "snapshots, newest revision first. The snapshot payload is excluded for efficiency. "
         "Omit limit to return all matching rows in one response; use limit and offset for pagination. "
         "Optional filters: message substring (label or description), committed_by (account id), "
-        "and created_at range."
+        "and created_at range. "
+        "Pass paged=true to receive a paginated envelope {items, total, latest_revision}; "
+        "the default (paged=false) returns a bare array for backward compatibility."
     ),
 )
 def list_version_snapshots_metadata(
     version_id: str,
+    paged: bool = Query(
+        False,
+        description="When true, return a paginated {items, total, latest_revision} object. "
+                    "When false (default), return a bare array (legacy behavior).",
+    ),
     limit: Optional[int] = Query(
         None,
         ge=1,
@@ -1168,7 +1175,7 @@ def list_version_snapshots_metadata(
     ),
     _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
-) -> VersionSnapshotMetadataPageSchema:
+) -> Union[List[VersionSnapshotMetadataSchema], VersionSnapshotMetadataPageSchema]:
     """List metadata for snapshots for a version, without the snapshot payload."""
     _assert_version_exists(version_id, include_deleted=True)
 
@@ -1181,17 +1188,18 @@ def list_version_snapshots_metadata(
         base_where = f"{base_where} AND {filter_sql}"
         base_params.extend(filter_params)
 
-    max_rows = db.execute_query(
-        """
-        SELECT MAX(revision) AS max_revision
-        FROM objectified.version_snapshot
-        WHERE version_id = %s
-        """,
-        (version_id,),
-    )
     latest_revision: Optional[int] = None
-    if max_rows and max_rows[0].get("max_revision") is not None:
-        latest_revision = int(max_rows[0]["max_revision"])
+    if paged:
+        max_rows = db.execute_query(
+            """
+            SELECT MAX(revision) AS max_revision
+            FROM objectified.version_snapshot
+            WHERE version_id = %s
+            """,
+            (version_id,),
+        )
+        if max_rows and max_rows[0].get("max_revision") is not None:
+            latest_revision = int(max_rows[0]["max_revision"])
 
     if limit is None:
         rows = db.execute_query(
@@ -1204,6 +1212,8 @@ def list_version_snapshots_metadata(
             tuple(base_params),
         )
         items = [VersionSnapshotMetadataSchema(**dict(r)) for r in rows]
+        if not paged:
+            return items
         return VersionSnapshotMetadataPageSchema(
             items=items,
             total=len(items),
@@ -1231,6 +1241,8 @@ def list_version_snapshots_metadata(
         tuple(base_params + [limit, offset]),
     )
     items = [VersionSnapshotMetadataSchema(**dict(r)) for r in rows]
+    if not paged:
+        return items
     return VersionSnapshotMetadataPageSchema(
         items=items,
         total=total,

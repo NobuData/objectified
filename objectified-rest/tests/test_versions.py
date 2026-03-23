@@ -437,7 +437,7 @@ def test_list_version_snapshots_metadata_returns_list(client):
             [{"max_revision": 1}],
             [_SNAPSHOT_METADATA_ROW],
         ]
-        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata")
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata?paged=true")
     assert r.status_code == 200
     payload = r.json()
     assert payload["total"] == 1
@@ -457,7 +457,7 @@ def test_list_version_snapshots_metadata_empty(client):
             [{"max_revision": None}],
             [],
         ]
-        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata")
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata?paged=true")
     assert r.status_code == 200
     payload = r.json()
     assert payload["items"] == []
@@ -475,7 +475,7 @@ def test_list_version_snapshots_metadata_pagination(client):
             [_SNAPSHOT_METADATA_ROW],
         ]
         r = client.get(
-            f"/v1/versions/{_VERSION_ID}/snapshots/metadata?limit=1&offset=0&message_contains=First"
+            f"/v1/versions/{_VERSION_ID}/snapshots/metadata?paged=true&limit=1&offset=0&message_contains=First"
         )
     assert r.status_code == 200
     payload = r.json()
@@ -483,6 +483,23 @@ def test_list_version_snapshots_metadata_pagination(client):
     assert len(payload["items"]) == 1
     assert payload["items"][0]["revision"] == 1
     assert payload["latest_revision"] == 3
+
+
+def test_list_version_snapshots_metadata_backward_compat_bare_array(client):
+    """GET /v1/versions/{id}/snapshots/metadata without paged=true returns a bare array."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [_SNAPSHOT_METADATA_ROW],
+        ]
+        r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata")
+    assert r.status_code == 200
+    payload = r.json()
+    assert isinstance(payload, list)
+    assert len(payload) == 1
+    assert payload[0]["revision"] == 1
+    assert payload[0]["version_id"] == _VERSION_ID
+    assert "snapshot" not in payload[0]
 
 
 def test_list_version_snapshots_schema_changes_returns_diff_summary(client):

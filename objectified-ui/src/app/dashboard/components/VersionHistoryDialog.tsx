@@ -471,7 +471,7 @@ export default function VersionHistoryDialog({
   }, [total, pageOffset, snapshots.length]);
 
   const colCount =
-    6 + (showActions ? 1 : 0);
+    7 + (showActions ? 1 : 0);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
