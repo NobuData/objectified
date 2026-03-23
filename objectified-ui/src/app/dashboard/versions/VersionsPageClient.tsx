@@ -180,6 +180,7 @@ export default function VersionsPage() {
   const [editVersion, setEditVersion] = useState<VersionSchema | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [diffDialogVersion, setDiffDialogVersion] = useState<VersionSchema | null>(null);
+  const [diffSinceRevision, setDiffSinceRevision] = useState<number | null>(null);
   const [graphDialogVersion, setGraphDialogVersion] = useState<VersionSchema | null>(null);
   const [historyDialogVersion, setHistoryDialogVersion] = useState<VersionSchema | null>(null);
   const [importDialogVersion, setImportDialogVersion] = useState<VersionSchema | null>(null);
@@ -1564,7 +1565,10 @@ export default function VersionsPage() {
                               </DropdownMenu.Item>
                               <DropdownMenu.Item
                                 className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
-                                onSelect={() => setDiffDialogVersion(v)}
+                                onSelect={() => {
+                                  setDiffSinceRevision(null);
+                                  setDiffDialogVersion(v);
+                                }}
                               >
                                 <GitCompare className="h-4 w-4" />
                                 Revision diff
@@ -2324,10 +2328,16 @@ export default function VersionsPage() {
 
       <VersionDiffDialog
         open={!!diffDialogVersion}
-        onOpenChange={(open) => !open && setDiffDialogVersion(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDiffDialogVersion(null);
+            setDiffSinceRevision(null);
+          }
+        }}
         versionId={diffDialogVersion?.id ?? ''}
         versionName={diffDialogVersion?.name ?? ''}
         options={opts}
+        initialSinceRevision={diffSinceRevision}
       />
       <RelationshipGraphDialog
         open={!!graphDialogVersion}
@@ -2371,6 +2381,11 @@ export default function VersionsPage() {
           setHistoryDialogVersion(null);
           await fetchVersions();
           await alertDialog({ message: 'Version deleted.', variant: 'success' });
+        }}
+        onCompareWithCurrent={(revision) => {
+          if (!historyDialogVersion) return;
+          setDiffDialogVersion(historyDialogVersion);
+          setDiffSinceRevision(revision);
         }}
       />
       {importDialogVersion && (

@@ -434,27 +434,55 @@ def test_list_version_snapshots_metadata_returns_list(client):
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
+            [{"max_revision": 1}],
             [_SNAPSHOT_METADATA_ROW],
         ]
         r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata")
     assert r.status_code == 200
-    assert len(r.json()) == 1
-    body = r.json()[0]
+    payload = r.json()
+    assert payload["total"] == 1
+    assert len(payload["items"]) == 1
+    body = payload["items"][0]
     assert body["revision"] == 1
     assert body["version_id"] == _VERSION_ID
     assert "snapshot" not in body
+    assert payload.get("latest_revision") == 1
 
 
 def test_list_version_snapshots_metadata_empty(client):
-    """GET /v1/versions/{id}/snapshots/metadata returns empty list when no snapshots."""
+    """GET /v1/versions/{id}/snapshots/metadata returns empty page when no snapshots."""
     with mock_db_all() as mock_db:
         mock_db.execute_query.side_effect = [
             [_version_lookup_row()],
+            [{"max_revision": None}],
             [],
         ]
         r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata")
     assert r.status_code == 200
-    assert r.json() == []
+    payload = r.json()
+    assert payload["items"] == []
+    assert payload["total"] == 0
+    assert payload.get("latest_revision") is None
+
+
+def test_list_version_snapshots_metadata_pagination(client):
+    """GET snapshots/metadata supports limit, offset, and returns total count."""
+    with mock_db_all() as mock_db:
+        mock_db.execute_query.side_effect = [
+            [_version_lookup_row()],
+            [{"max_revision": 3}],
+            [{"c": 3}],
+            [_SNAPSHOT_METADATA_ROW],
+        ]
+        r = client.get(
+            f"/v1/versions/{_VERSION_ID}/snapshots/metadata?limit=1&offset=0&message_contains=First"
+        )
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["total"] == 3
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["revision"] == 1
+    assert payload["latest_revision"] == 3
 
 
 def test_list_version_snapshots_schema_changes_returns_diff_summary(client):

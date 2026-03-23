@@ -19,6 +19,8 @@ export interface VersionDiffDialogProps {
   versionId: string;
   versionName: string;
   options: RestClientOptions;
+  /** When the dialog opens, select this revision and load diff vs current head (since_revision). */
+  initialSinceRevision?: number | null;
 }
 
 function formatSnapshotLabel(snap: VersionSnapshotSchema): string {
@@ -42,6 +44,7 @@ export default function VersionDiffDialog({
   versionId,
   versionName,
   options,
+  initialSinceRevision,
 }: VersionDiffDialogProps) {
   const [snapshots, setSnapshots] = useState<VersionSnapshotSchema[]>([]);
   const [selectedRevision, setSelectedRevision] = useState<number | ''>('');
@@ -78,19 +81,34 @@ export default function VersionDiffDialog({
     }
   }, [open, versionId, fetchSnapshots]);
 
-  const loadDiff = async () => {
-    if (selectedRevision === '') return;
-    setLoadingDiff(true);
-    setError(null);
-    try {
-      const res = await pullVersion(versionId, options, undefined, selectedRevision);
-      setDiff(res.diff ?? null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load diff');
-      setDiff(null);
-    } finally {
-      setLoadingDiff(false);
+  const loadDiff = useCallback(
+    async (revision: number) => {
+      setLoadingDiff(true);
+      setError(null);
+      try {
+        const res = await pullVersion(versionId, options, undefined, revision);
+        setDiff(res.diff ?? null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load diff');
+        setDiff(null);
+      } finally {
+        setLoadingDiff(false);
+      }
+    },
+    [versionId, options]
+  );
+
+  useEffect(() => {
+    if (!open || initialSinceRevision == null || typeof initialSinceRevision !== 'number') {
+      return;
     }
+    setSelectedRevision(initialSinceRevision);
+    void loadDiff(initialSinceRevision);
+  }, [open, initialSinceRevision, loadDiff]);
+
+  const loadDiffFromSelection = () => {
+    if (selectedRevision === '') return;
+    void loadDiff(selectedRevision);
   };
 
   const hasDiff =
@@ -102,9 +120,9 @@ export default function VersionDiffDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10005]" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-2xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-xl shadow-xl flex flex-col border border-slate-200 dark:border-slate-700"
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10006] w-full max-w-2xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-xl shadow-xl flex flex-col border border-slate-200 dark:border-slate-700"
           aria-describedby={undefined}
           onEscapeKeyDown={() => onOpenChange(false)}
           onPointerDownOutside={() => onOpenChange(false)}
@@ -162,7 +180,7 @@ export default function VersionDiffDialog({
                 </select>
                 <button
                   type="button"
-                  onClick={loadDiff}
+                  onClick={loadDiffFromSelection}
                   disabled={loadingDiff || selectedRevision === ''}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
                 >

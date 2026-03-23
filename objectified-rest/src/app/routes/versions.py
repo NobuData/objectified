@@ -3,9 +3,10 @@
 import json
 import logging
 import re
+from datetime import datetime
 from typing import Annotated, Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import (
     require_authenticated,
@@ -32,6 +33,7 @@ from app.schemas.version import (
     VersionPullModifiedClass,
     VersionSchema,
     VersionSnapshotCreate,
+    VersionSnapshotMetadataPageSchema,
     VersionSnapshotMetadataSchema,
     VersionSnapshotSchema,
     VersionSnapshotSchemaChangesAuditSchema,
@@ -832,6 +834,37 @@ _SNAPSHOT_METADATA_COLUMNS = (
     "id, version_id, project_id, committed_by, revision, label, description, created_at"
 )
 
+
+def _snapshot_metadata_filter_sql(
+    message_contains: Optional[str],
+    committed_by: Optional[str],
+    created_after: Optional[datetime],
+    created_before: Optional[datetime],
+) -> tuple[str, list[Any]]:
+    """Extra AND clauses (without leading AND) and bind values for snapshot metadata queries."""
+    clauses: list[str] = []
+    params: list[Any] = []
+    if message_contains and message_contains.strip():
+        term = message_contains.strip().lower()
+        clauses.append(
+            "(position(%s in lower(coalesce(label, ''))) > 0 "
+            "OR position(%s in lower(coalesce(description, ''))) > 0)"
+        )
+        params.extend([term, term])
+    if committed_by and committed_by.strip():
+        clauses.append("lower(committed_by::text) = lower(%s)")
+        params.append(committed_by.strip())
+    if created_after is not None:
+        clauses.append("created_at >= %s")
+        params.append(created_after)
+    if created_before is not None:
+        clauses.append("created_at <= %s")
+        params.append(created_before)
+    if not clauses:
+        return "", []
+    return " AND ".join(clauses), params
+
+
 def _capture_version_state(version_id: str) -> dict[str, Any]:
     """Capture the current state of all active classes and their properties for a version.
 
@@ -1098,31 +1131,111 @@ def list_version_snapshots(
 
 @router.get(
     "/versions/{version_id}/snapshots/metadata",
-    response_model=List[VersionSnapshotMetadataSchema],
+    response_model=VersionSnapshotMetadataPageSchema,
     summary="List version snapshot metadata",
     description=(
-        "Return metadata (revision, date, label, description) for all committed snapshots "
-        "for a version, newest revision first. The snapshot payload is excluded for efficiency."
+        "Return metadata (revision, date, author, label, description, snapshot id) for committed "
+        "snapshots, newest revision first. The snapshot payload is excluded for efficiency. "
+        "Omit limit to return all matching rows in one response; use limit and offset for pagination. "
+        "Optional filters: message substring (label or description), committed_by (account id), "
+        "and created_at range."
     ),
 )
 def list_version_snapshots_metadata(
     version_id: str,
+    limit: Optional[int] = Query(
+        None,
+        ge=1,
+        le=500,
+        description="Max rows to return. Omit to return all matching rows.",
+    ),
+    offset: int = Query(0, ge=0, description="Skip this many rows when limit is set."),
+    message_contains: Optional[str] = Query(
+        None,
+        description="Case-insensitive substring match on label or description.",
+    ),
+    committed_by: Optional[str] = Query(
+        None,
+        description="Filter by committing account id (exact match, case-insensitive).",
+    ),
+    created_after: Optional[datetime] = Query(
+        None,
+        description="Include only snapshots with created_at >= this instant (UTC).",
+    ),
+    created_before: Optional[datetime] = Query(
+        None,
+        description="Include only snapshots with created_at <= this instant (UTC).",
+    ),
     _perm: Annotated[dict[str, Any], Depends(require_version_permission("audit:read"))] = None,
     caller: Annotated[Optional[dict[str, Any]], Depends(require_authenticated)] = None,
-) -> List[VersionSnapshotMetadataSchema]:
-    """List metadata for all snapshots for a version, without the snapshot payload."""
+) -> VersionSnapshotMetadataPageSchema:
+    """List metadata for snapshots for a version, without the snapshot payload."""
     _assert_version_exists(version_id, include_deleted=True)
+
+    filter_sql, filter_params = _snapshot_metadata_filter_sql(
+        message_contains, committed_by, created_after, created_before
+    )
+    base_where = "version_id = %s"
+    base_params: list[Any] = [version_id]
+    if filter_sql:
+        base_where = f"{base_where} AND {filter_sql}"
+        base_params.extend(filter_params)
+
+    max_rows = db.execute_query(
+        """
+        SELECT MAX(revision) AS max_revision
+        FROM objectified.version_snapshot
+        WHERE version_id = %s
+        """,
+        (version_id,),
+    )
+    latest_revision: Optional[int] = None
+    if max_rows and max_rows[0].get("max_revision") is not None:
+        latest_revision = int(max_rows[0]["max_revision"])
+
+    if limit is None:
+        rows = db.execute_query(
+            f"""
+            SELECT {_SNAPSHOT_METADATA_COLUMNS}
+            FROM objectified.version_snapshot
+            WHERE {base_where}
+            ORDER BY revision DESC
+            """,
+            tuple(base_params),
+        )
+        items = [VersionSnapshotMetadataSchema(**dict(r)) for r in rows]
+        return VersionSnapshotMetadataPageSchema(
+            items=items,
+            total=len(items),
+            latest_revision=latest_revision,
+        )
+
+    count_rows = db.execute_query(
+        f"""
+        SELECT COUNT(*) AS c
+        FROM objectified.version_snapshot
+        WHERE {base_where}
+        """,
+        tuple(base_params),
+    )
+    total = int(count_rows[0]["c"]) if count_rows else 0
 
     rows = db.execute_query(
         f"""
         SELECT {_SNAPSHOT_METADATA_COLUMNS}
         FROM objectified.version_snapshot
-        WHERE version_id = %s
+        WHERE {base_where}
         ORDER BY revision DESC
+        LIMIT %s OFFSET %s
         """,
-        (version_id,),
+        tuple(base_params + [limit, offset]),
     )
-    return [VersionSnapshotMetadataSchema(**dict(r)) for r in rows]
+    items = [VersionSnapshotMetadataSchema(**dict(r)) for r in rows]
+    return VersionSnapshotMetadataPageSchema(
+        items=items,
+        total=total,
+        latest_revision=latest_revision,
+    )
 
 
 @router.get(

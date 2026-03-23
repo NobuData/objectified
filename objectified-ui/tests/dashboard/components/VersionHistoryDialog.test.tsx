@@ -7,7 +7,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 
-const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve([]));
+const emptyHistoryPage = { items: [] as unknown[], total: 0, latest_revision: null };
+const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve(emptyHistoryPage));
 const mockListVersionSnapshotsSchemaChanges = jest.fn(() => Promise.resolve([]));
 const mockDeleteVersion = jest.fn(() => Promise.resolve());
 
@@ -49,7 +50,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockConfirm.mockResolvedValue(true);
   mockDeleteVersion.mockResolvedValue(undefined);
-  mockListVersionSnapshotsMetadata.mockResolvedValue([]);
+  mockListVersionSnapshotsMetadata.mockResolvedValue(emptyHistoryPage);
   mockListVersionSnapshotsSchemaChanges.mockResolvedValue([]);
 });
 
@@ -184,18 +185,22 @@ describe('VersionHistoryDialog – delete version', () => {
 
 describe('VersionHistoryDialog – schema audit', () => {
   it('loads and renders schema audit when toggled on', async () => {
-    mockListVersionSnapshotsMetadata.mockResolvedValue([
-      {
-        id: 'snap-1',
-        version_id: 'v1',
-        project_id: 'p1',
-        committed_by: 'user-1',
-        revision: 1,
-        label: 'initial',
-        description: 'first',
-        created_at: new Date().toISOString(),
-      },
-    ]);
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [
+        {
+          id: 'snap-1',
+          version_id: 'v1',
+          project_id: 'p1',
+          committed_by: 'user-1',
+          revision: 1,
+          label: 'initial',
+          description: 'first',
+          created_at: new Date().toISOString(),
+        },
+      ],
+      total: 1,
+      latest_revision: 1,
+    });
 
     mockListVersionSnapshotsSchemaChanges.mockResolvedValue([
       {
