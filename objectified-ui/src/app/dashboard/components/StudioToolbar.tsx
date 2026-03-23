@@ -189,11 +189,13 @@ export default function StudioToolbar() {
   const historyRollbackAllowed =
     !tenantPerms.loading && hasSchemaWrite && workspace?.version?.published !== true;
   const historyRollbackDisabledReason =
-    workspace?.version?.published === true
-      ? 'Rollback is not available while this version is published. Unpublish it first.'
-      : !tenantPerms.loading && !hasSchemaWrite
-        ? 'Rollback requires schema edit permission.'
-        : undefined;
+    tenantPerms.loading
+      ? 'Checking permissions before enabling rollback...'
+      : workspace?.version?.published === true
+        ? 'Rollback is not available while this version is published. Unpublish it first.'
+        : !hasSchemaWrite
+          ? 'Rollback requires schema edit permission.'
+          : undefined;
   const canPull = !tenantPerms.loading && (hasSchemaRead || hasSchemaWrite);
 
   const runWithOperation = useCallback(
