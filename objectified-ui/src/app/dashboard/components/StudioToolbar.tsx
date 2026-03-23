@@ -53,6 +53,7 @@ import PullDirtyConfirmDialog, {
 } from '@/app/dashboard/components/PullDirtyConfirmDialog';
 import { useCodeGenerationPanelOptional } from '@/app/contexts/CodeGenerationPanelContext';
 import { getSchemaMode, setSchemaModeOnDraft, type SchemaMode } from '@lib/studio/schemaMode';
+import { dataDesignerDeepLink } from '@/lib/dashboard/deepLinks';
 import * as Select from '@radix-ui/react-select';
 
 const btnBase =
@@ -1193,11 +1194,17 @@ export default function StudioToolbar() {
         onRollbackSuccess={() => {
           void runPull();
         }}
-        onBranchSuccess={(newVersion) => {
-          if (tenantId && projectId) {
-            router.push(
-              `/data-designer?tenantId=${encodeURIComponent(tenantId)}&projectId=${encodeURIComponent(projectId)}&versionId=${encodeURIComponent(newVersion.id)}`
-            );
+        onBranchSuccess={(newVersion, meta) => {
+          if (!tenantId || !projectId) return;
+          const url = dataDesignerDeepLink({
+            tenantId,
+            projectId,
+            versionId: newVersion.id,
+          });
+          if (meta.openInNewTab) {
+            window.open(url, '_blank', 'noopener,noreferrer');
+          } else {
+            router.push(url);
           }
         }}
         onDeleteSuccess={() => router.push('/dashboard/versions')}

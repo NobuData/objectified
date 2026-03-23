@@ -30,6 +30,7 @@ jest.mock('@lib/api/rest-client', () => ({
   listProjects: jest.fn(),
   listVersions: jest.fn(),
   createVersion: jest.fn(),
+  createVersionFromRevision: jest.fn(),
   updateVersion: jest.fn(),
   deleteVersion: jest.fn(),
   publishVersion: jest.fn(),
@@ -213,6 +214,48 @@ describe('VersionsPage', () => {
     });
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
     expect(screen.getByText('v1.0.0')).toBeInTheDocument();
+  });
+
+  it('create with copy-from uses createVersionFromRevision and navigates to Studio', async () => {
+    const { listVersions, createVersion, createVersionFromRevision } =
+      require('@lib/api/rest-client');
+    const { useDialog } = require('@/app/components/providers/DialogProvider');
+    useDialog.mockReturnValue({
+      confirm: jest.fn(() => Promise.resolve(false)),
+      alert: jest.fn(() => Promise.resolve()),
+    });
+    createVersionFromRevision.mockResolvedValue({ id: 'new-v', name: 'copy' });
+    listVersions.mockResolvedValue([{ ...sampleVersion, last_revision: 3 }]);
+    render(<VersionsPage />);
+    await userEvent.click(
+      (await screen.findAllByRole('button', { name: /new version/i }))[0]
+    );
+    await userEvent.selectOptions(
+      screen.getByLabelText(/copy from version/i),
+      'v1'
+    );
+    expect(screen.getByLabelText(/version name/i)).toHaveValue('v1-0-0-rev-3');
+    await userEvent.type(screen.getByLabelText(/^description \*/i), 'Working copy');
+    await userEvent.click(screen.getByRole('button', { name: /^create version$/i }));
+    await waitFor(() => {
+      expect(createVersionFromRevision).toHaveBeenCalledWith(
+        't1',
+        'p1',
+        expect.objectContaining({
+          source_version_id: 'v1',
+          source_revision: 3,
+          name: 'v1-0-0-rev-3',
+          description: 'Working copy',
+        }),
+        expect.anything()
+      );
+    });
+    expect(createVersion).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockRouterPush).toHaveBeenCalledWith(
+        expect.stringMatching(/\/data-designer\?.*versionId=new-v/)
+      );
+    });
   });
 
   it('shows Version history menu item in version actions dropdown', async () => {
