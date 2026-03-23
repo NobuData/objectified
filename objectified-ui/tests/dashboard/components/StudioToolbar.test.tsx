@@ -145,6 +145,8 @@ describe('StudioToolbar', () => {
       canRedo: false,
       isDirty: false,
       hasUnpushedCommits: false,
+      unpushedCommitCount: 0,
+      lastPushedAt: null,
       serverHasNewChanges: false,
       checkServerForUpdates: mockCheckServerForUpdates,
       loadFromServer: mockLoadFromServer,
@@ -171,6 +173,8 @@ describe('StudioToolbar', () => {
       canRedo: false,
       isDirty: false,
       hasUnpushedCommits: false,
+      unpushedCommitCount: 0,
+      lastPushedAt: null,
       serverHasNewChanges: false,
       checkServerForUpdates: mockCheckServerForUpdates,
       loadFromServer: mockLoadFromServer,
@@ -287,6 +291,8 @@ describe('StudioToolbar', () => {
     canRedo: false,
     isDirty: false,
     hasUnpushedCommits: false,
+    unpushedCommitCount: 0,
+    lastPushedAt: null,
     serverHasNewChanges: false,
     checkServerForUpdates: mockCheckServerForUpdates,
     loadFromServer: mockLoadFromServer,
@@ -478,13 +484,14 @@ describe('StudioToolbar', () => {
     expect(screen.getByText('Server has new changes')).toBeInTheDocument();
   });
 
-  it('shows Unpushed commits indicator when hasUnpushedCommits is true', () => {
+  it('shows unpushed count when hasUnpushedCommits is true', () => {
     useStudioOptional.mockReturnValue({
       ...defaultStudioWithState,
       hasUnpushedCommits: true,
+      unpushedCommitCount: 2,
     });
     render(<StudioToolbar />);
-    expect(screen.getByText('Unpushed commits')).toBeInTheDocument();
+    expect(screen.getByText('2 unpushed')).toBeInTheDocument();
   });
 
   it('shows last commit message and revision indicator when available', () => {

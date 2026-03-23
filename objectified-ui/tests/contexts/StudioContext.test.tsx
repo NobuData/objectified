@@ -60,6 +60,7 @@ function TestConsumer() {
       <span data-testid="can-redo">{studio.canRedo ? 'yes' : 'no'}</span>
       <span data-testid="is-dirty">{studio.isDirty ? 'yes' : 'no'}</span>
       <span data-testid="has-unpushed-commits">{studio.hasUnpushedCommits ? 'yes' : 'no'}</span>
+      <span data-testid="unpushed-count">{studio.unpushedCommitCount}</span>
       <span data-testid="server-has-changes">{studio.serverHasNewChanges ? 'yes' : 'no'}</span>
       <span data-testid="class-count">
         {studio.state?.classes?.length ?? 0}
@@ -903,6 +904,11 @@ describe('StudioContext', () => {
       expect.stringContaining('v1'),
       expect.stringContaining('"hasUnpushedCommits":true')
     );
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      expect.stringContaining('v1'),
+      expect.stringContaining('"commitsSinceLastPush":1')
+    );
+    expect(screen.getByTestId('unpushed-count').textContent).toBe('1');
   });
 
   it('hasUnpushedCommits becomes false after push', async () => {
@@ -963,6 +969,15 @@ describe('StudioContext', () => {
       expect.stringContaining('v1'),
       expect.stringContaining('"hasUnpushedCommits":false')
     );
+    expect(localStorageMock.setItem).toHaveBeenLastCalledWith(
+      expect.stringContaining('v1'),
+      expect.stringContaining('"commitsSinceLastPush":0')
+    );
+    expect(localStorageMock.setItem).toHaveBeenLastCalledWith(
+      expect.stringContaining('v1'),
+      expect.stringContaining('"lastPushedAt":')
+    );
+    expect(screen.getByTestId('unpushed-count').textContent).toBe('0');
   });
 
   it('hasUnpushedCommits is restored from localStorage on loadFromServer', async () => {
