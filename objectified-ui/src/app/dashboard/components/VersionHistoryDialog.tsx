@@ -390,7 +390,24 @@ export default function VersionHistoryDialog({
   );
 
   const submitRollback = useCallback(async () => {
-    if (!versionId || rollbackRevision == null || !onRollbackSuccess || !canRollback) return;
+    if (!versionId || rollbackRevision == null || !onRollbackSuccess) {
+      return;
+    }
+
+    if (!canRollback) {
+      const message =
+        rollbackDisabledReason?.trim() || 'Rollback is currently unavailable.';
+
+      await alertDialog({
+        title: 'Rollback unavailable',
+        message,
+        variant: 'error',
+      });
+
+      setRollbackDialogOpen(false);
+      onOpenChange(false);
+      return;
+    }
     const completedRevision = rollbackRevision;
     setRollbackSubmitting(true);
     setError(null);
@@ -428,6 +445,7 @@ export default function VersionHistoryDialog({
     fetchSnapshots,
     alertDialog,
     canRollback,
+    rollbackDisabledReason,
   ]);
 
   const showBranch = Boolean(tenantId && projectId && onBranchSuccess);
@@ -1322,7 +1340,7 @@ export default function VersionHistoryDialog({
               <button
                 type="button"
                 onClick={() => void submitRollback()}
-                disabled={rollbackSubmitting || rollbackRevision == null}
+                disabled={rollbackSubmitting || rollbackRevision == null || !canRollback}
                 className="px-4 py-2 rounded-lg border border-amber-600 dark:border-amber-500 bg-amber-600 dark:bg-amber-600 text-white hover:bg-amber-700 dark:hover:bg-amber-700 disabled:opacity-50"
               >
                 {rollbackSubmitting ? (

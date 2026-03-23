@@ -195,9 +195,11 @@ export default function VersionsPage() {
   const historyRollbackDisabledReason =
     historyDialogVersion?.published === true
       ? 'Rollback is not available while this version is published. Unpublish it first.'
-      : !tenantPerms.loading && !hasSchemaWrite
-        ? 'Rollback requires schema edit permission.'
-        : undefined;
+      : tenantPerms.loading
+        ? 'Checking permissions…'
+        : !hasSchemaWrite
+          ? 'Rollback requires schema edit permission.'
+          : undefined;
   const [importDialogVersion, setImportDialogVersion] = useState<VersionSchema | null>(null);
   const [tagDialogVersion, setTagDialogVersion] = useState<VersionSchema | null>(null);
   const [tagDialogValue, setTagDialogValue] = useState('');
