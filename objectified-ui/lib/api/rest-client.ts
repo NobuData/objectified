@@ -1553,6 +1553,7 @@ export async function listVersionSnapshotsMetadata(
   query?: ListVersionSnapshotsMetadataQuery
 ): Promise<VersionSnapshotMetadataPageSchema> {
   const params = new URLSearchParams();
+  params.set('paged', 'true');
   if (query?.limit != null) params.set('limit', String(query.limit));
   if (query?.offset != null) params.set('offset', String(query.offset));
   if (query?.message_contains?.trim()) {

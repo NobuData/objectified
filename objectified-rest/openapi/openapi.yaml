@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.36
+  version: 1.0.37
 paths:
   /v1/auth/login:
     post:
@@ -6900,10 +6900,13 @@ paths:
       tags:
       - Versions
       summary: List version snapshot metadata
-      description: Return metadata (revision, date, author, label, description, snapshot id)
-        for committed snapshots, newest revision first. The snapshot payload is excluded
-        for efficiency. Omit limit to return all matching rows; use limit and offset for
-        pagination. Optional filters message_contains, committed_by, created_after, created_before.
+      description: Return metadata (revision, date, author, label, description, snapshot
+        id) for committed snapshots, newest revision first. The snapshot payload is
+        excluded for efficiency. Omit limit to return all matching rows; use limit
+        and offset for pagination. Optional filters message_contains, committed_by,
+        created_after, created_before. Pass paged=true to receive a paginated envelope
+        {items, total, latest_revision}; the default (paged=false) returns a bare
+        array for backward compatibility.
       operationId: list_version_snapshots_metadata_v1_versions__version_id__snapshots_metadata_get
       parameters:
       - name: version_id
@@ -6912,6 +6915,15 @@ paths:
         schema:
           type: string
           title: Version Id
+      - name: paged
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Paged
+        description: When true, return a paginated {items, total, latest_revision}
+          object. When false (default), return a bare array (legacy behavior).
       - name: limit
         in: query
         required: false
@@ -6992,7 +7004,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VersionSnapshotMetadataPageSchema'
+                oneOf:
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/VersionSnapshotMetadataSchema'
+                - $ref: '#/components/schemas/VersionSnapshotMetadataPageSchema'
+                title: Response List Version Snapshots Metadata
         '422':
           description: Validation Error
           content:
