@@ -186,6 +186,16 @@ export default function StudioToolbar() {
   const hasSchemaRead = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:read');
   const hasSchemaWrite = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:write');
   const canCommitPushMerge = !isReadOnly && !tenantPerms.loading && hasSchemaWrite;
+  const historyRollbackAllowed =
+    !tenantPerms.loading && hasSchemaWrite && workspace?.version?.published !== true;
+  const historyRollbackDisabledReason =
+    tenantPerms.loading
+      ? 'Checking permissions before enabling rollback...'
+      : workspace?.version?.published === true
+        ? 'Rollback is not available while this version is published. Unpublish it first.'
+        : !hasSchemaWrite
+          ? 'Rollback requires schema edit permission.'
+          : undefined;
   const canPull = !tenantPerms.loading && (hasSchemaRead || hasSchemaWrite);
 
   const runWithOperation = useCallback(
@@ -1178,6 +1188,8 @@ export default function StudioToolbar() {
           studio?.state?.revision != null ? studio.state.revision : null
         }
         onCompareWithCurrent={(rev) => setHistoryCompareRevision(rev)}
+        canRollback={historyRollbackAllowed}
+        rollbackDisabledReason={historyRollbackDisabledReason}
         onRollbackSuccess={() => {
           void runPull();
         }}

@@ -25,6 +25,7 @@ import * as Label from '@radix-ui/react-label';
 import {
   listVersionSnapshotsMetadata,
   listVersionSnapshotsSchemaChanges,
+  pullVersion,
   rollbackVersion,
   createVersionFromRevision,
   deleteVersion,
@@ -55,8 +56,15 @@ export interface VersionHistoryDialogProps {
   projectId?: string;
   /** Called when user chooses to load a revision. If not provided, Load/View actions are hidden. */
   onLoadRevision?: (revision: number, readOnly: boolean) => void;
-  /** Called after successful rollback so parent can reload version state. If provided, Rollback button is shown. */
+  /** Called after successful rollback so parent can reload version state. If provided, Rollback may be shown when allowed. */
   onRollbackSuccess?: () => void;
+  /**
+   * When false, rollback actions are hidden (e.g. missing schema edit permission or published version).
+   * @default true
+   */
+  canRollback?: boolean;
+  /** Explains why rollback is unavailable when {@link onRollbackSuccess} is set but {@link canRollback} is false. */
+  rollbackDisabledReason?: string;
   /** Called after successfully creating a version from a revision (branch). If provided, Branch button is shown. */
   onBranchSuccess?: (newVersion: VersionSchema) => void;
   /** Called after successfully deleting the version. If provided, Delete version button is shown. Caller should redirect to versions list or refresh list. */
@@ -90,6 +98,22 @@ function fullMessageLines(snap: VersionSnapshotMetadataSchema): string {
   return parts.length > 0 ? parts.join('\n') : '—';
 }
 
+/** Distinct classes touched by a pull diff (add / remove / property changes). */
+function countSchemaClassesAffected(diff: VersionPullDiff | null): number {
+  if (!diff) return 0;
+  const names = new Set<string>();
+  for (const n of diff.added_class_names ?? []) {
+    if (n) names.add(n);
+  }
+  for (const n of diff.removed_class_names ?? []) {
+    if (n) names.add(n);
+  }
+  for (const mc of diff.modified_classes ?? []) {
+    if (mc.class_name) names.add(mc.class_name);
+  }
+  return names.size;
+}
+
 export default function VersionHistoryDialog({
   open,
   onOpenChange,
@@ -100,12 +124,14 @@ export default function VersionHistoryDialog({
   projectId,
   onLoadRevision,
   onRollbackSuccess,
+  canRollback = true,
+  rollbackDisabledReason,
   onBranchSuccess,
   onDeleteSuccess,
   studioLoadedRevision,
   onCompareWithCurrent,
 }: VersionHistoryDialogProps) {
-  const { confirm } = useDialog();
+  const { confirm, alert: alertDialog } = useDialog();
   const [snapshots, setSnapshots] = useState<VersionSnapshotMetadataSchema[]>([]);
   const [total, setTotal] = useState(0);
   const [latestRevision, setLatestRevision] = useState<number | null>(null);
@@ -114,6 +140,9 @@ export default function VersionHistoryDialog({
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
   const [rollbackRevision, setRollbackRevision] = useState<number | null>(null);
   const [rollbackNote, setRollbackNote] = useState('');
+  const [rollbackPreviewLoading, setRollbackPreviewLoading] = useState(false);
+  const [rollbackPreviewError, setRollbackPreviewError] = useState<string | null>(null);
+  const [rollbackPreviewDiff, setRollbackPreviewDiff] = useState<VersionPullDiff | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -256,6 +285,33 @@ export default function VersionHistoryDialog({
     void fetchAuditEntries();
   }, [open, auditEnabled, fetchAuditEntries]);
 
+  useEffect(() => {
+    if (!rollbackDialogOpen || rollbackRevision == null || !versionId) return;
+    let cancelled = false;
+    setRollbackPreviewLoading(true);
+    setRollbackPreviewError(null);
+    void pullVersion(versionId, options, null, rollbackRevision)
+      .then((res) => {
+        if (cancelled) return;
+        setRollbackPreviewDiff(res.diff ?? null);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setRollbackPreviewDiff(null);
+        setRollbackPreviewError(
+          e instanceof Error ? e.message : 'Failed to load change summary'
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setRollbackPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rollbackDialogOpen, rollbackRevision, versionId, options]);
+
+  const showRollbackActions = Boolean(onRollbackSuccess && canRollback);
+
   const truncateList = (items: string[], maxItems = 3): string => {
     if (items.length <= maxItems) return items.join(', ');
     return `${items.slice(0, maxItems).join(', ')}, ...`;
@@ -322,16 +378,37 @@ export default function VersionHistoryDialog({
 
   const openRollbackDialog = useCallback(
     (revision: number) => {
-      if (!onRollbackSuccess) return;
+      if (!showRollbackActions) return;
       setRollbackRevision(revision);
       setRollbackNote('');
+      setRollbackPreviewDiff(null);
+      setRollbackPreviewError(null);
+      setRollbackPreviewLoading(true);
       setRollbackDialogOpen(true);
     },
-    [onRollbackSuccess]
+    [showRollbackActions]
   );
 
   const submitRollback = useCallback(async () => {
-    if (!versionId || rollbackRevision == null || !onRollbackSuccess) return;
+    if (!versionId || rollbackRevision == null || !onRollbackSuccess) {
+      return;
+    }
+
+    if (!canRollback) {
+      const message =
+        rollbackDisabledReason?.trim() || 'Rollback is currently unavailable.';
+
+      await alertDialog({
+        title: 'Rollback unavailable',
+        message,
+        variant: 'error',
+      });
+
+      setRollbackDialogOpen(false);
+      onOpenChange(false);
+      return;
+    }
+    const completedRevision = rollbackRevision;
     setRollbackSubmitting(true);
     setError(null);
     try {
@@ -339,7 +416,7 @@ export default function VersionHistoryDialog({
       await rollbackVersion(
         versionId,
         {
-          revision: rollbackRevision,
+          revision: completedRevision,
           ...(note ? { message: note } : {}),
         },
         options
@@ -348,6 +425,11 @@ export default function VersionHistoryDialog({
       onRollbackSuccess();
       setRollbackDialogOpen(false);
       onOpenChange(false);
+      await alertDialog({
+        title: 'Rollback complete',
+        message: `Restored to revision ${completedRevision}. History has been updated.`,
+        variant: 'success',
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Rollback failed');
     } finally {
@@ -361,10 +443,15 @@ export default function VersionHistoryDialog({
     onRollbackSuccess,
     onOpenChange,
     fetchSnapshots,
+    alertDialog,
+    canRollback,
+    rollbackDisabledReason,
   ]);
 
   const showBranch = Boolean(tenantId && projectId && onBranchSuccess);
-  const showActions = Boolean(onLoadRevision || onRollbackSuccess || showBranch || onCompareWithCurrent);
+  const showActions = Boolean(
+    onLoadRevision || onRollbackSuccess || showBranch || onCompareWithCurrent
+  );
 
   const handleBranchClick = useCallback((revision: number) => {
     setBranchRevision(revision);
@@ -545,6 +632,16 @@ export default function VersionHistoryDialog({
                   <span className="font-mono font-medium">{latestRevision}</span>.
                 </div>
               )}
+
+            {onRollbackSuccess && !canRollback && (
+              <div
+                className="mb-3 p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-200 text-sm"
+                role="status"
+              >
+                {rollbackDisabledReason?.trim() ||
+                  'Rollback is not available for this version.'}
+              </div>
+            )}
 
             {error && (
               <div
@@ -791,7 +888,7 @@ export default function VersionHistoryDialog({
                                         </button>
                                       </>
                                     )}
-                                    {onRollbackSuccess && (
+                                    {showRollbackActions && (
                                       <button
                                         type="button"
                                         onClick={() => openRollbackDialog(snap.revision)}
@@ -877,7 +974,7 @@ export default function VersionHistoryDialog({
                                           </button>
                                         </>
                                       )}
-                                      {onRollbackSuccess && (
+                                      {showRollbackActions && (
                                         <>
                                           <span className="text-slate-300 dark:text-slate-600">|</span>
                                           <button
@@ -1150,14 +1247,20 @@ export default function VersionHistoryDialog({
       <Dialog.Root
         open={rollbackDialogOpen}
         onOpenChange={(o) => {
-          if (!rollbackSubmitting) setRollbackDialogOpen(o);
+          if (rollbackSubmitting) return;
+          setRollbackDialogOpen(o);
+          if (!o) {
+            setRollbackPreviewDiff(null);
+            setRollbackPreviewError(null);
+            setRollbackPreviewLoading(false);
+          }
         }}
       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10005]" />
           <Dialog.Content
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10006] w-full max-w-md bg-white dark:bg-slate-900 rounded-xl shadow-xl flex flex-col border border-slate-200 dark:border-slate-700 p-4"
-            aria-describedby="rollback-revision-description"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10006] w-full max-w-lg bg-white dark:bg-slate-900 rounded-xl shadow-xl flex flex-col border border-slate-200 dark:border-slate-700 p-4"
+            aria-describedby={undefined}
             onEscapeKeyDown={() => {
               if (!rollbackSubmitting) setRollbackDialogOpen(false);
             }}
@@ -1168,23 +1271,58 @@ export default function VersionHistoryDialog({
             <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               Restore to this revision?
             </Dialog.Title>
-            <Dialog.Description
-              id="rollback-revision-description"
-              className="mt-2 text-sm text-slate-600 dark:text-slate-400"
-            >
-              Version state will be set to revision{' '}
-              <span className="font-mono font-medium">{rollbackRevision ?? '—'}</span> and a new
-              snapshot will be appended to history. This replaces the current head for all users.
+            <Dialog.Description className="sr-only">
+              Confirm restoring the version to a past revision. Review class-level impact, add an
+              optional audit message, then confirm or cancel.
             </Dialog.Description>
+            <div
+              className="mt-2 text-sm text-slate-600 dark:text-slate-400 space-y-3"
+              aria-live="polite"
+            >
+                <p>
+                  Revert to revision{' '}
+                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                    {rollbackRevision ?? '—'}
+                  </span>
+                  . The current schema head will be replaced and a new snapshot will be appended for
+                  all users.
+                </p>
+                {rollbackPreviewLoading && (
+                  <p className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                    <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                    Calculating impact on classes…
+                  </p>
+                )}
+                {!rollbackPreviewLoading && rollbackPreviewError && (
+                  <p className="text-amber-800 dark:text-amber-200 text-sm" role="alert">
+                    Could not load change summary ({rollbackPreviewError}). You can still confirm
+                    rollback if you intend to proceed.
+                  </p>
+                )}
+                {!rollbackPreviewLoading && !rollbackPreviewError && rollbackPreviewDiff != null && (
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/40 p-3 space-y-2">
+                    <p className="font-medium text-slate-800 dark:text-slate-100">
+                      {(() => {
+                        const n = countSchemaClassesAffected(rollbackPreviewDiff);
+                        if (n === 0) {
+                          return 'No class changes vs current head; a new history entry will still be created.';
+                        }
+                        return `${n} ${n === 1 ? 'class' : 'classes'} will change (additions, removals, or property updates).`;
+                      })()}
+                    </p>
+                    {renderDiffSummary(rollbackPreviewDiff)}
+                  </div>
+                )}
+            </div>
             <div className="mt-4 space-y-2">
               <Label.Root htmlFor="rollback-note" className={labelClass}>
-                Note (optional)
+                Rollback message (optional)
               </Label.Root>
               <textarea
                 id="rollback-note"
                 value={rollbackNote}
                 onChange={(e) => setRollbackNote(e.target.value)}
-                placeholder="Reason for rollback (stored on the new snapshot)"
+                placeholder="Reason for audit trail (appended to the new snapshot description)"
                 rows={3}
                 disabled={rollbackSubmitting}
                 className={`${inputClass} min-h-[5rem] resize-y`}
@@ -1202,7 +1340,7 @@ export default function VersionHistoryDialog({
               <button
                 type="button"
                 onClick={() => void submitRollback()}
-                disabled={rollbackSubmitting || rollbackRevision == null}
+                disabled={rollbackSubmitting || rollbackRevision == null || !canRollback}
                 className="px-4 py-2 rounded-lg border border-amber-600 dark:border-amber-500 bg-amber-600 dark:bg-amber-600 text-white hover:bg-amber-700 dark:hover:bg-amber-700 disabled:opacity-50"
               >
                 {rollbackSubmitting ? (

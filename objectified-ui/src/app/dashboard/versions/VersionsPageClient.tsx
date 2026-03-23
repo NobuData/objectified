@@ -56,6 +56,7 @@ import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialo
 import RelationshipGraphDialog from '@/app/dashboard/components/RelationshipGraphDialog';
 import SchemaImportDialog from '@/app/dashboard/components/SchemaImportDialog';
 import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
+import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import { dataDesignerDeepLink } from '@/lib/dashboard/deepLinks';
 import { buildCsvContent, downloadCsvFile } from '@/app/components/dashboard/ListTableToolbar';
 
@@ -165,6 +166,9 @@ export default function VersionsPage() {
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
   const { tenants, tenantsLoading, selectedTenantId, setSelectedTenantId } = useTenantSelection();
+  const tenantPerms = useTenantPermissions(selectedTenantId);
+  const hasSchemaWrite =
+    Boolean(tenantPerms.permissions?.is_tenant_admin) || tenantPerms.has('schema:write');
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionSchema[]>([]);
@@ -183,6 +187,19 @@ export default function VersionsPage() {
   const [diffSinceRevision, setDiffSinceRevision] = useState<number | null>(null);
   const [graphDialogVersion, setGraphDialogVersion] = useState<VersionSchema | null>(null);
   const [historyDialogVersion, setHistoryDialogVersion] = useState<VersionSchema | null>(null);
+  const historyRollbackAllowed =
+    !tenantPerms.loading &&
+    hasSchemaWrite &&
+    !!historyDialogVersion &&
+    !historyDialogVersion.published;
+  const historyRollbackDisabledReason =
+    historyDialogVersion?.published === true
+      ? 'Rollback is not available while this version is published. Unpublish it first.'
+      : tenantPerms.loading
+        ? 'Checking permissions…'
+        : !hasSchemaWrite
+          ? 'Rollback requires schema edit permission.'
+          : undefined;
   const [importDialogVersion, setImportDialogVersion] = useState<VersionSchema | null>(null);
   const [tagDialogVersion, setTagDialogVersion] = useState<VersionSchema | null>(null);
   const [tagDialogValue, setTagDialogValue] = useState('');
@@ -2366,6 +2383,8 @@ export default function VersionsPage() {
             })
           );
         }}
+        canRollback={historyRollbackAllowed}
+        rollbackDisabledReason={historyRollbackDisabledReason}
         onRollbackSuccess={() => {
           void fetchVersions();
         }}

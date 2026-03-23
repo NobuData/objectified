@@ -11,6 +11,17 @@ const emptyHistoryPage = { items: [] as unknown[], total: 0, latest_revision: nu
 const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve(emptyHistoryPage));
 const mockListVersionSnapshotsSchemaChanges = jest.fn(() => Promise.resolve([]));
 const mockDeleteVersion = jest.fn(() => Promise.resolve());
+const mockPullVersion = jest.fn(() =>
+  Promise.resolve({
+    diff: {
+      added_class_names: [],
+      removed_class_names: ['Old'],
+      modified_classes: [],
+    },
+  })
+);
+const mockRollbackVersion = jest.fn(() => Promise.resolve());
+const mockAlert = jest.fn(() => Promise.resolve());
 
 jest.mock('@lib/api/rest-client', () => ({
   listVersionSnapshotsMetadata: (...args: unknown[]) =>
@@ -18,7 +29,8 @@ jest.mock('@lib/api/rest-client', () => ({
   listVersionSnapshotsSchemaChanges: (...args: unknown[]) =>
     mockListVersionSnapshotsSchemaChanges(...args),
   deleteVersion: (...args: unknown[]) => mockDeleteVersion(...args),
-  rollbackVersion: jest.fn(() => Promise.resolve()),
+  pullVersion: (...args: unknown[]) => mockPullVersion(...args),
+  rollbackVersion: (...args: unknown[]) => mockRollbackVersion(...args),
   createVersionFromRevision: jest.fn(() => Promise.resolve({ id: 'new-v' })),
   getTenantQuotaStatus: jest.fn(() =>
     Promise.resolve({
@@ -34,7 +46,7 @@ const mockConfirm = jest.fn(() => Promise.resolve(true));
 jest.mock('@/app/components/providers/DialogProvider', () => ({
   useDialog: jest.fn(() => ({
     confirm: mockConfirm,
-    alert: jest.fn(() => Promise.resolve()),
+    alert: mockAlert,
   })),
 }));
 
@@ -49,9 +61,18 @@ const defaultProps = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockConfirm.mockResolvedValue(true);
+  mockAlert.mockResolvedValue(undefined);
   mockDeleteVersion.mockResolvedValue(undefined);
   mockListVersionSnapshotsMetadata.mockResolvedValue(emptyHistoryPage);
   mockListVersionSnapshotsSchemaChanges.mockResolvedValue([]);
+  mockPullVersion.mockResolvedValue({
+    diff: {
+      added_class_names: [],
+      removed_class_names: ['Old'],
+      modified_classes: [],
+    },
+  });
+  mockRollbackVersion.mockResolvedValue(undefined);
 });
 
 describe('VersionHistoryDialog – delete version', () => {
@@ -233,5 +254,103 @@ describe('VersionHistoryDialog – schema audit', () => {
 
     expect(await screen.findByText(/added:/i)).toBeInTheDocument();
     expect(screen.getByText(/person/i)).toBeInTheDocument();
+  });
+});
+
+describe('VersionHistoryDialog – rollback', () => {
+  it('hides rollback actions when canRollback is false', async () => {
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [
+        {
+          id: 'snap-1',
+          version_id: 'v1',
+          project_id: 'p1',
+          committed_by: 'user-1',
+          revision: 1,
+          label: 'initial',
+          description: 'first',
+          created_at: new Date().toISOString(),
+        },
+      ],
+      total: 1,
+      latest_revision: 2,
+    });
+
+    render(
+      <VersionHistoryDialog
+        {...defaultProps}
+        onRollbackSuccess={jest.fn()}
+        canRollback={false}
+        rollbackDisabledReason="No permission"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/no permission/i)).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole('button', { name: /rollback to revision 1/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('loads pull diff and confirms rollback with summary and success alert', async () => {
+    const onRollbackSuccess = jest.fn();
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [
+        {
+          id: 'snap-1',
+          version_id: 'v1',
+          project_id: 'p1',
+          committed_by: 'user-1',
+          revision: 1,
+          label: 'initial',
+          description: 'first',
+          created_at: new Date().toISOString(),
+        },
+      ],
+      total: 1,
+      latest_revision: 2,
+    });
+
+    render(
+      <VersionHistoryDialog
+        {...defaultProps}
+        onRollbackSuccess={onRollbackSuccess}
+        canRollback
+      />
+    );
+
+    const rollbackBtn = await screen.findByRole('button', {
+      name: /rollback to revision 1/i,
+    });
+    await userEvent.click(rollbackBtn);
+
+    await waitFor(() => {
+      expect(mockPullVersion).toHaveBeenCalledWith('v1', {}, null, 1);
+    });
+
+    expect(
+      await screen.findByText(/1 class will change/i)
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /restore to this revision/i })
+    );
+
+    await waitFor(() => {
+      expect(mockRollbackVersion).toHaveBeenCalledWith(
+        'v1',
+        { revision: 1 },
+        {}
+      );
+      expect(onRollbackSuccess).toHaveBeenCalledTimes(1);
+      expect(mockAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'success',
+          title: 'Rollback complete',
+        })
+      );
+    });
   });
 });
