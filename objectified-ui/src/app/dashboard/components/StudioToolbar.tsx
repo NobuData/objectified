@@ -637,6 +637,14 @@ export default function StudioToolbar() {
                     tenantId: tenantId || undefined,
                     projectId: projectId || undefined,
                   });
+                  if (tenantId && projectId && versionId) {
+                    const qs = new URLSearchParams({
+                      tenantId,
+                      projectId,
+                      versionId,
+                    });
+                    router.replace(`/data-designer?${qs.toString()}`);
+                  }
                 }}
                 disabled={studio!.loading || !versionId}
               >
