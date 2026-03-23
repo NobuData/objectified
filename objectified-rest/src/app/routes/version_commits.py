@@ -1191,7 +1191,7 @@ def pull_version(
                 detail=f"Version snapshot not found for since_revision: {version_id} @ revision {since_revision}",
             )
 
-    etag = _build_pull_etag(version_id, effective_revision, revision, since_revision)
+    etag = _build_pull_etag(version_id, effective_revision, revision, since_revision, latest_revision_value)
     inm = request.headers.get("if-none-match")
     if _if_none_match_matches(inm, etag):
         return Response(status_code=304, headers={"ETag": etag})
@@ -1225,12 +1225,14 @@ def _build_pull_etag(
     effective_revision: Optional[int],
     revision_param: Optional[int],
     since_revision_param: Optional[int],
+    latest_revision: Optional[int] = None,
 ) -> str:
     """Weak ETag for GET /pull: same inputs imply same representation."""
     er = "null" if effective_revision is None else str(effective_revision)
     rp = "head" if revision_param is None else str(revision_param)
     sr = "none" if since_revision_param is None else str(since_revision_param)
-    return f'W/"{version_id}:er={er}:r={rp}:since={sr}"'
+    lr = "null" if latest_revision is None else str(latest_revision)
+    return f'W/"{version_id}:er={er}:r={rp}:since={sr}:lr={lr}"'
 
 
 def _if_none_match_matches(if_none_match: Optional[str], etag: str) -> bool:

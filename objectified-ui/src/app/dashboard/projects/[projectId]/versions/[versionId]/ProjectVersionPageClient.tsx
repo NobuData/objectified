@@ -89,11 +89,10 @@ export default function DashboardProjectVersionDeepLinkPage() {
         const rev = revisionFromUrl;
         if (rev && /^\d+$/.test(rev)) {
           qs.set('revision', rev);
-          if (readOnlyFromUrl === '1' || viewFromUrl === '1') {
-            qs.set('readOnly', '1');
-          }
           if (editFromUrl === '1') {
             qs.set('edit', '1');
+          } else if (readOnlyFromUrl === '1' || viewFromUrl === '1') {
+            qs.set('readOnly', '1');
           }
         }
         router.replace(`/data-designer?${qs.toString()}`);

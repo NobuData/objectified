@@ -27,11 +27,10 @@ export function dataDesignerDeepLink(params: {
   if (params.revision != null) {
     qs.set('revision', String(params.revision));
   }
-  if (params.readOnly) {
-    qs.set('readOnly', '1');
-  }
   if (params.edit) {
     qs.set('edit', '1');
+  } else if (params.readOnly) {
+    qs.set('readOnly', '1');
   }
   return `/data-designer?${qs.toString()}`;
 }
