@@ -150,6 +150,7 @@ describe('StudioToolbar', () => {
       hasUnpushedCommits: false,
       unpushedCommitCount: 0,
       lastPushedAt: null,
+      serverHeadRevision: null,
       serverHasNewChanges: false,
       checkServerForUpdates: mockCheckServerForUpdates,
       loadFromServer: mockLoadFromServer,
@@ -178,6 +179,7 @@ describe('StudioToolbar', () => {
       hasUnpushedCommits: false,
       unpushedCommitCount: 0,
       lastPushedAt: null,
+      serverHeadRevision: 1,
       serverHasNewChanges: false,
       checkServerForUpdates: mockCheckServerForUpdates,
       loadFromServer: mockLoadFromServer,
@@ -310,6 +312,7 @@ describe('StudioToolbar', () => {
     hasUnpushedCommits: false,
     unpushedCommitCount: 0,
     lastPushedAt: null,
+    serverHeadRevision: 1,
     serverHasNewChanges: false,
     checkServerForUpdates: mockCheckServerForUpdates,
     loadFromServer: mockLoadFromServer,
@@ -330,6 +333,18 @@ describe('StudioToolbar', () => {
     suggestedCommitMessage: null,
     lastCommitInfo: null,
   };
+
+  it('shows past revision banner when loaded revision is behind server head', () => {
+    useStudioOptional.mockReturnValue({
+      ...defaultStudioWithState,
+      state: { ...studioState, revision: 2 },
+      serverHeadRevision: 5,
+    });
+    render(<StudioToolbar />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/viewing a past revision/i);
+    expect(screen.getByRole('button', { name: /load latest to edit/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /compare with current/i })).toBeInTheDocument();
+  });
 
   it('calls undo when Undo is clicked', async () => {
     useStudioOptional.mockReturnValue({

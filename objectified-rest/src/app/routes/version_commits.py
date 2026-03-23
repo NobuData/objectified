@@ -1043,6 +1043,12 @@ def rollback_version(
     ) is not None:
         state["canvas_metadata"] = None
 
+    base_description = f"Rollback to revision {payload.revision}"
+    extra = (payload.message or "").strip()
+    rollback_description = (
+        f"{base_description}\n\n{extra}" if extra else base_description
+    )
+
     with db.transaction() as conn:
         _apply_snapshot_state(version_id, project_id, state, _conn=conn)
 
@@ -1051,7 +1057,7 @@ def rollback_version(
             project_id=project_id,
             committed_by=user_id,
             label="rollback",
-            description=f"Rollback to revision {payload.revision}",
+            description=rollback_description,
             _conn=conn,
         )
 
@@ -1109,6 +1115,11 @@ def pull_version(
     """Pull the full state of a version (latest or at a given revision); optionally include diff since a revision."""
     version = _assert_version_exists(version_id, include_deleted=False)
 
+    snapshot_label: Optional[str] = None
+    snapshot_description: Optional[str] = None
+    snapshot_committed_at: Optional[datetime] = None
+    latest_revision_value: Optional[int] = None
+
     if revision is not None:
         snapshot_rows = db.execute_query(
             f"""
@@ -1129,6 +1140,21 @@ def pull_version(
         classes = state.get("classes", [])
         canvas_metadata = state.get("canvas_metadata")
         effective_revision = revision
+        snapshot_label = snapshot_row.get("label")
+        snapshot_description = snapshot_row.get("description")
+        raw_created = snapshot_row.get("created_at")
+        if isinstance(raw_created, datetime):
+            snapshot_committed_at = raw_created
+        max_head_rows = db.execute_query(
+            """
+            SELECT MAX(revision) AS max_revision
+            FROM objectified.version_snapshot
+            WHERE version_id = %s
+            """,
+            (version_id,),
+        )
+        if max_head_rows and max_head_rows[0].get("max_revision") is not None:
+            latest_revision_value = int(max_head_rows[0]["max_revision"])
     else:
         state = _capture_version_state(version_id)
         classes = state.get("classes", [])
@@ -1145,6 +1171,8 @@ def pull_version(
         effective_revision = None
         if snapshot_rows and snapshot_rows[0].get("max_revision") is not None:
             effective_revision = snapshot_rows[0]["max_revision"]
+        if snapshot_rows and snapshot_rows[0].get("max_revision") is not None:
+            latest_revision_value = int(snapshot_rows[0]["max_revision"])
 
     since_rows: Optional[list[dict[str, Any]]] = None
     if since_revision is not None:
@@ -1163,7 +1191,7 @@ def pull_version(
                 detail=f"Version snapshot not found for since_revision: {version_id} @ revision {since_revision}",
             )
 
-    etag = _build_pull_etag(version_id, effective_revision, revision, since_revision)
+    etag = _build_pull_etag(version_id, effective_revision, revision, since_revision, latest_revision_value)
     inm = request.headers.get("if-none-match")
     if _if_none_match_matches(inm, etag):
         return Response(status_code=304, headers={"ETag": etag})
@@ -1183,6 +1211,10 @@ def pull_version(
         classes=classes,
         canvas_metadata=canvas_metadata,
         pulled_at=datetime.now(timezone.utc),
+        latest_revision=latest_revision_value,
+        snapshot_label=snapshot_label,
+        snapshot_description=snapshot_description,
+        snapshot_committed_at=snapshot_committed_at,
         diff_since_revision=diff_since_revision,
         diff=diff_value,
     )
@@ -1193,12 +1225,14 @@ def _build_pull_etag(
     effective_revision: Optional[int],
     revision_param: Optional[int],
     since_revision_param: Optional[int],
+    latest_revision: Optional[int] = None,
 ) -> str:
     """Weak ETag for GET /pull: same inputs imply same representation."""
     er = "null" if effective_revision is None else str(effective_revision)
     rp = "head" if revision_param is None else str(revision_param)
     sr = "none" if since_revision_param is None else str(since_revision_param)
-    return f'W/"{version_id}:er={er}:r={rp}:since={sr}"'
+    lr = "null" if latest_revision is None else str(latest_revision)
+    return f'W/"{version_id}:er={er}:r={rp}:since={sr}:lr={lr}"'
 
 
 def _if_none_match_matches(if_none_match: Optional[str], etag: str) -> bool:

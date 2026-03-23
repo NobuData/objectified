@@ -362,6 +362,7 @@ class TestPullVersion:
         assert len(body["classes"]) == 1
         assert body["classes"][0]["name"] == "Person"
         assert "pulled_at" in body
+        assert body["latest_revision"] == 3
 
     def test_pull_empty_version_returns_empty_classes(self, client):
         """Pull on version with no classes returns empty list."""
@@ -376,6 +377,7 @@ class TestPullVersion:
         body = r.json()
         assert body["classes"] == []
         assert body["revision"] is None
+        assert body["latest_revision"] is None
 
     def test_pull_includes_canvas_metadata(self, client):
         """Pull returns canvas_metadata from version metadata."""
@@ -393,6 +395,7 @@ class TestPullVersion:
         assert r.status_code == 200
         body = r.json()
         assert body["canvas_metadata"] == {"layout": "grid"}
+        assert body["latest_revision"] == 1
 
     def test_pull_version_not_found_returns_404(self, client):
         """Pull returns 404 when version not found."""
@@ -424,6 +427,7 @@ class TestPullVersion:
             mock_db.execute_query.side_effect = [
                 [_version_lookup_row()],
                 [snapshot_at_2],
+                [{"max_revision": 5}],
             ]
             r = client.get(f"/v1/versions/{_VERSION_ID}/pull?revision=2")
         assert r.status_code == 200
@@ -433,6 +437,10 @@ class TestPullVersion:
         assert body["classes"][0]["name"] == "Person"
         assert body["classes"][0]["description"] == "At rev 2"
         assert body["canvas_metadata"] == {"layout": "at-rev-2"}
+        assert body["latest_revision"] == 5
+        assert body["snapshot_label"] == "commit"
+        assert body["snapshot_description"] == "Committed"
+        assert "snapshot_committed_at" in body
 
     def test_pull_by_revision_not_found_returns_404(self, client):
         """Pull with revision returns 404 when that snapshot does not exist."""
@@ -502,6 +510,7 @@ class TestPullVersion:
         assert len(body["diff"]["modified_classes"]) == 1
         assert body["diff"]["modified_classes"][0]["class_name"] == "Person"
         assert "email" in body["diff"]["modified_classes"][0]["added_property_names"]
+        assert body["latest_revision"] == 3
 
     def test_pull_since_revision_not_found_returns_404(self, client):
         """Pull with since_revision returns 404 when that snapshot does not exist."""
@@ -541,6 +550,7 @@ class TestPullVersion:
             etag = r1.headers.get("ETag")
             assert r1.status_code == 200
             assert etag
+            assert r1.json().get("latest_revision") == 3
             r2 = client.get(
                 f"/v1/versions/{_VERSION_ID}/pull",
                 headers={"If-None-Match": etag},
@@ -621,6 +631,73 @@ class TestRollbackVersion:
         assert body["revision"] == 2
         assert "snapshot_id" in body
         assert "committed_at" in body
+
+    def test_rollback_optional_message_appended_to_description(self, client):
+        """Rollback request may include a message appended to the snapshot description."""
+        snapshot_at_1 = {
+            **_SNAPSHOT_ROW,
+            "revision": 1,
+            "snapshot": {
+                "classes": [
+                    {
+                        "name": "Person",
+                        "description": "Rolled back",
+                        "schema": {},
+                        "metadata": {},
+                        "properties": [],
+                    }
+                ],
+                "canvas_metadata": None,
+            },
+        }
+        class_row = {
+            "id": _CLASS_ID,
+            "version_id": _VERSION_ID,
+            "name": "Person",
+            "description": "Rolled back",
+            "schema": {},
+            "metadata": {},
+            "enabled": True,
+            "created_at": _NOW,
+            "updated_at": None,
+        }
+        rollback_snapshot_row = {
+            **_SNAPSHOT_ROW,
+            "revision": 2,
+            "label": "rollback",
+            "description": "Rollback to revision 1\n\nRestore before bad deploy",
+            "created_at": _NOW,
+        }
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [snapshot_at_1],
+                [],
+                [],
+                [class_row],
+                [],
+                [{"metadata": {}}],
+            ]
+            mock_db.execute_mutation.side_effect = [
+                {"id": _CLASS_ID},
+                None,
+                None,
+                rollback_snapshot_row,
+                None,
+            ]
+            r = client.post(
+                f"/v1/versions/{_VERSION_ID}/rollback",
+                json={"revision": 1, "message": "Restore before bad deploy"},
+            )
+        assert r.status_code == 201
+        insert_calls = [
+            c
+            for c in mock_db.execute_mutation.call_args_list
+            if c.args and "INSERT INTO objectified.version_snapshot" in str(c.args[0])
+        ]
+        assert len(insert_calls) >= 1
+        bind = insert_calls[0].args[1]
+        assert "Restore before bad deploy" in str(bind)
 
     def test_rollback_version_not_found_returns_404(self, client):
         """Rollback returns 404 when version not found."""

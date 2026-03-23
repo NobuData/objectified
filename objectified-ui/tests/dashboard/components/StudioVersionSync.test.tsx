@@ -9,6 +9,8 @@ import { WorkspaceProvider, useWorkspace } from '@/app/contexts/WorkspaceContext
 import { StudioProvider } from '@/app/contexts/StudioContext';
 import StudioVersionSync from '@/app/dashboard/components/StudioVersionSync';
 import { computeStateChecksum } from '@lib/studio/stateBackup';
+import * as canvasSettings from '@lib/studio/canvasSettings';
+import { useStudio } from '@/app/contexts/StudioContext';
 
 const mockPullVersion = jest.fn();
 const mockPullVersionWithEtag = jest.fn();
@@ -69,9 +71,21 @@ function SetVersionTwoButton() {
   );
 }
 
+function StudioReadOnlyProbe() {
+  const studio = useStudio();
+  return (
+    <span data-testid="studio-ro">{studio.state?.readOnly === true ? 'ro' : 'rw'}</span>
+  );
+}
+
 describe('StudioVersionSync', () => {
+  let getCanvasSettingsSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    getCanvasSettingsSpy = jest.spyOn(canvasSettings, 'getCanvasSettings').mockReturnValue({
+      ...canvasSettings.DEFAULT_CANVAS_SETTINGS,
+    });
     mockPullVersionWithEtag.mockImplementation(
       async (
         versionId: string,
@@ -88,6 +102,10 @@ describe('StudioVersionSync', () => {
     window.localStorage.clear();
     const { useSearchParams } = require('next/navigation');
     useSearchParams.mockReturnValue(new URLSearchParams());
+  });
+
+  afterEach(() => {
+    getCanvasSettingsSpy?.mockRestore();
   });
 
   it('renders without crashing when no version selected', () => {
@@ -187,6 +205,78 @@ describe('StudioVersionSync', () => {
     await waitFor(
       () => {
         expect(mockPullVersion).toHaveBeenCalledWith('v1', expect.any(Object), 7, undefined);
+      },
+      { timeout: 2000 }
+    );
+  });
+
+  it('loads URL revision read-only when defaultRevisionLoadReadOnly is enabled', async () => {
+    getCanvasSettingsSpy.mockReturnValue({
+      ...canvasSettings.DEFAULT_CANVAS_SETTINGS,
+      defaultRevisionLoadReadOnly: true,
+    });
+    const { useSearchParams } = require('next/navigation');
+    useSearchParams.mockReturnValue(new URLSearchParams('revision=7'));
+
+    mockPullVersion.mockResolvedValue({
+      version_id: 'v1',
+      revision: 7,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    render(
+      <WorkspaceProvider>
+        <StudioProvider>
+          <StudioVersionSync />
+          <SetVersionButton />
+          <StudioReadOnlyProbe />
+        </StudioProvider>
+      </WorkspaceProvider>
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('studio-ro')).toHaveTextContent('ro');
+      },
+      { timeout: 2000 }
+    );
+  });
+
+  it('loads URL revision editable when edit=1 even if default is read-only', async () => {
+    getCanvasSettingsSpy.mockReturnValue({
+      ...canvasSettings.DEFAULT_CANVAS_SETTINGS,
+      defaultRevisionLoadReadOnly: true,
+    });
+    const { useSearchParams } = require('next/navigation');
+    useSearchParams.mockReturnValue(new URLSearchParams('revision=7&edit=1'));
+
+    mockPullVersion.mockResolvedValue({
+      version_id: 'v1',
+      revision: 7,
+      classes: [],
+      canvas_metadata: null,
+      pulled_at: new Date().toISOString(),
+    });
+
+    render(
+      <WorkspaceProvider>
+        <StudioProvider>
+          <StudioVersionSync />
+          <SetVersionButton />
+          <StudioReadOnlyProbe />
+        </StudioProvider>
+      </WorkspaceProvider>
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^set version$/i }));
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('studio-ro')).toHaveTextContent('rw');
       },
       { timeout: 2000 }
     );

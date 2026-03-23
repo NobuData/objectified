@@ -423,6 +423,52 @@ export default function CanvasSettingsDialog({
                     </Select.Portal>
                   </Select.Root>
                 </div>
+                <div className="flex items-center justify-between gap-3">
+                  <Label.Root
+                    htmlFor="canvas-settings-default-revision-readonly"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Open URL revision read-only
+                  </Label.Root>
+                  <Switch.Root
+                    id="canvas-settings-default-revision-readonly"
+                    checked={draft.defaultRevisionLoadReadOnly}
+                    onCheckedChange={(checked) =>
+                      updateDraft({ defaultRevisionLoadReadOnly: checked })
+                    }
+                    className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                  >
+                    <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                  </Switch.Root>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
+                  When a link includes <span className="font-mono">revision</span> but not{' '}
+                  <span className="font-mono">view=1</span> or <span className="font-mono">edit=1</span>,
+                  load that snapshot read-only (safer). Add <span className="font-mono">edit=1</span> to
+                  force editing.
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <Label.Root
+                    htmlFor="canvas-settings-clear-undo-revision"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Clear undo after revision load
+                  </Label.Root>
+                  <Switch.Root
+                    id="canvas-settings-clear-undo-revision"
+                    checked={draft.clearUndoStackOnRevisionLoad}
+                    onCheckedChange={(checked) =>
+                      updateDraft({ clearUndoStackOnRevisionLoad: checked })
+                    }
+                    className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                  >
+                    <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                  </Switch.Root>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
+                  After loading a specific revision, reset undo/redo instead of restoring a saved stack
+                  that matches that revision.
+                </p>
               </div>
 
               {/* Edge styling & routing — GitHub #94 */}

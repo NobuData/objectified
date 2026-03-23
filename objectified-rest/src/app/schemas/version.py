@@ -266,6 +266,10 @@ class VersionRollbackRequest(BaseModel):
     """Request body for POST /versions/{id}/rollback."""
 
     revision: int = Field(..., description="Snapshot revision to restore version state to.")
+    message: Optional[str] = Field(
+        default=None,
+        description="Optional note stored on the rollback snapshot description.",
+    )
 
 
 class VersionPullResponse(BaseModel):
@@ -278,6 +282,22 @@ class VersionPullResponse(BaseModel):
     classes: list[dict[str, Any]] = Field(default_factory=list)
     canvas_metadata: Optional[dict[str, Any]] = None
     pulled_at: datetime
+    latest_revision: Optional[int] = Field(
+        None,
+        description="Highest snapshot revision on the server for this version (current head).",
+    )
+    snapshot_label: Optional[str] = Field(
+        None,
+        description="When pulling a specific revision, label of that snapshot.",
+    )
+    snapshot_description: Optional[str] = Field(
+        None,
+        description="When pulling a specific revision, description of that snapshot.",
+    )
+    snapshot_committed_at: Optional[datetime] = Field(
+        None,
+        description="When pulling a specific revision, when that snapshot was created.",
+    )
     diff_since_revision: Optional[int] = Field(
         None,
         description="When since_revision query param was set, this echoes it.",

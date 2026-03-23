@@ -41,6 +41,13 @@ export interface CanvasSettings {
   persistUndoStackInSession: boolean;
   /** Maximum number of undo steps kept in memory. */
   maxUndoDepth: number;
+  /**
+   * When opening a URL with only `revision` (no view/readOnly/edit), load that snapshot as read-only.
+   * Use `edit=1` on the URL to force an editable load.
+   */
+  defaultRevisionLoadReadOnly: boolean;
+  /** After loading a specific revision, clear undo/redo instead of restoring a matching session stack. */
+  clearUndoStackOnRevisionLoad: boolean;
 }
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
@@ -59,6 +66,8 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   edgeAnimated: false,
   persistUndoStackInSession: false,
   maxUndoDepth: 50,
+  defaultRevisionLoadReadOnly: false,
+  clearUndoStackOnRevisionLoad: true,
 };
 
 interface StoredCanvasSettings {
