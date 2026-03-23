@@ -217,7 +217,8 @@ export default function StudioToolbar() {
   }, []);
 
   const handleConnectionRetry = useCallback(async () => {
-    if (!studio?.state?.versionId) return;
+    if (!studio?.state?.versionId || !studio?.state?.revision) return;
+    if (!options.jwt && !options.apiKey) return;
     setConnectionRetryBusy(true);
     try {
       await studio.checkServerForUpdates(options);
@@ -671,7 +672,7 @@ export default function StudioToolbar() {
             onClick={() => {
               void handleConnectionRetry();
             }}
-            disabled={studio!.loading || connectionRetryBusy || !studio!.state?.versionId}
+            disabled={studio!.loading || connectionRetryBusy || !studio!.state?.versionId || !studio!.state?.revision || (!options.jwt && !options.apiKey)}
             aria-label={connectionOnline ? 'Check connection and sync status' : 'Retry connection and sync status'}
             title={connectionOnline ? 'Check connection and sync status' : 'Retry connection and sync status'}
           >

@@ -748,14 +748,21 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setServerHasNewChanges(false);
         setHasUnpushedCommits(true);
         const priorCommit = loadPersistedCommitInfo(current.versionId);
-        const nextUnpushedCount = (priorCommit?.commitsSinceLastPush ?? 0) + 1;
+        const isSameRevision =
+          priorCommit != null && priorCommit.revision === current.revision;
+        const nextUnpushedCount = isSameRevision
+          ? (priorCommit.commitsSinceLastPush ?? 0) + 1
+          : 1;
+        const lastPushedAt = isSameRevision
+          ? priorCommit.lastPushedAt ?? null
+          : null;
         setUnpushedCommitCount(nextUnpushedCount);
         savePersistedCommitInfo(current.versionId, {
           revision: res.revision,
           lastCommittedAt: res.committed_at,
           hasUnpushedCommits: true,
           commitsSinceLastPush: nextUnpushedCount,
-          lastPushedAt: priorCommit?.lastPushedAt ?? null,
+          lastPushedAt,
           message: commitOpts?.message ?? null,
           externalId: commitOpts?.externalId ?? null,
         });
@@ -836,7 +843,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setServerHasNewChanges(false);
         setHasUnpushedCommits(false);
         setUnpushedCommitCount(0);
-        const pushedAt = new Date().toISOString();
+        const pushedAt = responses[0]?.committed_at ?? new Date().toISOString();
         setLastPushedAt(pushedAt);
         const existingInfo = loadPersistedCommitInfo(current.versionId);
         savePersistedCommitInfo(current.versionId, {
