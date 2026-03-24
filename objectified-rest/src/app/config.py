@@ -73,6 +73,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    version_history_retention_notice: Optional[str] = Field(
+        default=None,
+        description=(
+            "When set, returned on paginated GET /v1/versions/{id}/snapshots/metadata "
+            "as retention_notice for display in the version history UI (GitHub #222)."
+        ),
+    )
+
     @property
     def effective_database_url(self) -> str:
         """Database URL, preferring DATABASE_URL over components."""

@@ -14,6 +14,7 @@ from app.auth import (
     require_version_permission,
 )
 from app.database import db
+from app.config import settings
 from app.quotas import ensure_version_quota_allows_create
 from app.routes.helpers import _assert_project_exists, _assert_tenant_exists, _not_found
 from app.schema_webhook_service import (
@@ -1139,8 +1140,10 @@ def list_version_snapshots(
         "Omit limit to return all matching rows in one response; use limit and offset for pagination. "
         "Optional filters: message substring (label or description), committed_by (account id), "
         "and created_at range. "
-        "Pass paged=true to receive a paginated envelope {items, total, latest_revision}; "
-        "the default (paged=false) returns a bare array for backward compatibility."
+        "Pass paged=true to receive a paginated envelope {items, total, latest_revision, "
+        "retention_notice?}; retention_notice is set when the server configures "
+        "VERSION_HISTORY_RETENTION_NOTICE. "
+        "The default (paged=false) returns a bare array for backward compatibility."
     ),
 )
 def list_version_snapshots_metadata(
@@ -1178,6 +1181,8 @@ def list_version_snapshots_metadata(
 ) -> Union[List[VersionSnapshotMetadataSchema], VersionSnapshotMetadataPageSchema]:
     """List metadata for snapshots for a version, without the snapshot payload."""
     _assert_version_exists(version_id, include_deleted=True)
+
+    retention_notice = (settings.version_history_retention_notice or "").strip() or None
 
     filter_sql, filter_params = _snapshot_metadata_filter_sql(
         message_contains, committed_by, created_after, created_before
@@ -1218,6 +1223,7 @@ def list_version_snapshots_metadata(
             items=items,
             total=len(items),
             latest_revision=latest_revision,
+            retention_notice=retention_notice,
         )
 
     count_rows = db.execute_query(
@@ -1247,6 +1253,7 @@ def list_version_snapshots_metadata(
         items=items,
         total=total,
         latest_revision=latest_revision,
+        retention_notice=retention_notice,
     )
 
 

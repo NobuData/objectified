@@ -10,6 +10,8 @@ import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialo
 const emptyHistoryPage = { items: [] as unknown[], total: 0, latest_revision: null };
 const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve(emptyHistoryPage));
 const mockListVersionSnapshotsSchemaChanges = jest.fn(() => Promise.resolve([]));
+const mockListVersionHistory = jest.fn(() => Promise.resolve([]));
+const mockListVersionSnapshots = jest.fn(() => Promise.resolve([]));
 const mockDeleteVersion = jest.fn(() => Promise.resolve());
 const mockGetVersion = jest.fn(() =>
   Promise.resolve({
@@ -36,6 +38,8 @@ jest.mock('@lib/api/rest-client', () => ({
     mockListVersionSnapshotsMetadata(...args),
   listVersionSnapshotsSchemaChanges: (...args: unknown[]) =>
     mockListVersionSnapshotsSchemaChanges(...args),
+  listVersionHistory: (...args: unknown[]) => mockListVersionHistory(...args),
+  listVersionSnapshots: (...args: unknown[]) => mockListVersionSnapshots(...args),
   deleteVersion: (...args: unknown[]) => mockDeleteVersion(...args),
   getVersion: (...args: unknown[]) => mockGetVersion(...args),
   listVersions: (...args: unknown[]) => mockListVersions(...args),
@@ -81,6 +85,8 @@ beforeEach(() => {
   mockListVersions.mockResolvedValue([]);
   mockListVersionSnapshotsMetadata.mockResolvedValue(emptyHistoryPage);
   mockListVersionSnapshotsSchemaChanges.mockResolvedValue([]);
+  mockListVersionHistory.mockResolvedValue([]);
+  mockListVersionSnapshots.mockResolvedValue([]);
   mockPullVersion.mockResolvedValue({
     diff: {
       added_class_names: [],
@@ -279,6 +285,54 @@ describe('VersionHistoryDialog – schema audit', () => {
 
     expect(await screen.findByText(/added:/i)).toBeInTheDocument();
     expect(screen.getByText(/person/i)).toBeInTheDocument();
+  });
+});
+
+describe('VersionHistoryDialog – compliance (GitHub #222)', () => {
+  it('shows retention notice from API when configured', async () => {
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [],
+      total: 0,
+      latest_revision: null,
+      retention_notice: 'Revisions older than 90 days may be archived.',
+    });
+    render(<VersionHistoryDialog {...defaultProps} />);
+    await waitFor(() => {
+      expect(screen.getByRole('note')).toHaveTextContent(
+        /Revisions older than 90 days may be archived/
+      );
+    });
+  });
+
+  it('shows optional compliance export controls when expanded', async () => {
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [
+        {
+          id: 'snap-1',
+          version_id: 'v1',
+          project_id: 'p1',
+          committed_by: 'user-1',
+          revision: 1,
+          label: 'initial',
+          description: 'first',
+          created_at: new Date().toISOString(),
+        },
+      ],
+      total: 1,
+      latest_revision: 1,
+    });
+    render(<VersionHistoryDialog {...defaultProps} />);
+    await waitFor(() => {
+      expect(screen.getByText(/Compliance export \(optional\)/)).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText(/Compliance export \(optional\)/));
+    expect(
+      screen.getByRole('button', { name: /Revision index \(metadata\)/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Version row audit/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Full state per revision/i })
+    ).toBeInTheDocument();
   });
 });
 

@@ -449,6 +449,24 @@ def test_list_version_snapshots_metadata_returns_list(client):
     assert payload.get("latest_revision") == 1
 
 
+def test_list_version_snapshots_metadata_includes_retention_notice_when_configured(client):
+    """Paged snapshot metadata includes retention_notice when settings configure it."""
+    from unittest.mock import patch
+
+    notice = "Revisions older than 90 days may be archived."
+    with patch("app.routes.versions.settings") as mock_settings:
+        mock_settings.version_history_retention_notice = notice
+        with mock_db_all() as mock_db:
+            mock_db.execute_query.side_effect = [
+                [_version_lookup_row()],
+                [{"max_revision": 1}],
+                [_SNAPSHOT_METADATA_ROW],
+            ]
+            r = client.get(f"/v1/versions/{_VERSION_ID}/snapshots/metadata?paged=true")
+    assert r.status_code == 200
+    assert r.json().get("retention_notice") == notice
+
+
 def test_list_version_snapshots_metadata_empty(client):
     """GET /v1/versions/{id}/snapshots/metadata returns empty page when no snapshots."""
     with mock_db_all() as mock_db:
