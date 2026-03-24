@@ -306,13 +306,22 @@ export default function StudioToolbar() {
     async (choice: PullDirtyChoice) => {
       if (choice === 'cancel' || !studio?.state || !versionId) return;
       if (choice === 'stash') {
-        savePullStash(versionId, studio.state);
+        const stashSaved = savePullStash(versionId, studio.state);
+        if (!stashSaved) {
+          await alertDialog({
+            title: 'Could not save local stash',
+            message:
+              'Your local changes could not be saved in the browser. The pull was cancelled so you can back up your work manually.',
+            variant: 'error',
+          });
+          return;
+        }
         await runPull({ stashUsed: true });
       } else {
         await runPull();
       }
     },
-    [studio, versionId, runPull]
+    [studio, versionId, runPull, alertDialog]
   );
 
   const handlePull = useCallback(async () => {

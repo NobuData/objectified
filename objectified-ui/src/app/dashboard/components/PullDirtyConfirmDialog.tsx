@@ -27,7 +27,6 @@ export default function PullDirtyConfirmDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
         <Dialog.Content
           className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-0 flex flex-col max-h-[90vh]"
-          aria-describedby={undefined}
           onEscapeKeyDown={() => pick('cancel')}
           onPointerDownOutside={() => pick('cancel')}
         >
@@ -38,12 +37,11 @@ export default function PullDirtyConfirmDialog({
             </Dialog.Title>
           </div>
           <div className="px-6 py-2 flex-1 overflow-auto">
-            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+            <Dialog.Description className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
               You have uncommitted edits in the studio. Pull replaces the working copy with
               the latest server state for this version. Choose whether to keep your edits in
-              a local stash (you can restore them from the backup flow), discard them
-              permanently, or cancel.
-            </p>
+              a local stash on this device, discard them permanently, or cancel.
+            </Dialog.Description>
           </div>
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 p-4 pt-4">
             <button

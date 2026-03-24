@@ -2243,7 +2243,10 @@ async function fetchPullVersion(
           : `HTTP ${res.status}`;
     throw new RestApiError(message || `HTTP ${res.status}`, res.status, detail);
   }
-  return { notModified: false, data: (parsed as VersionPullResponse) ?? ({} as VersionPullResponse), etag };
+  if (!parsed) {
+    throw new RestApiError('Empty or invalid pull response body', res.status);
+  }
+  return { notModified: false, data: parsed as VersionPullResponse, etag };
 }
 
 export async function pullVersionWithEtag(
