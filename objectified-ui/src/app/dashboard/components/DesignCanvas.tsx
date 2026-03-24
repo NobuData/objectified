@@ -25,7 +25,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useDialogOptional } from '@/app/components/providers/DialogProvider';
-import { useStudioOptional } from '@/app/contexts/StudioContext';
+import { useStudioOptional, type ClassMutationStatus } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
@@ -87,22 +87,12 @@ import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 import ZoomToClassRegistration from './ZoomToClassRegistration';
 import CanvasExportRegistration from './CanvasExportRegistration';
 
+import { classHasValidationErrors } from '@lib/studio/classValidation';
+
 const defaultPosition = { x: 0, y: 0 };
 const NODE_MUTATION_DEBOUNCE_MS = 150;
 const LARGE_CANVAS_NODE_THRESHOLD = 100;
-
-function hasClassValidationErrors(cls: StudioClass): boolean {
-  if (!(cls.name ?? '').trim()) return true;
-  const seen = new Set<string>();
-  for (const prop of cls.properties ?? []) {
-    const propName = (prop.name ?? '').trim();
-    if (!propName) return true;
-    const normalized = propName.toLowerCase();
-    if (seen.has(normalized)) return true;
-    seen.add(normalized);
-  }
-  return false;
-}
+const EMPTY_CLASS_MUTATION_STATUS: Record<string, ClassMutationStatus> = {};
 
 function isClassDeprecated(cls: StudioClass): boolean {
   const schema = cls.schema as { deprecated?: unknown } | undefined;
@@ -192,16 +182,16 @@ export default function DesignCanvas() {
     return meta?.tag_definitions ?? {};
   }, [studio?.state?.canvas_metadata]);
 
-  const classMutationStatusById = studio?.classMutationStatusById ?? {};
+  const classMutationStatusById = studio?.classMutationStatusById ?? EMPTY_CLASS_MUTATION_STATUS;
+  const refEdges = useMemo(() => buildClassRefEdges(classes), [classes]);
   const classRefCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    const refEdges = buildClassRefEdges(classes);
     for (const edge of refEdges) {
       counts.set(edge.source, (counts.get(edge.source) ?? 0) + 1);
       counts.set(edge.target, (counts.get(edge.target) ?? 0) + 1);
     }
     return counts;
-  }, [classes]);
+  }, [refEdges]);
 
   const initialNodesFromState = useMemo(() => {
     const saved = versionId ? getDefaultCanvasLayout(versionId) : [];
@@ -250,7 +240,7 @@ export default function DesignCanvas() {
             isDeprecated: isClassDeprecated(cls),
             isNew: classMutationStatusById[id] === 'new',
             isModified: classMutationStatusById[id] === 'modified',
-            hasValidationErrors: hasClassValidationErrors(cls),
+            hasValidationErrors: classHasValidationErrors(cls),
           },
         },
         ...(parentId ? { parentId, extent: 'parent' as const } : {}),
@@ -272,17 +262,16 @@ export default function DesignCanvas() {
     return [...groupNodes, ...classNodes];
   }, [classes, groups, versionId, tagDefinitions, classMutationStatusById, classRefCounts]);
 
-  const initialEdges = useMemo(() => buildClassRefEdges(classes), [classes]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodesFromState);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(refEdges);
 
   useEffect(() => {
     setNodes(initialNodesFromState);
   }, [initialNodesFromState, setNodes]);
 
   useEffect(() => {
-    setEdges(buildClassRefEdges(classes));
-  }, [classes, setEdges]);
+    setEdges(refEdges);
+  }, [refEdges, setEdges]);
 
   // Derived edges must not be mutated by user interaction; only selection changes are allowed
   // so that keyboard-delete and other destructive actions cannot remove ref edges.
