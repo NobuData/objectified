@@ -44,6 +44,7 @@ describe('DEFAULT_CANVAS_SETTINGS', () => {
     expect(DEFAULT_CANVAS_SETTINGS.showBackground).toBe(true);
     expect(DEFAULT_CANVAS_SETTINGS.showControls).toBe(true);
     expect(DEFAULT_CANVAS_SETTINGS.showMiniMap).toBe(true);
+    expect(DEFAULT_CANVAS_SETTINGS.showMiniMapLegend).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.viewportPersistence).toBe(true);
     expect(DEFAULT_CANVAS_SETTINGS.showLayoutHints).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.showDependencyOverlay).toBe(false);

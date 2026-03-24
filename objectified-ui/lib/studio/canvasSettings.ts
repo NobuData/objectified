@@ -18,6 +18,8 @@ export interface CanvasSettings {
   showBackground: boolean;
   showControls: boolean;
   showMiniMap: boolean;
+  /** Show MiniMap legend for groups and selected nodes. */
+  showMiniMapLegend: boolean;
   viewportPersistence: boolean;
   /** Show optional layout hints (edge crossings, spacing). Reference: GitHub #89. */
   showLayoutHints: boolean;
@@ -60,6 +62,7 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   showBackground: true,
   showControls: true,
   showMiniMap: true,
+  showMiniMapLegend: false,
   viewportPersistence: true,
   showLayoutHints: false,
   showDependencyOverlay: false,

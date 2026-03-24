@@ -117,8 +117,8 @@ export default function CanvasSettingsDialog({
                 className="text-sm text-slate-500 dark:text-slate-400 mt-1"
               >
                 Configure grid, background, edges, routing, animation, controls,
-                minimap, and search history. Changes are reflected in the
-                preview; save to apply to the design canvas.
+                minimap, and search history. Most visual changes are reflected
+                in the preview; save to apply to the design canvas.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -285,6 +285,25 @@ export default function CanvasSettingsDialog({
                     updateDraft({ showMiniMap: checked })
                   }
                   className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                >
+                  <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                </Switch.Root>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <Label.Root
+                  htmlFor="canvas-settings-minimap-legend"
+                  className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                >
+                  MiniMap legend
+                </Label.Root>
+                <Switch.Root
+                  id="canvas-settings-minimap-legend"
+                  checked={draft.showMiniMapLegend}
+                  onCheckedChange={(checked) =>
+                    updateDraft({ showMiniMapLegend: checked })
+                  }
+                  disabled={!draft.showMiniMap}
+                  className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors disabled:opacity-50"
                 >
                   <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
                 </Switch.Root>
