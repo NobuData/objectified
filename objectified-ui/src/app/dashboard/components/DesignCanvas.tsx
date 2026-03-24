@@ -813,7 +813,7 @@ export default function DesignCanvas() {
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
       const withPrimaryModifier = e.metaKey || e.ctrlKey;
       if (withPrimaryModifier) {
-        if ((e.key === '=' || e.key === '+') && !e.shiftKey) {
+        if ((e.key === '=' && !e.shiftKey) || (e.key === '+' && e.shiftKey)) {
           e.preventDefault();
           zoomCanvasIn();
           return;
@@ -828,12 +828,12 @@ export default function DesignCanvas() {
           resetCanvasViewport();
           return;
         }
-        if (e.key.toLowerCase() === 'f' && !e.shiftKey) {
+        if (e.key.toLowerCase() === 'f' && !e.shiftKey && e.altKey) {
           e.preventDefault();
           fitCanvasToContent();
           return;
         }
-        if (e.key.toLowerCase() === 'f' && e.shiftKey) {
+        if (e.key.toLowerCase() === 'f' && e.shiftKey && e.altKey) {
           e.preventDefault();
           fitCanvasToSelected();
           return;
@@ -841,12 +841,6 @@ export default function DesignCanvas() {
       }
 
       if (visibleClassNodeIds.length === 0) return;
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const delta = e.shiftKey ? -1 : 1;
-        focusClassNodeByIndex(keyboardFocusIndex + delta);
-        return;
-      }
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
         focusClassNodeByIndex(keyboardFocusIndex + 1);
@@ -1300,8 +1294,8 @@ export default function DesignCanvas() {
                 })
             : undefined
         }
-        onInit={(instance) => {
-          reactFlowRef.current = instance as unknown as ReactFlowInstance;
+        onInit={(instance: ReactFlowInstance) => {
+          reactFlowRef.current = instance;
         }}
         viewport={viewportState}
         onViewportChange={onViewportChange}
