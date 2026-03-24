@@ -647,7 +647,11 @@ export default function VersionsPage() {
           versionId: newVersion.id,
         });
         if (createStudioOpenNewTab) {
-          window.open(url, '_blank', 'noopener,noreferrer');
+          const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+          if (!newWindow) {
+            // Popup blocked; fall back to same-tab navigation.
+            router.push(url);
+          }
         } else {
           router.push(url);
         }
@@ -1966,7 +1970,6 @@ export default function VersionsPage() {
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[10001]" />
           <Dialog.Content
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10002] w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-0 flex flex-col max-h-[90vh]"
-            aria-describedby={undefined}
             onEscapeKeyDown={(event) => {
               if (createSubmitting) {
                 event.preventDefault();
@@ -2517,7 +2520,11 @@ export default function VersionsPage() {
             versionId: newVersion.id,
           });
           if (meta.openInNewTab) {
-            window.open(url, '_blank', 'noopener,noreferrer');
+            const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+            if (!newWindow) {
+              // Popup blocked; fall back to same-tab navigation.
+              router.push(url);
+            }
           } else {
             router.push(url);
           }
