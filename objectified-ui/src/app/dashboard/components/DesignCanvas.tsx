@@ -22,7 +22,6 @@ import {
   type OnMoveEnd,
   type Viewport,
   type Node,
-  type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useDialogOptional } from '@/app/components/providers/DialogProvider';
@@ -89,6 +88,15 @@ import CanvasExportRegistration from './CanvasExportRegistration';
 const defaultPosition = { x: 0, y: 0 };
 const NODE_MUTATION_DEBOUNCE_MS = 150;
 const LARGE_CANVAS_NODE_THRESHOLD = 100;
+type CanvasViewportApi = Pick<
+  {
+    fitView: (...args: any[]) => any;
+    setViewport: (...args: any[]) => any;
+    zoomIn: (...args: any[]) => any;
+    zoomOut: (...args: any[]) => any;
+  },
+  'fitView' | 'setViewport' | 'zoomIn' | 'zoomOut'
+>;
 
 const nodeTypes = { class: ClassNode, group: GroupNode };
 const edgeTypes = { classRef: ClassRefEdge };
@@ -121,7 +129,7 @@ export default function DesignCanvas() {
   const [canvasClipboard, setCanvasClipboard] = useState<StudioClass[] | null>(
     null
   );
-  const reactFlowRef = useRef<ReactFlowInstance | null>(null);
+  const reactFlowRef = useRef<CanvasViewportApi | null>(null);
 
   const onConfigChange = useCallback(
     (classId: string, config: ClassNodeConfig) => {
@@ -1294,7 +1302,7 @@ export default function DesignCanvas() {
                 })
             : undefined
         }
-        onInit={(instance: ReactFlowInstance) => {
+        onInit={(instance) => {
           reactFlowRef.current = instance;
         }}
         viewport={viewportState}
