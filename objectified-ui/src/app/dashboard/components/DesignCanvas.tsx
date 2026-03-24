@@ -27,6 +27,7 @@ import '@xyflow/react/dist/style.css';
 import { useDialogOptional } from '@/app/components/providers/DialogProvider';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
+import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
 import { useEditClassRequestOptional } from '@/app/contexts/EditClassRequestContext';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
@@ -122,6 +123,10 @@ export default function DesignCanvas() {
   const canvasSettings = useResolvedCanvasSettings();
   const isReadOnly =
     studio?.state?.readOnly === true || workspace?.version?.published === true;
+  const tenantId = workspace?.tenant?.id ?? null;
+  const tenantPerms = useTenantPermissions(tenantId);
+  const hasSchemaWrite = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:write');
+  const mutationLocked = isReadOnly || (Boolean(tenantId) && (tenantPerms.loading || !hasSchemaWrite));
 
   const [configOverrides, setConfigOverrides] = useState<
     Record<string, ClassNodeConfig>
@@ -394,14 +399,14 @@ export default function DesignCanvas() {
       // the user can still click/select nodes and react-flow can measure intrinsic
       // node sizes. Destructive changes (remove) and position changes (drag) are
       // discarded before mutating local state.
-      const allowedChanges = isReadOnly
+      const allowedChanges = mutationLocked
         ? changes.filter((c) => c.type === 'select' || c.type === 'dimensions')
         : changes;
 
       if (allowedChanges.length > 0) {
         onNodesChange(allowedChanges as Parameters<typeof onNodesChange>[0]);
       }
-      if (isReadOnly || !studio?.applyChange) return;
+      if (mutationLocked || !studio?.applyChange) return;
 
       const groupIds = new Set(groups.map((g) => g.id));
       let sawTerminalChange = false;
@@ -449,7 +454,7 @@ export default function DesignCanvas() {
         schedulePendingNodeMutationFlush(sawTerminalChange);
       }
     },
-    [onNodesChange, studio, groups, isReadOnly, schedulePendingNodeMutationFlush]
+    [onNodesChange, studio, groups, mutationLocked, schedulePendingNodeMutationFlush]
   );
 
   const canvasSearch = useCanvasSearchOptional();
@@ -567,7 +572,7 @@ export default function DesignCanvas() {
           ...node,
           data: {
             ...node.data,
-            allowResize: !isReadOnly,
+            allowResize: !mutationLocked,
             onEdit: canvasGroup?.openGroupEditor,
           },
         };
@@ -581,7 +586,7 @@ export default function DesignCanvas() {
             ...configOverrides[node.id],
           },
           onConfigChange,
-          allowResize: !isReadOnly,
+          allowResize: !mutationLocked,
             simplifiedView: canvasSettings.simplifiedNodeView,
             highContrast: canvasSettings.highContrastCanvas,
         },
@@ -592,7 +597,7 @@ export default function DesignCanvas() {
     versionId,
     configOverrides,
     onConfigChange,
-    isReadOnly,
+    mutationLocked,
     canvasGroup,
     canvasSettings.simplifiedNodeView,
     canvasSettings.highContrastCanvas,
@@ -719,13 +724,14 @@ export default function DesignCanvas() {
 
   const handleNodeDoubleClick = useCallback(
     (_event: MouseEvent, node: Node) => {
+      if (mutationLocked) return;
       if (node.type === 'group') {
         canvasGroup?.openGroupEditor(node.id);
       } else {
         editClassRequest?.requestEditClass(node.id);
       }
     },
-    [editClassRequest, canvasGroup]
+    [editClassRequest, canvasGroup, mutationLocked]
   );
 
   const visibleClassNodeIds = useMemo(
@@ -1116,7 +1122,7 @@ export default function DesignCanvas() {
 
   /** Paste classes from clipboard (GitHub #97). */
   const handlePasteClasses = useCallback(() => {
-    if (!canvasClipboard?.length || !studio?.applyChange || isReadOnly) return;
+    if (!canvasClipboard?.length || !studio?.applyChange || mutationLocked) return;
     const existingNames = classes.map((c) => c.name ?? '');
     const newClasses = cloneClassesForPaste(
       canvasClipboard,
@@ -1138,12 +1144,12 @@ export default function DesignCanvas() {
       saveDefaultCanvasLayout(versionId, [...existingPositions, ...newPositions]);
     }
     setNodeContextMenu(null);
-  }, [canvasClipboard, studio, isReadOnly, classes, versionId]);
+  }, [canvasClipboard, studio, mutationLocked, classes, versionId]);
 
   /** Duplicate selected classes (copy then paste) (GitHub #97). */
   const handleDuplicateClasses = useCallback(
     (classIds: string[]) => {
-      if (classIds.length === 0 || !studio?.applyChange || isReadOnly) return;
+      if (classIds.length === 0 || !studio?.applyChange || mutationLocked) return;
       const toCopy = classIds
         .map((id) => classes.find((c) => getStableClassId(c) === id))
         .filter((c): c is StudioClass => c != null);
@@ -1171,12 +1177,12 @@ export default function DesignCanvas() {
       setCanvasClipboard(toCopy);
       setNodeContextMenu(null);
     },
-    [studio, classes, isReadOnly, versionId]
+    [studio, classes, mutationLocked, versionId]
   );
 
   // Delete/Backspace: delete selected class nodes from canvas (GitHub #96).
   useEffect(() => {
-    if (isReadOnly) return;
+    if (mutationLocked) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       const target = e.target as HTMLElement | null;
@@ -1204,11 +1210,11 @@ export default function DesignCanvas() {
     };
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
-  }, [isReadOnly, selectedClassNodeIds, handleDeleteClassesFromCanvas]);
+  }, [mutationLocked, selectedClassNodeIds, handleDeleteClassesFromCanvas]);
 
   // Ctrl+C / Ctrl+V / Ctrl+D: copy, paste, duplicate (GitHub #97).
   useEffect(() => {
-    if (isReadOnly) return;
+    // Copy remains available in read-only mode; only mutating shortcuts are blocked.
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCopy = e.key.toLowerCase() === 'c' && (e.metaKey || e.ctrlKey);
       const isPaste = e.key.toLowerCase() === 'v' && (e.metaKey || e.ctrlKey);
@@ -1225,6 +1231,7 @@ export default function DesignCanvas() {
         return;
       }
       if (!target?.closest('.react-flow')) return;
+      if (mutationLocked && !isCopy) return;
       e.preventDefault();
       if (isCopy) {
         if (selectedClassNodeIds.length > 0) handleCopyClasses(selectedClassNodeIds);
@@ -1238,7 +1245,7 @@ export default function DesignCanvas() {
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [
-    isReadOnly,
+    mutationLocked,
     selectedClassNodeIds,
     handleCopyClasses,
     handlePasteClasses,
@@ -1332,8 +1339,8 @@ export default function DesignCanvas() {
         onViewportChange={onViewportChange}
         onMoveEnd={onMoveEnd}
         fitView={viewportState === undefined}
-        nodesDraggable={!isReadOnly}
-        nodesConnectable={!isReadOnly}
+        nodesDraggable={!mutationLocked}
+        nodesConnectable={!mutationLocked}
         elementsSelectable={true}
         panOnDrag={true}
         zoomOnScroll={true}
@@ -1460,7 +1467,7 @@ export default function DesignCanvas() {
           >
             {nodeContextMenu.node.type === 'group' && (
               <>
-                {!isReadOnly && (
+                {!mutationLocked && (
                   <button
                     type="button"
                     className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -1482,7 +1489,7 @@ export default function DesignCanvas() {
                 >
                   Focus on group
                 </button>
-                {!isReadOnly && (
+                {!mutationLocked && (
                   <button
                     type="button"
                     className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -1498,18 +1505,18 @@ export default function DesignCanvas() {
             )}
             {nodeContextMenu.node.type === 'class' && (
               <>
-                {!isReadOnly && (
+                <button
+                  type="button"
+                  className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  onClick={() => {
+                    handleCopyClasses(selectedClassNodeIds.length > 0 ? selectedClassNodeIds : [nodeContextMenu.node.id]);
+                    setNodeContextMenu(null);
+                  }}
+                >
+                  Copy
+                </button>
+                {!mutationLocked && (
                   <>
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                      onClick={() => {
-                        handleCopyClasses(selectedClassNodeIds.length > 0 ? selectedClassNodeIds : [nodeContextMenu.node.id]);
-                        setNodeContextMenu(null);
-                      }}
-                    >
-                      Copy
-                    </button>
                     <button
                       type="button"
                       className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1543,7 +1550,7 @@ export default function DesignCanvas() {
                 >
                   Focus on this node
                 </button>
-                {!isReadOnly &&
+                {!mutationLocked &&
                   validClassIds.has(nodeContextMenu.node.id) && (
                     <>
                       <button
@@ -1615,7 +1622,8 @@ export default function DesignCanvas() {
                       </button>
                     </>
                   )}
-                {(nodeContextMenu.node.data as { canvas_metadata?: { group?: string } }).canvas_metadata?.group ? (
+                {!mutationLocked &&
+                (nodeContextMenu.node.data as { canvas_metadata?: { group?: string } }).canvas_metadata?.group ? (
                   <button
                     type="button"
                     className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -1625,7 +1633,7 @@ export default function DesignCanvas() {
                   >
                     Remove from group
                   </button>
-                ) : groups.length > 0 ? (
+                ) : !mutationLocked && groups.length > 0 ? (
                   groups.map((g) => (
                     <button
                       key={g.id}

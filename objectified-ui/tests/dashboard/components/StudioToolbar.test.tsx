@@ -748,7 +748,7 @@ describe('StudioToolbar', () => {
     });
   });
 
-  it('disables commit, push, pull, and merge when user lacks schema permissions', () => {
+  it('shows permission read-only banner and disables mutating actions when user lacks schema permissions', () => {
     useTenantPermissions.mockReturnValue({
       loading: false,
       permissions: { is_tenant_admin: false },
@@ -762,6 +762,9 @@ describe('StudioToolbar', () => {
     expect(screen.getByRole('button', { name: /push to another version/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /pull from server/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /merge from another version/i })).toBeDisabled();
+    expect(screen.getByText(/you do not have edit permission for this version/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /request edit access/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /branch from this version/i })).toBeInTheDocument();
   });
 
   it('shows "Checking permissions…" tooltip while tenant permissions are loading', () => {
