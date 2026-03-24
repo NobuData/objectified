@@ -145,20 +145,22 @@ export default function ProjectVersionBar() {
     }
   }, [baseUrl, tenantId, options.jwt, options.apiKey]);
 
-  const loadVersions = useCallback(async () => {
+  const loadVersions = useCallback(async (): Promise<boolean> => {
     if (!baseUrl || !tenantId || !projectId) {
       setVersions([]);
       setLoadingVersions(false);
-      return;
+      return false;
     }
     setError(null);
     setLoadingVersions(true);
     try {
       const list = await listVersions(tenantId, projectId, options);
       setVersions(list);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load versions');
       setVersions([]);
+      return false;
     } finally {
       setLoadingVersions(false);
     }
@@ -191,8 +193,8 @@ export default function ProjectVersionBar() {
   useEffect(() => {
     if (!versionScopeKey || !versionSelectOpen) return;
     if (loadedVersionsKey === versionScopeKey) return;
-    void loadVersions().then(() => {
-      setLoadedVersionsKey(versionScopeKey);
+    void loadVersions().then((success) => {
+      if (success) setLoadedVersionsKey(versionScopeKey);
     });
   }, [versionScopeKey, versionSelectOpen, loadedVersionsKey, loadVersions]);
 
@@ -339,14 +341,25 @@ export default function ProjectVersionBar() {
   );
 
   const applyRecentEntry = useCallback(
-    (entry: WorkspaceRecentEntry) => {
+    async (entry: WorkspaceRecentEntry) => {
       if (!workspace) return;
       const tenant = tenants.find((t) => t.id === entry.tenantId);
       const project = projects.find((p) => p.id === entry.projectId);
-      const version = versions.find((v) => v.id === entry.versionId);
-      if (!tenant || !project || !version) {
-        return;
+      if (!tenant || !project) return;
+      // Resolve the version from the cached list when available, otherwise fetch
+      // on-demand so that recent entries work even before the version Select has
+      // been opened (lazy-loading regression guard).
+      const entryScopeKey = `${entry.tenantId}:${entry.projectId}`;
+      let versionList = loadedVersionsKey === entryScopeKey ? versions : [];
+      if (versionList.length === 0) {
+        try {
+          versionList = await listVersions(entry.tenantId, entry.projectId, options);
+        } catch {
+          return;
+        }
       }
+      const version = versionList.find((v) => v.id === entry.versionId);
+      if (!version) return;
       requestWorkspaceSwitch({
         mode: 'replace',
         tenant,
@@ -355,7 +368,7 @@ export default function ProjectVersionBar() {
       });
       setRecentsOpen(false);
     },
-    [workspace, tenants, projects, versions, requestWorkspaceSwitch]
+    [workspace, tenants, projects, versions, loadedVersionsKey, options, requestWorkspaceSwitch]
   );
 
   const { favoritesList, othersList, favSet } = useMemo(() => {
@@ -649,6 +662,7 @@ export default function ProjectVersionBar() {
                       onChange={(e) => setVersionSearch(e.target.value)}
                       onKeyDown={(e) => e.stopPropagation()}
                       placeholder="Search versions"
+                      aria-label="Search versions"
                       className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                     />
                   </div>
@@ -721,16 +735,15 @@ export default function ProjectVersionBar() {
           <Dialog.Overlay className="fixed inset-0 z-[10001] bg-black/50" />
           <Dialog.Content
             className="fixed left-1/2 top-1/2 z-[10002] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900"
-            aria-describedby={undefined}
           >
             <Dialog.Title className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
               <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               Unsaved changes
             </Dialog.Title>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            <Dialog.Description className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               You have local edits in Studio. Save before switching, discard the edits, or
               cancel and stay on the current workspace.
-            </p>
+            </Dialog.Description>
             {switchError ? (
               <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
                 {switchError}
