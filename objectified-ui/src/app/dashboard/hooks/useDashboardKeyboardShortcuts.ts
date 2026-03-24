@@ -47,7 +47,11 @@ export function useDashboardKeyboardShortcuts(
       }
 
       if (key === 'm') {
-        if (onOpenMobileNav) {
+        // Mobile drawer content is `md:hidden`; opening the dialog on desktop only shows the overlay.
+        const isMobileNavViewport =
+          typeof window !== 'undefined' &&
+          window.matchMedia('(max-width: 767px)').matches;
+        if (onOpenMobileNav && isMobileNavViewport) {
           e.preventDefault();
           onOpenMobileNav();
         }

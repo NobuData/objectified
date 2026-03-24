@@ -20,6 +20,7 @@ import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import { usePersistedTenantSelection } from '@/app/dashboard/hooks/usePersistedTenantSelection';
 import { TenantSelectionProvider } from '@/app/contexts/TenantSelectionContext';
 import { useDashboardKeyboardShortcuts } from '@/app/dashboard/hooks/useDashboardKeyboardShortcuts';
+import { useMobileNavViewport } from '@/app/dashboard/hooks/useMobileNavViewport';
 import TenantBrandingEffects from '@/app/components/theme/TenantBrandingEffects';
 import { parseTenantBrandingFromMetadata } from '@lib/ui/tenantBrandingMetadata';
 import SessionExpiryWarning from '@/app/dashboard/components/SessionExpiryWarning';
@@ -35,6 +36,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isMobileNavViewport = useMobileNavViewport();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -68,6 +70,23 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       // Ignore localStorage errors.
     }
   }, [mounted, sidebarCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 768px)');
+    const closeMobileNavIfDesktop = () => {
+      if (mq.matches) setSidebarOpen(false);
+    };
+    closeMobileNavIfDesktop();
+    mq.addEventListener('change', closeMobileNavIfDesktop);
+    return () => mq.removeEventListener('change', closeMobileNavIfDesktop);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileNavViewport && sidebarOpen) setSidebarOpen(false);
+  }, [isMobileNavViewport, sidebarOpen]);
+
+  const mobileNavDialogOpen = sidebarOpen && isMobileNavViewport;
 
   const handleSignOut = () => {
     signOut({ callbackUrl: '/login' });
@@ -390,7 +409,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           />
         </aside>
 
-        <Dialog.Root open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <Dialog.Root open={mobileNavDialogOpen} onOpenChange={setSidebarOpen}>
           <Dialog.Portal>
             <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
             <Dialog.Content

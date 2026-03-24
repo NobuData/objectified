@@ -19,11 +19,25 @@ function fireKeyDown(opts: Partial<KeyboardEvent> & { key: string }) {
   return event;
 }
 
+/** Tailwind `md` is 768px; mobile nav uses `(max-width: 767px)`. */
+function setMatchMediaMobileNavViewport(isMobile: boolean) {
+  window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+    matches: query === '(max-width: 767px)' ? isMobile : false,
+    media: query,
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    addListener: jest.fn(),
+    removeListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  })) as unknown as typeof window.matchMedia;
+}
+
 describe('useDashboardKeyboardShortcuts', () => {
   let router: { push: jest.Mock };
 
   beforeEach(() => {
     router = { push: jest.fn() };
+    setMatchMediaMobileNavViewport(false);
   });
 
   it('navigates to home on Alt+Shift+H', () => {
@@ -53,11 +67,20 @@ describe('useDashboardKeyboardShortcuts', () => {
     window.removeEventListener(OPEN_GLOBAL_SEARCH, listener);
   });
 
-  it('calls onOpenMobileNav on Alt+Shift+M', () => {
+  it('calls onOpenMobileNav on Alt+Shift+M when viewport is mobile', () => {
+    setMatchMediaMobileNavViewport(true);
     const onOpenMobileNav = jest.fn();
     renderHook(() => useDashboardKeyboardShortcuts(router, { onOpenMobileNav }));
     fireKeyDown({ key: 'm', altKey: true, shiftKey: true });
     expect(onOpenMobileNav).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onOpenMobileNav on Alt+Shift+M on desktop viewport', () => {
+    setMatchMediaMobileNavViewport(false);
+    const onOpenMobileNav = jest.fn();
+    renderHook(() => useDashboardKeyboardShortcuts(router, { onOpenMobileNav }));
+    fireKeyDown({ key: 'm', altKey: true, shiftKey: true });
+    expect(onOpenMobileNav).not.toHaveBeenCalled();
   });
 
   it('does not navigate when Alt is not held', () => {
