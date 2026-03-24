@@ -733,12 +733,12 @@ export default function DesignCanvas() {
     [displayNodes]
   );
 
-  const [keyboardFocusIndex, setKeyboardFocusIndex] = useState(0);
+  const [keyboardFocusIndex, setKeyboardFocusIndex] = useState(-1);
 
   // Clamp keyboardFocusIndex whenever the visible node list shrinks to avoid out-of-range reads.
   useEffect(() => {
     if (visibleClassNodeIds.length === 0) {
-      setKeyboardFocusIndex(0);
+      setKeyboardFocusIndex(-1);
       return;
     }
     setKeyboardFocusIndex((prev) =>
@@ -853,11 +853,23 @@ export default function DesignCanvas() {
 
       if (visibleClassNodeIds.length === 0) return;
       if (e.key === 'Tab') {
+        // Only override default tabbing when the event originates from the canvas
+        // container itself, so nested focusable elements (controls, buttons, menus)
+        // keep their native tab behaviour.
+        if (e.target !== e.currentTarget) {
+          return;
+        }
+
+        const nextIndex = keyboardFocusIndex + (e.shiftKey ? -1 : 1);
+
+        // Let the browser handle focus movement when navigating past the
+        // first/last node so users can tab out of the canvas.
+        if (nextIndex < 0 || nextIndex >= visibleClassNodeIds.length) {
+          return;
+        }
+
         e.preventDefault();
-        focusClassNodeByIndex(
-          keyboardFocusIndex + (e.shiftKey ? -1 : 1),
-          'tab'
-        );
+        focusClassNodeByIndex(nextIndex, 'tab');
         return;
       }
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
