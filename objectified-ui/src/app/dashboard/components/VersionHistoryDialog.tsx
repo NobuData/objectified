@@ -19,7 +19,9 @@ import {
   ChevronDown,
   ChevronRight,
   GitCompare,
+  Check,
 } from 'lucide-react';
+import * as Checkbox from '@radix-ui/react-checkbox';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Label from '@radix-ui/react-label';
 import {
@@ -37,6 +39,12 @@ import {
   type RestClientOptions,
 } from '@lib/api/rest-client';
 import { atQuotaLimit } from '@lib/quotaDisplay';
+import {
+  readBranchOpenStudioNewTab,
+  suggestBranchVersionName,
+  writeBranchOpenStudioNewTab,
+  type BranchFromRevisionSuccessMeta,
+} from '@/lib/dashboard/branchFromRevisionUi';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 
 const inputClass =
@@ -65,8 +73,14 @@ export interface VersionHistoryDialogProps {
   canRollback?: boolean;
   /** Explains why rollback is unavailable when {@link onRollbackSuccess} is set but {@link canRollback} is false. */
   rollbackDisabledReason?: string;
-  /** Called after successfully creating a version from a revision (branch). If provided, Branch button is shown. */
-  onBranchSuccess?: (newVersion: VersionSchema) => void;
+  /**
+   * Called after successfully creating a version from a revision (branch). If provided, Branch button is shown.
+   * `meta.openInNewTab` reflects the user’s “open Studio in new tab” choice.
+   */
+  onBranchSuccess?: (
+    newVersion: VersionSchema,
+    meta: BranchFromRevisionSuccessMeta
+  ) => void;
   /** Called after successfully deleting the version. If provided, Delete version button is shown. Caller should redirect to versions list or refresh list. */
   onDeleteSuccess?: () => void | Promise<void>;
   /** Revision currently loaded in Studio (toolbar); used to label rows and show mismatch vs server head. */
@@ -172,6 +186,7 @@ export default function VersionHistoryDialog({
   const [branchDescription, setBranchDescription] = useState('');
   const [branchSubmitting, setBranchSubmitting] = useState(false);
   const [branchError, setBranchError] = useState<string | null>(null);
+  const [branchOpenInNewTab, setBranchOpenInNewTab] = useState(false);
   const [versionQuotaBlocked, setVersionQuotaBlocked] = useState(false);
 
   const fetchSnapshots = useCallback(async () => {
@@ -453,13 +468,22 @@ export default function VersionHistoryDialog({
     onLoadRevision || onRollbackSuccess || showBranch || onCompareWithCurrent
   );
 
-  const handleBranchClick = useCallback((revision: number) => {
-    setBranchRevision(revision);
-    setBranchName('');
-    setBranchDescription('');
-    setBranchError(null);
-    setBranchDialogOpen(true);
-  }, []);
+  useEffect(() => {
+    if (branchDialogOpen) {
+      setBranchOpenInNewTab(readBranchOpenStudioNewTab());
+    }
+  }, [branchDialogOpen]);
+
+  const handleBranchClick = useCallback(
+    (revision: number) => {
+      setBranchRevision(revision);
+      setBranchName(suggestBranchVersionName(versionName, revision));
+      setBranchDescription('');
+      setBranchError(null);
+      setBranchDialogOpen(true);
+    },
+    [versionName]
+  );
 
   const handleBranchSubmit = useCallback(async () => {
     if (
@@ -494,7 +518,7 @@ export default function VersionHistoryDialog({
         },
         options
       );
-      onBranchSuccess(newVersion);
+      onBranchSuccess(newVersion, { openInNewTab: branchOpenInNewTab });
       setBranchDialogOpen(false);
       onOpenChange(false);
     } catch (e) {
@@ -511,6 +535,7 @@ export default function VersionHistoryDialog({
     branchRevision,
     branchName,
     branchDescription,
+    branchOpenInNewTab,
     onBranchSuccess,
     options,
     onOpenChange,
@@ -1217,6 +1242,29 @@ export default function VersionHistoryDialog({
                   disabled={branchSubmitting}
                 />
               </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox.Root
+                  id="branch-open-new-tab"
+                  checked={branchOpenInNewTab}
+                  onCheckedChange={(checked) => {
+                    const on = checked === true;
+                    setBranchOpenInNewTab(on);
+                    writeBranchOpenStudioNewTab(on);
+                  }}
+                  disabled={branchSubmitting}
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 disabled:opacity-50"
+                >
+                  <Checkbox.Indicator className="flex items-center justify-center text-white">
+                    <Check className="h-3 w-3" />
+                  </Checkbox.Indicator>
+                </Checkbox.Root>
+                <label
+                  htmlFor="branch-open-new-tab"
+                  className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none"
+                >
+                  Open Studio in a new browser tab
+                </label>
+              </div>
             </div>
             <div className="mt-6 flex gap-2 justify-end">
               <button
@@ -1235,8 +1283,10 @@ export default function VersionHistoryDialog({
               >
                 {branchSubmitting ? (
                   <Loader2 className="h-4 w-4 animate-spin inline" />
+                ) : branchOpenInNewTab ? (
+                  'Create version (new tab)'
                 ) : (
-                  'Create version & open in Studio'
+                  'Create version & open Studio'
                 )}
               </button>
             </div>
