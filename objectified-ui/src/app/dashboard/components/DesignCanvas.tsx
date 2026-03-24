@@ -12,6 +12,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react';
 import {
   ReactFlow,
   Controls,
+  ControlButton,
   MiniMap,
   Background,
   useNodesState,
@@ -21,6 +22,7 @@ import {
   type OnMoveEnd,
   type Viewport,
   type Node,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useDialogOptional } from '@/app/components/providers/DialogProvider';
@@ -119,6 +121,7 @@ export default function DesignCanvas() {
   const [canvasClipboard, setCanvasClipboard] = useState<StudioClass[] | null>(
     null
   );
+  const reactFlowRef = useRef<ReactFlowInstance | null>(null);
 
   const onConfigChange = useCallback(
     (classId: string, config: ClassNodeConfig) => {
@@ -758,9 +761,92 @@ export default function DesignCanvas() {
     [visibleClassNodeIds, setNodes, classes]
   );
 
+  const selectedNodeIds = useMemo(
+    () => displayNodes.filter((n) => n.selected).map((n) => n.id),
+    [displayNodes]
+  );
+
+  const isReducedMotion =
+    canvasSettings.reducedMotion ||
+    (typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const animateViewport = !isReducedMotion;
+
+  const fitCanvasToContent = useCallback(() => {
+    reactFlowRef.current?.fitView({
+      padding: 0.2,
+      duration: animateViewport ? 260 : 0,
+    });
+    setLiveRegionMessage('Fit canvas to content');
+  }, [animateViewport]);
+
+  const fitCanvasToSelected = useCallback(() => {
+    if (!reactFlowRef.current || selectedNodeIds.length === 0) return;
+    reactFlowRef.current.fitView({
+      nodes: selectedNodeIds.map((id) => ({ id })),
+      padding: 0.25,
+      duration: animateViewport ? 240 : 0,
+    });
+    setLiveRegionMessage('Fit canvas to selected nodes');
+  }, [selectedNodeIds, animateViewport]);
+
+  const resetCanvasViewport = useCallback(() => {
+    if (!reactFlowRef.current) return;
+    reactFlowRef.current.setViewport(
+      { x: 0, y: 0, zoom: 1 },
+      { duration: animateViewport ? 200 : 0 }
+    );
+    setLiveRegionMessage('Reset canvas viewport');
+  }, [animateViewport]);
+
+  const zoomCanvasIn = useCallback(() => {
+    reactFlowRef.current?.zoomIn({ duration: animateViewport ? 150 : 0 });
+    setLiveRegionMessage('Zoomed in');
+  }, [animateViewport]);
+
+  const zoomCanvasOut = useCallback(() => {
+    reactFlowRef.current?.zoomOut({ duration: animateViewport ? 150 : 0 });
+    setLiveRegionMessage('Zoomed out');
+  }, [animateViewport]);
+
   const handleCanvasKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      const withPrimaryModifier = e.metaKey || e.ctrlKey;
+      if (withPrimaryModifier) {
+        if ((e.key === '=' || e.key === '+') && !e.shiftKey) {
+          e.preventDefault();
+          zoomCanvasIn();
+          return;
+        }
+        if (e.key === '-') {
+          e.preventDefault();
+          zoomCanvasOut();
+          return;
+        }
+        if (e.key === '0') {
+          e.preventDefault();
+          resetCanvasViewport();
+          return;
+        }
+        if (e.key.toLowerCase() === 'f' && !e.shiftKey) {
+          e.preventDefault();
+          fitCanvasToContent();
+          return;
+        }
+        if (e.key.toLowerCase() === 'f' && e.shiftKey) {
+          e.preventDefault();
+          fitCanvasToSelected();
+          return;
+        }
+      }
+
       if (visibleClassNodeIds.length === 0) return;
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const delta = e.shiftKey ? -1 : 1;
+        focusClassNodeByIndex(keyboardFocusIndex + delta);
+        return;
+      }
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
         focusClassNodeByIndex(keyboardFocusIndex + 1);
@@ -785,6 +871,11 @@ export default function DesignCanvas() {
       focusClassNodeByIndex,
       keyboardFocusIndex,
       editClassRequest,
+      zoomCanvasIn,
+      zoomCanvasOut,
+      fitCanvasToContent,
+      fitCanvasToSelected,
+      resetCanvasViewport,
     ]
   );
 
@@ -1181,11 +1272,6 @@ export default function DesignCanvas() {
     ? '[--class-ref-edge-stroke:rgb(15_23_42)] dark:[--class-ref-edge-stroke:rgb(248_250_252)]'
     : '[--class-ref-edge-stroke:rgb(100_116_139)] dark:[--class-ref-edge-stroke:rgb(148_163_184)]';
 
-  const isReducedMotion =
-    canvasSettings.reducedMotion ||
-    (typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-
   return (
     <div
       className={`w-full h-full bg-slate-100 dark:bg-slate-950 ${highContrastClass}`}
@@ -1214,6 +1300,9 @@ export default function DesignCanvas() {
                 })
             : undefined
         }
+        onInit={(instance) => {
+          reactFlowRef.current = instance as unknown as ReactFlowInstance;
+        }}
         viewport={viewportState}
         onViewportChange={onViewportChange}
         onMoveEnd={onMoveEnd}
@@ -1284,13 +1373,36 @@ export default function DesignCanvas() {
           <Controls
             position="bottom-left"
             className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700"
-          />
+          >
+            <ControlButton onClick={fitCanvasToContent} title="Fit to content (Ctrl/Cmd+F)">
+              Fit
+            </ControlButton>
+            <ControlButton
+              onClick={fitCanvasToSelected}
+              disabled={selectedNodeIds.length === 0}
+              title="Fit selected (Ctrl/Cmd+Shift+F)"
+            >
+              Sel
+            </ControlButton>
+            <ControlButton onClick={resetCanvasViewport} title="Reset viewport (Ctrl/Cmd+0)">
+              1:1
+            </ControlButton>
+          </Controls>
         )}
         {canvasSettings.showMiniMap && (
-          <MiniMap
-            position="bottom-right"
-            className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700 !bg-white dark:!bg-slate-900"
-          />
+          <>
+            <MiniMap
+              position="bottom-right"
+              className="!shadow-lg !rounded-lg !border-slate-200 dark:!border-slate-700 !bg-white dark:!bg-slate-900"
+            />
+            {canvasSettings.showMiniMapLegend && (
+              <div className="pointer-events-none absolute bottom-[10.5rem] right-2 z-[10001] rounded-md border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 px-2 py-1.5 text-[11px] text-slate-700 dark:text-slate-200 shadow">
+                <p className="font-medium">MiniMap legend</p>
+                <p>Groups: container nodes</p>
+                <p>Selected: highlighted nodes</p>
+              </div>
+            )}
+          </>
         )}
       </ReactFlow>
       {/* Focus mode indicator banner */}
