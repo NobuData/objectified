@@ -748,7 +748,7 @@ describe('StudioToolbar', () => {
     });
   });
 
-  it('disables commit, push, pull, and merge when user lacks schema permissions', () => {
+  it('shows permission read-only banner and disables mutating actions when user lacks schema permissions', () => {
     useTenantPermissions.mockReturnValue({
       loading: false,
       permissions: { is_tenant_admin: false },
@@ -762,11 +762,15 @@ describe('StudioToolbar', () => {
     expect(screen.getByRole('button', { name: /push to another version/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /pull from server/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /merge from another version/i })).toBeDisabled();
+    expect(screen.getByText(/you do not have edit permission for this version/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /request edit access/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /branch from this version/i })).toBeInTheDocument();
   });
 
   it('shows "Checking permissions…" tooltip while tenant permissions are loading', () => {
     useTenantPermissions.mockReturnValue({
       loading: true,
+      error: null,
       permissions: null,
       has: () => false,
     });
@@ -784,6 +788,28 @@ describe('StudioToolbar', () => {
     expect(
       screen.getByRole('button', { name: /merge from another version/i })
     ).toHaveAttribute('title', 'Checking permissions…');
+    expect(
+      screen.getByText(/checking permissions\.\.\. edit actions are disabled/i)
+    ).toBeInTheDocument();
+  });
+
+  it('shows error banner and disables mutating actions when tenant permissions fail to load', () => {
+    useTenantPermissions.mockReturnValue({
+      loading: false,
+      error: 'Network error',
+      permissions: null,
+      has: () => false,
+    });
+    useStudioOptional.mockReturnValue(defaultStudioWithState);
+    render(<StudioToolbar />);
+    expect(
+      screen.getByRole('button', { name: /commit \(snapshot to server\)/i })
+    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: /push to another version/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /merge from another version/i })).toBeDisabled();
+    expect(
+      screen.getByText(/we could not verify your permissions/i)
+    ).toBeInTheDocument();
   });
 
   it('shows committing progress indicator while commit request is in flight', async () => {

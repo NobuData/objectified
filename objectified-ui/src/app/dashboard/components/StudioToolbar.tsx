@@ -186,7 +186,9 @@ export default function StudioToolbar() {
   const tenantPerms = useTenantPermissions(tenantId || null);
   const hasSchemaRead = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:read');
   const hasSchemaWrite = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:write');
-  const canCommitPushMerge = !isReadOnly && !tenantPerms.loading && hasSchemaWrite;
+  const permissionReadOnly = !tenantPerms.loading && !hasSchemaWrite;
+  const mutationLocked = tenantPerms.loading || isReadOnly || permissionReadOnly;
+  const canCommitPushMerge = !mutationLocked && hasSchemaWrite;
   const historyRollbackAllowed =
     !tenantPerms.loading && hasSchemaWrite && workspace?.version?.published !== true;
   const historyRollbackDisabledReason =
@@ -198,6 +200,18 @@ export default function StudioToolbar() {
           ? 'Rollback requires schema edit permission.'
           : undefined;
   const canPull = !tenantPerms.loading && (hasSchemaRead || hasSchemaWrite);
+  const readOnlyBannerMessage =
+    workspace?.version?.published === true
+      ? 'Published versions are read-only.'
+      : studio?.state?.readOnly
+        ? 'You are viewing this revision in read-only mode.'
+        : tenantPerms.error
+          ? 'We could not verify your permissions. Edit actions are disabled until access is confirmed.'
+          : tenantPerms.loading
+            ? 'Checking permissions... edit actions are disabled until access is confirmed.'
+            : permissionReadOnly
+              ? 'You do not have edit permission for this version. Viewing is allowed.'
+              : null;
 
   const runWithOperation = useCallback(
     async (operation: ToolbarOperation, action: () => Promise<void>) => {
@@ -574,17 +588,17 @@ export default function StudioToolbar() {
     onRedo: () => {
       if (studio?.canRedo && !studio?.loading) studio.redo();
     },
-    disabled: !studio?.state || studio?.loading || isReadOnly,
+    disabled: !studio?.state || studio?.loading || mutationLocked,
   });
 
   // Auto-close mutating dialogs when entering read-only mode.
   useEffect(() => {
-    if (isReadOnly) {
+    if (mutationLocked) {
       setCommitDialogOpen(false);
       setPushDialogOpen(false);
       setMergeDialogOpen(false);
     }
-  }, [isReadOnly]);
+  }, [mutationLocked]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -714,6 +728,43 @@ export default function StudioToolbar() {
             >
               <GitMerge className="h-3.5 w-3.5" />
               Merge
+            </button>
+          </div>
+        </div>
+      )}
+      {showGitToolbar && readOnlyBannerMessage && (
+        <div
+          className="w-full flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-900/70 px-3 py-2 text-slate-900 dark:text-slate-100"
+          role="status"
+          aria-live="polite"
+        >
+          <Eye className="h-4 w-4 shrink-0 text-slate-600 dark:text-slate-300" aria-hidden />
+          <span className="text-sm font-medium">{readOnlyBannerMessage}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {permissionReadOnly && (
+              <button
+                type="button"
+                className={bannerBtnClass}
+                onClick={() => {
+                  void alertDialog({
+                    title: 'Request edit access',
+                    message:
+                      'Ask a tenant administrator to grant schema:write permission for this tenant.',
+                    variant: 'info',
+                  });
+                }}
+              >
+                Request edit access
+              </button>
+            )}
+            <button
+              type="button"
+              className={bannerBtnClass}
+              onClick={() => setHistoryDialogOpen(true)}
+              disabled={studio!.loading || !versionId}
+            >
+              <GitBranchPlus className="h-3.5 w-3.5" aria-hidden />
+              Branch from this version
             </button>
           </div>
         </div>
@@ -886,7 +937,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={studio!.undo}
-        disabled={!studio!.canUndo || studio!.loading || isReadOnly}
+        disabled={!studio!.canUndo || studio!.loading || mutationLocked}
         className={btnBase}
         aria-label="Undo"
         title={`Undo (${modLabel}+Z)`}
@@ -896,7 +947,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={studio!.redo}
-        disabled={!studio!.canRedo || studio!.loading || isReadOnly}
+        disabled={!studio!.canRedo || studio!.loading || mutationLocked}
         className={btnBase}
         aria-label="Redo"
         title={`Redo (${modLabel}+Shift+Z)`}
@@ -911,10 +962,12 @@ export default function StudioToolbar() {
         className={btnPrimary}
         aria-label="Commit (snapshot to server)"
         title={
-          isReadOnly
-            ? 'Cannot commit (read-only)'
-            : tenantPerms.loading
-              ? 'Checking permissions…'
+          tenantPerms.loading
+            ? 'Checking permissions…'
+            : mutationLocked
+              ? permissionReadOnly
+                ? 'Cannot commit (schema:write permission required)'
+                : 'Cannot commit (read-only)'
               : !hasSchemaWrite
                 ? 'Cannot commit (schema:write permission required)'
                 : `Commit local state to server (optional message) (${modLabel}+S)`
@@ -931,7 +984,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={handleReset}
-        disabled={studio!.loading || isReadOnly}
+        disabled={studio!.loading || mutationLocked}
         className={btnBase}
         aria-label="Reset to last committed state"
         title="Discard local changes and reload from server"
@@ -946,10 +999,12 @@ export default function StudioToolbar() {
         className={btnBase}
         aria-label="Push to another version"
         title={
-          isReadOnly
-            ? 'Cannot push (read-only)'
-            : tenantPerms.loading
-              ? 'Checking permissions…'
+          tenantPerms.loading
+            ? 'Checking permissions…'
+            : mutationLocked
+              ? permissionReadOnly
+                ? 'Cannot push (schema:write permission required)'
+                : 'Cannot push (read-only)'
               : !hasSchemaWrite
                 ? 'Cannot push (schema:write permission required)'
                 : `Push current state to another version (${modLabel}+Shift+P)`
@@ -990,10 +1045,12 @@ export default function StudioToolbar() {
         className={btnBase}
         aria-label="Merge from another version"
         title={
-          isReadOnly
-            ? 'Cannot merge (read-only)'
-            : tenantPerms.loading
-              ? 'Checking permissions…'
+          tenantPerms.loading
+            ? 'Checking permissions…'
+            : mutationLocked
+              ? permissionReadOnly
+                ? 'Cannot merge (schema:write permission required)'
+                : 'Cannot merge (read-only)'
               : !hasSchemaWrite
                 ? 'Cannot merge (schema:write permission required)'
                 : 'Merge changes from another version'
@@ -1032,7 +1089,7 @@ export default function StudioToolbar() {
               setSchemaModeOnDraft(draft, v);
             });
           }}
-          disabled={studio?.loading || isReadOnly}
+          disabled={studio?.loading || mutationLocked}
         >
           <Select.Trigger
             className={selectTrigger}
@@ -1067,7 +1124,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => canvasGroup?.createGroupAtPosition({ x: 150, y: 150 })}
-        disabled={!showGitToolbar || isReadOnly}
+        disabled={!showGitToolbar || mutationLocked}
         className={btnBase}
         aria-label="Create group"
         title="Create a new group on the canvas"
@@ -1077,7 +1134,7 @@ export default function StudioToolbar() {
       <button
         type="button"
         onClick={() => canvasLayout?.openLayoutPreview()}
-        disabled={!showGitToolbar || isReadOnly}
+        disabled={!showGitToolbar || mutationLocked}
         className={btnBase}
         aria-label="Auto layout"
         title="Preview and apply auto layout (dagre) to class nodes"
