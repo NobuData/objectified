@@ -500,6 +500,21 @@ export interface VersionSnapshotMetadataPageSchema {
   items: VersionSnapshotMetadataSchema[];
   total: number;
   latest_revision?: number | null;
+  /** Server-configured retention/cleanup policy for compliance UI (GitHub #222). */
+  retention_notice?: string | null;
+}
+
+/** Row from GET /versions/{id}/history (objectified.version_history). */
+export interface VersionHistorySchema {
+  id: string;
+  version_id: string;
+  project_id: string;
+  changed_by?: string | null;
+  revision: number;
+  operation: string;
+  old_data?: Record<string, unknown> | null;
+  new_data?: Record<string, unknown> | null;
+  changed_at: string;
 }
 
 /** Query for GET /versions/{id}/snapshots/metadata (snake_case maps to API). */
@@ -1664,6 +1679,19 @@ export async function listVersionPublishHistory(
   return request<VersionPublishEventSchema[]>(
     'GET',
     `/versions/${versionId}/publish-history`,
+    undefined,
+    options
+  );
+}
+
+/** Full version row audit trail (newest revision first). Requires audit:read on the version. */
+export async function listVersionHistory(
+  versionId: string,
+  options: RestClientOptions = {}
+): Promise<VersionHistorySchema[]> {
+  return request<VersionHistorySchema[]>(
+    'GET',
+    `/versions/${versionId}/history`,
     undefined,
     options
   );

@@ -10,6 +10,8 @@ import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialo
 const emptyHistoryPage = { items: [] as unknown[], total: 0, latest_revision: null };
 const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve(emptyHistoryPage));
 const mockListVersionSnapshotsSchemaChanges = jest.fn(() => Promise.resolve([]));
+const mockListVersionHistory = jest.fn(() => Promise.resolve([]));
+const mockListVersionSnapshots = jest.fn(() => Promise.resolve([]));
 const mockDeleteVersion = jest.fn(() => Promise.resolve());
 const mockGetVersion = jest.fn(() =>
   Promise.resolve({
@@ -36,6 +38,8 @@ jest.mock('@lib/api/rest-client', () => ({
     mockListVersionSnapshotsMetadata(...args),
   listVersionSnapshotsSchemaChanges: (...args: unknown[]) =>
     mockListVersionSnapshotsSchemaChanges(...args),
+  listVersionHistory: (...args: unknown[]) => mockListVersionHistory(...args),
+  listVersionSnapshots: (...args: unknown[]) => mockListVersionSnapshots(...args),
   deleteVersion: (...args: unknown[]) => mockDeleteVersion(...args),
   getVersion: (...args: unknown[]) => mockGetVersion(...args),
   listVersions: (...args: unknown[]) => mockListVersions(...args),
@@ -81,6 +85,8 @@ beforeEach(() => {
   mockListVersions.mockResolvedValue([]);
   mockListVersionSnapshotsMetadata.mockResolvedValue(emptyHistoryPage);
   mockListVersionSnapshotsSchemaChanges.mockResolvedValue([]);
+  mockListVersionHistory.mockResolvedValue([]);
+  mockListVersionSnapshots.mockResolvedValue([]);
   mockPullVersion.mockResolvedValue({
     diff: {
       added_class_names: [],
@@ -279,6 +285,146 @@ describe('VersionHistoryDialog – schema audit', () => {
 
     expect(await screen.findByText(/added:/i)).toBeInTheDocument();
     expect(screen.getByText(/person/i)).toBeInTheDocument();
+  });
+});
+
+describe('VersionHistoryDialog – compliance (GitHub #222)', () => {
+  beforeEach(() => {
+    // downloadJson uses URL.createObjectURL and anchor.click() which jsdom does not implement
+    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: jest.fn(() => 'blob:mock'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: jest.fn(),
+    });
+  });
+
+  const oneSnapshotPage = {
+    items: [
+      {
+        id: 'snap-1',
+        version_id: 'v1',
+        project_id: 'p1',
+        committed_by: 'user-1',
+        revision: 1,
+        label: 'initial',
+        description: 'first',
+        created_at: new Date().toISOString(),
+      },
+    ],
+    total: 1,
+    latest_revision: 1,
+  };
+
+  async function renderAndExpandCompliance() {
+    mockListVersionSnapshotsMetadata.mockResolvedValue(oneSnapshotPage);
+    render(<VersionHistoryDialog {...defaultProps} />);
+    const trigger = await screen.findByText(/Compliance export \(optional\)/);
+    await userEvent.click(trigger);
+    return trigger;
+  }
+
+  it('shows retention notice from API when configured', async () => {
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [],
+      total: 0,
+      latest_revision: null,
+      retention_notice: 'Revisions older than 90 days may be archived.',
+    });
+    render(<VersionHistoryDialog {...defaultProps} />);
+    await waitFor(() => {
+      expect(screen.getByRole('note')).toHaveTextContent(
+        /Revisions older than 90 days may be archived/
+      );
+    });
+  });
+
+  it('shows optional compliance export controls when expanded', async () => {
+    await renderAndExpandCompliance();
+    expect(
+      screen.getByRole('button', { name: /Revision index \(metadata\)/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Version row audit/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Full state per revision/i })
+    ).toBeInTheDocument();
+  });
+
+  it('revision index export calls listVersionSnapshotsMetadata with filters', async () => {
+    await renderAndExpandCompliance();
+    // Clear calls from initial load
+    mockListVersionSnapshotsMetadata.mockClear();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Revision index \(metadata\)/i })
+    );
+
+    await waitFor(() => {
+      expect(mockListVersionSnapshotsMetadata).toHaveBeenCalledWith(
+        'v1',
+        {},
+        expect.objectContaining({ limit: 500, offset: 0 })
+      );
+    });
+  });
+
+  it('version row audit export calls listVersionHistory', async () => {
+    mockListVersionHistory.mockResolvedValue([
+      { id: 'h1', version_id: 'v1', changed_at: new Date().toISOString(), change_type: 'INSERT' },
+    ]);
+
+    await renderAndExpandCompliance();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Version row audit/i })
+    );
+
+    await waitFor(() => {
+      expect(mockListVersionHistory).toHaveBeenCalledWith('v1', {});
+    });
+  });
+
+  it('full state per revision export confirms then calls listVersionSnapshots', async () => {
+    mockListVersionSnapshots.mockResolvedValue([
+      { id: 'snap-1', version_id: 'v1', revision: 1, snapshot: {} },
+    ]);
+
+    await renderAndExpandCompliance();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Full state per revision/i })
+    );
+
+    await waitFor(() => {
+      expect(mockConfirm).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Export full commit snapshots' })
+      );
+    });
+
+    await waitFor(() => {
+      expect(mockListVersionSnapshots).toHaveBeenCalledWith('v1', {});
+    });
+  });
+
+  it('full state per revision export does not call listVersionSnapshots when confirm is cancelled', async () => {
+    mockConfirm.mockResolvedValueOnce(false);
+
+    await renderAndExpandCompliance();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Full state per revision/i })
+    );
+
+    await waitFor(() => {
+      expect(mockConfirm).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Export full commit snapshots' })
+      );
+    });
+
+    expect(mockListVersionSnapshots).not.toHaveBeenCalled();
   });
 });
 

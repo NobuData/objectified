@@ -20,13 +20,17 @@ import {
   ChevronRight,
   GitCompare,
   Check,
+  Download,
 } from 'lucide-react';
 import * as Checkbox from '@radix-ui/react-checkbox';
+import * as Collapsible from '@radix-ui/react-collapsible';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Label from '@radix-ui/react-label';
 import {
   listVersionSnapshotsMetadata,
+  listVersionSnapshots,
   listVersionSnapshotsSchemaChanges,
+  listVersionHistory,
   pullVersion,
   rollbackVersion,
   createVersionFromRevision,
@@ -121,6 +125,26 @@ function fullMessageLines(snap: VersionSnapshotMetadataSchema): string {
   return parts.length > 0 ? parts.join('\n') : '—';
 }
 
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: 'application/json',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function safeExportBasename(versionName: string | undefined, versionId: string): string {
+  const raw = (versionName?.trim() || versionId).replace(/[^a-zA-Z0-9._-]+/g, '-');
+  return raw.slice(0, 80) || 'version';
+}
+
 /** Distinct classes touched by a pull diff (add / remove / property changes). */
 function countSchemaClassesAffected(diff: VersionPullDiff | null): number {
   if (!diff) return 0;
@@ -159,6 +183,9 @@ export default function VersionHistoryDialog({
   const [snapshots, setSnapshots] = useState<VersionSnapshotMetadataSchema[]>([]);
   const [total, setTotal] = useState(0);
   const [latestRevision, setLatestRevision] = useState<number | null>(null);
+  const [retentionNotice, setRetentionNotice] = useState<string | null>(null);
+  const [complianceOpen, setComplianceOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rollbackSubmitting, setRollbackSubmitting] = useState(false);
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
@@ -220,11 +247,14 @@ export default function VersionHistoryDialog({
           ? null
           : page.latest_revision
       );
+      const notice = page.retention_notice?.trim();
+      setRetentionNotice(notice ? notice : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load version history');
       setSnapshots([]);
       setTotal(0);
       setLatestRevision(null);
+      setRetentionNotice(null);
     } finally {
       setLoading(false);
     }
@@ -260,6 +290,9 @@ export default function VersionHistoryDialog({
     setAuditEntries([]);
     setAuditError(null);
     setAuditLoading(false);
+    setRetentionNotice(null);
+    setComplianceOpen(false);
+    setExportBusy(false);
   }, [open, versionId]);
 
   useEffect(() => {
@@ -638,6 +671,146 @@ export default function VersionHistoryDialog({
     setPageOffset(0);
   }, []);
 
+  const exportRevisionIndexJson = useCallback(async () => {
+    if (!versionId) return;
+    setExportBusy(true);
+    try {
+      const limit = 500;
+      let offset = 0;
+      const revisions: VersionSnapshotMetadataSchema[] = [];
+      let latestRev: number | null = null;
+      let totalCount = 0;
+      const filters = {
+        message_contains: appliedMessage.trim() || undefined,
+        committed_by: appliedAuthor.trim() || undefined,
+        created_after: appliedCreatedAfter.trim() || undefined,
+        created_before: appliedCreatedBefore.trim() || undefined,
+      };
+      for (;;) {
+        const page = await listVersionSnapshotsMetadata(versionId, options, {
+          limit,
+          offset,
+          ...filters,
+        });
+        if (latestRev == null && page.latest_revision != null) {
+          latestRev = page.latest_revision;
+        }
+        totalCount = page.total;
+        revisions.push(...page.items);
+        if (revisions.length >= totalCount || page.items.length === 0) break;
+        offset += limit;
+      }
+      const base = safeExportBasename(versionName, versionId);
+      const day = new Date().toISOString().slice(0, 10);
+      downloadJson(`${base}-revision-index-${day}.json`, {
+        exported_at: new Date().toISOString(),
+        version_id: versionId,
+        version_name: versionName ?? null,
+        latest_revision: latestRev,
+        total_matching_filters: totalCount,
+        filters_applied: filters,
+        revisions,
+      });
+    } catch (e) {
+      await alertDialog({
+        title: 'Export failed',
+        message: e instanceof Error ? e.message : 'Could not export revision list.',
+        variant: 'error',
+      });
+    } finally {
+      setExportBusy(false);
+    }
+  }, [
+    versionId,
+    versionName,
+    options,
+    appliedMessage,
+    appliedAuthor,
+    appliedCreatedAfter,
+    appliedCreatedBefore,
+    alertDialog,
+  ]);
+
+  const exportVersionRowAuditJson = useCallback(async () => {
+    if (!versionId) return;
+    setExportBusy(true);
+    try {
+      const entries = await listVersionHistory(versionId, options);
+      const base = safeExportBasename(versionName, versionId);
+      const day = new Date().toISOString().slice(0, 10);
+      downloadJson(`${base}-version-row-audit-${day}.json`, {
+        exported_at: new Date().toISOString(),
+        version_id: versionId,
+        version_name: versionName ?? null,
+        description:
+          'objectified.version_history: version row INSERT/UPDATE/DELETE audit, newest first',
+        entries,
+      });
+    } catch (e) {
+      await alertDialog({
+        title: 'Export failed',
+        message: e instanceof Error ? e.message : 'Could not export version row audit.',
+        variant: 'error',
+      });
+    } finally {
+      setExportBusy(false);
+    }
+  }, [versionId, versionName, options, alertDialog]);
+
+  const exportFullCommitSnapshotsJson = useCallback(async () => {
+    if (!versionId) return;
+    const revCount = total > 0 ? total : snapshots.length;
+    const ok = await confirm({
+      title: 'Export full commit snapshots',
+      message: (
+        <span>
+          This downloads complete schema state for each committed revision (all snapshots).{' '}
+          {revCount > 0 ? (
+            <>
+              About <strong>{revCount}</strong> revision{revCount === 1 ? '' : 's'} may be
+              included; the file can be large.
+            </>
+          ) : (
+            'The file may be large.'
+          )}{' '}
+          Continue?
+        </span>
+      ),
+      confirmLabel: 'Download',
+      cancelLabel: 'Cancel',
+    });
+    if (!ok) return;
+    setExportBusy(true);
+    try {
+      const snapshotsFull = await listVersionSnapshots(versionId, options);
+      const base = safeExportBasename(versionName, versionId);
+      const day = new Date().toISOString().slice(0, 10);
+      downloadJson(`${base}-commit-snapshots-${day}.json`, {
+        exported_at: new Date().toISOString(),
+        version_id: versionId,
+        version_name: versionName ?? null,
+        description: 'objectified.version_snapshot rows with full snapshot payloads',
+        snapshots: snapshotsFull,
+      });
+    } catch (e) {
+      await alertDialog({
+        title: 'Export failed',
+        message: e instanceof Error ? e.message : 'Could not export commit snapshots.',
+        variant: 'error',
+      });
+    } finally {
+      setExportBusy(false);
+    }
+  }, [
+    versionId,
+    versionName,
+    options,
+    confirm,
+    alertDialog,
+    total,
+    snapshots,
+  ]);
+
   const rangeLabel = useMemo(() => {
     if (total === 0) return '0 results';
     const start = pageOffset + 1;
@@ -710,6 +883,18 @@ export default function VersionHistoryDialog({
               >
                 {rollbackDisabledReason?.trim() ||
                   'Rollback is not available for this version.'}
+              </div>
+            )}
+
+            {retentionNotice && (
+              <div
+                className="mb-3 p-3 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30 text-sky-900 dark:text-sky-100 text-sm"
+                role="note"
+              >
+                <span className="font-medium text-sky-950 dark:text-sky-50">
+                  Retention / cleanup:{' '}
+                </span>
+                {retentionNotice}
               </div>
             )}
 
@@ -807,6 +992,66 @@ export default function VersionHistoryDialog({
                 </select>
               </div>
             </div>
+
+            <Collapsible.Root open={complianceOpen} onOpenChange={setComplianceOpen} className="mb-4">
+              <Collapsible.Trigger className="flex items-center gap-2 w-full py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 text-left text-sm font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
+                {complianceOpen ? (
+                  <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+                ) : (
+                  <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                )}
+                <Download className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+                Compliance export (optional)
+              </Collapsible.Trigger>
+              <Collapsible.Content className="mt-2 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 space-y-3">
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Download JSON for records keeping. Revision index respects the filters above
+                  (apply filters before exporting). Version-row audit and full snapshots are
+                  complete for this version regardless of the current page.
+                </p>
+                <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={exportBusy || !versionId}
+                    onClick={() => void exportRevisionIndexJson()}
+                    className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {exportBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    ) : (
+                      <Download className="h-4 w-4" aria-hidden />
+                    )}
+                    Revision index (metadata)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={exportBusy || !versionId}
+                    onClick={() => void exportVersionRowAuditJson()}
+                    className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {exportBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    ) : (
+                      <Download className="h-4 w-4" aria-hidden />
+                    )}
+                    Version row audit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={exportBusy || !versionId}
+                    onClick={() => void exportFullCommitSnapshotsJson()}
+                    className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {exportBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    ) : (
+                      <Download className="h-4 w-4" aria-hidden />
+                    )}
+                    Full state per revision
+                  </button>
+                </div>
+              </Collapsible.Content>
+            </Collapsible.Root>
 
             {loading ? (
               <div className="flex items-center justify-center py-12">

@@ -203,6 +203,13 @@ class VersionSnapshotMetadataPageSchema(BaseModel):
         default=None,
         description="Highest revision number on the server for this version (ignores list filters).",
     )
+    retention_notice: Optional[str] = Field(
+        default=None,
+        description=(
+            "Instance-configured retention or cleanup policy text for compliance UI "
+            "(e.g. revisions older than N days may be archived). Omitted when not configured."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

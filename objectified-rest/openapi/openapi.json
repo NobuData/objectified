@@ -3,7 +3,7 @@
   "info": {
     "title": "Objectified REST API",
     "description": "REST API for the Objectified platform. CRUD scaffolding from database design. Services are used by the platform and can be exposed externally; internal use is via a private API key.",
-    "version": "1.0.36"
+    "version": "1.0.39"
   },
   "paths": {
     "/v1/auth/login": {
@@ -11256,7 +11256,7 @@
           "Versions"
         ],
         "summary": "List version snapshot metadata",
-        "description": "Return metadata (revision, date, author, label, description, snapshot id) for committed snapshots, newest revision first. The snapshot payload is excluded for efficiency. Omit limit to return all matching rows; use limit and offset for pagination. Optional filters message_contains, committed_by, created_after, created_before.",
+        "description": "Return metadata (revision, date, author, label, description, snapshot id) for committed snapshots, newest revision first. The snapshot payload is excluded for efficiency. Omit limit to return all matching rows; use limit and offset for pagination. Optional filters message_contains, committed_by, created_after, created_before. Pass paged=true to receive a paginated envelope {items, total, latest_revision, retention_notice?}; retention_notice is present when VERSION_HISTORY_RETENTION_NOTICE is set on the server.",
         "operationId": "list_version_snapshots_metadata_v1_versions__version_id__snapshots_metadata_get",
         "parameters": [
           {
@@ -17677,6 +17677,18 @@
             ],
             "title": "Latest Revision",
             "description": "Highest revision on the server for this version (ignores list filters)."
+          },
+          "retention_notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Notice",
+            "description": "Instance retention or cleanup policy for compliance UI when configured."
           }
         },
         "type": "object",
