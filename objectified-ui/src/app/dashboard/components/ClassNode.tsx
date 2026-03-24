@@ -14,9 +14,6 @@ import { ChevronDown, ChevronRight, Box, Circle, Square, Hexagon } from 'lucide-
 import type { ClassNodeData } from '@lib/studio/types';
 import type { ClassNodeConfig } from '@lib/studio/canvasClassNodeConfig';
 
-/** Node type for react-flow; data satisfies Record<string, unknown>. */
-export type ClassNodeType = Node<ClassNodeData & Record<string, unknown>, 'class'>;
-
 /** Extended data passed from DesignCanvas: config, resize, callback (GitHub #80, #82). */
 export interface ClassNodeDataExtended extends ClassNodeData {
   classNodeConfig?: ClassNodeConfig;
@@ -28,6 +25,9 @@ export interface ClassNodeDataExtended extends ClassNodeData {
   /** Increase node contrast for accessibility. */
   highContrast?: boolean;
 }
+
+/** Node type for react-flow; data satisfies Record<string, unknown>. */
+export type ClassNodeType = Node<ClassNodeDataExtended & Record<string, unknown>, 'class'>;
 
 const ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
   box: Box,

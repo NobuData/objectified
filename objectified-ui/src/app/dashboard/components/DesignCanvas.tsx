@@ -723,6 +723,17 @@ export default function DesignCanvas() {
 
   const [keyboardFocusIndex, setKeyboardFocusIndex] = useState(0);
 
+  // Clamp keyboardFocusIndex whenever the visible node list shrinks to avoid out-of-range reads.
+  useEffect(() => {
+    if (visibleClassNodeIds.length === 0) {
+      setKeyboardFocusIndex(0);
+      return;
+    }
+    setKeyboardFocusIndex((prev) =>
+      prev >= visibleClassNodeIds.length ? visibleClassNodeIds.length - 1 : prev
+    );
+  }, [visibleClassNodeIds]);
+
   const focusClassNodeByIndex = useCallback(
     (index: number) => {
       if (visibleClassNodeIds.length === 0) return;
@@ -750,9 +761,14 @@ export default function DesignCanvas() {
   const handleCanvasKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
       if (visibleClassNodeIds.length === 0) return;
-      if (e.key === 'Tab') {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
-        focusClassNodeByIndex(keyboardFocusIndex + (e.shiftKey ? -1 : 1));
+        focusClassNodeByIndex(keyboardFocusIndex + 1);
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        focusClassNodeByIndex(keyboardFocusIndex - 1);
         return;
       }
       if (e.key === 'Enter') {
@@ -1224,10 +1240,11 @@ export default function DesignCanvas() {
         }}
         className="bg-slate-50 dark:bg-slate-900/50"
       >
-        {classes.length >= LARGE_CANVAS_NODE_THRESHOLD && (
+        {(focusFilteredNodes?.length ?? displayNodes.length) >= LARGE_CANVAS_NODE_THRESHOLD && (
           <div className="absolute top-2 right-2 z-[10001] rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/50 dark:text-amber-200">
-            Large diagram detected ({classes.length} nodes). Consider using groups,
-            focus mode, or simplified node view.
+            Large diagram detected (
+            {focusFilteredNodes?.length ?? displayNodes.length} nodes currently
+            visible). Consider using groups, focus mode, or simplified node view.
           </div>
         )}
         <PaneContextMenuRegistration />
