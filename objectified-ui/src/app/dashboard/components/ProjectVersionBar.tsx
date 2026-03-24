@@ -25,7 +25,6 @@ import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import {
   favoriteVersionIdsForProject,
-  isWorkspaceVersionFavorite,
   listWorkspaceRecents,
   recordWorkspaceRecent,
   toggleWorkspaceVersionFavorite,
@@ -38,17 +37,18 @@ function useAuthOptions() {
 }
 
 function StarToggle({
+  active,
   tenantId,
   projectId,
   versionId,
   onChange,
 }: {
+  active: boolean;
   tenantId: string;
   projectId: string;
   versionId: string;
   onChange: () => void;
 }) {
-  const active = isWorkspaceVersionFavorite(tenantId, projectId, versionId);
   return (
     <button
       type="button"
@@ -224,27 +224,21 @@ export default function ProjectVersionBar() {
   const applyRecentEntry = useCallback(
     (entry: WorkspaceRecentEntry) => {
       if (!workspace) return;
-      const tenant: TenantSchema = {
-        id: entry.tenantId,
-        name: entry.tenantName,
-      } as TenantSchema;
-      const project: ProjectSchema = {
-        id: entry.projectId,
-        name: entry.projectName,
-      } as ProjectSchema;
-      const version: VersionSchema = {
-        id: entry.versionId,
-        name: entry.versionName,
-      } as VersionSchema;
+      const tenant = tenants.find((t) => t.id === entry.tenantId);
+      const project = projects.find((p) => p.id === entry.projectId);
+      const version = versions.find((v) => v.id === entry.versionId);
+      if (!tenant || !project || !version) {
+        return;
+      }
       workspace.replaceWorkspace(tenant, project, version);
       setRecentsOpen(false);
     },
-    [workspace]
+    [workspace, tenants, projects, versions]
   );
 
-  const { favoritesList, othersList } = useMemo(() => {
+  const { favoritesList, othersList, favSet } = useMemo(() => {
     if (!tenantId || !projectId) {
-      return { favoritesList: [] as VersionSchema[], othersList: versions };
+      return { favoritesList: [] as VersionSchema[], othersList: versions, favSet: new Set<string>() };
     }
     void favoritesTick;
     const favoriteIdsOrdered = favoriteVersionIdsForProject(tenantId, projectId);
@@ -253,7 +247,7 @@ export default function ProjectVersionBar() {
       .map((id) => versions.find((v) => v.id === id))
       .filter((v): v is VersionSchema => v != null);
     const othersListInner = versions.filter((v) => !favSet.has(v.id));
-    return { favoritesList: favoritesListInner, othersList: othersListInner };
+    return { favoritesList: favoritesListInner, othersList: othersListInner, favSet };
   }, [tenantId, projectId, versions, favoritesTick]);
 
   const studioMatchesSelection =
@@ -320,13 +314,14 @@ export default function ProjectVersionBar() {
   const recentTriggerClass =
     'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900';
 
-  const renderVersionItems = (list: VersionSchema[]) =>
+  const renderVersionItems = (list: VersionSchema[], vFavSet: Set<string>) =>
     list.map((v) => (
       <Select.Item key={v.id} value={v.id} className={itemClass} textValue={v.name}>
         <span className="flex min-w-0 flex-1 items-center gap-2">
           <Select.ItemText className="truncate">{v.name}</Select.ItemText>
           {tenantId && projectId ? (
             <StarToggle
+              active={vFavSet.has(v.id)}
               tenantId={tenantId}
               projectId={projectId}
               versionId={v.id}
@@ -516,7 +511,7 @@ export default function ProjectVersionBar() {
                       <Select.Label className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Pinned
                       </Select.Label>
-                      {renderVersionItems(favoritesList)}
+                      {renderVersionItems(favoritesList, favSet)}
                     </Select.Group>
                   ) : null}
                   {favoritesList.length > 0 && othersList.length > 0 ? (
@@ -529,7 +524,7 @@ export default function ProjectVersionBar() {
                           Versions
                         </Select.Label>
                       ) : null}
-                      {renderVersionItems(othersList)}
+                      {renderVersionItems(othersList, favSet)}
                     </Select.Group>
                   ) : null}
                   {favoritesList.length === 0 && othersList.length === 0 && !loadingVersions ? (

@@ -65,4 +65,51 @@ describe('workspaceRecentsFavorites', () => {
     expect(favoriteVersionIdsForProject('t1', 'p1')).toEqual(['va']);
     expect(workspaceFavoriteKey('a', 'b', 'c')).toBe('a\tb\tc');
   });
+
+  it('listWorkspaceRecents returns [] when storage contains non-array JSON', () => {
+    window.localStorage.setItem('objectified.workspace.recents.v1', JSON.stringify({ bad: true }));
+    expect(listWorkspaceRecents()).toEqual([]);
+  });
+
+  it('listWorkspaceRecents returns [] when storage contains invalid JSON', () => {
+    window.localStorage.setItem('objectified.workspace.recents.v1', 'not-json{{{');
+    expect(listWorkspaceRecents()).toEqual([]);
+  });
+
+  it('listWorkspaceRecents filters out entries missing required fields', () => {
+    const valid = {
+      tenantId: 't1',
+      tenantName: 'T1',
+      projectId: 'p1',
+      projectName: 'P1',
+      versionId: 'v1',
+      versionName: 'V1',
+      openedAt: '2026-01-01T00:00:00.000Z',
+    };
+    window.localStorage.setItem(
+      'objectified.workspace.recents.v1',
+      JSON.stringify([valid, { tenantId: 't2' }, null, 42])
+    );
+    const list = listWorkspaceRecents();
+    expect(list).toHaveLength(1);
+    expect(list[0].versionId).toBe('v1');
+  });
+
+  it('isWorkspaceVersionFavorite returns false when storage contains non-array JSON', () => {
+    window.localStorage.setItem('objectified.workspace.favorites.v1', JSON.stringify({ bad: true }));
+    expect(isWorkspaceVersionFavorite('t', 'p', 'v')).toBe(false);
+  });
+
+  it('isWorkspaceVersionFavorite returns false when storage contains invalid JSON', () => {
+    window.localStorage.setItem('objectified.workspace.favorites.v1', 'not-json{{{');
+    expect(isWorkspaceVersionFavorite('t', 'p', 'v')).toBe(false);
+  });
+
+  it('favoriteVersionIdsForProject returns [] when storage contains non-string array items', () => {
+    window.localStorage.setItem(
+      'objectified.workspace.favorites.v1',
+      JSON.stringify([123, null, { id: 'x' }])
+    );
+    expect(favoriteVersionIdsForProject('t', 'p')).toEqual([]);
+  });
 });
