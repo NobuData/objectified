@@ -81,11 +81,21 @@ function pluralize(word: string, count: number): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`;
 }
 
-function computeMutationAudit(
+interface MutationAuditResult {
+  audit: StudioMutationAudit;
+  classMutationStatusById: Record<string, ClassMutationStatus>;
+}
+
+const EMPTY_MUTATION_AUDIT_RESULT: MutationAuditResult = {
+  audit: EMPTY_MUTATION_AUDIT,
+  classMutationStatusById: {},
+};
+
+function computeMutationAuditWithClassStatuses(
   baseline: LocalVersionState | null,
   current: LocalVersionState | null
-): StudioMutationAudit {
-  if (!baseline || !current) return EMPTY_MUTATION_AUDIT;
+): MutationAuditResult {
+  if (!baseline || !current) return EMPTY_MUTATION_AUDIT_RESULT;
 
   const baselineClasses = new Map(
     baseline.classes.map((c) => [getStableClassId(c), c])
@@ -96,15 +106,25 @@ function computeMutationAudit(
   let addedClassCount = 0;
   let removedClassCount = 0;
   let modifiedClassCount = 0;
+  let perClassCanvasMetadataChanged = false;
+  const classMutationStatusById: Record<string, ClassMutationStatus> = {};
 
   for (const [id, cls] of currentClasses.entries()) {
+    if (!id) continue;
     const before = baselineClasses.get(id);
     if (!before) {
       addedClassCount += 1;
+      classMutationStatusById[id] = 'new';
       continue;
     }
     if (!isEqualJson(before, cls)) {
       modifiedClassCount += 1;
+      classMutationStatusById[id] = 'modified';
+    } else {
+      classMutationStatusById[id] = 'unchanged';
+    }
+    if (!perClassCanvasMetadataChanged && !isEqualJson(before.canvas_metadata, cls.canvas_metadata)) {
+      perClassCanvasMetadataChanged = true;
     }
   }
 
@@ -129,27 +149,18 @@ function computeMutationAudit(
     }
   }
 
-  let perClassCanvasMetadataChanged = false;
-  for (const [id, cls] of currentClasses.entries()) {
-    const before = baselineClasses.get(id);
-    if (
-      before &&
-      !isEqualJson(before.canvas_metadata, cls.canvas_metadata)
-    ) {
-      perClassCanvasMetadataChanged = true;
-      break;
-    }
-  }
-
   return {
-    addedClassCount,
-    removedClassCount,
-    modifiedClassCount,
-    modifiedGroupCount,
-    projectPropertiesChanged: !isEqualJson(baseline.properties, current.properties),
-    canvasMetadataChanged:
-      !isEqualJson(baseline.canvas_metadata, current.canvas_metadata) ||
-      perClassCanvasMetadataChanged,
+    audit: {
+      addedClassCount,
+      removedClassCount,
+      modifiedClassCount,
+      modifiedGroupCount,
+      projectPropertiesChanged: !isEqualJson(baseline.properties, current.properties),
+      canvasMetadataChanged:
+        !isEqualJson(baseline.canvas_metadata, current.canvas_metadata) ||
+        perClassCanvasMetadataChanged,
+    },
+    classMutationStatusById,
   };
 }
 
@@ -181,27 +192,6 @@ function buildSuggestedCommitMessage(summary: string | null): string | null {
   return `Update studio: ${summary}`;
 }
 
-function computeClassMutationStatusById(
-  baseline: LocalVersionState | null,
-  current: LocalVersionState | null
-): Record<string, ClassMutationStatus> {
-  if (!baseline || !current) return {};
-  const baselineClasses = new Map(
-    baseline.classes.map((c) => [getStableClassId(c), c])
-  );
-  const out: Record<string, ClassMutationStatus> = {};
-  for (const cls of current.classes) {
-    const id = getStableClassId(cls);
-    if (!id) continue;
-    const before = baselineClasses.get(id);
-    if (!before) {
-      out[id] = 'new';
-      continue;
-    }
-    out[id] = isEqualJson(before, cls) ? 'unchanged' : 'modified';
-  }
-  return out;
-}
 
 export interface StudioContextValue {
   /** Current local version state; null when no version loaded or not yet loaded. */
@@ -969,10 +959,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const canUndo = stack.undoStack.length > 0;
   const canRedo = stack.redoStack.length > 0;
   const isDirty = stack.undoStack.length > 0;
-  const mutationAudit = useMemo(
-    () => computeMutationAudit(baselineState, state),
+  const mutationAuditResult = useMemo(
+    () => computeMutationAuditWithClassStatuses(baselineState, state),
     [baselineState, state]
   );
+  const mutationAudit = mutationAuditResult.audit;
+  const classMutationStatusById = mutationAuditResult.classMutationStatusById;
   const pendingChangesSummary = useMemo(
     () => buildPendingChangesSummary(mutationAudit),
     [mutationAudit]
@@ -980,10 +972,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const suggestedCommitMessage = useMemo(
     () => buildSuggestedCommitMessage(pendingChangesSummary),
     [pendingChangesSummary]
-  );
-  const classMutationStatusById = useMemo(
-    () => computeClassMutationStatusById(baselineState, state),
-    [baselineState, state]
   );
 
   // Refs to track latest checksum and isDirty without re-registering the storage listener.
