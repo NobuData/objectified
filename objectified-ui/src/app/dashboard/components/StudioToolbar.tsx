@@ -91,6 +91,9 @@ function normalizeName(value: string): string {
 function buildPreCommitValidationSummary(
   state: (NonNullable<ReturnType<typeof useStudioOptional>>['state']) | null | undefined
 ): PreCommitValidationSummary {
+  // Per-class error conditions (missing class name, missing property name) must remain
+  // consistent with classHasValidationErrors() in @lib/studio/classValidation, which
+  // drives the node-level Errors badge on the design canvas.
   if (!state) return { errors: [], warnings: [] };
   const errors: string[] = [];
   const warnings: string[] = [];

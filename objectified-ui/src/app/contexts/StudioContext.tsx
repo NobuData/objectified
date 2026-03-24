@@ -62,6 +62,8 @@ export interface StudioMutationAudit {
   canvasMetadataChanged: boolean;
 }
 
+export type ClassMutationStatus = 'new' | 'modified' | 'unchanged';
+
 const EMPTY_MUTATION_AUDIT: StudioMutationAudit = {
   addedClassCount: 0,
   removedClassCount: 0,
@@ -79,11 +81,21 @@ function pluralize(word: string, count: number): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`;
 }
 
-function computeMutationAudit(
+interface MutationAuditResult {
+  audit: StudioMutationAudit;
+  classMutationStatusById: Record<string, ClassMutationStatus>;
+}
+
+const EMPTY_MUTATION_AUDIT_RESULT: MutationAuditResult = {
+  audit: EMPTY_MUTATION_AUDIT,
+  classMutationStatusById: {},
+};
+
+function computeMutationAuditWithClassStatuses(
   baseline: LocalVersionState | null,
   current: LocalVersionState | null
-): StudioMutationAudit {
-  if (!baseline || !current) return EMPTY_MUTATION_AUDIT;
+): MutationAuditResult {
+  if (!baseline || !current) return EMPTY_MUTATION_AUDIT_RESULT;
 
   const baselineClasses = new Map(
     baseline.classes.map((c) => [getStableClassId(c), c])
@@ -94,15 +106,25 @@ function computeMutationAudit(
   let addedClassCount = 0;
   let removedClassCount = 0;
   let modifiedClassCount = 0;
+  let perClassCanvasMetadataChanged = false;
+  const classMutationStatusById: Record<string, ClassMutationStatus> = {};
 
   for (const [id, cls] of currentClasses.entries()) {
+    if (!id) continue;
     const before = baselineClasses.get(id);
     if (!before) {
       addedClassCount += 1;
+      classMutationStatusById[id] = 'new';
       continue;
     }
     if (!isEqualJson(before, cls)) {
       modifiedClassCount += 1;
+      classMutationStatusById[id] = 'modified';
+    } else {
+      classMutationStatusById[id] = 'unchanged';
+    }
+    if (!perClassCanvasMetadataChanged && !isEqualJson(before.canvas_metadata, cls.canvas_metadata)) {
+      perClassCanvasMetadataChanged = true;
     }
   }
 
@@ -127,27 +149,18 @@ function computeMutationAudit(
     }
   }
 
-  let perClassCanvasMetadataChanged = false;
-  for (const [id, cls] of currentClasses.entries()) {
-    const before = baselineClasses.get(id);
-    if (
-      before &&
-      !isEqualJson(before.canvas_metadata, cls.canvas_metadata)
-    ) {
-      perClassCanvasMetadataChanged = true;
-      break;
-    }
-  }
-
   return {
-    addedClassCount,
-    removedClassCount,
-    modifiedClassCount,
-    modifiedGroupCount,
-    projectPropertiesChanged: !isEqualJson(baseline.properties, current.properties),
-    canvasMetadataChanged:
-      !isEqualJson(baseline.canvas_metadata, current.canvas_metadata) ||
-      perClassCanvasMetadataChanged,
+    audit: {
+      addedClassCount,
+      removedClassCount,
+      modifiedClassCount,
+      modifiedGroupCount,
+      projectPropertiesChanged: !isEqualJson(baseline.properties, current.properties),
+      canvasMetadataChanged:
+        !isEqualJson(baseline.canvas_metadata, current.canvas_metadata) ||
+        perClassCanvasMetadataChanged,
+    },
+    classMutationStatusById,
   };
 }
 
@@ -178,6 +191,7 @@ function buildSuggestedCommitMessage(summary: string | null): string | null {
   if (!summary) return null;
   return `Update studio: ${summary}`;
 }
+
 
 export interface StudioContextValue {
   /** Current local version state; null when no version loaded or not yet loaded. */
@@ -271,6 +285,8 @@ export interface StudioContextValue {
   pendingChangesSummary: string | null;
   /** Optional suggested commit message based on current mutations. */
   suggestedCommitMessage: string | null;
+  /** Per-class mutation status versus loaded baseline, keyed by stable class id. */
+  classMutationStatusById: Record<string, ClassMutationStatus>;
   /** Most recent commit details for toolbar/status display. */
   lastCommitInfo: {
     revision: number | null;
@@ -943,10 +959,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const canUndo = stack.undoStack.length > 0;
   const canRedo = stack.redoStack.length > 0;
   const isDirty = stack.undoStack.length > 0;
-  const mutationAudit = useMemo(
-    () => computeMutationAudit(baselineState, state),
+  const mutationAuditResult = useMemo(
+    () => computeMutationAuditWithClassStatuses(baselineState, state),
     [baselineState, state]
   );
+  const mutationAudit = mutationAuditResult.audit;
+  const classMutationStatusById = mutationAuditResult.classMutationStatusById;
   const pendingChangesSummary = useMemo(
     () => buildPendingChangesSummary(mutationAudit),
     [mutationAudit]
@@ -1026,6 +1044,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       mutationAudit,
       pendingChangesSummary,
       suggestedCommitMessage,
+      classMutationStatusById,
       lastCommitInfo,
     }),
     [
@@ -1057,6 +1076,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       mutationAudit,
       pendingChangesSummary,
       suggestedCommitMessage,
+      classMutationStatusById,
       lastCommitInfo,
     ]
   );
