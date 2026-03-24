@@ -461,6 +461,14 @@ export interface VersionPullResponse {
   classes?: Record<string, unknown>[];
   canvas_metadata?: Record<string, unknown> | null;
   pulled_at: string;
+  /** Highest snapshot revision on the server (head). */
+  latest_revision?: number | null;
+  /** When pulling a specific revision: that snapshot's label. */
+  snapshot_label?: string | null;
+  /** When pulling a specific revision: that snapshot's description. */
+  snapshot_description?: string | null;
+  /** When pulling a specific revision: ISO time that snapshot was created. */
+  snapshot_committed_at?: string | null;
   diff_since_revision?: number | null;
   diff?: VersionPullDiff | null;
 }
@@ -486,6 +494,37 @@ export interface VersionSnapshotMetadataSchema {
   label?: string | null;
   description?: string | null;
   created_at: string;
+}
+
+export interface VersionSnapshotMetadataPageSchema {
+  items: VersionSnapshotMetadataSchema[];
+  total: number;
+  latest_revision?: number | null;
+  /** Server-configured retention/cleanup policy for compliance UI (GitHub #222). */
+  retention_notice?: string | null;
+}
+
+/** Row from GET /versions/{id}/history (objectified.version_history). */
+export interface VersionHistorySchema {
+  id: string;
+  version_id: string;
+  project_id: string;
+  changed_by?: string | null;
+  revision: number;
+  operation: string;
+  old_data?: Record<string, unknown> | null;
+  new_data?: Record<string, unknown> | null;
+  changed_at: string;
+}
+
+/** Query for GET /versions/{id}/snapshots/metadata (snake_case maps to API). */
+export interface ListVersionSnapshotsMetadataQuery {
+  limit?: number;
+  offset?: number;
+  message_contains?: string;
+  committed_by?: string;
+  created_after?: string;
+  created_before?: string;
 }
 
 export interface VersionSnapshotSchemaChangesAuditSchema {
@@ -1533,14 +1572,31 @@ export async function listVersionSnapshots(
 
 export async function listVersionSnapshotsMetadata(
   versionId: string,
-  options: RestClientOptions = {}
-): Promise<VersionSnapshotMetadataSchema[]> {
-  return request<VersionSnapshotMetadataSchema[]>(
-    'GET',
-    `/versions/${versionId}/snapshots/metadata`,
-    undefined,
-    options
-  );
+  options: RestClientOptions = {},
+  query?: ListVersionSnapshotsMetadataQuery
+): Promise<VersionSnapshotMetadataPageSchema> {
+  const params = new URLSearchParams();
+  params.set('paged', 'true');
+  if (query?.limit != null) params.set('limit', String(query.limit));
+  if (query?.offset != null) params.set('offset', String(query.offset));
+  if (query?.message_contains?.trim()) {
+    params.set('message_contains', query.message_contains.trim());
+  }
+  if (query?.committed_by?.trim()) {
+    params.set('committed_by', query.committed_by.trim());
+  }
+  if (query?.created_after?.trim()) {
+    params.set('created_after', query.created_after.trim());
+  }
+  if (query?.created_before?.trim()) {
+    params.set('created_before', query.created_before.trim());
+  }
+  const qs = params.toString();
+  const path =
+    qs.length > 0
+      ? `/versions/${versionId}/snapshots/metadata?${qs}`
+      : `/versions/${versionId}/snapshots/metadata`;
+  return request<VersionSnapshotMetadataPageSchema>('GET', path, undefined, options);
 }
 
 export async function listVersionSnapshotsSchemaChanges(
@@ -1623,6 +1679,19 @@ export async function listVersionPublishHistory(
   return request<VersionPublishEventSchema[]>(
     'GET',
     `/versions/${versionId}/publish-history`,
+    undefined,
+    options
+  );
+}
+
+/** Full version row audit trail (newest revision first). Requires audit:read on the version. */
+export async function listVersionHistory(
+  versionId: string,
+  options: RestClientOptions = {}
+): Promise<VersionHistorySchema[]> {
+  return request<VersionHistorySchema[]>(
+    'GET',
+    `/versions/${versionId}/history`,
     undefined,
     options
   );
@@ -2207,7 +2276,7 @@ export async function pullVersion(
 
 export async function rollbackVersion(
   versionId: string,
-  body: { revision: number },
+  body: { revision: number; message?: string | null },
   options: RestClientOptions = {}
 ): Promise<VersionCommitResponse> {
   return request<VersionCommitResponse>(

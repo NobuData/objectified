@@ -164,7 +164,8 @@ export default function SchemaWorkspacePage() {
     async (versionId: string): Promise<VersionSnapshotMetadataSchema[]> => {
       if (!versionId) return [];
       try {
-        return await listVersionSnapshotsMetadata(versionId, opts);
+        const page = await listVersionSnapshotsMetadata(versionId, opts);
+        return page.items;
       } catch {
         return [];
       }

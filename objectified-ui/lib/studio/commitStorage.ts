@@ -8,6 +8,10 @@ export interface PersistedCommitInfo {
   revision: number | null;
   lastCommittedAt: string;
   hasUnpushedCommits: boolean;
+  /** Commits on this version not yet pushed to another version (incremented on each commit, reset on push). */
+  commitsSinceLastPush?: number;
+  /** ISO timestamp of the last successful push from this version to another version. */
+  lastPushedAt?: string | null;
   message?: string | null;
   externalId?: string | null;
 }

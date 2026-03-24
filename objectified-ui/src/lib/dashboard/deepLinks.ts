@@ -8,7 +8,7 @@ export function dashboardProjectVersionPath(projectId: string, versionId: string
 
 /**
  * Opens Data Designer with workspace query params. Optional revision opens at that snapshot
- * (read-only when readOnly is true).
+ * (read-only when readOnly is true; use edit to force editable when canvas default is read-only).
  */
 export function dataDesignerDeepLink(params: {
   tenantId: string;
@@ -16,6 +16,8 @@ export function dataDesignerDeepLink(params: {
   versionId: string;
   revision?: number;
   readOnly?: boolean;
+  /** When true, adds edit=1 so the revision opens editable despite defaultRevisionLoadReadOnly. */
+  edit?: boolean;
 }): string {
   const qs = new URLSearchParams({
     tenantId: params.tenantId,
@@ -25,7 +27,9 @@ export function dataDesignerDeepLink(params: {
   if (params.revision != null) {
     qs.set('revision', String(params.revision));
   }
-  if (params.readOnly) {
+  if (params.edit) {
+    qs.set('edit', '1');
+  } else if (params.readOnly) {
     qs.set('readOnly', '1');
   }
   return `/data-designer?${qs.toString()}`;

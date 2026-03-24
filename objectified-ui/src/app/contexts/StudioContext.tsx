@@ -31,7 +31,6 @@ import {
 import {
   loadPersistedCommitInfo,
   savePersistedCommitInfo,
-  type PersistedCommitInfo,
 } from '@lib/studio/commitStorage';
 import {
   backupStorageKey,
@@ -238,6 +237,12 @@ export interface StudioContextValue {
   isDirty: boolean;
   /** Whether there are commits that have not yet been pushed to another version. */
   hasUnpushedCommits: boolean;
+  /** Number of local commits on this version not yet pushed elsewhere (≥1 when hasUnpushedCommits). */
+  unpushedCommitCount: number;
+  /** ISO time of last successful push to another version, when known. */
+  lastPushedAt: string | null;
+  /** Highest snapshot revision on the server from the last successful pull (head). */
+  serverHeadRevision: number | null;
   /** Whether the server has newer changes (after checkServerForUpdates). */
   serverHasNewChanges: boolean;
   /** Check server for updates since current revision; sets serverHasNewChanges. */
@@ -408,6 +413,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [serverHasNewChanges, setServerHasNewChanges] = useState(false);
   const [hasUnpushedCommits, setHasUnpushedCommits] = useState(false);
+  const [unpushedCommitCount, setUnpushedCommitCount] = useState(0);
+  const [lastPushedAt, setLastPushedAt] = useState<string | null>(null);
+  const [serverHeadRevision, setServerHeadRevision] = useState<number | null>(null);
   const [pushConflict409, setPushConflict409] = useState(false);
   const [backupWarning, setBackupWarning] = useState<string | null>(null);
   const [lastCommitInfo, setLastCommitInfo] = useState<{
@@ -448,6 +456,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setError(null);
     setServerHasNewChanges(false);
     setHasUnpushedCommits(false);
+    setUnpushedCommitCount(0);
+    setLastPushedAt(null);
+    setServerHeadRevision(null);
     setPushConflict409(false);
     setBackupWarning(null);
     setLastCommitInfo(null);
@@ -509,6 +520,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           readOnly: revision != null ? (opts?.readOnly ?? false) : false,
         });
         if (newState.versionId !== versionId) return;
+        const headRev: number | null =
+          typeof pullRes.latest_revision === 'number'
+            ? pullRes.latest_revision
+            : revision == null
+              ? (newState.revision ?? null)
+              : null;
+        setServerHeadRevision(headRev);
         // Hydrate groups from localStorage (not yet returned by API)
         const storedGroups = getCanvasGroups(versionId);
         if (storedGroups.length > 0) newState.groups = storedGroups;
@@ -538,8 +556,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             clearStateBackup(versionId);
             clearPersistedUndoSessionState(versionId);
           }
+          const forceClearUndoOnRevision =
+            revision != null && getCanvasSettings().clearUndoStackOnRevisionLoad;
           const restoredStack =
-            !newState.readOnly && opts?.draftBehavior !== 'discard'
+            !forceClearUndoOnRevision &&
+            !newState.readOnly &&
+            opts?.draftBehavior !== 'discard'
               ? readPersistedUndoSessionState(versionId, newState.revision ?? null)
               : null;
           const nextStack = restoredStack ?? {
@@ -561,26 +583,52 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         }
         setServerHasNewChanges(false);
         setPushConflict409(false);
-        // Restore persisted commit info only when the persisted revision matches
-        // the revision that was just loaded, to avoid a stale indicator.
-        const persisted = loadPersistedCommitInfo(versionId);
-        const revisionMatches = typeof persisted?.revision === 'number' && persisted.revision === newState.revision;
-        setHasUnpushedCommits(revisionMatches ? (persisted?.hasUnpushedCommits ?? false) : false);
-        setLastCommitInfo(
-          revisionMatches && persisted
-            ? {
-                revision: persisted.revision ?? null,
-                committedAt: persisted.lastCommittedAt ?? null,
-                message: persisted.message ?? null,
-                externalId: persisted.externalId ?? null,
-              }
-            : null
-        );
+        if (revision != null) {
+          const snapMsg =
+            pullRes.snapshot_label?.trim() ||
+            pullRes.snapshot_description?.trim() ||
+            null;
+          setHasUnpushedCommits(false);
+          setUnpushedCommitCount(0);
+          setLastPushedAt(null);
+          setLastCommitInfo({
+            revision: newState.revision ?? null,
+            committedAt: pullRes.snapshot_committed_at ?? null,
+            message: snapMsg,
+            externalId: null,
+          });
+        } else {
+          // Restore persisted commit info only when the persisted revision matches
+          // the revision that was just loaded, to avoid a stale indicator.
+          const persisted = loadPersistedCommitInfo(versionId);
+          const revisionMatches =
+            typeof persisted?.revision === 'number' && persisted.revision === newState.revision;
+          const restoredUnpushed = revisionMatches ? (persisted?.hasUnpushedCommits ?? false) : false;
+          setHasUnpushedCommits(restoredUnpushed);
+          if (revisionMatches && restoredUnpushed) {
+            const n = persisted?.commitsSinceLastPush;
+            setUnpushedCommitCount(typeof n === 'number' && n > 0 ? n : 1);
+          } else {
+            setUnpushedCommitCount(0);
+          }
+          setLastPushedAt(revisionMatches && persisted ? (persisted.lastPushedAt ?? null) : null);
+          setLastCommitInfo(
+            revisionMatches && persisted
+              ? {
+                  revision: persisted.revision ?? null,
+                  committedAt: persisted.lastCommittedAt ?? null,
+                  message: persisted.message ?? null,
+                  externalId: persisted.externalId ?? null,
+                }
+              : null
+          );
+        }
         return { status: 'loaded' as const, revision: newState.revision ?? null };
       } catch (e) {
         if (requestId !== loadRequestIdRef.current) return;
         const message = e instanceof Error ? e.message : 'Failed to load version';
         setError(message);
+        setServerHeadRevision(null);
         // Fall back to a locally-saved backup if one exists, so work is not lost
         // on page refresh or when the backend is temporarily unreachable.
         // If no backup exists, initialise with a valid empty state so the UI
@@ -736,10 +784,22 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         clearPersistedUndoSessionState(current.versionId);
         setServerHasNewChanges(false);
         setHasUnpushedCommits(true);
+        const priorCommit = loadPersistedCommitInfo(current.versionId);
+        const isSameRevision =
+          priorCommit != null && priorCommit.revision === current.revision;
+        const nextUnpushedCount = isSameRevision
+          ? (priorCommit.commitsSinceLastPush ?? 0) + 1
+          : 1;
+        const lastPushedAt = isSameRevision
+          ? priorCommit.lastPushedAt ?? null
+          : null;
+        setUnpushedCommitCount(nextUnpushedCount);
         savePersistedCommitInfo(current.versionId, {
           revision: res.revision,
           lastCommittedAt: res.committed_at,
           hasUnpushedCommits: true,
+          commitsSinceLastPush: nextUnpushedCount,
+          lastPushedAt,
           message: commitOpts?.message ?? null,
           externalId: commitOpts?.externalId ?? null,
         });
@@ -753,6 +813,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           message: commitOpts?.message ?? null,
           externalId: commitOpts?.externalId ?? null,
         });
+        setServerHeadRevision(res.revision);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to save');
       } finally {
@@ -819,15 +880,19 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         clearStateBackup(current.versionId);
         setServerHasNewChanges(false);
         setHasUnpushedCommits(false);
-        // Only flip hasUnpushedCommits; leave revision/lastCommittedAt unchanged
-        // since push updates the target version, not the source.
+        setUnpushedCommitCount(0);
+        const pushedAt = responses[0]?.committed_at ?? new Date().toISOString();
+        setLastPushedAt(pushedAt);
         const existingInfo = loadPersistedCommitInfo(current.versionId);
-        if (existingInfo) {
-          savePersistedCommitInfo(current.versionId, {
-            ...existingInfo,
-            hasUnpushedCommits: false,
-          });
-        }
+        savePersistedCommitInfo(current.versionId, {
+          revision: existingInfo?.revision ?? current.revision ?? null,
+          lastCommittedAt: existingInfo?.lastCommittedAt ?? pushedAt,
+          hasUnpushedCommits: false,
+          commitsSinceLastPush: 0,
+          lastPushedAt: pushedAt,
+          message: existingInfo?.message ?? null,
+          externalId: existingInfo?.externalId ?? null,
+        });
         return responses;
       } catch (e) {
         setPushConflict409(isConflictError(e));
@@ -946,6 +1011,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       canRedo,
       isDirty,
       hasUnpushedCommits,
+      unpushedCommitCount,
+      lastPushedAt,
+      serverHeadRevision,
       serverHasNewChanges,
       checkServerForUpdates,
       push,
@@ -974,6 +1042,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       canRedo,
       isDirty,
       hasUnpushedCommits,
+      unpushedCommitCount,
+      lastPushedAt,
+      serverHeadRevision,
       serverHasNewChanges,
       checkServerForUpdates,
       push,

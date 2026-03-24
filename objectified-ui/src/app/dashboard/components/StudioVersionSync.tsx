@@ -8,6 +8,7 @@ import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import { loadStateBackupWithDiagnostics } from '@lib/studio/stateBackup';
+import { getCanvasSettings } from '@lib/studio/canvasSettings';
 
 function isDraftNewerThanLastPushed(
   draftSavedAt: string,
@@ -63,6 +64,7 @@ function StudioVersionSyncInner() {
     revisionParsed > 0;
   const urlReadOnly =
     searchParams.get('readOnly') === '1' || searchParams.get('view') === '1';
+  const urlForceEdit = searchParams.get('edit') === '1';
 
   const syncVersion = useCallback(() => {
     const studioValue = studioRef.current;
@@ -101,11 +103,14 @@ function StudioVersionSyncInner() {
         // Abort if the workspace version changed while the user was responding
         // to the confirm prompt, to prevent overwriting a newer load.
         if (capturedVersionId !== lastVersionIdRef.current) return;
+        const revisionReadOnly =
+          hasUrlRevision &&
+          (urlForceEdit ? false : urlReadOnly ? true : getCanvasSettings().defaultRevisionLoadReadOnly);
         await studioValue.loadFromServer(capturedVersionId, optionsRef.current, {
           tenantId: tenantId ?? undefined,
           projectId: projectId ?? undefined,
           ...(hasUrlRevision
-            ? { revision: revisionParsed, readOnly: urlReadOnly }
+            ? { revision: revisionParsed, readOnly: revisionReadOnly }
             : {}),
           ...(draftBehavior ? { draftBehavior } : {}),
           ...(backupResult ? { preloadedBackupResult: backupResult } : {}),
@@ -120,6 +125,7 @@ function StudioVersionSyncInner() {
     hasUrlRevision,
     revisionParsed,
     urlReadOnly,
+    urlForceEdit,
     confirm,
   ]);
 

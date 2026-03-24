@@ -319,6 +319,33 @@ describe('DashboardProjectVersionDeepLinkPage', () => {
     expect(qs.get('readOnly')).toBe('1');
   });
 
+  it('forwards revision and edit=1 to data-designer redirect', async () => {
+    setupMocks();
+    const { useSearchParams } = require('next/navigation');
+    useSearchParams.mockReturnValue(new URLSearchParams('revision=4&edit=1'));
+
+    const { getVersion, resolveTenantIdForProject, getTenant, getProject } =
+      require('@lib/api/rest-client');
+
+    getVersion.mockResolvedValue({ id: 'ver-1', project_id: 'proj-1' });
+    resolveTenantIdForProject.mockResolvedValue('t1');
+    getTenant.mockResolvedValue({ id: 't1', name: 'Tenant One' });
+    getProject.mockResolvedValue({ id: 'proj-1', name: 'Project One' });
+
+    render(<DeepLinkPage />);
+
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith(
+        expect.stringContaining('/data-designer?')
+      );
+    });
+
+    const callArg: string = mockRouterReplace.mock.calls[0][0];
+    const qs = new URLSearchParams(callArg.split('?')[1]);
+    expect(qs.get('revision')).toBe('4');
+    expect(qs.get('edit')).toBe('1');
+  });
+
   it('does not forward revision when only readOnly is present without revision', async () => {
     setupMocks();
     const { useSearchParams } = require('next/navigation');

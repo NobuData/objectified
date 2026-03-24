@@ -7,17 +7,44 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
 
-const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve([]));
+const emptyHistoryPage = { items: [] as unknown[], total: 0, latest_revision: null };
+const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve(emptyHistoryPage));
 const mockListVersionSnapshotsSchemaChanges = jest.fn(() => Promise.resolve([]));
+const mockListVersionHistory = jest.fn(() => Promise.resolve([]));
+const mockListVersionSnapshots = jest.fn(() => Promise.resolve([]));
 const mockDeleteVersion = jest.fn(() => Promise.resolve());
+const mockGetVersion = jest.fn(() =>
+  Promise.resolve({
+    id: 'v1',
+    project_id: 'p1',
+    last_revision: 2,
+  })
+);
+const mockListVersions = jest.fn(() => Promise.resolve([]));
+const mockPullVersion = jest.fn(() =>
+  Promise.resolve({
+    diff: {
+      added_class_names: [],
+      removed_class_names: ['Old'],
+      modified_classes: [],
+    },
+  })
+);
+const mockRollbackVersion = jest.fn(() => Promise.resolve());
+const mockAlert = jest.fn(() => Promise.resolve());
 
 jest.mock('@lib/api/rest-client', () => ({
   listVersionSnapshotsMetadata: (...args: unknown[]) =>
     mockListVersionSnapshotsMetadata(...args),
   listVersionSnapshotsSchemaChanges: (...args: unknown[]) =>
     mockListVersionSnapshotsSchemaChanges(...args),
+  listVersionHistory: (...args: unknown[]) => mockListVersionHistory(...args),
+  listVersionSnapshots: (...args: unknown[]) => mockListVersionSnapshots(...args),
   deleteVersion: (...args: unknown[]) => mockDeleteVersion(...args),
-  rollbackVersion: jest.fn(() => Promise.resolve()),
+  getVersion: (...args: unknown[]) => mockGetVersion(...args),
+  listVersions: (...args: unknown[]) => mockListVersions(...args),
+  pullVersion: (...args: unknown[]) => mockPullVersion(...args),
+  rollbackVersion: (...args: unknown[]) => mockRollbackVersion(...args),
   createVersionFromRevision: jest.fn(() => Promise.resolve({ id: 'new-v' })),
   getTenantQuotaStatus: jest.fn(() =>
     Promise.resolve({
@@ -33,7 +60,7 @@ const mockConfirm = jest.fn(() => Promise.resolve(true));
 jest.mock('@/app/components/providers/DialogProvider', () => ({
   useDialog: jest.fn(() => ({
     confirm: mockConfirm,
-    alert: jest.fn(() => Promise.resolve()),
+    alert: mockAlert,
   })),
 }));
 
@@ -48,13 +75,30 @@ const defaultProps = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockConfirm.mockResolvedValue(true);
+  mockAlert.mockResolvedValue(undefined);
   mockDeleteVersion.mockResolvedValue(undefined);
-  mockListVersionSnapshotsMetadata.mockResolvedValue([]);
+  mockGetVersion.mockResolvedValue({
+    id: 'v1',
+    project_id: 'p1',
+    last_revision: 2,
+  });
+  mockListVersions.mockResolvedValue([]);
+  mockListVersionSnapshotsMetadata.mockResolvedValue(emptyHistoryPage);
   mockListVersionSnapshotsSchemaChanges.mockResolvedValue([]);
+  mockListVersionHistory.mockResolvedValue([]);
+  mockListVersionSnapshots.mockResolvedValue([]);
+  mockPullVersion.mockResolvedValue({
+    diff: {
+      added_class_names: [],
+      removed_class_names: ['Old'],
+      modified_classes: [],
+    },
+  });
+  mockRollbackVersion.mockResolvedValue(undefined);
 });
 
-describe('VersionHistoryDialog – delete version', () => {
-  it('shows Delete version button when onDeleteSuccess is provided', async () => {
+describe('VersionHistoryDialog – archive version', () => {
+  it('shows Archive version button when onDeleteSuccess is provided', async () => {
     render(
       <VersionHistoryDialog
         {...defaultProps}
@@ -63,16 +107,16 @@ describe('VersionHistoryDialog – delete version', () => {
     );
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: /delete this version/i })
+        screen.getByRole('button', { name: /archive this version/i })
       ).toBeInTheDocument();
     });
   });
 
-  it('does not show Delete version button when onDeleteSuccess is not provided', async () => {
+  it('does not show Archive version button when onDeleteSuccess is not provided', async () => {
     render(<VersionHistoryDialog {...defaultProps} />);
     await waitFor(() => {
       expect(
-        screen.queryByRole('button', { name: /delete this version/i })
+        screen.queryByRole('button', { name: /archive this version/i })
       ).not.toBeInTheDocument();
     });
   });
@@ -89,15 +133,19 @@ describe('VersionHistoryDialog – delete version', () => {
     );
 
     await userEvent.click(
-      screen.getByRole('button', { name: /delete this version/i })
+      screen.getByRole('button', { name: /archive this version/i })
     );
+
+    await waitFor(() => {
+      expect(mockGetVersion).toHaveBeenCalledWith('v1', {});
+    });
 
     await waitFor(() => {
       expect(mockConfirm).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Delete Version',
+          title: 'Archive version',
           variant: 'danger',
-          confirmLabel: 'Delete',
+          confirmLabel: 'Archive',
         })
       );
     });
@@ -131,9 +179,10 @@ describe('VersionHistoryDialog – delete version', () => {
     );
 
     await userEvent.click(
-      screen.getByRole('button', { name: /delete this version/i })
+      screen.getByRole('button', { name: /archive this version/i })
     );
 
+    await waitFor(() => expect(mockGetVersion).toHaveBeenCalled());
     await waitFor(() => expect(onDeleteSuccess).toHaveBeenCalledTimes(1));
     expect(order).toEqual(['delete', 'callback-start', 'callback-end']);
   });
@@ -149,7 +198,7 @@ describe('VersionHistoryDialog – delete version', () => {
     );
 
     await userEvent.click(
-      screen.getByRole('button', { name: /delete this version/i })
+      screen.getByRole('button', { name: /archive this version/i })
     );
 
     await waitFor(() => {
@@ -171,8 +220,12 @@ describe('VersionHistoryDialog – delete version', () => {
     );
 
     await userEvent.click(
-      screen.getByRole('button', { name: /delete this version/i })
+      screen.getByRole('button', { name: /archive this version/i })
     );
+
+    await waitFor(() => {
+      expect(mockGetVersion).toHaveBeenCalled();
+    });
 
     await waitFor(() => {
       expect(screen.getByText(/server error/i)).toBeInTheDocument();
@@ -184,18 +237,22 @@ describe('VersionHistoryDialog – delete version', () => {
 
 describe('VersionHistoryDialog – schema audit', () => {
   it('loads and renders schema audit when toggled on', async () => {
-    mockListVersionSnapshotsMetadata.mockResolvedValue([
-      {
-        id: 'snap-1',
-        version_id: 'v1',
-        project_id: 'p1',
-        committed_by: 'user-1',
-        revision: 1,
-        label: 'initial',
-        description: 'first',
-        created_at: new Date().toISOString(),
-      },
-    ]);
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [
+        {
+          id: 'snap-1',
+          version_id: 'v1',
+          project_id: 'p1',
+          committed_by: 'user-1',
+          revision: 1,
+          label: 'initial',
+          description: 'first',
+          created_at: new Date().toISOString(),
+        },
+      ],
+      total: 1,
+      latest_revision: 1,
+    });
 
     mockListVersionSnapshotsSchemaChanges.mockResolvedValue([
       {
@@ -228,5 +285,243 @@ describe('VersionHistoryDialog – schema audit', () => {
 
     expect(await screen.findByText(/added:/i)).toBeInTheDocument();
     expect(screen.getByText(/person/i)).toBeInTheDocument();
+  });
+});
+
+describe('VersionHistoryDialog – compliance (GitHub #222)', () => {
+  beforeEach(() => {
+    // downloadJson uses URL.createObjectURL and anchor.click() which jsdom does not implement
+    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: jest.fn(() => 'blob:mock'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: jest.fn(),
+    });
+  });
+
+  const oneSnapshotPage = {
+    items: [
+      {
+        id: 'snap-1',
+        version_id: 'v1',
+        project_id: 'p1',
+        committed_by: 'user-1',
+        revision: 1,
+        label: 'initial',
+        description: 'first',
+        created_at: new Date().toISOString(),
+      },
+    ],
+    total: 1,
+    latest_revision: 1,
+  };
+
+  async function renderAndExpandCompliance() {
+    mockListVersionSnapshotsMetadata.mockResolvedValue(oneSnapshotPage);
+    render(<VersionHistoryDialog {...defaultProps} />);
+    const trigger = await screen.findByText(/Compliance export \(optional\)/);
+    await userEvent.click(trigger);
+    return trigger;
+  }
+
+  it('shows retention notice from API when configured', async () => {
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [],
+      total: 0,
+      latest_revision: null,
+      retention_notice: 'Revisions older than 90 days may be archived.',
+    });
+    render(<VersionHistoryDialog {...defaultProps} />);
+    await waitFor(() => {
+      expect(screen.getByRole('note')).toHaveTextContent(
+        /Revisions older than 90 days may be archived/
+      );
+    });
+  });
+
+  it('shows optional compliance export controls when expanded', async () => {
+    await renderAndExpandCompliance();
+    expect(
+      screen.getByRole('button', { name: /Revision index \(metadata\)/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Version row audit/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Full state per revision/i })
+    ).toBeInTheDocument();
+  });
+
+  it('revision index export calls listVersionSnapshotsMetadata with filters', async () => {
+    await renderAndExpandCompliance();
+    // Clear calls from initial load
+    mockListVersionSnapshotsMetadata.mockClear();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Revision index \(metadata\)/i })
+    );
+
+    await waitFor(() => {
+      expect(mockListVersionSnapshotsMetadata).toHaveBeenCalledWith(
+        'v1',
+        {},
+        expect.objectContaining({ limit: 500, offset: 0 })
+      );
+    });
+  });
+
+  it('version row audit export calls listVersionHistory', async () => {
+    mockListVersionHistory.mockResolvedValue([
+      { id: 'h1', version_id: 'v1', changed_at: new Date().toISOString(), change_type: 'INSERT' },
+    ]);
+
+    await renderAndExpandCompliance();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Version row audit/i })
+    );
+
+    await waitFor(() => {
+      expect(mockListVersionHistory).toHaveBeenCalledWith('v1', {});
+    });
+  });
+
+  it('full state per revision export confirms then calls listVersionSnapshots', async () => {
+    mockListVersionSnapshots.mockResolvedValue([
+      { id: 'snap-1', version_id: 'v1', revision: 1, snapshot: {} },
+    ]);
+
+    await renderAndExpandCompliance();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Full state per revision/i })
+    );
+
+    await waitFor(() => {
+      expect(mockConfirm).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Export full commit snapshots' })
+      );
+    });
+
+    await waitFor(() => {
+      expect(mockListVersionSnapshots).toHaveBeenCalledWith('v1', {});
+    });
+  });
+
+  it('full state per revision export does not call listVersionSnapshots when confirm is cancelled', async () => {
+    mockConfirm.mockResolvedValueOnce(false);
+
+    await renderAndExpandCompliance();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Full state per revision/i })
+    );
+
+    await waitFor(() => {
+      expect(mockConfirm).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Export full commit snapshots' })
+      );
+    });
+
+    expect(mockListVersionSnapshots).not.toHaveBeenCalled();
+  });
+});
+
+describe('VersionHistoryDialog – rollback', () => {
+  it('hides rollback actions when canRollback is false', async () => {
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [
+        {
+          id: 'snap-1',
+          version_id: 'v1',
+          project_id: 'p1',
+          committed_by: 'user-1',
+          revision: 1,
+          label: 'initial',
+          description: 'first',
+          created_at: new Date().toISOString(),
+        },
+      ],
+      total: 1,
+      latest_revision: 2,
+    });
+
+    render(
+      <VersionHistoryDialog
+        {...defaultProps}
+        onRollbackSuccess={jest.fn()}
+        canRollback={false}
+        rollbackDisabledReason="No permission"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/no permission/i)).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole('button', { name: /rollback to revision 1/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('loads pull diff and confirms rollback with summary and success alert', async () => {
+    const onRollbackSuccess = jest.fn();
+    mockListVersionSnapshotsMetadata.mockResolvedValue({
+      items: [
+        {
+          id: 'snap-1',
+          version_id: 'v1',
+          project_id: 'p1',
+          committed_by: 'user-1',
+          revision: 1,
+          label: 'initial',
+          description: 'first',
+          created_at: new Date().toISOString(),
+        },
+      ],
+      total: 1,
+      latest_revision: 2,
+    });
+
+    render(
+      <VersionHistoryDialog
+        {...defaultProps}
+        onRollbackSuccess={onRollbackSuccess}
+        canRollback
+      />
+    );
+
+    const rollbackBtn = await screen.findByRole('button', {
+      name: /rollback to revision 1/i,
+    });
+    await userEvent.click(rollbackBtn);
+
+    await waitFor(() => {
+      expect(mockPullVersion).toHaveBeenCalledWith('v1', {}, null, 1);
+    });
+
+    expect(
+      await screen.findByText(/1 class will change/i)
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /restore to this revision/i })
+    );
+
+    await waitFor(() => {
+      expect(mockRollbackVersion).toHaveBeenCalledWith(
+        'v1',
+        { revision: 1 },
+        {}
+      );
+      expect(onRollbackSuccess).toHaveBeenCalledTimes(1);
+      expect(mockAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'success',
+          title: 'Rollback complete',
+        })
+      );
+    });
   });
 });

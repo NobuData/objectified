@@ -16,7 +16,11 @@ import {
   Circle,
   Cloud,
   GitBranchPlus,
+  GitCompare,
   Eye,
+  Wifi,
+  WifiOff,
+  RefreshCw,
   Settings2,
   Group,
   Network,
@@ -24,6 +28,7 @@ import {
   ChevronDown,
   Code2,
   Columns2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
@@ -40,6 +45,7 @@ import CanvasSettingsDialog from '@/app/dashboard/components/CanvasSettingsDialo
 import MergeDialog from '@/app/dashboard/components/MergeDialog';
 import PushTargetDialog from '@/app/dashboard/components/PushTargetDialog';
 import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialog';
+import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
 import ExportDialog from '@/app/dashboard/components/ExportDialog';
 import GenerateCodeDialog from '@/app/dashboard/components/GenerateCodeDialog';
 import PullDirtyConfirmDialog, {
@@ -47,6 +53,7 @@ import PullDirtyConfirmDialog, {
 } from '@/app/dashboard/components/PullDirtyConfirmDialog';
 import { useCodeGenerationPanelOptional } from '@/app/contexts/CodeGenerationPanelContext';
 import { getSchemaMode, setSchemaModeOnDraft, type SchemaMode } from '@lib/studio/schemaMode';
+import { dataDesignerDeepLink } from '@/lib/dashboard/deepLinks';
 import * as Select from '@radix-ui/react-select';
 
 const btnBase =
@@ -56,6 +63,19 @@ const btnPrimary =
 
 const selectTrigger =
   'h-9 inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+
+const bannerBtnClass =
+  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-sky-300 dark:border-sky-700 bg-white/80 dark:bg-slate-900/60 text-sky-900 dark:text-sky-100 hover:bg-sky-100/80 dark:hover:bg-sky-900/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+
+function formatDateTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return iso;
+  }
+}
 
 type ToolbarOperation = 'commit' | 'push' | 'pull' | 'merge';
 
@@ -143,6 +163,7 @@ export default function StudioToolbar() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeSourceVersionId, setMergeSourceVersionId] = useState<string | null>(null);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historyCompareRevision, setHistoryCompareRevision] = useState<number | null>(null);
   const [canvasSettingsDialogOpen, setCanvasSettingsDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [activeOperation, setActiveOperation] = useState<ToolbarOperation | null>(null);
@@ -152,6 +173,10 @@ export default function StudioToolbar() {
   } | null>(null);
   const [requireCommitMessage, setRequireCommitMessage] = useState(false);
   const [pullDirtyOpen, setPullDirtyOpen] = useState(false);
+  const [connectionOnline, setConnectionOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [connectionRetryBusy, setConnectionRetryBusy] = useState(false);
 
   const versionId = studio?.state?.versionId ?? '';
   const tenantId = workspace?.tenant?.id ?? '';
@@ -162,6 +187,16 @@ export default function StudioToolbar() {
   const hasSchemaRead = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:read');
   const hasSchemaWrite = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:write');
   const canCommitPushMerge = !isReadOnly && !tenantPerms.loading && hasSchemaWrite;
+  const historyRollbackAllowed =
+    !tenantPerms.loading && hasSchemaWrite && workspace?.version?.published !== true;
+  const historyRollbackDisabledReason =
+    tenantPerms.loading
+      ? 'Checking permissions before enabling rollback...'
+      : workspace?.version?.published === true
+        ? 'Rollback is not available while this version is published. Unpublish it first.'
+        : !hasSchemaWrite
+          ? 'Rollback requires schema edit permission.'
+          : undefined;
   const canPull = !tenantPerms.loading && (hasSchemaRead || hasSchemaWrite);
 
   const runWithOperation = useCallback(
@@ -183,6 +218,29 @@ export default function StudioToolbar() {
     if (!studio?.state?.versionId || (!options.jwt && !options.apiKey)) return;
     void studio.checkServerForUpdates(options);
   }, [studio?.state?.versionId, studio?.state?.revision, options.jwt, options.apiKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const on = () => setConnectionOnline(true);
+    const off = () => setConnectionOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
+
+  const handleConnectionRetry = useCallback(async () => {
+    if (!studio?.state?.versionId || !studio?.state?.revision) return;
+    if (!options.jwt && !options.apiKey) return;
+    setConnectionRetryBusy(true);
+    try {
+      await studio.checkServerForUpdates(options);
+    } finally {
+      setConnectionRetryBusy(false);
+    }
+  }, [studio, options]);
 
   const runPull = useCallback(
     async (pullOpts?: { stashUsed?: boolean }) => {
@@ -567,9 +625,101 @@ export default function StudioToolbar() {
 
   const showGitToolbar = Boolean(studio && studio.state);
   const schemaMode: SchemaMode = studio?.state ? getSchemaMode(studio.state) : 'openapi';
+  const unpushedLabel = studio?.hasUnpushedCommits
+    ? `${Math.max(1, studio.unpushedCommitCount)} unpushed`
+    : '';
 
   return (
-    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+    <div className="flex flex-col gap-1.5 min-w-0 shrink-0">
+      {showGitToolbar &&
+        studio!.state?.revision != null &&
+        studio!.serverHeadRevision != null &&
+        studio!.state.revision < studio!.serverHeadRevision && (
+          <div
+            className="w-full flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 px-3 py-2 text-amber-950 dark:text-amber-50"
+            role="alert"
+            aria-live="polite"
+          >
+            <AlertTriangle
+              className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+              aria-hidden
+            />
+            <span className="text-sm font-medium">
+              You are viewing a past revision (r{studio!.state.revision}; server head is r
+              {studio!.serverHeadRevision}).
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={bannerBtnClass}
+                onClick={() => {
+                  void studio!.loadFromServer(versionId, options, {
+                    tenantId: tenantId || undefined,
+                    projectId: projectId || undefined,
+                  });
+                  if (tenantId && projectId && versionId) {
+                    const qs = new URLSearchParams({
+                      tenantId,
+                      projectId,
+                      versionId,
+                    });
+                    router.replace(`/data-designer?${qs.toString()}`);
+                  }
+                }}
+                disabled={studio!.loading || !versionId}
+              >
+                Load latest to edit
+              </button>
+              <button
+                type="button"
+                className={bannerBtnClass}
+                onClick={() => {
+                  if (studio!.state?.revision != null) {
+                    setHistoryCompareRevision(studio!.state.revision);
+                  }
+                }}
+                disabled={!versionId}
+              >
+                <GitCompare className="h-3.5 w-3.5" aria-hidden />
+                Compare with current
+              </button>
+            </div>
+          </div>
+        )}
+      {showGitToolbar && studio!.serverHasNewChanges && (
+        <div
+          className="w-full flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50/90 dark:bg-sky-950/40 px-3 py-2 text-sky-950 dark:text-sky-50"
+          role="status"
+          aria-live="polite"
+        >
+          <Cloud className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+          <span className="text-sm font-medium">Server has new changes</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={bannerBtnClass}
+              onClick={() => {
+                void handlePull();
+              }}
+              disabled={studio!.loading || !canPull}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Pull
+            </button>
+            <button
+              type="button"
+              className={bannerBtnClass}
+              onClick={() => openMergeDialog(null)}
+              disabled={studio!.loading || !canCommitPushMerge || !tenantId || !projectId}
+            >
+              <GitMerge className="h-3.5 w-3.5" />
+              Merge
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 shrink-0 flex-wrap">
       {showGitToolbar && studio!.error && (
         <span
           className="text-sm text-red-600 dark:text-red-400"
@@ -577,6 +727,41 @@ export default function StudioToolbar() {
           title={studio!.error}
         >
           {studio!.error}
+        </span>
+      )}
+
+      {showGitToolbar && (
+        <span
+          className={`flex items-center gap-1.5 text-xs font-medium ${
+            connectionOnline
+              ? 'text-slate-500 dark:text-slate-400'
+              : 'text-amber-700 dark:text-amber-300'
+          }`}
+          title={connectionOnline ? 'Browser reports network connection' : 'Browser reports offline'}
+        >
+          {connectionOnline ? (
+            <Wifi className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          ) : (
+            <WifiOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          )}
+          {connectionOnline ? 'Online' : 'Offline'}
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 ml-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 bg-white/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-50 text-[11px] font-medium"
+            onClick={() => {
+              void handleConnectionRetry();
+            }}
+            disabled={studio!.loading || connectionRetryBusy || !studio!.state?.versionId || !studio!.state?.revision || (!options.jwt && !options.apiKey)}
+            aria-label={connectionOnline ? 'Check connection and sync status' : 'Retry connection and sync status'}
+            title={connectionOnline ? 'Check connection and sync status' : 'Retry connection and sync status'}
+          >
+            {connectionRetryBusy ? (
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+            ) : (
+              <RefreshCw className="h-3 w-3" aria-hidden />
+            )}
+            Retry
+          </button>
         </span>
       )}
 
@@ -596,16 +781,7 @@ export default function StudioToolbar() {
           title="Committed locally but not yet pushed to another version"
         >
           <GitBranchPlus className="h-4 w-4" />
-          Unpushed commits
-        </span>
-      )}
-      {showGitToolbar && studio!.serverHasNewChanges && (
-        <span
-          className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400 text-xs font-medium"
-          title="Server has new changes"
-        >
-          <Cloud className="h-4 w-4" />
-          Server has new changes
+          {unpushedLabel}
         </span>
       )}
       {showGitToolbar && studio!.state?.readOnly && (
@@ -627,6 +803,26 @@ export default function StudioToolbar() {
           {progressLabel}
         </span>
       )}
+      {showGitToolbar &&
+        studio!.state?.revision != null &&
+        !studio!.state?.readOnly && (
+          <span
+            className="text-xs font-mono text-slate-600 dark:text-slate-300 max-w-[24rem] truncate"
+            title={
+              studio!.lastPushedAt
+                ? `Working copy revision; last pushed ${studio!.lastPushedAt}`
+                : 'Current working copy revision'
+            }
+          >
+            r{studio!.state.revision}
+            {studio!.lastPushedAt ? (
+              <span className="text-slate-500 dark:text-slate-400 font-sans">
+                {' '}
+                · Last pushed {formatDateTime(studio!.lastPushedAt)}
+              </span>
+            ) : null}
+          </span>
+        )}
       {showGitToolbar && studio!.lastCommitInfo && (
         <span
           className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 max-w-[28rem]"
@@ -640,6 +836,12 @@ export default function StudioToolbar() {
           <span className="truncate">
             Last commit r{studio!.lastCommitInfo.revision ?? '?'}:{' '}
             {studio!.lastCommitInfo.message ?? 'No message'}
+            {studio!.lastCommitInfo.committedAt ? (
+              <span className="text-slate-500 dark:text-slate-400 font-normal">
+                {' '}
+                ({formatDateTime(studio!.lastCommitInfo.committedAt)})
+              </span>
+            ) : null}
           </span>
         </span>
       )}
@@ -992,17 +1194,47 @@ export default function StudioToolbar() {
         tenantId={tenantId || undefined}
         projectId={projectId || undefined}
         onLoadRevision={handleLoadRevision}
+        studioLoadedRevision={
+          studio?.state?.revision != null ? studio.state.revision : null
+        }
+        onCompareWithCurrent={(rev) => setHistoryCompareRevision(rev)}
+        canRollback={historyRollbackAllowed}
+        rollbackDisabledReason={historyRollbackDisabledReason}
         onRollbackSuccess={() => {
           void runPull();
         }}
-        onBranchSuccess={(newVersion) => {
-          if (tenantId && projectId) {
-            router.push(
-              `/data-designer?tenantId=${encodeURIComponent(tenantId)}&projectId=${encodeURIComponent(projectId)}&versionId=${encodeURIComponent(newVersion.id)}`
-            );
+        onBranchSuccess={(newVersion, meta) => {
+          if (!tenantId || !projectId) return;
+          const url = dataDesignerDeepLink({
+            tenantId,
+            projectId,
+            versionId: newVersion.id,
+          });
+          if (meta.openInNewTab) {
+            const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+            if (!newWindow) {
+              // Popup blocked; fall back to same-tab navigation.
+              router.push(url);
+            }
+          } else {
+            router.push(url);
           }
         }}
-        onDeleteSuccess={() => router.push('/dashboard/versions')}
+        onDeleteSuccess={async () => {
+          await alertDialog({
+            message: 'Version archived. Returning to the versions list.',
+            variant: 'success',
+          });
+          router.push('/dashboard/versions');
+        }}
+      />
+      <VersionDiffDialog
+        open={historyCompareRevision != null && Boolean(versionId)}
+        onOpenChange={(o) => !o && setHistoryCompareRevision(null)}
+        versionId={versionId}
+        versionName={workspace?.version?.name ?? ''}
+        options={options}
+        initialSinceRevision={historyCompareRevision}
       />
         </>
       )}
@@ -1015,6 +1247,7 @@ export default function StudioToolbar() {
         onOpenChange={setExportDialogOpen}
       />
       <GenerateCodeDialog open={generateCodeOpen} onOpenChange={setGenerateCodeOpen} />
+      </div>
     </div>
   );
 }

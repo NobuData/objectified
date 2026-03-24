@@ -8,7 +8,7 @@ import {
   Plus,
   GitBranch,
   Pencil,
-  Trash2,
+  Archive,
   MoreVertical,
   Lock,
   CheckCircle,
@@ -32,6 +32,7 @@ import {
   listProjects,
   listVersions,
   createVersion,
+  createVersionFromRevision,
   updateVersion,
   deleteVersion,
   publishVersion,
@@ -49,6 +50,10 @@ import {
   type VersionPublishEventSchema,
 } from '@lib/api/rest-client';
 import { atQuotaLimit, formatUsageLine, quotaSeverity } from '@lib/quotaDisplay';
+import {
+  resolveVersionArchiveImpact,
+  VersionArchiveConfirmMessage,
+} from '@/app/dashboard/utils/versionArchiveConfirm';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
 import VersionCompareDialog from '@/app/dashboard/components/VersionCompareDialog';
@@ -56,7 +61,13 @@ import VersionHistoryDialog from '@/app/dashboard/components/VersionHistoryDialo
 import RelationshipGraphDialog from '@/app/dashboard/components/RelationshipGraphDialog';
 import SchemaImportDialog from '@/app/dashboard/components/SchemaImportDialog';
 import { useTenantSelection } from '@/app/contexts/TenantSelectionContext';
+import { useTenantPermissions } from '@/app/hooks/useTenantPermissions';
 import { dataDesignerDeepLink } from '@/lib/dashboard/deepLinks';
+import {
+  readBranchOpenStudioNewTab,
+  suggestBranchVersionName,
+  writeBranchOpenStudioNewTab,
+} from '@/lib/dashboard/branchFromRevisionUi';
 import { buildCsvContent, downloadCsvFile } from '@/app/components/dashboard/ListTableToolbar';
 
 const inputClass =
@@ -165,6 +176,9 @@ export default function VersionsPage() {
   const { data: session, status } = useSession();
   const { confirm, alert: alertDialog } = useDialog();
   const { tenants, tenantsLoading, selectedTenantId, setSelectedTenantId } = useTenantSelection();
+  const tenantPerms = useTenantPermissions(selectedTenantId);
+  const hasSchemaWrite =
+    Boolean(tenantPerms.permissions?.is_tenant_admin) || tenantPerms.has('schema:write');
   const [projects, setProjects] = useState<ProjectSchema[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionSchema[]>([]);
@@ -180,8 +194,22 @@ export default function VersionsPage() {
   const [editVersion, setEditVersion] = useState<VersionSchema | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [diffDialogVersion, setDiffDialogVersion] = useState<VersionSchema | null>(null);
+  const [diffSinceRevision, setDiffSinceRevision] = useState<number | null>(null);
   const [graphDialogVersion, setGraphDialogVersion] = useState<VersionSchema | null>(null);
   const [historyDialogVersion, setHistoryDialogVersion] = useState<VersionSchema | null>(null);
+  const historyRollbackAllowed =
+    !tenantPerms.loading &&
+    hasSchemaWrite &&
+    !!historyDialogVersion &&
+    !historyDialogVersion.published;
+  const historyRollbackDisabledReason =
+    historyDialogVersion?.published === true
+      ? 'Rollback is not available while this version is published. Unpublish it first.'
+      : tenantPerms.loading
+        ? 'Checking permissions…'
+        : !hasSchemaWrite
+          ? 'Rollback requires schema edit permission.'
+          : undefined;
   const [importDialogVersion, setImportDialogVersion] = useState<VersionSchema | null>(null);
   const [tagDialogVersion, setTagDialogVersion] = useState<VersionSchema | null>(null);
   const [tagDialogValue, setTagDialogValue] = useState('');
@@ -228,6 +256,7 @@ export default function VersionsPage() {
   const [createSourceVersionId, setCreateSourceVersionId] = useState<string>('');
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createStudioOpenNewTab, setCreateStudioOpenNewTab] = useState(false);
   const [quotaStatus, setQuotaStatus] = useState<TenantQuotaStatusSchema | null>(null);
   const quotaRequestIdRef = useRef(0);
 
@@ -496,6 +525,12 @@ export default function VersionsPage() {
     });
   }, [versions]);
 
+  useEffect(() => {
+    if (createOpen) {
+      setCreateStudioOpenNewTab(readBranchOpenStudioNewTab());
+    }
+  }, [createOpen]);
+
   const versionQuotaBlocksCreate = useMemo(() => {
     if (!quotaStatus || quotaStatus.active_version_count_for_project == null) {
       return false;
@@ -505,6 +540,12 @@ export default function VersionsPage() {
       quotaStatus.active_version_count_for_project
     );
   }, [quotaStatus]);
+
+  const createSourceHasNoCommittedRevision = useMemo(() => {
+    if (!createSourceVersionId) return false;
+    const src = versions.find((v) => v.id === createSourceVersionId);
+    return Boolean(src && src.last_revision == null);
+  }, [createSourceVersionId, versions]);
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === selectedProjectId) ?? null,
@@ -571,11 +612,59 @@ export default function VersionsPage() {
     setCreateError(null);
     try {
       const cg = createCodegenTag.trim();
+      if (createSourceVersionId) {
+        const src = versions.find((v) => v.id === createSourceVersionId);
+        if (!src) {
+          setCreateError(
+            'Selected source version is no longer available. Refresh the page and try again.'
+          );
+          return;
+        }
+        if (src.last_revision == null) {
+          setCreateError(
+            'The selected version has no committed revision yet. Commit changes in Studio first, or choose “Create blank version”.'
+          );
+          return;
+        }
+        const newVersion = await createVersionFromRevision(
+          selectedTenantId,
+          selectedProjectId,
+          {
+            source_version_id: src.id,
+            source_revision: src.last_revision,
+            name,
+            description: createDescription.trim(),
+            change_log: createChangeLog.trim() || undefined,
+          },
+          opts
+        );
+        if (cg) {
+          await updateVersion(newVersion.id, { code_generation_tag: cg }, opts);
+        }
+        setCreateOpen(false);
+        await fetchVersions();
+        void fetchQuota();
+        await alertDialog({ message: 'Version created.', variant: 'success' });
+        const url = dataDesignerDeepLink({
+          tenantId: selectedTenantId,
+          projectId: selectedProjectId,
+          versionId: newVersion.id,
+        });
+        if (createStudioOpenNewTab) {
+          const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+          if (!newWindow) {
+            // Popup blocked; fall back to same-tab navigation.
+            router.push(url);
+          }
+        } else {
+          router.push(url);
+        }
+        return;
+      }
       const body: VersionCreate = {
         name,
         description: createDescription.trim(),
         change_log: createChangeLog.trim() || undefined,
-        source_version_id: createSourceVersionId || undefined,
         ...(cg ? { code_generation_tag: cg } : {}),
       };
       await createVersion(selectedTenantId, selectedProjectId, body, opts);
@@ -634,12 +723,36 @@ export default function VersionsPage() {
     }
   };
 
-  const handleDelete = async (v: VersionSchema) => {
+  const handleArchive = async (v: VersionSchema) => {
+    let impact;
+    try {
+      impact = await resolveVersionArchiveImpact(v.id, {
+        projectVersions: versions,
+        tenantId: selectedTenantId ?? undefined,
+        projectId: selectedProjectId ?? undefined,
+        options: opts,
+      });
+    } catch (e) {
+      await alertDialog({
+        message:
+          e instanceof Error
+            ? e.message
+            : 'Failed to resolve archive impact. Please try again.',
+        variant: 'error',
+      });
+      return;
+    }
     const ok = await confirm({
-      title: 'Delete Version',
-      message: `Delete version "${v.name}"? This action cannot be undone.`,
+      title: 'Archive version',
+      message: (
+        <VersionArchiveConfirmMessage
+          displayName={v.name}
+          lastRevision={impact.lastRevision}
+          branchCount={impact.branchCount}
+        />
+      ),
       variant: 'danger',
-      confirmLabel: 'Delete',
+      confirmLabel: 'Archive',
       cancelLabel: 'Cancel',
     });
     if (!ok) return;
@@ -648,10 +761,10 @@ export default function VersionsPage() {
       await deleteVersion(v.id, opts);
       await fetchVersions();
       void fetchQuota();
-      await alertDialog({ message: 'Version deleted.', variant: 'success' });
+      await alertDialog({ message: 'Version archived.', variant: 'success' });
     } catch (e) {
       await alertDialog({
-        message: e instanceof Error ? e.message : 'Failed to delete version.',
+        message: e instanceof Error ? e.message : 'Failed to archive version.',
         variant: 'error',
       });
     } finally {
@@ -1564,7 +1677,10 @@ export default function VersionsPage() {
                               </DropdownMenu.Item>
                               <DropdownMenu.Item
                                 className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 data-[disabled]:opacity-50"
-                                onSelect={() => setDiffDialogVersion(v)}
+                                onSelect={() => {
+                                  setDiffSinceRevision(null);
+                                  setDiffDialogVersion(v);
+                                }}
                               >
                                 <GitCompare className="h-4 w-4" />
                                 Revision diff
@@ -1622,15 +1738,15 @@ export default function VersionsPage() {
                               <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
                               <DropdownMenu.Item
                                 className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 data-[disabled]:opacity-50"
-                                onSelect={() => handleDelete(v)}
+                                onSelect={() => handleArchive(v)}
                                 disabled={deletingId === v.id}
                               >
                                 {deletingId === v.id ? (
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
-                                  <Trash2 className="h-4 w-4" />
+                                  <Archive className="h-4 w-4" />
                                 )}
-                                Delete
+                                Archive version
                               </DropdownMenu.Item>
                             </DropdownMenu.Content>
                           </DropdownMenu.Portal>
@@ -1901,6 +2017,9 @@ export default function VersionsPage() {
               <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                 Create New Version
               </Dialog.Title>
+              <Dialog.Description className="sr-only">
+                Create a new project version, optionally copying from an existing version.
+              </Dialog.Description>
             </div>
             <div className="px-6 py-2 flex-1 overflow-auto space-y-4">
               {createError && (
@@ -1927,7 +2046,15 @@ export default function VersionsPage() {
                 <select
                   id="create-source"
                   value={createSourceVersionId}
-                  onChange={(e) => setCreateSourceVersionId(e.target.value)}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setCreateSourceVersionId(id);
+                    if (!id) return;
+                    const src = versions.find((v) => v.id === id);
+                    if (src?.last_revision != null) {
+                      setCreateName(suggestBranchVersionName(src.name, src.last_revision));
+                    }
+                  }}
                   className={inputClass}
                 >
                   <option value="">Create blank version</option>
@@ -1938,6 +2065,19 @@ export default function VersionsPage() {
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Copies the latest committed snapshot (same as branching from head in version
+                  history). Uses the branch-from-revision API.
+                </p>
+                {createSourceHasNoCommittedRevision ? (
+                  <div
+                    className="mt-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100 text-xs"
+                    role="status"
+                  >
+                    This version has no commits yet. Commit in Studio first, or pick “Create blank
+                    version”.
+                  </div>
+                ) : null}
               </div>
               <div>
                 <Label.Root htmlFor="create-name" className={labelClass}>
@@ -2009,6 +2149,29 @@ export default function VersionsPage() {
                   ))}
                 </div>
               </div>
+              <div className="flex items-center gap-2 px-6 pb-2">
+                <Checkbox.Root
+                  id="create-open-studio-new-tab"
+                  checked={createStudioOpenNewTab}
+                  onCheckedChange={(checked) => {
+                    const on = checked === true;
+                    setCreateStudioOpenNewTab(on);
+                    writeBranchOpenStudioNewTab(on);
+                  }}
+                  disabled={createSubmitting}
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 disabled:opacity-50"
+                >
+                  <Checkbox.Indicator className="flex items-center justify-center text-white">
+                    <Check className="h-3 w-3" />
+                  </Checkbox.Indicator>
+                </Checkbox.Root>
+                <label
+                  htmlFor="create-open-studio-new-tab"
+                  className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer select-none"
+                >
+                  Open Studio in a new browser tab after create
+                </label>
+              </div>
             </div>
             <div className="flex justify-end gap-2 p-4 pt-4 border-t border-slate-200 dark:border-slate-700">
               <Dialog.Close asChild>
@@ -2023,7 +2186,11 @@ export default function VersionsPage() {
               <button
                 type="button"
                 onClick={handleCreateSubmit}
-                disabled={createSubmitting || versionQuotaBlocksCreate}
+                disabled={
+                  createSubmitting ||
+                  versionQuotaBlocksCreate ||
+                  createSourceHasNoCommittedRevision
+                }
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 inline-flex items-center gap-2"
               >
                 {createSubmitting && (
@@ -2324,10 +2491,16 @@ export default function VersionsPage() {
 
       <VersionDiffDialog
         open={!!diffDialogVersion}
-        onOpenChange={(open) => !open && setDiffDialogVersion(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDiffDialogVersion(null);
+            setDiffSinceRevision(null);
+          }
+        }}
         versionId={diffDialogVersion?.id ?? ''}
         versionName={diffDialogVersion?.name ?? ''}
         options={opts}
+        initialSinceRevision={diffSinceRevision}
       />
       <RelationshipGraphDialog
         open={!!graphDialogVersion}
@@ -2344,6 +2517,7 @@ export default function VersionsPage() {
         options={opts}
         tenantId={selectedTenantId ?? undefined}
         projectId={selectedProjectId ?? undefined}
+        projectVersions={versions}
         onLoadRevision={(revision, readOnly) => {
           if (!selectedTenantId || !selectedProjectId || !historyDialogVersion) return;
           router.push(
@@ -2356,21 +2530,43 @@ export default function VersionsPage() {
             })
           );
         }}
+        canRollback={historyRollbackAllowed}
+        rollbackDisabledReason={historyRollbackDisabledReason}
         onRollbackSuccess={() => {
           void fetchVersions();
         }}
-        onBranchSuccess={(newVersion) => {
+        onBranchSuccess={(newVersion, meta) => {
           void fetchVersions();
           void fetchQuota();
           void alertDialog({
             message: `Created version "${newVersion.name}" from history.`,
             variant: 'success',
           });
+          if (!selectedTenantId || !selectedProjectId) return;
+          const url = dataDesignerDeepLink({
+            tenantId: selectedTenantId,
+            projectId: selectedProjectId,
+            versionId: newVersion.id,
+          });
+          if (meta.openInNewTab) {
+            const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+            if (!newWindow) {
+              // Popup blocked; fall back to same-tab navigation.
+              router.push(url);
+            }
+          } else {
+            router.push(url);
+          }
         }}
         onDeleteSuccess={async () => {
           setHistoryDialogVersion(null);
           await fetchVersions();
-          await alertDialog({ message: 'Version deleted.', variant: 'success' });
+          await alertDialog({ message: 'Version archived.', variant: 'success' });
+        }}
+        onCompareWithCurrent={(revision) => {
+          if (!historyDialogVersion) return;
+          setDiffDialogVersion(historyDialogVersion);
+          setDiffSinceRevision(revision);
         }}
       />
       {importDialogVersion && (

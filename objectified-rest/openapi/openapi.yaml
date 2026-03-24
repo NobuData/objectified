@@ -4,7 +4,7 @@ info:
   description: REST API for the Objectified platform. CRUD scaffolding from database
     design. Services are used by the platform and can be exposed externally; internal
     use is via a private API key.
-  version: 1.0.35
+  version: 1.0.39
 paths:
   /v1/auth/login:
     post:
@@ -6900,9 +6900,14 @@ paths:
       tags:
       - Versions
       summary: List version snapshot metadata
-      description: Return metadata (revision, date, label, description) for all committed
-        snapshots for a version, newest revision first. The snapshot payload is excluded
-        for efficiency.
+      description: Return metadata (revision, date, author, label, description, snapshot
+        id) for committed snapshots, newest revision first. The snapshot payload is
+        excluded for efficiency. Omit limit to return all matching rows; use limit
+        and offset for pagination. Optional filters message_contains, committed_by,
+        created_after, created_before. Pass paged=true to receive a paginated envelope
+        {items, total, latest_revision, retention_notice?}; retention_notice is present
+        when VERSION_HISTORY_RETENTION_NOTICE is set on the server. The default (paged=false)
+        returns a bare array for backward compatibility.
       operationId: list_version_snapshots_metadata_v1_versions__version_id__snapshots_metadata_get
       parameters:
       - name: version_id
@@ -6911,6 +6916,73 @@ paths:
         schema:
           type: string
           title: Version Id
+      - name: paged
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Paged
+        description: When true, return a paginated {items, total, latest_revision, retention_notice?}
+          object. When false (default), return a bare array (legacy behavior).
+      - name: limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+            maximum: 500
+          - type: 'null'
+          title: Limit
+        description: Max rows to return. Omit to return all matching rows.
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+        description: Skip this many rows when limit is set.
+      - name: message_contains
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message Contains
+        description: Case-insensitive substring match on label or description.
+      - name: committed_by
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Committed By
+        description: Filter by committing account id (exact match, case-insensitive).
+      - name: created_after
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Created After
+        description: Include only snapshots with created_at >= this instant (UTC).
+      - name: created_before
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Created Before
+        description: Include only snapshots with created_at <= this instant (UTC).
       - name: authorization
         in: header
         required: false
@@ -6933,11 +7005,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/VersionSnapshotMetadataSchema'
-                title: Response List Version Snapshots Metadata V1 Versions  Version
-                  Id  Snapshots Metadata Get
+                oneOf:
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/VersionSnapshotMetadataSchema'
+                - $ref: '#/components/schemas/VersionSnapshotMetadataPageSchema'
+                title: Response List Version Snapshots Metadata
         '422':
           description: Validation Error
           content:
@@ -10771,6 +10844,32 @@ components:
           type: string
           format: date-time
           title: Pulled At
+        latest_revision:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Latest Revision
+          description: Highest snapshot revision on the server for this version (current
+            head).
+        snapshot_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Snapshot Label
+          description: When pulling a specific revision, label of that snapshot.
+        snapshot_description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Snapshot Description
+          description: When pulling a specific revision, description of that snapshot.
+        snapshot_committed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Snapshot Committed At
+          description: When pulling a specific revision, when that snapshot was created.
         diff_since_revision:
           anyOf:
           - type: integer
@@ -10795,6 +10894,12 @@ components:
           type: integer
           title: Revision
           description: Snapshot revision to restore version state to.
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message
+          description: Optional note stored on the rollback snapshot description.
       type: object
       required:
       - revision
@@ -10959,6 +11064,35 @@ components:
       title: VersionSnapshotMetadataSchema
       description: Metadata-only response schema for objectified.version_snapshot
         (excludes snapshot payload).
+    VersionSnapshotMetadataPageSchema:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/VersionSnapshotMetadataSchema'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+          description: Number of rows matching the current filters (not only this page).
+        latest_revision:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Latest Revision
+          description: Highest revision on the server for this version (ignores list filters).
+        retention_notice:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Retention Notice
+          description: Instance retention or cleanup policy for compliance UI when configured.
+      type: object
+      required:
+      - items
+      - total
+      title: VersionSnapshotMetadataPageSchema
+      description: Paginated snapshot metadata list with optional filters.
     VersionSnapshotSchema:
       properties:
         id:
