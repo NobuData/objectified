@@ -54,6 +54,9 @@ describe('DEFAULT_CANVAS_SETTINGS', () => {
     expect(DEFAULT_CANVAS_SETTINGS.edgePathType).toBe('smoothstep');
     expect(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor).toBe('');
     expect(DEFAULT_CANVAS_SETTINGS.edgeAnimated).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.simplifiedNodeView).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.highContrastCanvas).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.reducedMotion).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.persistUndoStackInSession).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.maxUndoDepth).toBe(50);
   });
@@ -101,6 +104,9 @@ describe('getCanvasSettings', () => {
     expect(result.edgePathType).toBe(DEFAULT_CANVAS_SETTINGS.edgePathType);
     expect(result.edgeStrokeColor).toBe(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor);
     expect(result.edgeAnimated).toBe(DEFAULT_CANVAS_SETTINGS.edgeAnimated);
+    expect(result.simplifiedNodeView).toBe(DEFAULT_CANVAS_SETTINGS.simplifiedNodeView);
+    expect(result.highContrastCanvas).toBe(DEFAULT_CANVAS_SETTINGS.highContrastCanvas);
+    expect(result.reducedMotion).toBe(DEFAULT_CANVAS_SETTINGS.reducedMotion);
     expect(result.maxUndoDepth).toBe(DEFAULT_CANVAS_SETTINGS.maxUndoDepth);
   });
 

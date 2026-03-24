@@ -361,6 +361,60 @@ export default function CanvasSettingsDialog({
                   <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
                 </Switch.Root>
               </div>
+              <div className="flex items-center justify-between gap-3">
+                <Label.Root
+                  htmlFor="canvas-settings-simplified-node-view"
+                  className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                >
+                  Simplified node view
+                </Label.Root>
+                <Switch.Root
+                  id="canvas-settings-simplified-node-view"
+                  checked={draft.simplifiedNodeView}
+                  onCheckedChange={(checked) =>
+                    updateDraft({ simplifiedNodeView: checked })
+                  }
+                  className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                >
+                  <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                </Switch.Root>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <Label.Root
+                  htmlFor="canvas-settings-high-contrast"
+                  className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                >
+                  High contrast canvas
+                </Label.Root>
+                <Switch.Root
+                  id="canvas-settings-high-contrast"
+                  checked={draft.highContrastCanvas}
+                  onCheckedChange={(checked) =>
+                    updateDraft({ highContrastCanvas: checked })
+                  }
+                  className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                >
+                  <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                </Switch.Root>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <Label.Root
+                  htmlFor="canvas-settings-reduced-motion"
+                  className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                >
+                  Reduced motion
+                </Label.Root>
+                <Switch.Root
+                  id="canvas-settings-reduced-motion"
+                  checked={draft.reducedMotion}
+                  onCheckedChange={(checked) =>
+                    updateDraft({ reducedMotion: checked })
+                  }
+                  className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                >
+                  <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                </Switch.Root>
+              </div>
 
               <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-700">
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">

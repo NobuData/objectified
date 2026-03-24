@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { MouseEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -86,6 +86,7 @@ import CanvasExportRegistration from './CanvasExportRegistration';
 
 const defaultPosition = { x: 0, y: 0 };
 const NODE_MUTATION_DEBOUNCE_MS = 150;
+const LARGE_CANVAS_NODE_THRESHOLD = 100;
 
 const nodeTypes = { class: ClassNode, group: GroupNode };
 const edgeTypes = { classRef: ClassRefEdge };
@@ -569,10 +570,21 @@ export default function DesignCanvas() {
           },
           onConfigChange,
           allowResize: !isReadOnly,
+            simplifiedView: canvasSettings.simplifiedNodeView,
+            highContrast: canvasSettings.highContrastCanvas,
         },
       };
     });
-  }, [focusFilteredNodes, versionId, configOverrides, onConfigChange, isReadOnly, canvasGroup]);
+  }, [
+    focusFilteredNodes,
+    versionId,
+    configOverrides,
+    onConfigChange,
+    isReadOnly,
+    canvasGroup,
+    canvasSettings.simplifiedNodeView,
+    canvasSettings.highContrastCanvas,
+  ]);
 
   // Debounce layout quality computation to avoid running an O(E²+N²) algorithm
   // on every node/edge change (e.g., during drag/resize).
@@ -613,6 +625,7 @@ export default function DesignCanvas() {
 
   const selectedNodeId = selectedClassNodeIds[0] ?? null;
   const selectedNodeId2 = selectedClassNodeIds[1] ?? null;
+  const [liveRegionMessage, setLiveRegionMessage] = useState('');
   const circularEdgeIds = useMemo(
     () =>
       canvasSettings.showDependencyOverlay
@@ -701,6 +714,67 @@ export default function DesignCanvas() {
       }
     },
     [editClassRequest, canvasGroup]
+  );
+
+  const visibleClassNodeIds = useMemo(
+    () => displayNodes.filter((n) => n.type === 'class').map((n) => n.id),
+    [displayNodes]
+  );
+
+  const [keyboardFocusIndex, setKeyboardFocusIndex] = useState(0);
+
+  const focusClassNodeByIndex = useCallback(
+    (index: number) => {
+      if (visibleClassNodeIds.length === 0) return;
+      const normalizedIndex =
+        ((index % visibleClassNodeIds.length) + visibleClassNodeIds.length) %
+        visibleClassNodeIds.length;
+      const focusedNodeId = visibleClassNodeIds[normalizedIndex];
+      setKeyboardFocusIndex(normalizedIndex);
+      setNodes((current) =>
+        current.map((node) => ({
+          ...node,
+          selected: node.id === focusedNodeId,
+        }))
+      );
+      const targetClass = classes.find((cls) => getStableClassId(cls) === focusedNodeId);
+      setLiveRegionMessage(
+        targetClass
+          ? `Selected ${targetClass.name ?? 'Unnamed class'}`
+          : 'Selected class node'
+      );
+    },
+    [visibleClassNodeIds, setNodes, classes]
+  );
+
+  const handleCanvasKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (visibleClassNodeIds.length === 0) return;
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        focusClassNodeByIndex(keyboardFocusIndex + (e.shiftKey ? -1 : 1));
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const currentNodeId = visibleClassNodeIds[keyboardFocusIndex];
+        if (currentNodeId) {
+          editClassRequest?.requestEditClass(currentNodeId);
+          setLiveRegionMessage('Opened class editor');
+        }
+      }
+    },
+    [
+      visibleClassNodeIds,
+      focusClassNodeByIndex,
+      keyboardFocusIndex,
+      editClassRequest,
+    ]
+  );
+
+  const screenReaderSummary = useMemo(
+    () => `${classes.length} classes, ${groups.length} groups`,
+    [classes.length, groups.length]
   );
 
   const [layoutPreviewOpen, setLayoutPreviewOpen] = useState(false);
@@ -1087,8 +1161,26 @@ export default function DesignCanvas() {
     [studio, versionId, classes, setNodes]
   );
 
+  const highContrastClass = canvasSettings.highContrastCanvas
+    ? '[--class-ref-edge-stroke:rgb(15_23_42)] dark:[--class-ref-edge-stroke:rgb(248_250_252)]'
+    : '[--class-ref-edge-stroke:rgb(100_116_139)] dark:[--class-ref-edge-stroke:rgb(148_163_184)]';
+
+  const isReducedMotion =
+    canvasSettings.reducedMotion ||
+    (typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
   return (
-    <div className="w-full h-full bg-slate-100 dark:bg-slate-950 [--class-ref-edge-stroke:rgb(100_116_139)] dark:[--class-ref-edge-stroke:rgb(148_163_184)]">
+    <div
+      className={`w-full h-full bg-slate-100 dark:bg-slate-950 ${highContrastClass}`}
+      role="application"
+      aria-label="Schema design canvas"
+      onKeyDown={handleCanvasKeyDown}
+      tabIndex={0}
+    >
+      <p className="sr-only" aria-live="polite">
+        {screenReaderSummary}. {liveRegionMessage}
+      </p>
       <ReactFlow
         nodes={displayNodes}
         edges={focusFilteredEdges}
@@ -1116,17 +1208,28 @@ export default function DesignCanvas() {
         panOnDrag={true}
         zoomOnScroll={true}
         zoomOnPinch={true}
-        zoomOnDoubleClick={true}
+        zoomOnDoubleClick={!isReducedMotion}
         selectionOnDrag={false}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        onlyRenderVisibleElements={true}
+        ariaLabelConfig={{
+          'node.a11yDescription.default': 'Class node',
+          'edge.a11yDescription.default': 'Class relationship edge',
+        }}
         snapToGrid={canvasSettings.snapToGrid}
         snapGrid={[canvasSettings.gridSize, canvasSettings.gridSize]}
         defaultEdgeOptions={{
-          animated: canvasSettings.edgeAnimated,
+          animated: canvasSettings.edgeAnimated && !isReducedMotion,
         }}
         className="bg-slate-50 dark:bg-slate-900/50"
       >
+        {classes.length >= LARGE_CANVAS_NODE_THRESHOLD && (
+          <div className="absolute top-2 right-2 z-[10001] rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/50 dark:text-amber-200">
+            Large diagram detected ({classes.length} nodes). Consider using groups,
+            focus mode, or simplified node view.
+          </div>
+        )}
         <PaneContextMenuRegistration />
         <ZoomToClassRegistration />
         <CanvasExportRegistration />

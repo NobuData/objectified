@@ -23,6 +23,10 @@ export interface ClassNodeDataExtended extends ClassNodeData {
   onConfigChange?: (classId: string, config: ClassNodeConfig) => void;
   /** When true, node can be resized via NodeResizer (GitHub #82). */
   allowResize?: boolean;
+  /** Hide property list for simplified canvas overview mode. */
+  simplifiedView?: boolean;
+  /** Increase node contrast for accessibility. */
+  highContrast?: boolean;
 }
 
 const ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
@@ -49,6 +53,8 @@ function ClassNodeComponent({
     classNodeConfig,
     onConfigChange,
     allowResize,
+    simplifiedView,
+    highContrast,
     tags = [],
     tagDefinitions = {},
   } = data as ClassNodeDataExtended;
@@ -107,6 +113,7 @@ function ClassNodeComponent({
           !theme?.backgroundColor && 'bg-white dark:bg-slate-900',
           !theme?.border &&
             'border-slate-200 dark:border-slate-700',
+          highContrast && 'border-slate-900 dark:border-slate-100 shadow-lg',
           selected
             ? 'ring-2 ring-indigo-500 dark:ring-indigo-400 border-indigo-500 dark:border-indigo-400'
             : 'hover:border-slate-300 dark:hover:border-slate-600',
@@ -159,7 +166,7 @@ function ClassNodeComponent({
             ))}
           </div>
         )}
-        {expanded && (
+        {!simplifiedView && expanded && (
           <ScrollArea.Root className="max-h-[240px]">
             <ScrollArea.Viewport className="w-full">
               <div className="px-3 py-2">

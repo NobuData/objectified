@@ -125,6 +125,20 @@ describe('ClassNode', () => {
     expect(screen.queryByText('hiddenProp')).not.toBeInTheDocument();
   });
 
+  it('hides the property list in simplified view mode', () => {
+    render(
+      <ClassNode
+        {...makeProps({
+          name: 'Simplified',
+          properties: [{ id: 'p1', name: 'hiddenInSimplified' }],
+          simplifiedView: true,
+        } as unknown as ClassNodeType['data'])}
+      />,
+    );
+    expect(screen.getByText('Simplified')).toBeInTheDocument();
+    expect(screen.queryByText('hiddenInSimplified')).not.toBeInTheDocument();
+  });
+
   it('applies theme backgroundColor and border when classNodeConfig.theme is set (GitHub #80)', () => {
     const { container } = render(
       <ClassNode

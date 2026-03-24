@@ -37,6 +37,12 @@ export interface CanvasSettings {
   edgeStrokeColor: string;
   /** Animate edges. */
   edgeAnimated: boolean;
+  /** Hide property lists in nodes for faster high-level canvas overview. */
+  simplifiedNodeView: boolean;
+  /** Increase contrast for nodes and edges for visibility/accessibility. */
+  highContrastCanvas: boolean;
+  /** Reduce canvas motion by disabling optional edge animation. */
+  reducedMotion: boolean;
   /** Persist studio undo/redo stacks in sessionStorage for page refresh recovery. */
   persistUndoStackInSession: boolean;
   /** Maximum number of undo steps kept in memory. */
@@ -64,6 +70,9 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   edgePathType: 'smoothstep',
   edgeStrokeColor: '',
   edgeAnimated: false,
+  simplifiedNodeView: false,
+  highContrastCanvas: false,
+  reducedMotion: false,
   persistUndoStackInSession: false,
   maxUndoDepth: 50,
   defaultRevisionLoadReadOnly: false,
