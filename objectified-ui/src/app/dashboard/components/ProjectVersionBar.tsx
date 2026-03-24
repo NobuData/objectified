@@ -1,15 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import * as Select from '@radix-ui/react-select';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as Dialog from '@radix-ui/react-dialog';
 import {
   ChevronDown,
   ChevronRight,
   History,
   Loader2,
   Star,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   getRestBaseUrl,
@@ -84,10 +86,27 @@ export default function ProjectVersionBar() {
   const [favoritesTick, setFavoritesTick] = useState(0);
   const [recentsOpen, setRecentsOpen] = useState(false);
   const [recentsSnapshot, setRecentsSnapshot] = useState<WorkspaceRecentEntry[]>([]);
+  const [versionSelectOpen, setVersionSelectOpen] = useState(false);
+  const [versionSearch, setVersionSearch] = useState('');
+  const [loadedVersionsKey, setLoadedVersionsKey] = useState<string | null>(null);
+  const [switchConfirmOpen, setSwitchConfirmOpen] = useState(false);
+  const [switchSubmitting, setSwitchSubmitting] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    mode: 'tenant' | 'project' | 'version' | 'replace';
+    tenant: TenantSchema | null;
+    project: ProjectSchema | null;
+    version: VersionSchema | null;
+  } | null>(null);
 
   const baseUrl = getRestBaseUrl();
   const tenantId = workspace?.tenant?.id ?? null;
   const projectId = workspace?.project?.id ?? null;
+  const versionScopeKey = tenantId && projectId ? `${tenantId}:${projectId}` : null;
+  const studioRef = useRef(studio);
+  useEffect(() => {
+    studioRef.current = studio;
+  }, [studio]);
 
   const loadTenants = useCallback(async () => {
     if (!baseUrl) {
@@ -158,12 +177,24 @@ export default function ProjectVersionBar() {
   }, [tenantId, loadProjects]);
 
   useEffect(() => {
-    if (tenantId && projectId) {
-      loadVersions();
-    } else {
+    if (!versionScopeKey) {
       setVersions([]);
+      setLoadedVersionsKey(null);
+      return;
     }
-  }, [tenantId, projectId, loadVersions]);
+    if (loadedVersionsKey !== versionScopeKey) {
+      setVersions([]);
+      setLoadedVersionsKey(null);
+    }
+  }, [versionScopeKey, loadedVersionsKey]);
+
+  useEffect(() => {
+    if (!versionScopeKey || !versionSelectOpen) return;
+    if (loadedVersionsKey === versionScopeKey) return;
+    void loadVersions().then(() => {
+      setLoadedVersionsKey(versionScopeKey);
+    });
+  }, [versionScopeKey, versionSelectOpen, loadedVersionsKey, loadVersions]);
 
   useEffect(() => {
     if (
@@ -194,31 +225,117 @@ export default function ProjectVersionBar() {
     setRecentsSnapshot(listWorkspaceRecents());
   }, [recentsOpen]);
 
+  const applyWorkspaceSelection = useCallback(
+    (next: {
+      mode: 'tenant' | 'project' | 'version' | 'replace';
+      tenant: TenantSchema | null;
+      project: ProjectSchema | null;
+      version: VersionSchema | null;
+    }) => {
+      if (!workspace) return;
+      if (next.mode === 'tenant') {
+        workspace.setTenant(next.tenant);
+        return;
+      }
+      if (next.mode === 'project') {
+        workspace.setProject(next.project);
+        return;
+      }
+      if (next.mode === 'version') {
+        workspace.setVersion(next.version);
+        return;
+      }
+      workspace.replaceWorkspace(next.tenant, next.project, next.version);
+    },
+    [workspace]
+  );
+
+  const openSelectionInNewTab = useCallback(
+    (next: { tenant: TenantSchema | null; project: ProjectSchema | null; version: VersionSchema | null }) => {
+      if (!next.tenant?.id || !next.project?.id || !next.version?.id || typeof window === 'undefined') {
+        return false;
+      }
+      const params = new URLSearchParams({
+        tenantId: next.tenant.id,
+        projectId: next.project.id,
+        versionId: next.version.id,
+      });
+      const url = `/data-designer?${params.toString()}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return true;
+    },
+    []
+  );
+
+  const studioMatchesSelection =
+    Boolean(studio?.state?.versionId) &&
+    Boolean(workspace?.version?.id) &&
+    studio?.state?.versionId === workspace?.version?.id;
+
+  const requireSwitchConfirm = Boolean(studio?.isDirty && studioMatchesSelection);
+
+  const requestWorkspaceSwitch = useCallback(
+    (next: {
+      mode: 'tenant' | 'project' | 'version' | 'replace';
+      tenant: TenantSchema | null;
+      project: ProjectSchema | null;
+      version: VersionSchema | null;
+    }) => {
+      if (!workspace) return;
+      setSwitchError(null);
+      if (!requireSwitchConfirm) {
+        applyWorkspaceSelection(next);
+        return;
+      }
+      setPendingSwitch(next);
+      setSwitchConfirmOpen(true);
+    },
+    [workspace, requireSwitchConfirm, applyWorkspaceSelection]
+  );
+
   const onTenantChange = useCallback(
     (id: string) => {
       if (!workspace) return;
       const t = tenants.find((x) => x.id === id) ?? null;
-      workspace.setTenant(t);
+      if (tenantId === t?.id) return;
+      requestWorkspaceSwitch({
+        mode: 'tenant',
+        tenant: t,
+        project: null,
+        version: null,
+      });
     },
-    [workspace, tenants]
+    [workspace, tenants, tenantId, requestWorkspaceSwitch]
   );
 
   const onProjectChange = useCallback(
     (id: string) => {
       if (!workspace) return;
       const p = projects.find((x) => x.id === id) ?? null;
-      workspace.setProject(p);
+      if (projectId === p?.id) return;
+      requestWorkspaceSwitch({
+        mode: 'project',
+        tenant: workspace.tenant,
+        project: p,
+        version: null,
+      });
     },
-    [workspace, projects]
+    [workspace, projects, projectId, requestWorkspaceSwitch]
   );
 
   const onVersionChange = useCallback(
     (id: string) => {
       if (!workspace) return;
       const v = versions.find((x) => x.id === id) ?? null;
-      workspace.setVersion(v);
+      if (workspace.version?.id === v?.id) return;
+      requestWorkspaceSwitch({
+        mode: 'version',
+        tenant: workspace.tenant,
+        project: workspace.project,
+        version: v,
+      });
     },
-    [workspace, versions]
+    [workspace, versions, requestWorkspaceSwitch]
   );
 
   const applyRecentEntry = useCallback(
@@ -230,10 +347,15 @@ export default function ProjectVersionBar() {
       if (!tenant || !project || !version) {
         return;
       }
-      workspace.replaceWorkspace(tenant, project, version);
+      requestWorkspaceSwitch({
+        mode: 'replace',
+        tenant,
+        project,
+        version,
+      });
       setRecentsOpen(false);
     },
-    [workspace, tenants, projects, versions]
+    [workspace, tenants, projects, versions, requestWorkspaceSwitch]
   );
 
   const { favoritesList, othersList, favSet } = useMemo(() => {
@@ -249,11 +371,20 @@ export default function ProjectVersionBar() {
     const othersListInner = versions.filter((v) => !favSet.has(v.id));
     return { favoritesList: favoritesListInner, othersList: othersListInner, favSet };
   }, [tenantId, projectId, versions, favoritesTick]);
-
-  const studioMatchesSelection =
-    Boolean(studio?.state?.versionId) &&
-    Boolean(workspace?.version?.id) &&
-    studio?.state?.versionId === workspace?.version?.id;
+  const filteredFavorites = useMemo(
+    () =>
+      favoritesList.filter((v) =>
+        v.name.toLowerCase().includes(versionSearch.trim().toLowerCase())
+      ),
+    [favoritesList, versionSearch]
+  );
+  const filteredOthers = useMemo(
+    () =>
+      othersList.filter((v) =>
+        v.name.toLowerCase().includes(versionSearch.trim().toLowerCase())
+      ),
+    [othersList, versionSearch]
+  );
 
   const syncBadges = useMemo(() => {
     if (!studioMatchesSelection || !studio) return [];
@@ -484,6 +615,11 @@ export default function ProjectVersionBar() {
             value={workspace.version?.id ?? undefined}
             onValueChange={onVersionChange}
             disabled={loadingVersions || !projectId}
+            open={versionSelectOpen}
+            onOpenChange={(open) => {
+              setVersionSelectOpen(open);
+              if (open) setVersionSearch('');
+            }}
           >
             <Select.Trigger
               className={`${triggerClass} min-w-[140px]`}
@@ -506,30 +642,42 @@ export default function ProjectVersionBar() {
                   <ChevronDown className="h-4 w-4 rotate-180" />
                 </Select.ScrollUpButton>
                 <Select.Viewport className="p-1">
-                  {favoritesList.length > 0 ? (
+                  <div className="px-2 pb-1.5">
+                    <input
+                      type="search"
+                      value={versionSearch}
+                      onChange={(e) => setVersionSearch(e.target.value)}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      placeholder="Search versions"
+                      className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+                  {filteredFavorites.length > 0 ? (
                     <Select.Group>
                       <Select.Label className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Pinned
                       </Select.Label>
-                      {renderVersionItems(favoritesList, favSet)}
+                      {renderVersionItems(filteredFavorites, favSet)}
                     </Select.Group>
                   ) : null}
-                  {favoritesList.length > 0 && othersList.length > 0 ? (
+                  {filteredFavorites.length > 0 && filteredOthers.length > 0 ? (
                     <Select.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
                   ) : null}
-                  {othersList.length > 0 ? (
+                  {filteredOthers.length > 0 ? (
                     <Select.Group>
-                      {favoritesList.length > 0 ? (
+                      {filteredFavorites.length > 0 ? (
                         <Select.Label className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                           Versions
                         </Select.Label>
                       ) : null}
-                      {renderVersionItems(othersList, favSet)}
+                      {renderVersionItems(filteredOthers, favSet)}
                     </Select.Group>
                   ) : null}
-                  {favoritesList.length === 0 && othersList.length === 0 && !loadingVersions ? (
+                  {filteredFavorites.length === 0 &&
+                  filteredOthers.length === 0 &&
+                  !loadingVersions ? (
                     <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
-                      No versions
+                      {versionSearch.trim() ? 'No versions match your search' : 'No versions'}
                     </div>
                   ) : null}
                 </Select.Viewport>
@@ -557,6 +705,111 @@ export default function ProjectVersionBar() {
           ) : null}
         </div>
       </div>
+
+      <Dialog.Root
+        open={switchConfirmOpen}
+        onOpenChange={(open) => {
+          if (switchSubmitting) return;
+          setSwitchConfirmOpen(open);
+          if (!open) {
+            setSwitchError(null);
+            setPendingSwitch(null);
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[10001] bg-black/50" />
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 z-[10002] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+            aria-describedby={undefined}
+          >
+            <Dialog.Title className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
+              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              Unsaved changes
+            </Dialog.Title>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              You have local edits in Studio. Save before switching, discard the edits, or
+              cancel and stay on the current workspace.
+            </p>
+            {switchError ? (
+              <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                {switchError}
+              </p>
+            ) : null}
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              {pendingSwitch?.tenant && pendingSwitch?.project && pendingSwitch?.version ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!pendingSwitch) return;
+                    openSelectionInNewTab(pendingSwitch);
+                    setSwitchConfirmOpen(false);
+                  }}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                  disabled={switchSubmitting}
+                >
+                  Open in new tab
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setSwitchConfirmOpen(false)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                disabled={switchSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!pendingSwitch) return;
+                  setSwitchSubmitting(true);
+                  setSwitchError(null);
+                  try {
+                    if (studio) {
+                      await studio.save(options, {
+                        message: 'Save before workspace switch',
+                        label: 'switch',
+                      });
+                      const latestStudio = studioRef.current;
+                      if (latestStudio?.error || latestStudio?.isDirty) {
+                        throw new Error(
+                          latestStudio?.error ||
+                            'Save did not complete. Resolve the error and try switching again.'
+                        );
+                      }
+                    }
+                    applyWorkspaceSelection(pendingSwitch);
+                    setSwitchConfirmOpen(false);
+                  } catch (e) {
+                    setSwitchError(
+                      e instanceof Error ? e.message : 'Failed to save before switching workspace.'
+                    );
+                  } finally {
+                    setSwitchSubmitting(false);
+                  }
+                }}
+                className="rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-50 dark:border-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                disabled={switchSubmitting}
+              >
+                {switchSubmitting ? 'Saving…' : 'Save and switch'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!pendingSwitch) return;
+                  applyWorkspaceSelection(pendingSwitch);
+                  setSwitchConfirmOpen(false);
+                }}
+                className="rounded-lg border border-amber-600 px-3 py-2 text-sm text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/20"
+                disabled={switchSubmitting}
+              >
+                Discard and switch
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
