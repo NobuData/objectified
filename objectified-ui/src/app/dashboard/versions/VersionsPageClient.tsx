@@ -723,13 +723,25 @@ export default function VersionsPage() {
     }
   };
 
-  const handleDelete = async (v: VersionSchema) => {
-    const impact = await resolveVersionArchiveImpact(v.id, {
-      projectVersions: versions,
-      tenantId: selectedTenantId ?? undefined,
-      projectId: selectedProjectId ?? undefined,
-      options: opts,
-    });
+  const handleArchive = async (v: VersionSchema) => {
+    let impact;
+    try {
+      impact = await resolveVersionArchiveImpact(v.id, {
+        projectVersions: versions,
+        tenantId: selectedTenantId ?? undefined,
+        projectId: selectedProjectId ?? undefined,
+        options: opts,
+      });
+    } catch (e) {
+      await alertDialog({
+        message:
+          e instanceof Error
+            ? e.message
+            : 'Failed to resolve archive impact. Please try again.',
+        variant: 'error',
+      });
+      return;
+    }
     const ok = await confirm({
       title: 'Archive version',
       message: (
@@ -1726,7 +1738,7 @@ export default function VersionsPage() {
                               <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
                               <DropdownMenu.Item
                                 className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 data-[disabled]:opacity-50"
-                                onSelect={() => handleDelete(v)}
+                                onSelect={() => handleArchive(v)}
                                 disabled={deletingId === v.id}
                               >
                                 {deletingId === v.id ? (
