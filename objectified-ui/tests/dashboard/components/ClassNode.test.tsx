@@ -125,6 +125,20 @@ describe('ClassNode', () => {
     expect(screen.queryByText('hiddenProp')).not.toBeInTheDocument();
   });
 
+  it('hides the property list in simplified view mode', () => {
+    render(
+      <ClassNode
+        {...makeProps({
+          name: 'Simplified',
+          properties: [{ id: 'p1', name: 'hiddenInSimplified' }],
+          simplifiedView: true,
+        })}
+      />,
+    );
+    expect(screen.getByText('Simplified')).toBeInTheDocument();
+    expect(screen.queryByText('hiddenInSimplified')).not.toBeInTheDocument();
+  });
+
   it('applies theme backgroundColor and border when classNodeConfig.theme is set (GitHub #80)', () => {
     const { container } = render(
       <ClassNode
@@ -149,18 +163,18 @@ describe('ClassNode', () => {
   });
 
   it('does not render NodeResizer when allowResize is true but node is not selected (GitHub #82)', () => {
-    render(<ClassNode {...makeProps({ allowResize: true } as unknown as ClassNodeType['data'], false)} />);
+    render(<ClassNode {...makeProps({ allowResize: true }, false)} />);
     expect(screen.queryByTestId('node-resizer')).not.toBeInTheDocument();
   });
 
   it('renders NodeResizer when allowResize is true and node is selected (GitHub #82)', () => {
-    render(<ClassNode {...makeProps({ allowResize: true } as unknown as ClassNodeType['data'], true)} />);
+    render(<ClassNode {...makeProps({ allowResize: true }, true)} />);
     expect(screen.getByTestId('node-resizer')).toBeInTheDocument();
   });
 
   it('removes max-w-[280px] constraint from container when allowResize is true (GitHub #82)', () => {
     const { container } = render(
-      <ClassNode {...makeProps({ allowResize: true } as unknown as ClassNodeType['data'], false)} />,
+      <ClassNode {...makeProps({ allowResize: true }, false)} />,
     );
     const wrapper = container.querySelector('div.rounded-lg');
     expect(wrapper?.className).not.toContain('max-w-[280px]');

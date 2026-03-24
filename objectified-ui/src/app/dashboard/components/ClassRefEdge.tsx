@@ -53,6 +53,7 @@ function ClassRefEdgeComponent({
     canvasSettings?.settings?.edgePathType ?? 'smoothstep';
   const strokeColor =
     canvasSettings?.settings?.edgeStrokeColor?.trim() || THEME_STROKE;
+  const highContrast = canvasSettings?.settings?.highContrastCanvas === true;
 
   const edgeData = data;
   const refType: ClassRefType = edgeData?.refType ?? 'direct';
@@ -102,7 +103,9 @@ function ClassRefEdgeComponent({
 
   const edgeStyle = {
     stroke: strokeColor,
-    strokeWidth: styleConfig.strokeWidth,
+    strokeWidth: highContrast
+      ? Math.max(styleConfig.strokeWidth + 1, 2.5)
+      : styleConfig.strokeWidth,
     strokeDasharray: styleConfig.strokeDasharray,
     fill: 'none',
   };
