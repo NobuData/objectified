@@ -16,15 +16,6 @@ export interface WorkspaceRecentEntry {
   openedAt: string;
 }
 
-function safeParseJson<T>(raw: string | null, fallback: T): T {
-  if (raw == null || raw === '') return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 export function workspaceFavoriteKey(
   tenantId: string,
   projectId: string,
@@ -45,22 +36,57 @@ export function parseWorkspaceFavoriteKey(key: string): {
 
 function readRecents(): WorkspaceRecentEntry[] {
   if (typeof window === 'undefined') return [];
-  return safeParseJson<WorkspaceRecentEntry[]>(window.localStorage.getItem(RECENTS_KEY), []);
+  try {
+    const raw = window.localStorage.getItem(RECENTS_KEY);
+    if (raw == null || raw === '') return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (e): e is WorkspaceRecentEntry =>
+        e != null &&
+        typeof e === 'object' &&
+        typeof e.tenantId === 'string' &&
+        typeof e.tenantName === 'string' &&
+        typeof e.projectId === 'string' &&
+        typeof e.projectName === 'string' &&
+        typeof e.versionId === 'string' &&
+        typeof e.versionName === 'string' &&
+        typeof e.openedAt === 'string'
+    );
+  } catch {
+    return [];
+  }
 }
 
 function writeRecents(entries: WorkspaceRecentEntry[]): void {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(RECENTS_KEY, JSON.stringify(entries));
+  try {
+    window.localStorage.setItem(RECENTS_KEY, JSON.stringify(entries));
+  } catch {
+    // Ignore storage write errors (e.g., quota exceeded or private/restricted modes).
+  }
 }
 
 function readFavoriteKeys(): string[] {
   if (typeof window === 'undefined') return [];
-  return safeParseJson<string[]>(window.localStorage.getItem(FAVORITES_KEY), []);
+  try {
+    const raw = window.localStorage.getItem(FAVORITES_KEY);
+    if (raw == null || raw === '') return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === 'string');
+  } catch {
+    return [];
+  }
 }
 
 function writeFavoriteKeys(keys: string[]): void {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(keys));
+  try {
+    window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(keys));
+  } catch {
+    // Ignore storage write errors (e.g., quota exceeded or private/restricted modes).
+  }
 }
 
 export function listWorkspaceRecents(): WorkspaceRecentEntry[] {
