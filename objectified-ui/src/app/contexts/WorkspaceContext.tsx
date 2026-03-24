@@ -20,6 +20,15 @@ interface WorkspaceContextValue extends WorkspaceSelection {
   setTenant: (t: TenantSchema | null) => void;
   setProject: (p: ProjectSchema | null) => void;
   setVersion: (v: VersionSchema | null) => void;
+  /**
+   * Sets tenant, project, and version in one update (e.g. quick-switch from recents)
+   * without clearing intermediate selection.
+   */
+  replaceWorkspace: (
+    t: TenantSchema | null,
+    p: ProjectSchema | null,
+    v: VersionSchema | null
+  ) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -44,6 +53,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setVersionState(v);
   }, []);
 
+  const replaceWorkspace = useCallback(
+    (t: TenantSchema | null, p: ProjectSchema | null, v: VersionSchema | null) => {
+      setTenantState(t);
+      setProjectState(p);
+      setVersionState(v);
+    },
+    []
+  );
+
   const value = useMemo(
     () => ({
       tenant,
@@ -52,8 +70,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setTenant,
       setProject,
       setVersion,
+      replaceWorkspace,
     }),
-    [tenant, project, version, setTenant, setProject, setVersion]
+    [tenant, project, version, setTenant, setProject, setVersion, replaceWorkspace]
   );
 
   return (
