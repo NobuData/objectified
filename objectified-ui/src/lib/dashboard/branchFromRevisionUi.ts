@@ -6,16 +6,37 @@ export type BranchFromRevisionSuccessMeta = {
   openInNewTab: boolean;
 };
 
-export const BRANCH_OPEN_STUDIO_NEW_TAB_KEY = 'objectified-branch-open-studio-new-tab';
+export const BRANCH_OPEN_STUDIO_NEW_TAB_KEY = 'objectified:branchOpenStudioNewTab';
+const LEGACY_BRANCH_OPEN_STUDIO_NEW_TAB_KEY = 'objectified-branch-open-studio-new-tab';
 
 export function readBranchOpenStudioNewTab(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(BRANCH_OPEN_STUDIO_NEW_TAB_KEY) === '1';
+  try {
+    const newValue = window.localStorage.getItem(BRANCH_OPEN_STUDIO_NEW_TAB_KEY);
+    if (newValue !== null) {
+      return newValue === '1';
+    }
+    const legacyValue = window.localStorage.getItem(LEGACY_BRANCH_OPEN_STUDIO_NEW_TAB_KEY);
+    if (legacyValue !== null) {
+      // Migrate legacy preference to the new namespaced key for future reads.
+      window.localStorage.setItem(BRANCH_OPEN_STUDIO_NEW_TAB_KEY, legacyValue);
+      window.localStorage.removeItem(LEGACY_BRANCH_OPEN_STUDIO_NEW_TAB_KEY);
+      return legacyValue === '1';
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 export function writeBranchOpenStudioNewTab(value: boolean): void {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(BRANCH_OPEN_STUDIO_NEW_TAB_KEY, value ? '1' : '0');
+  try {
+    window.localStorage.setItem(BRANCH_OPEN_STUDIO_NEW_TAB_KEY, value ? '1' : '0');
+    window.localStorage.removeItem(LEGACY_BRANCH_OPEN_STUDIO_NEW_TAB_KEY);
+  } catch {
+    // localStorage may be unavailable (e.g., private browsing); ignore preference write
+  }
 }
 
 /**

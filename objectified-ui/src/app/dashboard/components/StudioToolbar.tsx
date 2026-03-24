@@ -1202,7 +1202,11 @@ export default function StudioToolbar() {
             versionId: newVersion.id,
           });
           if (meta.openInNewTab) {
-            window.open(url, '_blank', 'noopener,noreferrer');
+            const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+            if (!newWindow) {
+              // Popup blocked; fall back to same-tab navigation.
+              router.push(url);
+            }
           } else {
             router.push(url);
           }
