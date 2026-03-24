@@ -187,8 +187,8 @@ export default function StudioToolbar() {
   const hasSchemaRead = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:read');
   const hasSchemaWrite = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:write');
   const permissionReadOnly = !tenantPerms.loading && !hasSchemaWrite;
-  const mutationLocked = isReadOnly || permissionReadOnly;
-  const canCommitPushMerge = !mutationLocked && !tenantPerms.loading && hasSchemaWrite;
+  const mutationLocked = tenantPerms.loading || isReadOnly || permissionReadOnly;
+  const canCommitPushMerge = !mutationLocked && hasSchemaWrite;
   const historyRollbackAllowed =
     !tenantPerms.loading && hasSchemaWrite && workspace?.version?.published !== true;
   const historyRollbackDisabledReason =
@@ -200,15 +200,18 @@ export default function StudioToolbar() {
           ? 'Rollback requires schema edit permission.'
           : undefined;
   const canPull = !tenantPerms.loading && (hasSchemaRead || hasSchemaWrite);
-  const readOnlyBannerMessage = tenantPerms.loading
-    ? 'Checking permissions... edit actions are disabled until access is confirmed.'
-    : workspace?.version?.published === true
+  const readOnlyBannerMessage =
+    workspace?.version?.published === true
       ? 'Published versions are read-only.'
       : studio?.state?.readOnly
         ? 'You are viewing this revision in read-only mode.'
-        : permissionReadOnly
-          ? 'You do not have edit permission for this version. Viewing is allowed.'
-          : null;
+        : tenantPerms.error
+          ? 'We could not verify your permissions. Edit actions are disabled until access is confirmed.'
+          : tenantPerms.loading
+            ? 'Checking permissions... edit actions are disabled until access is confirmed.'
+            : permissionReadOnly
+              ? 'You do not have edit permission for this version. Viewing is allowed.'
+              : null;
 
   const runWithOperation = useCallback(
     async (operation: ToolbarOperation, action: () => Promise<void>) => {
@@ -959,12 +962,12 @@ export default function StudioToolbar() {
         className={btnPrimary}
         aria-label="Commit (snapshot to server)"
         title={
-          mutationLocked
-            ? permissionReadOnly
-              ? 'Cannot commit (schema:write permission required)'
-              : 'Cannot commit (read-only)'
-            : tenantPerms.loading
-              ? 'Checking permissions…'
+          tenantPerms.loading
+            ? 'Checking permissions…'
+            : mutationLocked
+              ? permissionReadOnly
+                ? 'Cannot commit (schema:write permission required)'
+                : 'Cannot commit (read-only)'
               : !hasSchemaWrite
                 ? 'Cannot commit (schema:write permission required)'
                 : `Commit local state to server (optional message) (${modLabel}+S)`
@@ -996,12 +999,12 @@ export default function StudioToolbar() {
         className={btnBase}
         aria-label="Push to another version"
         title={
-          mutationLocked
-            ? permissionReadOnly
-              ? 'Cannot push (schema:write permission required)'
-              : 'Cannot push (read-only)'
-            : tenantPerms.loading
-              ? 'Checking permissions…'
+          tenantPerms.loading
+            ? 'Checking permissions…'
+            : mutationLocked
+              ? permissionReadOnly
+                ? 'Cannot push (schema:write permission required)'
+                : 'Cannot push (read-only)'
               : !hasSchemaWrite
                 ? 'Cannot push (schema:write permission required)'
                 : `Push current state to another version (${modLabel}+Shift+P)`
@@ -1042,12 +1045,12 @@ export default function StudioToolbar() {
         className={btnBase}
         aria-label="Merge from another version"
         title={
-          mutationLocked
-            ? permissionReadOnly
-              ? 'Cannot merge (schema:write permission required)'
-              : 'Cannot merge (read-only)'
-            : tenantPerms.loading
-              ? 'Checking permissions…'
+          tenantPerms.loading
+            ? 'Checking permissions…'
+            : mutationLocked
+              ? permissionReadOnly
+                ? 'Cannot merge (schema:write permission required)'
+                : 'Cannot merge (read-only)'
               : !hasSchemaWrite
                 ? 'Cannot merge (schema:write permission required)'
                 : 'Merge changes from another version'
