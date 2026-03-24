@@ -11,6 +11,14 @@ const emptyHistoryPage = { items: [] as unknown[], total: 0, latest_revision: nu
 const mockListVersionSnapshotsMetadata = jest.fn(() => Promise.resolve(emptyHistoryPage));
 const mockListVersionSnapshotsSchemaChanges = jest.fn(() => Promise.resolve([]));
 const mockDeleteVersion = jest.fn(() => Promise.resolve());
+const mockGetVersion = jest.fn(() =>
+  Promise.resolve({
+    id: 'v1',
+    project_id: 'p1',
+    last_revision: 2,
+  })
+);
+const mockListVersions = jest.fn(() => Promise.resolve([]));
 const mockPullVersion = jest.fn(() =>
   Promise.resolve({
     diff: {
@@ -29,6 +37,8 @@ jest.mock('@lib/api/rest-client', () => ({
   listVersionSnapshotsSchemaChanges: (...args: unknown[]) =>
     mockListVersionSnapshotsSchemaChanges(...args),
   deleteVersion: (...args: unknown[]) => mockDeleteVersion(...args),
+  getVersion: (...args: unknown[]) => mockGetVersion(...args),
+  listVersions: (...args: unknown[]) => mockListVersions(...args),
   pullVersion: (...args: unknown[]) => mockPullVersion(...args),
   rollbackVersion: (...args: unknown[]) => mockRollbackVersion(...args),
   createVersionFromRevision: jest.fn(() => Promise.resolve({ id: 'new-v' })),
@@ -63,6 +73,12 @@ beforeEach(() => {
   mockConfirm.mockResolvedValue(true);
   mockAlert.mockResolvedValue(undefined);
   mockDeleteVersion.mockResolvedValue(undefined);
+  mockGetVersion.mockResolvedValue({
+    id: 'v1',
+    project_id: 'p1',
+    last_revision: 2,
+  });
+  mockListVersions.mockResolvedValue([]);
   mockListVersionSnapshotsMetadata.mockResolvedValue(emptyHistoryPage);
   mockListVersionSnapshotsSchemaChanges.mockResolvedValue([]);
   mockPullVersion.mockResolvedValue({
@@ -75,8 +91,8 @@ beforeEach(() => {
   mockRollbackVersion.mockResolvedValue(undefined);
 });
 
-describe('VersionHistoryDialog – delete version', () => {
-  it('shows Delete version button when onDeleteSuccess is provided', async () => {
+describe('VersionHistoryDialog – archive version', () => {
+  it('shows Archive version button when onDeleteSuccess is provided', async () => {
     render(
       <VersionHistoryDialog
         {...defaultProps}
@@ -85,16 +101,16 @@ describe('VersionHistoryDialog – delete version', () => {
     );
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: /delete this version/i })
+        screen.getByRole('button', { name: /archive this version/i })
       ).toBeInTheDocument();
     });
   });
 
-  it('does not show Delete version button when onDeleteSuccess is not provided', async () => {
+  it('does not show Archive version button when onDeleteSuccess is not provided', async () => {
     render(<VersionHistoryDialog {...defaultProps} />);
     await waitFor(() => {
       expect(
-        screen.queryByRole('button', { name: /delete this version/i })
+        screen.queryByRole('button', { name: /archive this version/i })
       ).not.toBeInTheDocument();
     });
   });
@@ -111,15 +127,19 @@ describe('VersionHistoryDialog – delete version', () => {
     );
 
     await userEvent.click(
-      screen.getByRole('button', { name: /delete this version/i })
+      screen.getByRole('button', { name: /archive this version/i })
     );
+
+    await waitFor(() => {
+      expect(mockGetVersion).toHaveBeenCalledWith('v1', {});
+    });
 
     await waitFor(() => {
       expect(mockConfirm).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Delete Version',
+          title: 'Archive version',
           variant: 'danger',
-          confirmLabel: 'Delete',
+          confirmLabel: 'Archive',
         })
       );
     });
@@ -153,9 +173,10 @@ describe('VersionHistoryDialog – delete version', () => {
     );
 
     await userEvent.click(
-      screen.getByRole('button', { name: /delete this version/i })
+      screen.getByRole('button', { name: /archive this version/i })
     );
 
+    await waitFor(() => expect(mockGetVersion).toHaveBeenCalled());
     await waitFor(() => expect(onDeleteSuccess).toHaveBeenCalledTimes(1));
     expect(order).toEqual(['delete', 'callback-start', 'callback-end']);
   });
@@ -171,7 +192,7 @@ describe('VersionHistoryDialog – delete version', () => {
     );
 
     await userEvent.click(
-      screen.getByRole('button', { name: /delete this version/i })
+      screen.getByRole('button', { name: /archive this version/i })
     );
 
     await waitFor(() => {
@@ -193,8 +214,12 @@ describe('VersionHistoryDialog – delete version', () => {
     );
 
     await userEvent.click(
-      screen.getByRole('button', { name: /delete this version/i })
+      screen.getByRole('button', { name: /archive this version/i })
     );
+
+    await waitFor(() => {
+      expect(mockGetVersion).toHaveBeenCalled();
+    });
 
     await waitFor(() => {
       expect(screen.getByText(/server error/i)).toBeInTheDocument();

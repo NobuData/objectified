@@ -8,7 +8,7 @@ import {
   Plus,
   GitBranch,
   Pencil,
-  Trash2,
+  Archive,
   MoreVertical,
   Lock,
   CheckCircle,
@@ -50,6 +50,10 @@ import {
   type VersionPublishEventSchema,
 } from '@lib/api/rest-client';
 import { atQuotaLimit, formatUsageLine, quotaSeverity } from '@lib/quotaDisplay';
+import {
+  resolveVersionArchiveImpact,
+  VersionArchiveConfirmMessage,
+} from '@/app/dashboard/utils/versionArchiveConfirm';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import VersionDiffDialog from '@/app/dashboard/components/VersionDiffDialog';
 import VersionCompareDialog from '@/app/dashboard/components/VersionCompareDialog';
@@ -719,12 +723,36 @@ export default function VersionsPage() {
     }
   };
 
-  const handleDelete = async (v: VersionSchema) => {
+  const handleArchive = async (v: VersionSchema) => {
+    let impact;
+    try {
+      impact = await resolveVersionArchiveImpact(v.id, {
+        projectVersions: versions,
+        tenantId: selectedTenantId ?? undefined,
+        projectId: selectedProjectId ?? undefined,
+        options: opts,
+      });
+    } catch (e) {
+      await alertDialog({
+        message:
+          e instanceof Error
+            ? e.message
+            : 'Failed to resolve archive impact. Please try again.',
+        variant: 'error',
+      });
+      return;
+    }
     const ok = await confirm({
-      title: 'Delete Version',
-      message: `Delete version "${v.name}"? This action cannot be undone.`,
+      title: 'Archive version',
+      message: (
+        <VersionArchiveConfirmMessage
+          displayName={v.name}
+          lastRevision={impact.lastRevision}
+          branchCount={impact.branchCount}
+        />
+      ),
       variant: 'danger',
-      confirmLabel: 'Delete',
+      confirmLabel: 'Archive',
       cancelLabel: 'Cancel',
     });
     if (!ok) return;
@@ -733,10 +761,10 @@ export default function VersionsPage() {
       await deleteVersion(v.id, opts);
       await fetchVersions();
       void fetchQuota();
-      await alertDialog({ message: 'Version deleted.', variant: 'success' });
+      await alertDialog({ message: 'Version archived.', variant: 'success' });
     } catch (e) {
       await alertDialog({
-        message: e instanceof Error ? e.message : 'Failed to delete version.',
+        message: e instanceof Error ? e.message : 'Failed to archive version.',
         variant: 'error',
       });
     } finally {
@@ -1710,15 +1738,15 @@ export default function VersionsPage() {
                               <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
                               <DropdownMenu.Item
                                 className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 outline-none cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 data-[disabled]:opacity-50"
-                                onSelect={() => handleDelete(v)}
+                                onSelect={() => handleArchive(v)}
                                 disabled={deletingId === v.id}
                               >
                                 {deletingId === v.id ? (
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
-                                  <Trash2 className="h-4 w-4" />
+                                  <Archive className="h-4 w-4" />
                                 )}
-                                Delete
+                                Archive version
                               </DropdownMenu.Item>
                             </DropdownMenu.Content>
                           </DropdownMenu.Portal>
@@ -2489,6 +2517,7 @@ export default function VersionsPage() {
         options={opts}
         tenantId={selectedTenantId ?? undefined}
         projectId={selectedProjectId ?? undefined}
+        projectVersions={versions}
         onLoadRevision={(revision, readOnly) => {
           if (!selectedTenantId || !selectedProjectId || !historyDialogVersion) return;
           router.push(
@@ -2532,7 +2561,7 @@ export default function VersionsPage() {
         onDeleteSuccess={async () => {
           setHistoryDialogVersion(null);
           await fetchVersions();
-          await alertDialog({ message: 'Version deleted.', variant: 'success' });
+          await alertDialog({ message: 'Version archived.', variant: 'success' });
         }}
         onCompareWithCurrent={(revision) => {
           if (!historyDialogVersion) return;
