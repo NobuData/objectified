@@ -35,6 +35,7 @@ import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
 import { gridStyleToBackgroundVariant } from '@/app/dashboard/utils/canvasStyleUtils';
+import { getNextKeyboardFocusIndex } from '@/app/dashboard/utils/canvasKeyboardNavigation';
 import {
   getVisibleClassIds,
   getVisibleGroupIds,
@@ -746,11 +747,13 @@ export default function DesignCanvas() {
   }, [visibleClassNodeIds]);
 
   const focusClassNodeByIndex = useCallback(
-    (index: number) => {
+    (index: number, source: 'arrow' | 'tab' = 'arrow') => {
       if (visibleClassNodeIds.length === 0) return;
-      const normalizedIndex =
-        ((index % visibleClassNodeIds.length) + visibleClassNodeIds.length) %
-        visibleClassNodeIds.length;
+      const normalizedIndex = getNextKeyboardFocusIndex(
+        index,
+        0,
+        visibleClassNodeIds.length
+      );
       const focusedNodeId = visibleClassNodeIds[normalizedIndex];
       setKeyboardFocusIndex(normalizedIndex);
       setNodes((current) =>
@@ -762,7 +765,7 @@ export default function DesignCanvas() {
       const targetClass = classes.find((cls) => getStableClassId(cls) === focusedNodeId);
       setLiveRegionMessage(
         targetClass
-          ? `Selected ${targetClass.name ?? 'Unnamed class'}`
+          ? `${source === 'tab' ? 'Focused' : 'Selected'} ${targetClass.name ?? 'Unnamed class'}`
           : 'Selected class node'
       );
     },
@@ -849,6 +852,14 @@ export default function DesignCanvas() {
       }
 
       if (visibleClassNodeIds.length === 0) return;
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        focusClassNodeByIndex(
+          keyboardFocusIndex + (e.shiftKey ? -1 : 1),
+          'tab'
+        );
+        return;
+      }
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
         focusClassNodeByIndex(keyboardFocusIndex + 1);
@@ -1278,11 +1289,11 @@ export default function DesignCanvas() {
     <div
       className={`w-full h-full bg-slate-100 dark:bg-slate-950 ${highContrastClass}`}
       role="application"
-      aria-label="Schema design canvas"
+      aria-label={`Schema design canvas: ${screenReaderSummary}`}
       onKeyDown={handleCanvasKeyDown}
       tabIndex={0}
     >
-      <p className="sr-only" aria-live="polite">
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
         {screenReaderSummary}. {liveRegionMessage}
       </p>
       <ReactFlow
