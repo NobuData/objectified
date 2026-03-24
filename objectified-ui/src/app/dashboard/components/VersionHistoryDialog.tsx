@@ -808,7 +808,7 @@ export default function VersionHistoryDialog({
     confirm,
     alertDialog,
     total,
-    snapshots.length,
+    snapshots,
   ]);
 
   const rangeLabel = useMemo(() => {
