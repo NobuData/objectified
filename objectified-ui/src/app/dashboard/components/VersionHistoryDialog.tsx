@@ -85,7 +85,7 @@ export interface VersionHistoryDialogProps {
     newVersion: VersionSchema,
     meta: BranchFromRevisionSuccessMeta
   ) => void;
-  /** Called after successfully deleting the version. If provided, Archive version button is shown. Caller should redirect to versions list or refresh list. */
+  /** Called after successfully archiving (soft-deleting) the version. If provided, Archive Version button is shown. Caller should redirect to versions list or refresh list. */
   onDeleteSuccess?: () => void | Promise<void>;
   /**
    * When set, branch counts for the archive warning are derived from this list (no extra API call).
