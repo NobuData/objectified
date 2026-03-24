@@ -15,7 +15,7 @@ import {
   Eye,
   RotateCcw,
   GitBranch,
-  Trash2,
+  Archive,
   ChevronDown,
   ChevronRight,
   GitCompare,
@@ -38,6 +38,10 @@ import {
   type VersionSchema,
   type RestClientOptions,
 } from '@lib/api/rest-client';
+import {
+  resolveVersionArchiveImpact,
+  VersionArchiveConfirmMessage,
+} from '@/app/dashboard/utils/versionArchiveConfirm';
 import { atQuotaLimit } from '@lib/quotaDisplay';
 import {
   readBranchOpenStudioNewTab,
@@ -81,8 +85,13 @@ export interface VersionHistoryDialogProps {
     newVersion: VersionSchema,
     meta: BranchFromRevisionSuccessMeta
   ) => void;
-  /** Called after successfully deleting the version. If provided, Delete version button is shown. Caller should redirect to versions list or refresh list. */
+  /** Called after successfully deleting the version. If provided, Archive version button is shown. Caller should redirect to versions list or refresh list. */
   onDeleteSuccess?: () => void | Promise<void>;
+  /**
+   * When set, branch counts for the archive warning are derived from this list (no extra API call).
+   * Omit in Studio so the dialog loads the project version list before confirming.
+   */
+  projectVersions?: VersionSchema[];
   /** Revision currently loaded in Studio (toolbar); used to label rows and show mismatch vs server head. */
   studioLoadedRevision?: number | null;
   /** Open diff of server head vs this revision (since_revision on pull). */
@@ -142,6 +151,7 @@ export default function VersionHistoryDialog({
   rollbackDisabledReason,
   onBranchSuccess,
   onDeleteSuccess,
+  projectVersions,
   studioLoadedRevision,
   onCompareWithCurrent,
 }: VersionHistoryDialogProps) {
@@ -158,6 +168,7 @@ export default function VersionHistoryDialog({
   const [rollbackPreviewError, setRollbackPreviewError] = useState<string | null>(null);
   const [rollbackPreviewDiff, setRollbackPreviewDiff] = useState<VersionPullDiff | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [archiveImpactLoading, setArchiveImpactLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [filterMessage, setFilterMessage] = useState('');
@@ -545,11 +556,35 @@ export default function VersionHistoryDialog({
   const handleDeleteVersion = useCallback(async () => {
     if (!versionId || !onDeleteSuccess) return;
     const displayName = versionName?.trim() || 'this version';
+    setArchiveImpactLoading(true);
+    setError(null);
+    let impact: { branchCount: number; lastRevision: number | null };
+    try {
+      impact = await resolveVersionArchiveImpact(versionId, {
+        projectVersions,
+        tenantId,
+        projectId,
+        options,
+      });
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : 'Could not load version details for confirmation.'
+      );
+      return;
+    } finally {
+      setArchiveImpactLoading(false);
+    }
     const ok = await confirm({
-      title: 'Delete Version',
-      message: `Delete version "${displayName}"? This action cannot be undone.`,
+      title: 'Archive version',
+      message: (
+        <VersionArchiveConfirmMessage
+          displayName={displayName}
+          lastRevision={impact.lastRevision}
+          branchCount={impact.branchCount}
+        />
+      ),
       variant: 'danger',
-      confirmLabel: 'Delete',
+      confirmLabel: 'Archive',
       cancelLabel: 'Cancel',
     });
     if (!ok) return;
@@ -560,11 +595,21 @@ export default function VersionHistoryDialog({
       onOpenChange(false);
       await onDeleteSuccess();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete version.');
+      setError(e instanceof Error ? e.message : 'Failed to archive version.');
     } finally {
       setDeleteSubmitting(false);
     }
-  }, [versionId, versionName, options, onDeleteSuccess, onOpenChange, confirm]);
+  }, [
+    versionId,
+    versionName,
+    options,
+    onDeleteSuccess,
+    onOpenChange,
+    confirm,
+    projectVersions,
+    tenantId,
+    projectId,
+  ]);
 
   const localDateTimeToIso = (local: string): string => {
     if (!local.trim()) return '';
@@ -1152,16 +1197,21 @@ export default function VersionHistoryDialog({
                 <button
                   type="button"
                   onClick={() => void handleDeleteVersion()}
-                  disabled={deleteSubmitting || rollbackSubmitting || branchSubmitting}
+                  disabled={
+                    archiveImpactLoading ||
+                    deleteSubmitting ||
+                    rollbackSubmitting ||
+                    branchSubmitting
+                  }
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
-                  aria-label="Delete this version"
+                  aria-label="Archive this version"
                 >
-                  {deleteSubmitting ? (
+                  {archiveImpactLoading || deleteSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Trash2 className="h-4 w-4" />
+                    <Archive className="h-4 w-4" />
                   )}
-                  Delete version
+                  Archive version
                 </button>
               )}
             </div>

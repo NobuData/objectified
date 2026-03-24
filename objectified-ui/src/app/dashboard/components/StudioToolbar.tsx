@@ -1211,7 +1211,13 @@ export default function StudioToolbar() {
             router.push(url);
           }
         }}
-        onDeleteSuccess={() => router.push('/dashboard/versions')}
+        onDeleteSuccess={async () => {
+          await alertDialog({
+            message: 'Version archived. Returning to the versions list.',
+            variant: 'success',
+          });
+          router.push('/dashboard/versions');
+        }}
       />
       <VersionDiffDialog
         open={historyCompareRevision != null && Boolean(versionId)}
