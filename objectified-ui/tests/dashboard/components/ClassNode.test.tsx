@@ -32,6 +32,14 @@ jest.mock('@radix-ui/react-scroll-area', () => ({
   Thumb: () => null,
 }));
 
+jest.mock('@radix-ui/react-tooltip', () => ({
+  Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Root: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Trigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Content: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
 function makeProps(overrides: Partial<ClassNodeType['data']> = {}, selected = false): Parameters<typeof ClassNode>[0] {
   return {
     id: 'node-1',
@@ -53,22 +61,22 @@ function makeProps(overrides: Partial<ClassNodeType['data']> = {}, selected = fa
 describe('ClassNode', () => {
   it('renders the class name in the header', () => {
     render(<ClassNode {...makeProps({ name: 'UserAccount' })} />);
-    expect(screen.getByText('UserAccount')).toBeInTheDocument();
+    expect(screen.getAllByText('UserAccount').length).toBeGreaterThan(0);
   });
 
   it('renders "Unnamed class" when name is empty', () => {
     render(<ClassNode {...makeProps({ name: '' })} />);
-    expect(screen.getByText('Unnamed class')).toBeInTheDocument();
+    expect(screen.getAllByText('Unnamed class').length).toBeGreaterThan(0);
   });
 
   it('renders "Unnamed class" when name is undefined', () => {
     render(<ClassNode {...makeProps({ name: undefined as unknown as string })} />);
-    expect(screen.getByText('Unnamed class')).toBeInTheDocument();
+    expect(screen.getAllByText('Unnamed class').length).toBeGreaterThan(0);
   });
 
   it('renders "Unnamed class" when name is null', () => {
     render(<ClassNode {...makeProps({ name: null as unknown as string })} />);
-    expect(screen.getByText('Unnamed class')).toBeInTheDocument();
+    expect(screen.getAllByText('Unnamed class').length).toBeGreaterThan(0);
   });
 
   it('renders each property name in the list', () => {
@@ -121,7 +129,7 @@ describe('ClassNode', () => {
         })}
       />,
     );
-    expect(screen.getByText('Collapsed')).toBeInTheDocument();
+    expect(screen.getAllByText('Collapsed').length).toBeGreaterThan(0);
     expect(screen.queryByText('hiddenProp')).not.toBeInTheDocument();
   });
 
@@ -135,7 +143,7 @@ describe('ClassNode', () => {
         })}
       />,
     );
-    expect(screen.getByText('Simplified')).toBeInTheDocument();
+    expect(screen.getAllByText('Simplified').length).toBeGreaterThan(0);
     expect(screen.queryByText('hiddenInSimplified')).not.toBeInTheDocument();
   });
 
@@ -186,5 +194,39 @@ describe('ClassNode', () => {
     const wrapper = container.querySelector('div.rounded-lg');
     expect(wrapper?.className).toContain('max-w-[280px]');
     expect(wrapper?.className).toContain('overflow-hidden');
+  });
+
+  it('renders node status badges when status flags are set', () => {
+    render(
+      <ClassNode
+        {...makeProps({
+          nodeStatus: {
+            isDeprecated: true,
+            isNew: true,
+            isModified: true,
+            hasValidationErrors: true,
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText('Deprecated')).toBeInTheDocument();
+    expect(screen.getByText('New')).toBeInTheDocument();
+    expect(screen.getByText('Modified')).toBeInTheDocument();
+    expect(screen.getByText('Errors')).toBeInTheDocument();
+  });
+
+  it('renders class summary tooltip content', () => {
+    render(
+      <ClassNode
+        {...makeProps({
+          name: 'SummaryClass',
+          properties: [{ id: 'p1', name: 'id' }, { id: 'p2', name: 'code' }],
+          refCount: 4,
+          description: 'Summary description',
+        })}
+      />,
+    );
+    expect(screen.getByText('Properties: 2 | Refs: 4')).toBeInTheDocument();
+    expect(screen.getByText('Summary description')).toBeInTheDocument();
   });
 });

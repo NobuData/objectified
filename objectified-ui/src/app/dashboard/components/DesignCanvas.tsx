@@ -90,6 +90,24 @@ import CanvasExportRegistration from './CanvasExportRegistration';
 const defaultPosition = { x: 0, y: 0 };
 const NODE_MUTATION_DEBOUNCE_MS = 150;
 const LARGE_CANVAS_NODE_THRESHOLD = 100;
+
+function hasClassValidationErrors(cls: StudioClass): boolean {
+  if (!(cls.name ?? '').trim()) return true;
+  const seen = new Set<string>();
+  for (const prop of cls.properties ?? []) {
+    const propName = (prop.name ?? '').trim();
+    if (!propName) return true;
+    const normalized = propName.toLowerCase();
+    if (seen.has(normalized)) return true;
+    seen.add(normalized);
+  }
+  return false;
+}
+
+function isClassDeprecated(cls: StudioClass): boolean {
+  const schema = cls.schema as { deprecated?: unknown } | undefined;
+  return Boolean(schema?.deprecated === true);
+}
 type CanvasViewportApi = Pick<
   {
     fitView: (...args: any[]) => any;
@@ -174,6 +192,17 @@ export default function DesignCanvas() {
     return meta?.tag_definitions ?? {};
   }, [studio?.state?.canvas_metadata]);
 
+  const classMutationStatusById = studio?.classMutationStatusById ?? {};
+  const classRefCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const refEdges = buildClassRefEdges(classes);
+    for (const edge of refEdges) {
+      counts.set(edge.source, (counts.get(edge.source) ?? 0) + 1);
+      counts.set(edge.target, (counts.get(edge.target) ?? 0) + 1);
+    }
+    return counts;
+  }, [classes]);
+
   const initialNodesFromState = useMemo(() => {
     const saved = versionId ? getDefaultCanvasLayout(versionId) : [];
     const savedMap = new Map(saved.map((e) => [e.classId, e.position]));
@@ -215,6 +244,14 @@ export default function DesignCanvas() {
           canvas_metadata: meta,
           tags: cls.tags,
           tagDefinitions,
+          description: cls.description,
+          refCount: classRefCounts.get(id) ?? 0,
+          nodeStatus: {
+            isDeprecated: isClassDeprecated(cls),
+            isNew: classMutationStatusById[id] === 'new',
+            isModified: classMutationStatusById[id] === 'modified',
+            hasValidationErrors: hasClassValidationErrors(cls),
+          },
         },
         ...(parentId ? { parentId, extent: 'parent' as const } : {}),
         ...(dimensions?.width != null || dimensions?.height != null
@@ -233,7 +270,7 @@ export default function DesignCanvas() {
     });
 
     return [...groupNodes, ...classNodes];
-  }, [classes, groups, versionId, tagDefinitions]);
+  }, [classes, groups, versionId, tagDefinitions, classMutationStatusById, classRefCounts]);
 
   const initialEdges = useMemo(() => buildClassRefEdges(classes), [classes]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodesFromState);

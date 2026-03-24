@@ -62,6 +62,8 @@ export interface StudioMutationAudit {
   canvasMetadataChanged: boolean;
 }
 
+export type ClassMutationStatus = 'new' | 'modified' | 'unchanged';
+
 const EMPTY_MUTATION_AUDIT: StudioMutationAudit = {
   addedClassCount: 0,
   removedClassCount: 0,
@@ -179,6 +181,28 @@ function buildSuggestedCommitMessage(summary: string | null): string | null {
   return `Update studio: ${summary}`;
 }
 
+function computeClassMutationStatusById(
+  baseline: LocalVersionState | null,
+  current: LocalVersionState | null
+): Record<string, ClassMutationStatus> {
+  if (!baseline || !current) return {};
+  const baselineClasses = new Map(
+    baseline.classes.map((c) => [getStableClassId(c), c])
+  );
+  const out: Record<string, ClassMutationStatus> = {};
+  for (const cls of current.classes) {
+    const id = getStableClassId(cls);
+    if (!id) continue;
+    const before = baselineClasses.get(id);
+    if (!before) {
+      out[id] = 'new';
+      continue;
+    }
+    out[id] = isEqualJson(before, cls) ? 'unchanged' : 'modified';
+  }
+  return out;
+}
+
 export interface StudioContextValue {
   /** Current local version state; null when no version loaded or not yet loaded. */
   state: LocalVersionState | null;
@@ -271,6 +295,8 @@ export interface StudioContextValue {
   pendingChangesSummary: string | null;
   /** Optional suggested commit message based on current mutations. */
   suggestedCommitMessage: string | null;
+  /** Per-class mutation status versus loaded baseline, keyed by stable class id. */
+  classMutationStatusById: Record<string, ClassMutationStatus>;
   /** Most recent commit details for toolbar/status display. */
   lastCommitInfo: {
     revision: number | null;
@@ -955,6 +981,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     () => buildSuggestedCommitMessage(pendingChangesSummary),
     [pendingChangesSummary]
   );
+  const classMutationStatusById = useMemo(
+    () => computeClassMutationStatusById(baselineState, state),
+    [baselineState, state]
+  );
 
   // Refs to track latest checksum and isDirty without re-registering the storage listener.
   const checksumRef = useRef<string | null>(null);
@@ -1026,6 +1056,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       mutationAudit,
       pendingChangesSummary,
       suggestedCommitMessage,
+      classMutationStatusById,
       lastCommitInfo,
     }),
     [
@@ -1057,6 +1088,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       mutationAudit,
       pendingChangesSummary,
       suggestedCommitMessage,
+      classMutationStatusById,
       lastCommitInfo,
     ]
   );

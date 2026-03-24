@@ -10,7 +10,21 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import * as ScrollArea from '@radix-ui/react-scroll-area';
-import { ChevronDown, ChevronRight, Box, Circle, Square, Hexagon } from 'lucide-react';
+import * as Tooltip from '@radix-ui/react-tooltip';
+import {
+  ChevronDown,
+  ChevronRight,
+  Box,
+  Circle,
+  Square,
+  Hexagon,
+  Tag as TagIcon,
+  CircleAlert,
+  CircleDashed,
+  Sparkles,
+  PencilLine,
+  Info,
+} from 'lucide-react';
 import type { ClassNodeData } from '@lib/studio/types';
 import type { ClassNodeConfig } from '@lib/studio/canvasClassNodeConfig';
 
@@ -57,6 +71,9 @@ function ClassNodeComponent({
     highContrast,
     tags = [],
     tagDefinitions = {},
+    description,
+    refCount = 0,
+    nodeStatus,
   } = data as ClassNodeDataExtended;
 
   const hasProperties = properties.length > 0;
@@ -87,6 +104,22 @@ function ClassNodeComponent({
   if (theme?.backgroundColor) headerStyle.backgroundColor = theme.backgroundColor;
 
   const showResizer = allowResize === true && selected;
+  const statusBadges = [
+    nodeStatus?.isDeprecated
+      ? { key: 'deprecated', label: 'Deprecated', icon: CircleDashed }
+      : null,
+    nodeStatus?.isNew ? { key: 'new', label: 'New', icon: Sparkles } : null,
+    nodeStatus?.isModified
+      ? { key: 'modified', label: 'Modified', icon: PencilLine }
+      : null,
+    nodeStatus?.hasValidationErrors
+      ? { key: 'errors', label: 'Errors', icon: CircleAlert }
+      : null,
+  ].filter(Boolean) as Array<{
+    key: string;
+    label: string;
+    icon: ComponentType<{ className?: string }>;
+  }>;
 
   return (
     <>
@@ -149,18 +182,70 @@ function ClassNodeComponent({
           <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate block flex-1 min-w-0">
             {name || 'Unnamed class'}
           </span>
+          <Tooltip.Provider delayDuration={150}>
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <button
+                  type="button"
+                  className="shrink-0 p-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  aria-label="Show class summary"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  sideOffset={8}
+                  className="z-[10010] max-w-[280px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 shadow-lg"
+                >
+                  <p className="font-semibold text-slate-900 dark:text-slate-100">
+                    {name || 'Unnamed class'}
+                  </p>
+                  <p className="mt-1">
+                    Properties: {properties.length} | Refs: {refCount}
+                  </p>
+                  {description?.trim() ? (
+                    <p className="mt-1 text-slate-600 dark:text-slate-300 line-clamp-3">
+                      {description.trim()}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-slate-500 dark:text-slate-400 italic">
+                      No description
+                    </p>
+                  )}
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          </Tooltip.Provider>
         </div>
+        {statusBadges.length > 0 && (
+          <div className="px-3 py-1 border-b border-slate-200 dark:border-slate-700 flex flex-wrap gap-1">
+            {statusBadges.map((badge) => {
+              const BadgeIcon = badge.icon;
+              return (
+                <span
+                  key={badge.key}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-200"
+                >
+                  <BadgeIcon className="h-3 w-3" />
+                  {badge.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
         {tags.length > 0 && (
           <div className="px-3 py-1 border-b border-slate-200 dark:border-slate-700 flex flex-wrap gap-1">
             {tags.map((tagName) => (
               <span
                 key={tagName}
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white border border-white/20"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white border border-white/20"
                 style={{
                   backgroundColor:
                     tagDefinitions[tagName]?.color ?? defaultTagColor,
                 }}
               >
+                <TagIcon className="h-3 w-3" />
                 {tagName}
               </span>
             ))}

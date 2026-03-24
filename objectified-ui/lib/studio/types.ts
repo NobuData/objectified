@@ -118,6 +118,17 @@ export interface ClassNodeData {
   tags?: string[];
   /** Tag name -> color for pill background. */
   tagDefinitions?: Record<string, { color?: string }>;
+  /** Optional class description snippet for quick node summary. */
+  description?: string;
+  /** Number of incoming/outgoing class references touching this class. */
+  refCount?: number;
+  /** Client-side node status flags for visual indicators. */
+  nodeStatus?: {
+    isDeprecated?: boolean;
+    isNew?: boolean;
+    isModified?: boolean;
+    hasValidationErrors?: boolean;
+  };
 }
 
 /** Action kinds for the undo stack (optional: could store full state snapshots only). */
