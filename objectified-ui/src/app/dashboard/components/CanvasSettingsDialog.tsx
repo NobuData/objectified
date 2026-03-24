@@ -117,8 +117,8 @@ export default function CanvasSettingsDialog({
                 className="text-sm text-slate-500 dark:text-slate-400 mt-1"
               >
                 Configure grid, background, edges, routing, animation, controls,
-                minimap, and search history. Changes are reflected in the
-                preview; save to apply to the design canvas.
+                minimap, and search history. Most visual changes are reflected
+                in the preview; save to apply to the design canvas.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
