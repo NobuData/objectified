@@ -397,6 +397,9 @@ interface ClassListPanelProps {
   /** When set (e.g. from canvas node double-click), open edit dialog for this class. GitHub #80. */
   editClassIdRequest?: string | null;
   onConsumeEditClassRequest?: () => void;
+  /** When set (e.g. canvas "Create reference"), open add-property dialog for this class. GitHub #231. */
+  addPropertyClassIdRequest?: string | null;
+  onConsumeAddPropertyRequest?: () => void;
   /** When user selects a class in the list, zoom canvas to that node. GitHub #99. */
   onSelectClass?: (classId: string) => void;
   /** Tag name -> color for pill display in class dialog. GitHub #100. */
@@ -442,6 +445,8 @@ function ClassListPanel({
   onReorderClassProperty,
   editClassIdRequest,
   onConsumeEditClassRequest,
+  addPropertyClassIdRequest,
+  onConsumeAddPropertyRequest,
   onSelectClass,
   tagDefinitions = {},
 }: ClassListPanelProps) {
@@ -477,6 +482,25 @@ function ClassListPanel({
     }
     onConsumeEditClassRequest();
   }, [editClassIdRequest, onConsumeEditClassRequest, canEdit, classes]);
+
+  // Canvas "Create reference" → add property dialog. GitHub #231.
+  useEffect(() => {
+    if (!addPropertyClassIdRequest || !onConsumeAddPropertyRequest) return;
+    if (canEdit) {
+      const id = addPropertyClassIdRequest;
+      const cls = classes.find((c) => getStableClassId(c) === id);
+      if (cls) {
+        setExpandedIds((prev) => new Set(prev).add(id));
+        setAddPropClassId(id);
+      }
+    }
+    onConsumeAddPropertyRequest();
+  }, [
+    addPropertyClassIdRequest,
+    onConsumeAddPropertyRequest,
+    canEdit,
+    classes,
+  ]);
 
   const filtered = useMemo(
     () =>
@@ -1353,6 +1377,12 @@ export default function DesignCanvasSidebar() {
               onReorderClassProperty={handleReorderClassProperty}
               editClassIdRequest={editClassRequest?.requestEditClassId ?? null}
               onConsumeEditClassRequest={editClassRequest?.clearRequest}
+              addPropertyClassIdRequest={
+                editClassRequest?.requestAddPropertyClassId ?? null
+              }
+              onConsumeAddPropertyRequest={
+                editClassRequest?.clearAddPropertyRequest
+              }
               onSelectClass={sidebarActions?.zoomToClass}
               tagDefinitions={tagDefinitions}
             />

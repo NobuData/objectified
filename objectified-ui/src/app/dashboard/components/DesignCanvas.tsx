@@ -3,6 +3,7 @@
  * Reference: GitHub #82, #83 — Add interactivity to nodes; add groups (GroupNode, parentId).
  * Reference: GitHub #96 — Delete classes from canvas (single/multi-select, confirm).
  * Reference: GitHub #97 — Copy/paste/duplicate for classes (and optional refs) in local state.
+ * Reference: GitHub #231 — Node context menu, Enter/F2, long property lists, add-property from canvas.
  */
 'use client';
 
@@ -152,6 +153,9 @@ export default function DesignCanvas() {
   const [versionNodeThemeEpoch, setVersionNodeThemeEpoch] = useState(0);
 
   const [canvasClipboard, setCanvasClipboard] = useState<StudioClass[] | null>(
+    null
+  );
+  const [inlineRenameClassId, setInlineRenameClassId] = useState<string | null>(
     null
   );
   const reactFlowRef = useRef<CanvasViewportApi | null>(null);
@@ -634,6 +638,22 @@ export default function DesignCanvas() {
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [focusState, focusMode]);
 
+  const handleInlineRenameCommit = useCallback(
+    (classId: string, nextName: string) => {
+      setInlineRenameClassId(null);
+      if (!studio?.applyChange || mutationLocked) return;
+      const trimmed = nextName.trim();
+      if (!trimmed) return;
+      const cls = classes.find((c) => getStableClassId(c) === classId);
+      if (cls?.name === trimmed) return;
+      studio.applyChange((draft) => {
+        const idx = draft.classes.findIndex((c) => getStableClassId(c) === classId);
+        if (idx >= 0) draft.classes[idx].name = trimmed;
+      });
+    },
+    [studio, mutationLocked, classes]
+  );
+
   const displayNodes = useMemo(() => {
     const allStoredConfigs = versionId ? getAllClassNodeConfigs(versionId) : {};
     return focusFilteredNodes.map((node: Node) => {
@@ -669,6 +689,10 @@ export default function DesignCanvas() {
           allowResize: !mutationLocked,
           propertyDisplayMode: canvasSettings.nodePropertyDisplay,
           highContrast: canvasSettings.highContrastCanvas,
+          inlineRenameActive:
+            !mutationLocked && inlineRenameClassId === node.id,
+          onInlineRenameCommit: handleInlineRenameCommit,
+          onInlineRenameCancel: () => setInlineRenameClassId(null),
         },
       };
     });
@@ -683,6 +707,8 @@ export default function DesignCanvas() {
     canvasSettings.highContrastCanvas,
     tenantPrimaryColor,
     versionNodeThemePrefs,
+    inlineRenameClassId,
+    handleInlineRenameCommit,
   ]);
 
   // Debounce layout quality computation to avoid running an O(E²+N²) algorithm
@@ -834,6 +860,26 @@ export default function DesignCanvas() {
     );
   }, [visibleClassNodeIds]);
 
+  const enterTargetClassId = useMemo(() => {
+    if (visibleClassNodeIds.length === 0) return null;
+    if (selectedClassNodeIds.length === 1) return selectedClassNodeIds[0];
+    if (selectedClassNodeIds.length > 1) return null;
+    if (
+      keyboardFocusIndex >= 0 &&
+      keyboardFocusIndex < visibleClassNodeIds.length
+    ) {
+      return visibleClassNodeIds[keyboardFocusIndex];
+    }
+    return null;
+  }, [visibleClassNodeIds, selectedClassNodeIds, keyboardFocusIndex]);
+
+  useEffect(() => {
+    if (selectedClassNodeIds.length !== 1) return;
+    const id = selectedClassNodeIds[0];
+    const idx = visibleClassNodeIds.indexOf(id);
+    if (idx >= 0) setKeyboardFocusIndex(idx);
+  }, [selectedClassNodeIds, visibleClassNodeIds]);
+
   const focusClassNodeByIndex = useCallback(
     (index: number, source: 'arrow' | 'tab' = 'arrow') => {
       if (visibleClassNodeIds.length === 0) return;
@@ -939,6 +985,27 @@ export default function DesignCanvas() {
         }
       }
 
+      const targetEl = e.target as HTMLElement | null;
+      const typingInField =
+        targetEl &&
+        targetEl !== e.currentTarget &&
+        (targetEl.tagName === 'INPUT' ||
+          targetEl.tagName === 'TEXTAREA' ||
+          targetEl.tagName === 'SELECT' ||
+          targetEl.isContentEditable);
+      if (typingInField) {
+        return;
+      }
+
+      if (e.key === 'F2') {
+        if (!mutationLocked && enterTargetClassId) {
+          e.preventDefault();
+          setInlineRenameClassId(enterTargetClassId);
+          setLiveRegionMessage('Quick rename');
+        }
+        return;
+      }
+
       if (visibleClassNodeIds.length === 0) return;
       if (e.key === 'Tab') {
         // Only override default tabbing when the event originates from the canvas
@@ -972,17 +1039,17 @@ export default function DesignCanvas() {
       }
       if (e.key === 'Enter') {
         e.preventDefault();
-        const currentNodeId = visibleClassNodeIds[keyboardFocusIndex];
-        if (currentNodeId) {
-          editClassRequest?.requestEditClass(currentNodeId);
-          setLiveRegionMessage('Opened class editor');
-        }
+        if (mutationLocked || !enterTargetClassId) return;
+        editClassRequest?.requestEditClass(enterTargetClassId);
+        setLiveRegionMessage('Opened class editor');
       }
     },
     [
       visibleClassNodeIds,
       focusClassNodeByIndex,
       keyboardFocusIndex,
+      enterTargetClassId,
+      mutationLocked,
       editClassRequest,
       zoomCanvasIn,
       zoomCanvasOut,
@@ -1587,34 +1654,37 @@ export default function DesignCanvas() {
             )}
             {nodeContextMenu.node.type === 'class' && (
               <>
-                <button
-                  type="button"
-                  className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  onClick={() => {
-                    handleCopyClasses(selectedClassNodeIds.length > 0 ? selectedClassNodeIds : [nodeContextMenu.node.id]);
-                    setNodeContextMenu(null);
-                  }}
-                >
-                  Copy
-                </button>
-                {!mutationLocked && (
+                {!mutationLocked && validClassIds.has(nodeContextMenu.node.id) && (
                   <>
                     <button
                       type="button"
-                      className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={!canvasClipboard?.length}
+                      className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                       onClick={() => {
-                        handlePasteClasses();
+                        editClassRequest?.requestEditClass(nodeContextMenu.node.id);
                         setNodeContextMenu(null);
                       }}
                     >
-                      Paste
+                      Edit class
                     </button>
                     <button
                       type="button"
                       className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                       onClick={() => {
-                        handleDuplicateClasses(selectedClassNodeIds.length > 0 ? selectedClassNodeIds : [nodeContextMenu.node.id]);
+                        setInlineRenameClassId(nodeContextMenu.node.id);
+                        setNodeContextMenu(null);
+                      }}
+                    >
+                      Quick rename
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={() => {
+                        handleDuplicateClasses(
+                          selectedClassNodeIds.length > 0
+                            ? selectedClassNodeIds
+                            : [nodeContextMenu.node.id]
+                        );
                         setNodeContextMenu(null);
                       }}
                     >
@@ -1622,90 +1692,9 @@ export default function DesignCanvas() {
                     </button>
                   </>
                 )}
-                <button
-                  type="button"
-                  className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  onClick={() => {
-                    focusMode?.enterFocusOnNode(nodeContextMenu.node.id);
-                    setNodeContextMenu(null);
-                  }}
-                >
-                  Focus on this node
-                </button>
                 {!mutationLocked &&
-                  validClassIds.has(nodeContextMenu.node.id) && (
-                    <>
-                      <button
-                        type="button"
-                        className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                        onClick={() => {
-                          editClassRequest?.requestEditClass(nodeContextMenu.node.id);
-                          setNodeContextMenu(null);
-                        }}
-                      >
-                        Edit class
-                      </button>
-                      {(() => {
-                        const currentTags =
-                          (nodeContextMenu.node.data as { tags?: string[] }).tags ?? [];
-                        return (
-                          <>
-                            {availableTagNames.filter((t) => !currentTags.includes(t)).length > 0 && (
-                              <>
-                                <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
-                                  Add tag
-                                </span>
-                                {availableTagNames
-                                  .filter((t) => !currentTags.includes(t))
-                                  .map((tagName) => (
-                                    <button
-                                      key={tagName}
-                                      type="button"
-                                      className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                                      onClick={() => {
-                                        handleAssignTagToClass(nodeContextMenu.node.id, tagName);
-                                      }}
-                                    >
-                                      {tagName}
-                                    </button>
-                                  ))}
-                              </>
-                            )}
-                            {currentTags.length > 0 && (
-                              <>
-                                <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
-                                  Remove tag
-                                </span>
-                                {currentTags.map((tagName) => (
-                                  <button
-                                    key={tagName}
-                                    type="button"
-                                    className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                                    onClick={() => {
-                                      handleRemoveTagFromClass(nodeContextMenu.node.id, tagName);
-                                    }}
-                                  >
-                                    {tagName}
-                                  </button>
-                                ))}
-                              </>
-                            )}
-                          </>
-                        );
-                      })()}
-                      <button
-                        type="button"
-                        className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                        onClick={() => {
-                          void handleDeleteClassesFromCanvas([nodeContextMenu.node.id]);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                {!mutationLocked &&
-                (nodeContextMenu.node.data as { canvas_metadata?: { group?: string } }).canvas_metadata?.group ? (
+                  (nodeContextMenu.node.data as { canvas_metadata?: { group?: string } })
+                    .canvas_metadata?.group ? (
                   <button
                     type="button"
                     className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -1728,11 +1717,125 @@ export default function DesignCanvas() {
                       Add to {g.name}
                     </button>
                   ))
-                ) : (
+                ) : !mutationLocked ? (
                   <span className="block px-4 py-2 text-sm text-slate-500 dark:text-slate-400">
                     No groups
                   </span>
+                ) : null}
+                {!mutationLocked && validClassIds.has(nodeContextMenu.node.id) && (
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => {
+                      editClassRequest?.requestAddPropertyForClass(nodeContextMenu.node.id);
+                      setNodeContextMenu(null);
+                    }}
+                  >
+                    Create reference…
+                  </button>
                 )}
+                {!mutationLocked &&
+                  validClassIds.has(nodeContextMenu.node.id) &&
+                  (() => {
+                    const currentTags =
+                      (nodeContextMenu.node.data as { tags?: string[] }).tags ?? [];
+                    return (
+                      <>
+                        {availableTagNames.filter((t) => !currentTags.includes(t)).length >
+                          0 && (
+                          <>
+                            <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
+                              Add tag
+                            </span>
+                            {availableTagNames
+                              .filter((t) => !currentTags.includes(t))
+                              .map((tagName) => (
+                                <button
+                                  key={tagName}
+                                  type="button"
+                                  className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                  onClick={() => {
+                                    handleAssignTagToClass(nodeContextMenu.node.id, tagName);
+                                  }}
+                                >
+                                  {tagName}
+                                </button>
+                              ))}
+                          </>
+                        )}
+                        {currentTags.length > 0 && (
+                          <>
+                            <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
+                              Remove tag
+                            </span>
+                            {currentTags.map((tagName) => (
+                              <button
+                                key={tagName}
+                                type="button"
+                                className="w-full px-4 py-2 pl-6 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                onClick={() => {
+                                  handleRemoveTagFromClass(nodeContextMenu.node.id, tagName);
+                                }}
+                              >
+                                {tagName}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
+                {!mutationLocked && validClassIds.has(nodeContextMenu.node.id) && (
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-t border-slate-100 dark:border-slate-800 mt-1"
+                    onClick={() => {
+                      void handleDeleteClassesFromCanvas([nodeContextMenu.node.id]);
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
+                <span className="block px-4 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 mt-1">
+                  More
+                </span>
+                <button
+                  type="button"
+                  className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  onClick={() => {
+                    handleCopyClasses(
+                      selectedClassNodeIds.length > 0
+                        ? selectedClassNodeIds
+                        : [nodeContextMenu.node.id]
+                    );
+                    setNodeContextMenu(null);
+                  }}
+                >
+                  Copy
+                </button>
+                {!mutationLocked && (
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!canvasClipboard?.length}
+                    onClick={() => {
+                      handlePasteClasses();
+                      setNodeContextMenu(null);
+                    }}
+                  >
+                    Paste
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  onClick={() => {
+                    focusMode?.enterFocusOnNode(nodeContextMenu.node.id);
+                    setNodeContextMenu(null);
+                  }}
+                >
+                  Focus on this node
+                </button>
               </>
             )}
           </div>,

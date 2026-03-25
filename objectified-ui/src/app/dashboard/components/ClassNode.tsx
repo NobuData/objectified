@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type FocusEvent } from 'react';
 import type { ComponentType, CSSProperties } from 'react';
 import {
   Handle,
@@ -49,6 +49,10 @@ export interface ClassNodeDataExtended extends ClassNodeData {
   simplifiedView?: boolean;
   /** Increase node contrast for accessibility. */
   highContrast?: boolean;
+  /** GitHub #231 — header shows an input instead of the title. */
+  inlineRenameActive?: boolean;
+  onInlineRenameCommit?: (classId: string, name: string) => void;
+  onInlineRenameCancel?: () => void;
 }
 
 /** Node type for react-flow; data satisfies Record<string, unknown>. */
@@ -65,7 +69,7 @@ const ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
  * Custom react-flow node for a class: header with class name, body with property members.
  * Supports expand/collapse, theme (backgroundColor, border, icon), and double-click to open class form.
  * Configuration is stored in localStorage. Resize when allowResize and selected (GitHub #82).
- * Reference: GitHub #79, #80.
+ * Reference: GitHub #79, #80, #231.
  */
 function ClassNodeComponent({
   id,
@@ -87,7 +91,31 @@ function ClassNodeComponent({
     description,
     refCount = 0,
     nodeStatus,
+    inlineRenameActive = false,
+    onInlineRenameCommit,
+    onInlineRenameCancel,
   } = data as ClassNodeDataExtended;
+
+  const [renameDraft, setRenameDraft] = useState(name ?? '');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const renameCommittedRef = useRef(false);
+
+  useEffect(() => {
+    if (!inlineRenameActive) return;
+    renameCommittedRef.current = false;
+    setRenameDraft(name ?? '');
+    const t = requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(t);
+  }, [inlineRenameActive, name]);
+
+  const submitInlineRename = useCallback(() => {
+    if (!inlineRenameActive || !onInlineRenameCommit || renameCommittedRef.current) return;
+    renameCommittedRef.current = true;
+    onInlineRenameCommit(id, renameDraft);
+  }, [inlineRenameActive, onInlineRenameCommit, id, renameDraft]);
 
   const hasProperties = properties.length > 0;
   const defaultTagColor = '#94a3b8';
@@ -96,6 +124,12 @@ function ClassNodeComponent({
   const displayMode: NodePropertyDisplayMode =
     simplifiedView === true ? 'hidden' : propertyDisplayMode;
   const COMPACT_MAX = 5;
+  /** GitHub #231 — cap full list height until user expands. */
+  const FULL_LIST_INITIAL_MAX = 12;
+  const [showAllProperties, setShowAllProperties] = useState(false);
+  useEffect(() => {
+    setShowAllProperties(false);
+  }, [properties.length, id]);
   const IconComponent = theme?.icon
     ? ICON_MAP[theme.icon.toLowerCase()]
     : null;
@@ -195,9 +229,31 @@ function ClassNodeComponent({
           {IconComponent && (
             <IconComponent className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" />
           )}
-          <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate block flex-1 min-w-0">
-            {name || 'Unnamed class'}
-          </span>
+          {inlineRenameActive && onInlineRenameCommit && onInlineRenameCancel ? (
+            <input
+              ref={renameInputRef}
+              value={renameDraft}
+              onChange={(e) => setRenameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  renameCommittedRef.current = true;
+                  onInlineRenameCancel();
+                }
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitInlineRename();
+                }
+              }}
+              onBlur={(_e: FocusEvent<HTMLInputElement>) => submitInlineRename()}
+              className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex-1 min-w-0 rounded border border-indigo-400 dark:border-indigo-500 bg-white dark:bg-slate-900 px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              aria-label="Class name"
+            />
+          ) : (
+            <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate block flex-1 min-w-0">
+              {name || 'Unnamed class'}
+            </span>
+          )}
           <Tooltip.Provider delayDuration={150}>
             <Tooltip.Root>
               <Tooltip.Trigger asChild>
@@ -284,7 +340,10 @@ function ClassNodeComponent({
                   >
                     {(displayMode === 'compact'
                       ? properties.slice(0, COMPACT_MAX)
-                      : properties
+                      : showAllProperties ||
+                          properties.length <= FULL_LIST_INITIAL_MAX
+                        ? properties
+                        : properties.slice(0, FULL_LIST_INITIAL_MAX)
                     ).map((prop, idx) => (
                       <li
                         key={prop.id ?? prop.localId ?? idx}
@@ -310,6 +369,18 @@ function ClassNodeComponent({
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
                       +{properties.length - COMPACT_MAX} more
                     </p>
+                  )}
+                {displayMode === 'full' &&
+                  hasProperties &&
+                  properties.length > FULL_LIST_INITIAL_MAX &&
+                  !showAllProperties && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllProperties(true)}
+                      className="mt-2 w-full text-left text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      Show all {properties.length} properties
+                    </button>
                   )}
               </div>
             </ScrollArea.Viewport>

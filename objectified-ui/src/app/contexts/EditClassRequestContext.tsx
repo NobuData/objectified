@@ -12,13 +12,17 @@ import {
 /**
  * Context for requesting the class edit form from outside the sidebar
  * (e.g. double-click on a class node in the canvas).
- * Reference: GitHub #80.
+ * Reference: GitHub #80, #231 (add property / reference from canvas context menu).
  */
 export interface EditClassRequestContextValue {
   /** When set, the sidebar should open the edit dialog for this class id. */
   requestEditClassId: string | null;
   requestEditClass: (classId: string) => void;
   clearRequest: () => void;
+  /** When set, the sidebar should open "add class property" for this class (e.g. create reference). GitHub #231. */
+  requestAddPropertyClassId: string | null;
+  requestAddPropertyForClass: (classId: string) => void;
+  clearAddPropertyRequest: () => void;
 }
 
 const EditClassRequestContext =
@@ -28,6 +32,9 @@ export function EditClassRequestProvider({ children }: { children: ReactNode }) 
   const [requestEditClassId, setRequestEditClassId] = useState<string | null>(
     null
   );
+  const [requestAddPropertyClassId, setRequestAddPropertyClassId] = useState<
+    string | null
+  >(null);
 
   const requestEditClass = useCallback((classId: string) => {
     setRequestEditClassId(classId);
@@ -37,9 +44,31 @@ export function EditClassRequestProvider({ children }: { children: ReactNode }) 
     setRequestEditClassId(null);
   }, []);
 
+  const requestAddPropertyForClass = useCallback((classId: string) => {
+    setRequestAddPropertyClassId(classId);
+  }, []);
+
+  const clearAddPropertyRequest = useCallback(() => {
+    setRequestAddPropertyClassId(null);
+  }, []);
+
   const value = useMemo<EditClassRequestContextValue>(
-    () => ({ requestEditClassId, requestEditClass, clearRequest }),
-    [requestEditClassId, requestEditClass, clearRequest]
+    () => ({
+      requestEditClassId,
+      requestEditClass,
+      clearRequest,
+      requestAddPropertyClassId,
+      requestAddPropertyForClass,
+      clearAddPropertyRequest,
+    }),
+    [
+      requestEditClassId,
+      requestEditClass,
+      clearRequest,
+      requestAddPropertyClassId,
+      requestAddPropertyForClass,
+      clearAddPropertyRequest,
+    ]
   );
 
   return (
