@@ -6,6 +6,7 @@
  * Reference: GitHub #231 — Node context menu, Enter/F2, long property lists, add-property from canvas.
  * Reference: GitHub #232 — Edge labels, legend, SQL vs $ref styling, broken-ref placeholders, allOf inheritance.
  * Reference: GitHub #233 — Edge selection detail panel, edit ref, parallel edge routing, SQL-mode ID ref styling.
+ * Reference: GitHub #234 — Multi-select, box-select, select by group/tag, bulk actions, selection toolbar.
  */
 'use client';
 
@@ -14,6 +15,7 @@ import { createPortal } from 'react-dom';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react';
 import {
   ReactFlow,
+  Panel,
   Controls,
   ControlButton,
   MiniMap,
@@ -38,6 +40,7 @@ import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
+import { useCanvasExportOptional } from '@/app/contexts/CanvasExportContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
 import { gridStyleToBackgroundVariant } from '@/app/dashboard/utils/canvasStyleUtils';
 import { getNextKeyboardFocusIndex } from '@/app/dashboard/utils/canvasKeyboardNavigation';
@@ -57,6 +60,10 @@ import {
   cloneClassesForPaste,
   PASTE_OFFSET,
 } from '@lib/studio/canvasClipboard';
+import {
+  filterVisibleClassIdsByGroup,
+  filterVisibleClassIdsByTag,
+} from '@lib/studio/canvasSelectionHelpers';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
 import {
   saveDefaultCanvasLayout,
@@ -104,6 +111,7 @@ import SchemaMetricsPanel from './SchemaMetricsPanel';
 import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 import ZoomToClassRegistration from './ZoomToClassRegistration';
 import CanvasExportRegistration from './CanvasExportRegistration';
+import CanvasSelectionToolbar from './CanvasSelectionToolbar';
 import SelectedRefEdgePanel from './SelectedRefEdgePanel';
 
 import { classHasValidationErrors } from '@lib/studio/classValidation';
@@ -145,6 +153,7 @@ export default function DesignCanvas() {
   const canvasGroup = useCanvasGroupOptional();
   const canvasLayout = useCanvasLayoutOptional();
   const focusMode = useCanvasFocusModeOptional();
+  const canvasExport = useCanvasExportOptional();
   const versionId = studio?.state?.versionId ?? null;
   const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
   const groups = useMemo(() => studio?.state?.groups ?? [], [studio?.state]);
@@ -356,7 +365,13 @@ export default function DesignCanvas() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(refEdges);
 
   useEffect(() => {
-    setNodes(initialNodesFromState);
+    setNodes((prev) => {
+      const selectedIds = new Set(prev.filter((n) => n.selected).map((n) => n.id));
+      return initialNodesFromState.map((n) => ({
+        ...n,
+        selected: selectedIds.has(n.id),
+      }));
+    });
   }, [initialNodesFromState, setNodes]);
 
   useEffect(() => {
@@ -676,6 +691,15 @@ export default function DesignCanvas() {
       return focusedClassIds.has(node.id);
     });
   }, [filteredNodes, focusedClassIds, focusedGroupIds]);
+
+  const visibleFlowClassIds = useMemo(
+    () => focusFilteredNodes.filter((n) => n.type === 'class').map((n) => n.id),
+    [focusFilteredNodes]
+  );
+  const visibleFlowClassIdSet = useMemo(
+    () => new Set(visibleFlowClassIds),
+    [visibleFlowClassIds]
+  );
 
   const focusFilteredEdges = useMemo(() => {
     if (!focusedClassIds) return filteredEdges;
@@ -1157,6 +1181,12 @@ export default function DesignCanvas() {
           setLiveRegionMessage('Cleared edge selection');
           return;
         }
+        if (nodes.some((n) => n.selected)) {
+          e.preventDefault();
+          setNodes((cur) => cur.map((n) => ({ ...n, selected: false })));
+          setLiveRegionMessage('Cleared selection');
+          return;
+        }
       }
 
       if (e.key === 'F2') {
@@ -1220,6 +1250,8 @@ export default function DesignCanvas() {
       resetCanvasViewport,
       edges,
       clearSelectedEdges,
+      nodes,
+      setNodes,
     ]
   );
 
@@ -1325,6 +1357,129 @@ export default function DesignCanvas() {
     },
     [studio, groups, classes, versionId]
   );
+
+  const handleBulkAddClassesToGroup = useCallback(
+    (classIds: string[], groupId: string) => {
+      if (
+        !studio?.applyChange ||
+        !versionId ||
+        mutationLocked ||
+        classIds.length === 0
+      ) {
+        return;
+      }
+      const group = groups.find((g) => g.id === groupId);
+      if (!group) return;
+
+      const layoutUpdates: { classId: string; position: { x: number; y: number } }[] =
+        [];
+
+      studio.applyChange((draft) => {
+        const g = draft.groups.find((x) => x.id === groupId);
+        if (!g) return;
+        const gPos =
+          (g.metadata as { position?: { x: number; y: number } } | undefined)
+            ?.position ?? { x: 0, y: 0 };
+
+        for (const classId of classIds) {
+          const c = draft.classes.find((x) => getStableClassId(x) === classId);
+          if (!c) continue;
+          const meta = { ...(c.canvas_metadata ?? {}) };
+          const currentGroup = meta.group;
+          if (currentGroup === groupId) continue;
+
+          const rel = meta.position ?? { x: 0, y: 0 };
+          let absX = rel.x ?? 0;
+          let absY = rel.y ?? 0;
+          if (currentGroup) {
+            const prevG = draft.groups.find((x) => x.id === currentGroup);
+            const prevGPos =
+              (prevG?.metadata as { position?: { x: number; y: number } } | undefined)
+                ?.position ?? { x: 0, y: 0 };
+            absX = (prevGPos.x ?? 0) + (rel.x ?? 0);
+            absY = (prevGPos.y ?? 0) + (rel.y ?? 0);
+          }
+
+          const newRel = { x: absX - (gPos.x ?? 0), y: absY - (gPos.y ?? 0) };
+          meta.group = groupId;
+          meta.position = newRel;
+          c.canvas_metadata = meta;
+          layoutUpdates.push({ classId, position: newRel });
+        }
+      });
+
+      if (layoutUpdates.length === 0) return;
+
+      const updatedMap = new Map(layoutUpdates.map((e) => [e.classId, e.position]));
+      const allPositions = classes.map((c) => {
+        const id = getStableClassId(c);
+        return {
+          classId: id,
+          position:
+            updatedMap.get(id) ?? c.canvas_metadata?.position ?? defaultPosition,
+        };
+      });
+      saveDefaultCanvasLayout(versionId, allPositions);
+      setLiveRegionMessage(
+        `Moved ${layoutUpdates.length} class${layoutUpdates.length === 1 ? '' : 'es'} to group`
+      );
+    },
+    [studio, groups, classes, versionId, mutationLocked]
+  );
+
+  const applyClassIdSelection = useCallback(
+    (ids: Set<string>) => {
+      setNodes((cur) =>
+        cur.map((n) => ({
+          ...n,
+          selected: n.type === 'class' && ids.has(n.id),
+        }))
+      );
+    },
+    [setNodes]
+  );
+
+  const handleSelectAllVisibleClasses = useCallback(() => {
+    applyClassIdSelection(new Set(visibleFlowClassIds));
+    const c = visibleFlowClassIds.length;
+    setLiveRegionMessage(
+      c === 0
+        ? 'No visible classes to select'
+        : `Selected ${c} class${c === 1 ? '' : 'es'}`
+    );
+  }, [applyClassIdSelection, visibleFlowClassIds]);
+
+  const handleSelectVisibleByGroup = useCallback(
+    (gid: string) => {
+      const ids = filterVisibleClassIdsByGroup(visibleFlowClassIds, classToGroup, gid);
+      applyClassIdSelection(new Set(ids));
+      setLiveRegionMessage(
+        ids.length === 0
+          ? 'No classes in that group in the current view'
+          : `Selected ${ids.length} class${ids.length === 1 ? '' : 'es'} in group`
+      );
+    },
+    [applyClassIdSelection, visibleFlowClassIds, classToGroup]
+  );
+
+  const handleSelectVisibleByTag = useCallback(
+    (tagName: string) => {
+      const ids = filterVisibleClassIdsByTag(visibleFlowClassIdSet, classes, tagName);
+      applyClassIdSelection(new Set(ids));
+      setLiveRegionMessage(
+        ids.length === 0
+          ? 'No classes with that tag in the current view'
+          : `Selected ${ids.length} class${ids.length === 1 ? '' : 'es'} by tag`
+      );
+    },
+    [applyClassIdSelection, visibleFlowClassIdSet, classes]
+  );
+
+  const handleClearNodeSelection = useCallback(() => {
+    clearSelectedEdges();
+    setNodes((cur) => cur.map((n) => ({ ...n, selected: false })));
+    setLiveRegionMessage('Cleared selection');
+  }, [setNodes, clearSelectedEdges]);
 
   /** All tag names available in the project (for Add tag submenu). GitHub #103. */
   const availableTagNames = useMemo(() => {
@@ -1493,6 +1648,56 @@ export default function DesignCanvas() {
     [studio, classes, mutationLocked, versionId]
   );
 
+  const handleExportSelectionJson = useCallback(() => {
+    if (selectedClassNodeIds.length === 0) return;
+    const idSet = new Set(selectedClassNodeIds);
+    const toExport = classes
+      .filter((c) => idSet.has(getStableClassId(c)))
+      .map((cls) => ({
+        ...cls,
+        properties: (cls.properties ?? []).map((p) => ({
+          ...p,
+          data: p.data ? JSON.parse(JSON.stringify(p.data)) : undefined,
+          property_data: p.property_data
+            ? JSON.parse(JSON.stringify(p.property_data))
+            : undefined,
+        })),
+        schema: cls.schema ? JSON.parse(JSON.stringify(cls.schema)) : undefined,
+        canvas_metadata: cls.canvas_metadata
+          ? { ...cls.canvas_metadata }
+          : undefined,
+      }));
+    const blob = new Blob([JSON.stringify(toExport, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'canvas-selection.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    setLiveRegionMessage('Exported selection as JSON');
+  }, [selectedClassNodeIds, classes]);
+
+  const handleExportSelectionImage = useCallback(async () => {
+    if (
+      selectedClassNodeIds.length === 0 ||
+      !canvasExport?.imageExportApi?.exportAsPng
+    ) {
+      return;
+    }
+    fitCanvasToSelected();
+    const wait = animateViewport ? 280 : 0;
+    await new Promise((r) => setTimeout(r, wait));
+    await canvasExport.imageExportApi.exportAsPng();
+    setLiveRegionMessage('Exported selection as PNG');
+  }, [
+    selectedClassNodeIds,
+    canvasExport,
+    fitCanvasToSelected,
+    animateViewport,
+  ]);
+
   // Delete/Backspace: delete selected class nodes from canvas (GitHub #96).
   useEffect(() => {
     if (mutationLocked) return;
@@ -1656,11 +1861,14 @@ export default function DesignCanvas() {
         nodesDraggable={!mutationLocked}
         nodesConnectable={!mutationLocked}
         elementsSelectable={true}
-        panOnDrag={true}
+        panOnDrag={[1, 2]}
         zoomOnScroll={true}
         zoomOnPinch={true}
         zoomOnDoubleClick={!isReducedMotion}
-        selectionOnDrag={false}
+        selectionOnDrag={true}
+        selectionKeyCode={null}
+        multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
+        deleteKeyCode={null}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onlyRenderVisibleElements={true}
@@ -1729,6 +1937,13 @@ export default function DesignCanvas() {
               — thicker line when{' '}
               <code className="text-[9px]">x-relationship: composition</code>
             </li>
+            <li>
+              <span className="font-medium text-slate-800 dark:text-slate-100">
+                Selection
+              </span>{' '}
+              — drag on empty canvas to box-select; Shift/Ctrl/Cmd+click to add
+              classes; Space+drag or middle/right mouse pans
+            </li>
           </ul>
         </div>
         {layoutQuality && (
@@ -1761,6 +1976,29 @@ export default function DesignCanvas() {
             size={1}
           />
         )}
+        <Panel
+          position="bottom-left"
+          className={`pointer-events-none z-[10001] ${canvasSettings.showControls ? 'mb-14' : 'mb-2'}`}
+        >
+          <CanvasSelectionToolbar
+            selectedClassIds={selectedClassNodeIds}
+            groups={groups}
+            availableTagNames={availableTagNames}
+            mutationLocked={mutationLocked}
+            imageExportAvailable={Boolean(canvasExport?.imageExportApi?.exportAsPng)}
+            onSelectAll={handleSelectAllVisibleClasses}
+            onSelectByGroup={handleSelectVisibleByGroup}
+            onSelectByTag={handleSelectVisibleByTag}
+            onClearSelection={handleClearNodeSelection}
+            onBulkMoveToGroup={(gid) =>
+              handleBulkAddClassesToGroup(selectedClassNodeIds, gid)
+            }
+            onBulkDelete={() => void handleDeleteClassesFromCanvas(selectedClassNodeIds)}
+            onBulkDuplicate={() => handleDuplicateClasses(selectedClassNodeIds)}
+            onBulkExportJson={handleExportSelectionJson}
+            onBulkExportImage={() => void handleExportSelectionImage()}
+          />
+        </Panel>
         {canvasSettings.showControls && (
           <Controls
             position="bottom-left"

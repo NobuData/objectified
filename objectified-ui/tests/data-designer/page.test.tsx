@@ -30,6 +30,9 @@ jest.mock('@xyflow/react', () => ({
   ReactFlow: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="react-flow-canvas">{children}</div>
   ),
+  Panel: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="react-flow-panel">{children}</div>
+  ),
   Controls: () => <div data-testid="react-flow-controls">Controls</div>,
   MiniMap: () => <div data-testid="react-flow-minimap">MiniMap</div>,
   Background: () => null,
