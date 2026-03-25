@@ -18,8 +18,6 @@ import type {
 } from '@lib/studio/canvasClassRefEdges';
 import type { CanvasEdgePathType, CanvasEdgeLabelMode } from '@lib/studio/canvasSettings';
 import { useCanvasSettingsOptional } from '@/app/contexts/CanvasSettingsContext';
-import { useStudioOptional } from '@/app/contexts/StudioContext';
-import { getSchemaMode } from '@lib/studio/schemaMode';
 
 /** Stroke style by ref type (GitHub #81). */
 const REF_TYPE_STYLE: Record<
@@ -119,9 +117,7 @@ function ClassRefEdgeComponent({
   selected = false,
 }: EdgeProps<Edge<ClassRefEdgeData>>) {
   const canvasSettings = useCanvasSettingsOptional();
-  const studio = useStudioOptional();
-  const schemaMode = studio?.state ? getSchemaMode(studio.state) : 'openapi';
-  const sqlModeDistinctIdRef = schemaMode === 'sql';
+  const sqlModeDistinctIdRef = data?.sqlModeDistinctIdRef === true;
 
   const pathType: CanvasEdgePathType =
     canvasSettings?.settings?.edgePathType ?? 'smoothstep';
@@ -157,8 +153,8 @@ function ClassRefEdgeComponent({
   if (pathType === 'straight') {
     const straight = getStraightPath({ sourceX: sx, sourceY: sy, targetX: tx, targetY: ty });
     path = straight[0];
-    labelX = (sourceX + targetX) / 2;
-    labelY = (sourceY + targetY) / 2;
+    labelX = (sx + tx) / 2;
+    labelY = (sy + ty) / 2;
   } else if (pathType === 'bezier') {
     const bezier = getBezierPath({
       sourceX: sx,
