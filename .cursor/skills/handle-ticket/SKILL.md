@@ -25,6 +25,10 @@ When the user invokes **handle-ticket** with an issue number (for example `/hand
 - Implement the behavior **as specified in the issue**.
 - If the issue is **ambiguous, underspecified, or contradicts the codebase**, **ask concise clarifying questions** before large changes.
 - If the change is **large or risky** and the issue alone is not enough to proceed safely, **outline a short plan** in the chat (and optionally in the PR later), then execute after alignment or per issue instructions.
+- If code becomes too large or unmanageable for your context, split the code into separate modules, helper functions, or utility classes.
+- Keep the implementation simple.  The simpler the better, making the code easy to read and understand.
+- Create comprehensive test cases for all new and changed functionality.
+- Don't Repeat Yourself.
 
 ## 4. Verify from repository root
 
@@ -33,25 +37,36 @@ When the user invokes **handle-ticket** with an issue number (for example `/hand
   - Run **`yarn build`** where required by workspace rules (e.g. after substantive **objectified-ui** changes, run it in **objectified-ui** per **CLAUDE.md**; if the repo root defines a single build/test entry, use that consistently).
 - Fix failures **you introduced or that block the ticket** before committing.
 
-## 5. Commit and push
+## 5. Perform an internal audit of the code changes
+
+- After coding changes have been made, run an internal audit to make sure any potential misuses of the code are safeguarded and covered.
+- Make sure that values for colors and positioning are not hard-coded, but used as a Tailwind CSS style and reused.
+- Documentation in the code must be well written and succinct.
+- Check code for potential reuse and branch that code out into separate modules where appropriate.
+- Tests should have no warnings or errors.
+- Tests should not have suppressions of any kind.
+- Tests should be thorough.
+- Don't Repeat Yourself.
+
+## 6. Commit and push
 
 - **Commit** with a clear message that references the issue (e.g. `Fix #124 — …` or `Addresses #124 — …`).
 - **Push** the branch: `git push -u origin ticket-<number>` (use `-u` on first push).
 
-## 6. Open a pull request
+## 7. Open a pull request
 
 - Create a PR **from `ticket-<number>`** into the **default branch** using `gh pr create` or the GitHub UI.
 - **PR title:** concise; include or reference the issue number.
 - **PR body:** summarize **what was done**, **why**, **how to test**, and **risk/notes**. Use a markdown checklist if it helps. Link the issue (e.g. `Closes #124` or `Fixes #124` if the team uses auto-close semantics).
 
-## 7. Assign Copilot as reviewer
+## 8. Assign Copilot as reviewer
 
 - **Request a review from GitHub Copilot** on the PR. Use the same reviewer login your org uses when typing **@Copilot** in the GitHub reviewer field (often the Copilot PR-review bot account—confirm via UI or org docs). Examples to try:
   - `gh pr edit <pr-number> --add-reviewer <copilot-reviewer-login>`
   - or pass `--reviewer <copilot-reviewer-login>` at `gh pr create` if supported.
 - If CLI assignment fails, use the **GitHub web UI** to add **Copilot** as a reviewer and note that in a comment if needed.
 
-## 8. Return to default branch
+## 9. Return to default branch
 
 - After the PR is created (and push is complete), switch back locally:
   - `git checkout main` (or the repo default branch), then optionally `git pull` so the workspace matches upstream.
