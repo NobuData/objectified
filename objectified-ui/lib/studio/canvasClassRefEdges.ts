@@ -82,6 +82,19 @@ export interface ClassRefEdgeData extends Record<string, unknown> {
     sourceClassId: string;
     propertyName: string;
   };
+  /**
+   * Canvas action: edit this property on the source class (GitHub #233).
+   * Omitted for inheritance edges; use relationshipKind / label instead.
+   */
+  edit?: {
+    sourceClassId: string;
+    propertyName: string;
+  };
+  /**
+   * Perpendicular path offset (px) so multiple edges between the same nodes
+   * separate visually (GitHub #233).
+   */
+  parallelOffset?: number;
 }
 
 export interface BrokenRefPlaceholder {
@@ -416,26 +429,29 @@ export function buildDesignCanvasRefLayer(
           hint,
         });
         const id = `class-ref-broken-${sourceId}--${encodeURIComponent(propName || String(propIndex))}`;
-        edges.push({
-          id,
-          source: sourceId,
-          target: orphanId,
-          type: 'classRef',
-          markerEnd,
-          markerStart,
-          data: {
-            refType,
-            refBinding,
-            relationshipKind,
-            label: propName || undefined,
-            cardinalityLabel,
-            brokenRef: true,
-            fix: {
-              sourceClassId: sourceId,
-              propertyName: propName,
-            },
+      edges.push({
+        id,
+        source: sourceId,
+        target: orphanId,
+        type: 'classRef',
+        markerEnd,
+        markerStart,
+        data: {
+          refType,
+          refBinding,
+          relationshipKind,
+          label: propName || undefined,
+          cardinalityLabel,
+          brokenRef: true,
+          fix: {
+            sourceClassId: sourceId,
+            propertyName: propName,
           },
-        });
+          ...(propName.trim()
+            ? { edit: { sourceClassId: sourceId, propertyName: propName } }
+            : {}),
+        },
+      });
         return;
       }
 
@@ -460,6 +476,9 @@ export function buildDesignCanvasRefLayer(
           label: propName || undefined,
           cardinalityLabel,
           brokenRef: false,
+          ...(propName.trim()
+            ? { edit: { sourceClassId: sourceId, propertyName: propName } }
+            : {}),
         },
       });
     });
@@ -467,7 +486,49 @@ export function buildDesignCanvasRefLayer(
 
   pushInheritanceEdges(classes, nameToId, duplicates, edges);
 
-  return { canvasEdges: edges, brokenRefPlaceholders };
+  return {
+    canvasEdges: assignParallelOffsetsToRefEdges(edges),
+    brokenRefPlaceholders,
+  };
+}
+
+/**
+ * Spread multiple edges that share the same source and target along a perpendicular
+ * offset so property labels and paths remain distinguishable (GitHub #233).
+ */
+export function assignParallelOffsetsToRefEdges(
+  edges: Edge<ClassRefEdgeData>[]
+): Edge<ClassRefEdgeData>[] {
+  const keyToIndices = new Map<string, number[]>();
+  edges.forEach((edge, idx) => {
+    if (edge.type !== 'classRef') return;
+    const key = `${edge.source}::${edge.target}`;
+    const arr = keyToIndices.get(key) ?? [];
+    arr.push(idx);
+    keyToIndices.set(key, arr);
+  });
+
+  const next = edges.map((edge) => ({
+    ...edge,
+    data: edge.data ? { ...edge.data } : edge.data,
+  }));
+
+  const SPACING = 16;
+  for (const indices of keyToIndices.values()) {
+    if (indices.length <= 1) continue;
+    const sorted = [...indices].sort(
+      (ai, bi) => next[ai]!.id.localeCompare(next[bi]!.id)
+    );
+    const n = sorted.length;
+    sorted.forEach((edgeIdx, i) => {
+      const data = next[edgeIdx]?.data;
+      if (!data) return;
+      const parallelOffset = (i - (n - 1) / 2) * SPACING;
+      next[edgeIdx]!.data = { ...data, parallelOffset };
+    });
+  }
+
+  return next;
 }
 
 /**

@@ -5,6 +5,7 @@
  * Reference: GitHub #97 — Copy/paste/duplicate for classes (and optional refs) in local state.
  * Reference: GitHub #231 — Node context menu, Enter/F2, long property lists, add-property from canvas.
  * Reference: GitHub #232 — Edge labels, legend, SQL vs $ref styling, broken-ref placeholders, allOf inheritance.
+ * Reference: GitHub #233 — Edge selection detail panel, edit ref, parallel edge routing, SQL-mode ID ref styling.
  */
 'use client';
 
@@ -103,8 +104,10 @@ import SchemaMetricsPanel from './SchemaMetricsPanel';
 import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 import ZoomToClassRegistration from './ZoomToClassRegistration';
 import CanvasExportRegistration from './CanvasExportRegistration';
+import SelectedRefEdgePanel from './SelectedRefEdgePanel';
 
 import { classHasValidationErrors } from '@lib/studio/classValidation';
+import { getSchemaMode } from '@lib/studio/schemaMode';
 
 const defaultPosition = { x: 0, y: 0 };
 const NODE_MUTATION_DEBOUNCE_MS = 150;
@@ -156,6 +159,10 @@ export default function DesignCanvas() {
   const tenantPerms = useTenantPermissions(tenantId);
   const hasSchemaWrite = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:write');
   const mutationLocked = isReadOnly || (Boolean(tenantId) && (tenantPerms.loading || !hasSchemaWrite));
+  const schemaMode = useMemo(
+    () => (studio?.state ? getSchemaMode(studio.state) : 'openapi'),
+    [studio?.state]
+  );
 
   const [configOverrides, setConfigOverrides] = useState<
     Record<string, ClassNodeConfig>
@@ -680,6 +687,15 @@ export default function DesignCanvas() {
     });
   }, [filteredEdges, focusedClassIds]);
 
+  const selectedClassRefEdge = useMemo((): Edge<ClassRefEdgeData> | undefined => {
+    const e = focusFilteredEdges.find((ed) => ed.type === 'classRef' && ed.selected);
+    return e as Edge<ClassRefEdgeData> | undefined;
+  }, [focusFilteredEdges]);
+
+  const clearSelectedEdges = useCallback(() => {
+    setEdges((cur) => cur.map((ed) => ({ ...ed, selected: false })));
+  }, [setEdges]);
+
   // Escape key handler to exit focus mode.
   useEffect(() => {
     if (!focusState || !isFocusModeActive(focusState)) return;
@@ -957,6 +973,26 @@ export default function DesignCanvas() {
     [mutationLocked, editClassRequest]
   );
 
+  const handleEdgeDoubleClick = useCallback(
+    (_e: MouseEvent, edge: Edge) => {
+      if (mutationLocked) return;
+      if (edge.type !== 'classRef') return;
+      const d = edge.data as ClassRefEdgeData | undefined;
+      if (d?.brokenRef && d.fix) {
+        editClassRequest?.requestEditPropertyForClass(
+          d.fix.sourceClassId,
+          d.fix.propertyName
+        );
+        return;
+      }
+      const prop = d?.edit?.propertyName?.trim();
+      if (d?.edit && prop) {
+        editClassRequest?.requestEditPropertyForClass(d.edit.sourceClassId, prop);
+      }
+    },
+    [mutationLocked, editClassRequest]
+  );
+
   const visibleClassNodeIds = useMemo(
     () => displayNodes.filter((n) => n.type === 'class').map((n) => n.id),
     [displayNodes]
@@ -1112,6 +1148,15 @@ export default function DesignCanvas() {
         return;
       }
 
+      if (e.key === 'Escape') {
+        if (edges.some((ed) => ed.selected)) {
+          e.preventDefault();
+          clearSelectedEdges();
+          setLiveRegionMessage('Cleared edge selection');
+          return;
+        }
+      }
+
       if (e.key === 'F2') {
         if (!mutationLocked && enterTargetClassId) {
           e.preventDefault();
@@ -1171,6 +1216,8 @@ export default function DesignCanvas() {
       fitCanvasToContent,
       fitCanvasToSelected,
       resetCanvasViewport,
+      edges,
+      clearSelectedEdges,
     ]
   );
 
@@ -1586,6 +1633,7 @@ export default function DesignCanvas() {
         onEdgesChange={handleEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
         onEdgeClick={handleEdgeClick}
+        onEdgeDoubleClick={handleEdgeDoubleClick}
         onNodeContextMenu={handleNodeContextMenu}
         onPaneContextMenu={
           canvasGroup?.paneContextMenuHandler
@@ -1658,14 +1706,20 @@ export default function DesignCanvas() {
               <span className="font-medium text-indigo-700 dark:text-indigo-300">
                 SQL / ID ref
               </span>{' '}
-              — indigo tone, longer dashes (
+              — when schema mode is SQL: indigo tone and longer dashes vs $ref (
               <code className="text-[9px]">x-ref-storage: id</code>)
             </li>
             <li>
               <span className="font-medium text-red-700 dark:text-red-300">
                 Broken ref
               </span>{' '}
-              — red dashes; click edge or placeholder to edit property
+              — red dashes; click for details or to fix; double-click opens editor
+            </li>
+            <li>
+              <span className="font-medium text-slate-800 dark:text-slate-100">
+                Selected edge
+              </span>{' '}
+              — detail card and edit actions; Esc clears selection
             </li>
             <li>
               <span className="font-medium text-slate-800 dark:text-slate-100">
@@ -1742,6 +1796,25 @@ export default function DesignCanvas() {
           </>
         )}
       </ReactFlow>
+      {selectedClassRefEdge && (
+        <div
+          className={`absolute z-[10001] ${
+            canvasSettings.showMiniMap ? 'bottom-28' : 'bottom-2'
+          } right-2`}
+        >
+          <SelectedRefEdgePanel
+            edge={selectedClassRefEdge}
+            classes={classes}
+            schemaMode={schemaMode}
+            mutationLocked={mutationLocked}
+            onEditProperty={(classId, propertyName) =>
+              editClassRequest?.requestEditPropertyForClass(classId, propertyName)
+            }
+            onEditClass={(classId) => editClassRequest?.requestEditClass(classId)}
+            onDismiss={clearSelectedEdges}
+          />
+        </div>
+      )}
       {/* Focus mode indicator banner */}
       {focusState && isFocusModeActive(focusState) && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[10002] flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-600 dark:bg-indigo-500 text-white text-sm shadow-lg">
