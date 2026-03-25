@@ -43,6 +43,12 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
 
   const [resizeHover, setResizeHover] = useState(false);
   const style = groupMetadata?.style ?? {};
+  const rc = resizeConstraints ?? {
+    minWidth: 120,
+    maxWidth: 800,
+    minHeight: 80,
+    maxHeight: 600,
+  };
   const containerStyle: CSSProperties = {};
   if (style.backgroundColor) containerStyle.backgroundColor = String(style.backgroundColor);
   if (style.border) {
@@ -50,13 +56,8 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
     containerStyle.borderStyle = 'solid';
     containerStyle.borderColor = String(style.border);
   }
-
-  const rc = resizeConstraints ?? {
-    minWidth: 120,
-    maxWidth: 800,
-    minHeight: 80,
-    maxHeight: 600,
-  };
+  containerStyle.minWidth = rc.minWidth;
+  containerStyle.minHeight = rc.minHeight;
   const showResizeChrome =
     allowResize === true &&
     selected &&
@@ -80,7 +81,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
         onMouseEnter={() => setResizeHover(true)}
         onMouseLeave={() => setResizeHover(false)}
         className={[
-          'w-full h-full rounded-lg border-2 shadow-sm min-w-[120px] min-h-[80px]',
+          'w-full h-full rounded-lg border-2 shadow-sm',
           'bg-slate-50/95 dark:bg-slate-800/95 border-slate-300 dark:border-slate-600',
           selected && 'ring-2 ring-indigo-500 dark:ring-indigo-400 border-indigo-500 dark:border-indigo-400',
         ].join(' ')}
