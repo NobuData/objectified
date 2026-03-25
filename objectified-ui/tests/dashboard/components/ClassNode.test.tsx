@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import ClassNode from '@/app/dashboard/components/ClassNode';
 import type { ClassNodeType } from '@/app/dashboard/components/ClassNode';
 
@@ -262,6 +262,47 @@ describe('ClassNode', () => {
     expect(screen.getByText('New')).toBeInTheDocument();
     expect(screen.getByText('Modified')).toBeInTheDocument();
     expect(screen.getByText('Errors')).toBeInTheDocument();
+  });
+
+  it('full mode collapses long property lists until expanded (GitHub #231)', () => {
+    render(
+      <ClassNode
+        {...makeProps({
+          name: 'Big',
+          propertyDisplayMode: 'full',
+          properties: Array.from({ length: 15 }, (_, i) => ({
+            id: `p${i}`,
+            name: `prop${i}`,
+          })),
+        })}
+      />,
+    );
+    expect(screen.getByText('prop0')).toBeInTheDocument();
+    expect(screen.getByText('prop11')).toBeInTheDocument();
+    expect(screen.queryByText('prop12')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /show all 15 properties/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /show all 15 properties/i }));
+    expect(screen.getByText('prop14')).toBeInTheDocument();
+  });
+
+  it('shows inline rename input when inlineRenameActive (GitHub #231)', () => {
+    const onCommit = jest.fn();
+    const onCancel = jest.fn();
+    render(
+      <ClassNode
+        {...makeProps({
+          name: 'RenameMe',
+          inlineRenameActive: true,
+          onInlineRenameCommit: onCommit,
+          onInlineRenameCancel: onCancel,
+        })}
+      />,
+    );
+    const input = screen.getByRole('textbox', { name: /class name/i });
+    expect(input).toHaveValue('RenameMe');
+    fireEvent.change(input, { target: { value: 'NewName' } });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    expect(onCommit).toHaveBeenCalledWith('node-1', 'NewName');
   });
 
   it('renders class summary tooltip content', () => {
