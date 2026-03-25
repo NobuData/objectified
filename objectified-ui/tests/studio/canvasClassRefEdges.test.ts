@@ -2,7 +2,14 @@
  * Unit tests for class ref edge building (GitHub #81).
  */
 
-import { buildClassRefEdges, parseClassNameFromRef, getRefClassIdFromData } from '@lib/studio/canvasClassRefEdges';
+import {
+  buildClassRefEdges,
+  buildDesignCanvasRefLayer,
+  getCardinalityLabel,
+  isBrokenRefPlaceholderNodeId,
+  parseClassNameFromRef,
+  getRefClassIdFromData,
+} from '@lib/studio/canvasClassRefEdges';
 import type { StudioClass } from '@lib/studio/types';
 
 describe('buildClassRefEdges', () => {
@@ -334,6 +341,75 @@ describe('buildClassRefEdges', () => {
     warnSpy.mockRestore();
   });
 
+  it('marks id-based storage as refBinding idRef (GitHub #232)', () => {
+    const classes: StudioClass[] = [
+      { id: 'c1', name: 'User', properties: [] },
+      {
+        id: 'c2',
+        name: 'Order',
+        properties: [
+          {
+            name: 'buyer_id',
+            data: {
+              'x-ref-storage': 'id',
+              'x-ref-class-name': 'User',
+              'x-ref-class-id': 'c1',
+            },
+          },
+        ],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].data?.refBinding).toBe('idRef');
+    expect(edges[0].data?.relationshipKind).toBe('association');
+  });
+
+  it('adds inheritance edge from class schema allOf $ref (GitHub #232)', () => {
+    const classes: StudioClass[] = [
+      { id: 'parent', name: 'Animal', properties: [] },
+      {
+        id: 'child',
+        name: 'Dog',
+        schema: {
+          allOf: [{ $ref: '#/components/schemas/Animal' }],
+        },
+        properties: [],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    const inherit = edges.find((e) => e.data?.relationshipKind === 'inheritance');
+    expect(inherit).toBeDefined();
+    expect(inherit!.source).toBe('child');
+    expect(inherit!.target).toBe('parent');
+    expect(inherit!.data?.label).toBe('extends');
+  });
+
+  it('creates broken-ref placeholder and canvas edge; buildClassRefEdges omits them (GitHub #232)', () => {
+    const classes: StudioClass[] = [
+      { id: 'c1', name: 'User', properties: [] },
+      {
+        id: 'c2',
+        name: 'Order',
+        properties: [
+          {
+            name: 'buyer_id',
+            data: {
+              'x-ref-storage': 'id',
+              'x-ref-class-name': 'Ghost',
+            },
+          },
+        ],
+      },
+    ];
+    const layer = buildDesignCanvasRefLayer(classes);
+    expect(layer.brokenRefPlaceholders).toHaveLength(1);
+    expect(isBrokenRefPlaceholderNodeId(layer.brokenRefPlaceholders[0]!.id)).toBe(true);
+    expect(layer.canvasEdges.some((e) => e.data?.brokenRef)).toBe(true);
+    const exportEdges = buildClassRefEdges(classes);
+    expect(exportEdges).toHaveLength(0);
+  });
+
   it('builds edges from a source class with a blank name using x-ref-class-id', () => {
     // Source class has no name but a valid id; it should still generate edges via x-ref-class-id.
     const classes: StudioClass[] = [
@@ -382,6 +458,35 @@ describe('getRefClassIdFromData', () => {
 
   it('trims whitespace from the value', () => {
     expect(getRefClassIdFromData({ 'x-ref-class-id': '  id-123  ' })).toBe('id-123');
+  });
+});
+
+describe('getCardinalityLabel', () => {
+  it('returns 0..1 vs 1 for optional vs required scalar refs', () => {
+    const cls: StudioClass = {
+      id: 'x',
+      name: 'A',
+      schema: { required: ['req'] },
+      properties: [],
+    };
+    expect(
+      getCardinalityLabel({ type: 'string' }, 'opt', cls)
+    ).toBe('0..1');
+    expect(
+      getCardinalityLabel({ type: 'string' }, 'req', cls)
+    ).toBe('1');
+  });
+
+  it('returns 1..* for required array without maxItems', () => {
+    const cls: StudioClass = {
+      id: 'x',
+      name: 'A',
+      schema: { required: ['tags'] },
+      properties: [],
+    };
+    expect(
+      getCardinalityLabel({ type: 'array', items: { type: 'string' } }, 'tags', cls)
+    ).toBe('1..*');
   });
 });
 
