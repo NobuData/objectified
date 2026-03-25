@@ -100,6 +100,10 @@ export interface ClassRefEdgeData extends Record<string, unknown> {
    * need to subscribe to the full StudioContext (GitHub #233).
    */
   sqlModeDistinctIdRef?: boolean;
+  /** GitHub #236 — accessible name and focus handling for keyboard users. */
+  a11yEdgeLabel?: string;
+  a11yAllowTabStop?: boolean;
+  onEdgeA11yFocus?: (edgeId: string) => void;
 }
 
 export interface BrokenRefPlaceholder {

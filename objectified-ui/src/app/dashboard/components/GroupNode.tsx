@@ -6,7 +6,7 @@
  * Reference: GitHub #83 — Add ability to create groups in the react-flow canvas.
  */
 
-import { memo, useState } from 'react';
+import { memo, useCallback, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { CSSProperties } from 'react';
 import { NodeResizer, type Node, type NodeProps } from '@xyflow/react';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
@@ -27,6 +27,11 @@ export interface GroupNodeData {
   resizeHandleVisibility?: CanvasResizeHandleVisibility;
   /** Called when user requests edit (rename, color, style). */
   onEdit?: (groupId: string) => void;
+  /** GitHub #236 — roving tabindex and keyboard navigation on the group shell. */
+  canvasNavShellTabIndex?: 0 | -1;
+  onCanvasNavShellFocus?: () => void;
+  onNavigateCanvasNav?: (delta: 1 | -1) => void;
+  onCanvasNavShellEnter?: () => void;
 }
 
 export type GroupNodeType = Node<GroupNodeData & Record<string, unknown>, 'group'>;
@@ -39,6 +44,10 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
     onEdit,
     resizeConstraints,
     resizeHandleVisibility = 'always',
+    canvasNavShellTabIndex = -1,
+    onCanvasNavShellFocus,
+    onNavigateCanvasNav,
+    onCanvasNavShellEnter,
   } = data;
 
   const [resizeHover, setResizeHover] = useState(false);
@@ -63,6 +72,27 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
     selected &&
     (resizeHandleVisibility === 'always' || resizeHover);
 
+  const handleNavShellKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        onNavigateCanvasNav?.(1);
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        onNavigateCanvasNav?.(-1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        onCanvasNavShellEnter?.();
+      }
+    },
+    [onNavigateCanvasNav, onCanvasNavShellEnter]
+  );
+
   return (
     <>
       {showResizeChrome && (
@@ -78,17 +108,25 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
       )}
       <div
         data-nodetype="group"
+        data-canvas-nav-node={id}
+        tabIndex={canvasNavShellTabIndex}
+        role="group"
+        aria-label={`Group ${label?.trim() ? label : 'Untitled'}`}
         onMouseEnter={() => setResizeHover(true)}
         onMouseLeave={() => setResizeHover(false)}
+        onFocus={() => onCanvasNavShellFocus?.()}
+        onKeyDown={handleNavShellKeyDown}
         className={[
-          'w-full h-full rounded-lg border-2 shadow-sm',
+          'w-full h-full rounded-lg border-2 shadow-sm outline-none',
           'bg-slate-50/95 dark:bg-slate-800/95 border-slate-300 dark:border-slate-600',
           selected && 'ring-2 ring-indigo-500 dark:ring-indigo-400 border-indigo-500 dark:border-indigo-400',
+          'focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500 dark:focus-visible:ring-indigo-400 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900',
         ].join(' ')}
         style={containerStyle}
       >
         <button
           type="button"
+          tabIndex={-1}
           onClick={() => onEdit?.(id)}
           className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 truncate rounded-t-md hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors"
           title="Rename, color, style"

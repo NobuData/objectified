@@ -8,6 +8,7 @@
  * Reference: GitHub #233 — Edge selection detail panel, edit ref, parallel edge routing, SQL-mode ID ref styling.
  * Reference: GitHub #234 — Multi-select, box-select, select by group/tag, bulk actions, selection toolbar.
  * Reference: GitHub #235 — Snap to grid/alignment, resize limits, undo for moves (studio stack), touch/trackpad gestures.
+ * Reference: GitHub #236 — Keyboard/screen reader: node/edge focus, pan/zoom keys, optional class list view.
  */
 'use client';
 
@@ -113,6 +114,7 @@ import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 import ZoomToClassRegistration from './ZoomToClassRegistration';
 import CanvasExportRegistration from './CanvasExportRegistration';
 import CanvasSelectionToolbar from './CanvasSelectionToolbar';
+import CanvasClassListView from './CanvasClassListView';
 import SelectedRefEdgePanel from './SelectedRefEdgePanel';
 
 import { classHasValidationErrors } from '@lib/studio/classValidation';
@@ -135,10 +137,11 @@ type CanvasViewportApi = Pick<
   {
     fitView: (...args: any[]) => any;
     setViewport: (...args: any[]) => any;
+    getViewport: () => Viewport;
     zoomIn: (...args: any[]) => any;
     zoomOut: (...args: any[]) => any;
   },
-  'fitView' | 'setViewport' | 'zoomIn' | 'zoomOut'
+  'fitView' | 'setViewport' | 'getViewport' | 'zoomIn' | 'zoomOut'
 >;
 
 const nodeTypes = { class: ClassNode, group: GroupNode, brokenRef: BrokenRefNode };
@@ -733,6 +736,18 @@ export default function DesignCanvas() {
     });
   }, [filteredNodes, focusedClassIds, focusedGroupIds]);
 
+  /** DOM / keyboard order for roving tabindex on class, group, and broken-ref nodes (GitHub #236). */
+  const canvasNavigableNodeIds = useMemo(
+    () =>
+      focusFilteredNodes
+        .filter(
+          (n) =>
+            n.type === 'class' || n.type === 'group' || n.type === 'brokenRef'
+        )
+        .map((n) => n.id),
+    [focusFilteredNodes]
+  );
+
   const visibleFlowClassIds = useMemo(
     () => focusFilteredNodes.filter((n) => n.type === 'class').map((n) => n.id),
     [focusFilteredNodes]
@@ -751,6 +766,11 @@ export default function DesignCanvas() {
       return focusedClassIds.has(e.source) && focusedClassIds.has(e.target);
     });
   }, [filteredEdges, focusedClassIds]);
+
+  const classRefEdgeCount = useMemo(
+    () => focusFilteredEdges.filter((e) => e.type === 'classRef').length,
+    [focusFilteredEdges]
+  );
 
   const selectedClassRefEdge = useMemo((): Edge<ClassRefEdgeData> | undefined => {
     const e = focusFilteredEdges.find((ed) => ed.type === 'classRef' && ed.selected);
@@ -817,7 +837,7 @@ export default function DesignCanvas() {
     [studio, mutationLocked, classes]
   );
 
-  const displayNodes = useMemo(() => {
+  const displayNodesBase = useMemo(() => {
     const allStoredConfigs = versionId ? getAllClassNodeConfigs(versionId) : {};
     return focusFilteredNodes.map((node: Node) => {
       if (node.type === 'brokenRef') {
@@ -931,10 +951,10 @@ export default function DesignCanvas() {
       return;
     }
     const id = setTimeout(() => {
-      setLayoutQuality(getLayoutQuality(displayNodes, focusFilteredEdges));
+      setLayoutQuality(getLayoutQuality(displayNodesBase, focusFilteredEdges));
     }, 300);
     return () => clearTimeout(id);
-  }, [canvasSettings.showLayoutHints, displayNodes, focusFilteredEdges]);
+  }, [canvasSettings.showLayoutHints, displayNodesBase, focusFilteredEdges]);
 
   // Dependency overlay: selected class nodes, circular edges, upstream/downstream/path (GitHub #90).
   // Broken-ref placeholder edges are excluded so they don't skew circular/depth/path calculations.
@@ -955,10 +975,10 @@ export default function DesignCanvas() {
   );
   const selectedClassNodeIds = useMemo(
     () =>
-      displayNodes
+      displayNodesBase
         .filter((n) => n.type === 'class' && n.selected)
         .map((n) => n.id),
-    [displayNodes]
+    [displayNodesBase]
   );
 
   const selectedNodeId = selectedClassNodeIds[0] ?? null;
@@ -1084,72 +1104,233 @@ export default function DesignCanvas() {
   );
 
   const visibleClassNodeIds = useMemo(
-    () => displayNodes.filter((n) => n.type === 'class').map((n) => n.id),
-    [displayNodes]
+    () => displayNodesBase.filter((n) => n.type === 'class').map((n) => n.id),
+    [displayNodesBase]
   );
 
   const [keyboardFocusIndex, setKeyboardFocusIndex] = useState(-1);
+  const [classListOpen, setClassListOpen] = useState(false);
 
-  // Clamp keyboardFocusIndex whenever the visible node list shrinks to avoid out-of-range reads.
+  const focusCanvasNavElement = useCallback((nodeId: string) => {
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(
+        `[data-canvas-nav-node="${CSS.escape(nodeId)}"]`
+      );
+      el?.focus();
+    });
+  }, []);
+
+  // Clamp keyboardFocusIndex whenever the navigable list shrinks to avoid out-of-range reads.
   useEffect(() => {
-    if (visibleClassNodeIds.length === 0) {
+    if (canvasNavigableNodeIds.length === 0) {
       setKeyboardFocusIndex(-1);
       return;
     }
     setKeyboardFocusIndex((prev) =>
-      prev >= visibleClassNodeIds.length ? visibleClassNodeIds.length - 1 : prev
+      prev >= canvasNavigableNodeIds.length
+        ? canvasNavigableNodeIds.length - 1
+        : prev
     );
-  }, [visibleClassNodeIds]);
+  }, [canvasNavigableNodeIds]);
 
   const enterTargetClassId = useMemo(() => {
-    if (visibleClassNodeIds.length === 0) return null;
-    if (selectedClassNodeIds.length === 1) return selectedClassNodeIds[0];
-    if (selectedClassNodeIds.length > 1) return null;
-    if (
-      keyboardFocusIndex >= 0 &&
-      keyboardFocusIndex < visibleClassNodeIds.length
-    ) {
-      return visibleClassNodeIds[keyboardFocusIndex];
-    }
-    return null;
-  }, [visibleClassNodeIds, selectedClassNodeIds, keyboardFocusIndex]);
+    const selected = nodes.filter((n) => n.selected && n.type === 'class');
+    if (selected.length !== 1) return null;
+    return selected[0].id;
+  }, [nodes]);
 
   useEffect(() => {
-    if (selectedClassNodeIds.length !== 1) return;
-    const id = selectedClassNodeIds[0];
-    const idx = visibleClassNodeIds.indexOf(id);
+    const selected = nodes.filter((n) => n.selected);
+    if (selected.length !== 1) return;
+    const id = selected[0].id;
+    const idx = canvasNavigableNodeIds.indexOf(id);
     if (idx >= 0) setKeyboardFocusIndex(idx);
-  }, [selectedClassNodeIds, visibleClassNodeIds]);
+  }, [nodes, canvasNavigableNodeIds]);
 
-  const focusClassNodeByIndex = useCallback(
+  const focusNavigableNodeByIndex = useCallback(
     (index: number, source: 'arrow' | 'tab' = 'arrow') => {
-      if (visibleClassNodeIds.length === 0) return;
+      if (canvasNavigableNodeIds.length === 0) return;
       const normalizedIndex = getNextKeyboardFocusIndex(
         index,
         0,
-        visibleClassNodeIds.length
+        canvasNavigableNodeIds.length
       );
-      const focusedNodeId = visibleClassNodeIds[normalizedIndex];
+      const focusedNodeId = canvasNavigableNodeIds[normalizedIndex];
       setKeyboardFocusIndex(normalizedIndex);
+      clearSelectedEdges();
       setNodes((current) =>
         current.map((node) => ({
           ...node,
           selected: node.id === focusedNodeId,
         }))
       );
-      const targetClass = classes.find((cls) => getStableClassId(cls) === focusedNodeId);
-      setLiveRegionMessage(
-        targetClass
-          ? `${source === 'tab' ? 'Focused' : 'Selected'} ${targetClass.name ?? 'Unnamed class'}`
-          : 'Selected class node'
-      );
+      const rn = nodes.find((n) => n.id === focusedNodeId);
+      const verb = source === 'tab' ? 'Focused' : 'Selected';
+      if (rn?.type === 'class') {
+        const targetClass = classes.find((cls) => getStableClassId(cls) === focusedNodeId);
+        setLiveRegionMessage(
+          targetClass
+            ? `${verb} ${targetClass.name ?? 'Unnamed class'}`
+            : 'Selected class node'
+        );
+      } else if (rn?.type === 'group') {
+        const label = (rn.data as { label?: string }).label ?? 'Untitled';
+        setLiveRegionMessage(`${verb} group ${label}`);
+      } else if (rn?.type === 'brokenRef') {
+        const hint = (rn.data as { hint?: string }).hint ?? 'Broken reference';
+        setLiveRegionMessage(`${verb} ${hint}`);
+      } else {
+        setLiveRegionMessage('Selected node');
+      }
+      focusCanvasNavElement(focusedNodeId);
     },
-    [visibleClassNodeIds, setNodes, classes]
+    [canvasNavigableNodeIds, setNodes, classes, nodes, clearSelectedEdges, focusCanvasNavElement]
   );
 
+  const keyboardFocusIndexRef = useRef(keyboardFocusIndex);
+  keyboardFocusIndexRef.current = keyboardFocusIndex;
+
+  const navigateCanvasNavFromDelta = useCallback(
+    (delta: 1 | -1) => {
+      focusNavigableNodeByIndex(keyboardFocusIndexRef.current + delta, 'arrow');
+    },
+    [focusNavigableNodeByIndex]
+  );
+
+  const handleCanvasNavShellFocusById = useCallback(
+    (nodeId: string) => {
+      clearSelectedEdges();
+      setNodes((cur) =>
+        cur.map((n) => ({
+          ...n,
+          selected: n.id === nodeId,
+        }))
+      );
+      const idx = canvasNavigableNodeIds.indexOf(nodeId);
+      if (idx >= 0) setKeyboardFocusIndex(idx);
+    },
+    [canvasNavigableNodeIds, setNodes, clearSelectedEdges]
+  );
+
+  const onCanvasNavShellEnterClass = useCallback(
+    (classId: string) => {
+      if (mutationLocked) return;
+      editClassRequest?.requestEditClass(classId);
+      setLiveRegionMessage('Opened class editor');
+    },
+    [mutationLocked, editClassRequest]
+  );
+
+  const onCanvasNavShellEnterGroup = useCallback(
+    (groupId: string) => {
+      if (mutationLocked) return;
+      canvasGroup?.openGroupEditor(groupId);
+      setLiveRegionMessage('Opened group editor');
+    },
+    [mutationLocked, canvasGroup]
+  );
+
+  const handleEdgeA11yFocus = useCallback(
+    (edgeId: string) => {
+      setNodes((cur) => cur.map((n) => ({ ...n, selected: false })));
+      setEdges((cur) =>
+        cur.map((ed) => ({ ...ed, selected: ed.id === edgeId }))
+      );
+      setKeyboardFocusIndex(-1);
+      const edge = edges.find((e) => e.id === edgeId);
+      const srcName =
+        classes.find((c) => getStableClassId(c) === edge?.source)?.name ?? 'source';
+      const tgtName =
+        classes.find((c) => getStableClassId(c) === edge?.target)?.name ?? 'target';
+      const d = edge?.data as ClassRefEdgeData | undefined;
+      setLiveRegionMessage(
+        d?.label?.trim()
+          ? `Selected edge from ${srcName} to ${tgtName}: ${d.label}`
+          : `Selected edge from ${srcName} to ${tgtName}`
+      );
+    },
+    [setNodes, setEdges, edges, classes]
+  );
+
+  const displayNodes = useMemo(() => {
+    return displayNodesBase.map((node) => {
+      const navIdx = canvasNavigableNodeIds.indexOf(node.id);
+      const shellTab =
+        navIdx >= 0 && navIdx === keyboardFocusIndex ? 0 : -1;
+      const shellA11y = {
+        canvasNavShellTabIndex: shellTab as 0 | -1,
+        onCanvasNavShellFocus: () => handleCanvasNavShellFocusById(node.id),
+        onNavigateCanvasNav: navigateCanvasNavFromDelta,
+      };
+      if (node.type === 'class') {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            ...shellA11y,
+            onCanvasNavShellEnter: () => onCanvasNavShellEnterClass(node.id),
+          },
+        };
+      }
+      if (node.type === 'group') {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            ...shellA11y,
+            onCanvasNavShellEnter: () => onCanvasNavShellEnterGroup(node.id),
+          },
+        };
+      }
+      if (node.type === 'brokenRef') {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            ...shellA11y,
+          },
+        };
+      }
+      return node;
+    });
+  }, [
+    displayNodesBase,
+    canvasNavigableNodeIds,
+    keyboardFocusIndex,
+    handleCanvasNavShellFocusById,
+    navigateCanvasNavFromDelta,
+    onCanvasNavShellEnterClass,
+    onCanvasNavShellEnterGroup,
+  ]);
+
+  const displayEdgesForFlow = useMemo(() => {
+    const allowEdgeTab = classRefEdgeCount <= 32;
+    return displayEdges.map((e) => {
+      if (e.type !== 'classRef') return e;
+      const d = e.data as ClassRefEdgeData | undefined;
+      const srcName =
+        classes.find((c) => getStableClassId(c) === e.source)?.name ?? 'source';
+      const tgtName =
+        classes.find((c) => getStableClassId(c) === e.target)?.name ?? 'target';
+      const mid = [d?.label, d?.cardinalityLabel].filter(Boolean).join(' · ');
+      const a11yEdgeLabel = mid
+        ? `Reference from ${srcName} to ${tgtName}: ${mid}`
+        : `Reference from ${srcName} to ${tgtName}`;
+      return {
+        ...e,
+        data: {
+          ...(d as ClassRefEdgeData),
+          a11yEdgeLabel,
+          a11yAllowTabStop: allowEdgeTab,
+          onEdgeA11yFocus: handleEdgeA11yFocus,
+        },
+      };
+    });
+  }, [displayEdges, classes, classRefEdgeCount, handleEdgeA11yFocus]);
+
   const selectedNodeIds = useMemo(
-    () => displayNodes.filter((n) => n.selected).map((n) => n.id),
-    [displayNodes]
+    () => displayNodesBase.filter((n) => n.selected).map((n) => n.id),
+    [displayNodesBase]
   );
 
   const isReducedMotion =
@@ -1194,6 +1375,44 @@ export default function DesignCanvas() {
     reactFlowRef.current?.zoomOut({ duration: animateViewport ? 150 : 0 });
     setLiveRegionMessage('Zoomed out');
   }, [animateViewport]);
+
+  const panCanvasViewportByKey = useCallback(
+    (key: string) => {
+      const rf = reactFlowRef.current;
+      if (!rf?.getViewport) return;
+      const vp = rf.getViewport();
+      const step = 48 / (vp.zoom || 1);
+      let dx = 0;
+      let dy = 0;
+      if (key === 'ArrowLeft') dx = step;
+      if (key === 'ArrowRight') dx = -step;
+      if (key === 'ArrowUp') dy = step;
+      if (key === 'ArrowDown') dy = -step;
+      if (dx === 0 && dy === 0) return;
+      void rf.setViewport(
+        { x: vp.x + dx, y: vp.y + dy, zoom: vp.zoom },
+        { duration: animateViewport ? 80 : 0 }
+      );
+      setLiveRegionMessage('Panned canvas');
+    },
+    [animateViewport]
+  );
+
+  const handleSelectClassFromList = useCallback(
+    (classId: string) => {
+      clearSelectedEdges();
+      setNodes((cur) =>
+        cur.map((n) => ({
+          ...n,
+          selected: n.type === 'class' && n.id === classId,
+        }))
+      );
+      const idx = canvasNavigableNodeIds.indexOf(classId);
+      if (idx >= 0) setKeyboardFocusIndex(idx);
+      focusCanvasNavElement(classId);
+    },
+    [canvasNavigableNodeIds, setNodes, clearSelectedEdges, focusCanvasNavElement]
+  );
 
   const handleCanvasKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1244,7 +1463,10 @@ export default function DesignCanvas() {
         if (hasSelectedEdges || hasSelectedNodes) {
           e.preventDefault();
           if (hasSelectedEdges) clearSelectedEdges();
-          if (hasSelectedNodes) setNodes((cur) => cur.map((n) => ({ ...n, selected: false })));
+          if (hasSelectedNodes) {
+            setNodes((cur) => cur.map((n) => ({ ...n, selected: false })));
+            setKeyboardFocusIndex(-1);
+          }
           setLiveRegionMessage('Cleared selection');
           return;
         }
@@ -1259,7 +1481,34 @@ export default function DesignCanvas() {
         return;
       }
 
-      if (visibleClassNodeIds.length === 0) return;
+      const isArrow =
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight';
+      if (e.target === e.currentTarget && isArrow) {
+        e.preventDefault();
+        panCanvasViewportByKey(e.key);
+        return;
+      }
+
+      if (e.key === 'Enter' && e.target === e.currentTarget) {
+        e.preventDefault();
+        if (mutationLocked) return;
+        const selected = nodes.filter((n) => n.selected);
+        if (selected.length !== 1) return;
+        const n = selected[0];
+        if (n.type === 'class') {
+          editClassRequest?.requestEditClass(n.id);
+          setLiveRegionMessage('Opened class editor');
+        } else if (n.type === 'group') {
+          canvasGroup?.openGroupEditor(n.id);
+          setLiveRegionMessage('Opened group editor');
+        }
+        return;
+      }
+
+      if (canvasNavigableNodeIds.length === 0) return;
       if (e.key === 'Tab') {
         // Only override default tabbing when the event originates from the canvas
         // container itself, so nested focusable elements (controls, buttons, menus)
@@ -1272,34 +1521,18 @@ export default function DesignCanvas() {
 
         // Let the browser handle focus movement when navigating past the
         // first/last node so users can tab out of the canvas.
-        if (nextIndex < 0 || nextIndex >= visibleClassNodeIds.length) {
+        if (nextIndex < 0 || nextIndex >= canvasNavigableNodeIds.length) {
           return;
         }
 
         e.preventDefault();
-        focusClassNodeByIndex(nextIndex, 'tab');
+        focusNavigableNodeByIndex(nextIndex, 'tab');
         return;
-      }
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        focusClassNodeByIndex(keyboardFocusIndex + 1);
-        return;
-      }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        focusClassNodeByIndex(keyboardFocusIndex - 1);
-        return;
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (mutationLocked || !enterTargetClassId) return;
-        editClassRequest?.requestEditClass(enterTargetClassId);
-        setLiveRegionMessage('Opened class editor');
       }
     },
     [
-      visibleClassNodeIds,
-      focusClassNodeByIndex,
+      canvasNavigableNodeIds,
+      focusNavigableNodeByIndex,
       keyboardFocusIndex,
       enterTargetClassId,
       mutationLocked,
@@ -1309,10 +1542,12 @@ export default function DesignCanvas() {
       fitCanvasToContent,
       fitCanvasToSelected,
       resetCanvasViewport,
+      panCanvasViewportByKey,
       edges,
       clearSelectedEdges,
       nodes,
       setNodes,
+      canvasGroup,
     ]
   );
 
@@ -1539,6 +1774,7 @@ export default function DesignCanvas() {
   const handleClearNodeSelection = useCallback(() => {
     clearSelectedEdges();
     setNodes((cur) => cur.map((n) => ({ ...n, selected: false })));
+    setKeyboardFocusIndex(-1);
     setLiveRegionMessage('Cleared selection');
   }, [setNodes, clearSelectedEdges]);
 
@@ -1896,7 +2132,7 @@ export default function DesignCanvas() {
       </p>
       <ReactFlow
         nodes={displayNodes}
-        edges={displayEdges}
+        edges={displayEdgesForFlow}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
@@ -2011,8 +2247,41 @@ export default function DesignCanvas() {
               classes; Space+drag, middle/right mouse, coarse-pointer drag, or scroll-pan
               (in canvas settings) to pan; pinch to zoom on touch
             </li>
+            <li>
+              <span className="font-medium text-slate-800 dark:text-slate-100">
+                Keyboard
+              </span>{' '}
+              — with the canvas region focused, arrow keys pan; Tab moves between
+              nodes; optional class list (top-right) syncs selection with the diagram
+            </li>
           </ul>
         </div>
+        <Panel position="top-right" className="z-[10001] !m-2 !mt-14 max-w-[min(360px,92vw)]">
+          <div className="pointer-events-auto flex flex-col items-end gap-2">
+            <button
+              type="button"
+              aria-expanded={classListOpen}
+              className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              onClick={() => {
+                setClassListOpen((v) => {
+                  const next = !v;
+                  setLiveRegionMessage(next ? 'Class list shown' : 'Class list hidden');
+                  return next;
+                });
+              }}
+            >
+              {classListOpen ? 'Hide class list' : 'Show class list'}
+            </button>
+            {classListOpen ? (
+              <CanvasClassListView
+                classes={classes}
+                selectedClassIds={new Set(selectedClassNodeIds)}
+                onSelectClassId={handleSelectClassFromList}
+                onAnnounce={setLiveRegionMessage}
+              />
+            ) : null}
+          </div>
+        </Panel>
         {layoutQuality && (
           <LayoutHintsOverlay quality={layoutQuality} />
         )}

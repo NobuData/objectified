@@ -133,6 +133,7 @@ function ClassRefEdgeComponent({
     edgeData?.relationshipKind ?? 'association';
   const styleConfig = REF_TYPE_STYLE[refType];
   const [hovered, setHovered] = useState(false);
+  const [a11yFocused, setA11yFocused] = useState(false);
 
   const srcPos = sourcePosition ?? Position.Bottom;
   const tgtPos = targetPosition ?? Position.Top;
@@ -225,6 +226,12 @@ function ClassRefEdgeComponent({
     labelText.length > 0 &&
     (edgeLabelMode === 'always' || (edgeLabelMode === 'hover' && hovered));
 
+  const a11yLabel =
+    edgeData?.a11yEdgeLabel?.trim() ||
+    (labelText ? `Relationship: ${labelText}` : 'Class relationship edge');
+  const allowEdgeTabStop = edgeData?.a11yAllowTabStop === true;
+  const onEdgeA11yFocus = edgeData?.onEdgeA11yFocus;
+
   return (
     <g
       role="presentation"
@@ -239,6 +246,26 @@ function ClassRefEdgeComponent({
         markerStart={styleConfig.markerStart ? markerStart : undefined}
         interactionWidth={20}
       />
+      {allowEdgeTabStop ? (
+        <path
+          d={path}
+          fill="none"
+          stroke={a11yFocused ? 'rgb(99 102 241)' : 'transparent'}
+          strokeOpacity={a11yFocused ? 0.45 : 0}
+          strokeWidth={Math.max(28, strokeWidth + 18)}
+          strokeLinecap="round"
+          pointerEvents="none"
+          className="outline-none"
+          tabIndex={0}
+          aria-label={a11yLabel}
+          onFocus={(e) => {
+            e.stopPropagation();
+            setA11yFocused(true);
+            onEdgeA11yFocus?.(id);
+          }}
+          onBlur={() => setA11yFocused(false)}
+        />
+      ) : null}
       {showLabel ? (
         <EdgeLabelRenderer>
           <div

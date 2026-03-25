@@ -1,6 +1,14 @@
 'use client';
 
-import { memo, useCallback, useEffect, useRef, useState, type FocusEvent } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import type { ComponentType, CSSProperties } from 'react';
 import {
   Handle,
@@ -65,6 +73,11 @@ export interface ClassNodeDataExtended extends ClassNodeData {
   inlineRenameActive?: boolean;
   onInlineRenameCommit?: (classId: string, name: string) => void;
   onInlineRenameCancel?: () => void;
+  /** GitHub #236 — roving tabindex and keyboard navigation on the node shell. */
+  canvasNavShellTabIndex?: 0 | -1;
+  onCanvasNavShellFocus?: () => void;
+  onNavigateCanvasNav?: (delta: 1 | -1) => void;
+  onCanvasNavShellEnter?: () => void;
 }
 
 /** Node type for react-flow; data satisfies Record<string, unknown>. */
@@ -108,6 +121,10 @@ function ClassNodeComponent({
     inlineRenameActive = false,
     onInlineRenameCommit,
     onInlineRenameCancel,
+    canvasNavShellTabIndex = -1,
+    onCanvasNavShellFocus,
+    onNavigateCanvasNav,
+    onCanvasNavShellEnter,
   } = data as ClassNodeDataExtended;
 
   const [renameDraft, setRenameDraft] = useState(name ?? '');
@@ -181,6 +198,27 @@ function ClassNodeComponent({
     allowResize === true &&
     selected &&
     (resizeHandleVisibility === 'always' || resizeHover);
+  const handleNavShellKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        onNavigateCanvasNav?.(1);
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        onNavigateCanvasNav?.(-1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        onCanvasNavShellEnter?.();
+      }
+    },
+    [onNavigateCanvasNav, onCanvasNavShellEnter]
+  );
+
   const statusBadges = [
     nodeStatus?.isDeprecated
       ? { key: 'deprecated', label: 'Deprecated', icon: CircleDashed }
@@ -217,17 +255,25 @@ function ClassNodeComponent({
         className="!w-2 !h-2 !border-2 !border-slate-300 dark:!border-slate-600 !bg-white dark:!bg-slate-800"
       />
       <div
+        data-canvas-nav-node={id}
+        tabIndex={canvasNavShellTabIndex}
+        role="group"
+        aria-label={`Class ${name?.trim() ? name : 'Unnamed class'}`}
         onMouseEnter={() => setResizeHover(true)}
         onMouseLeave={() => setResizeHover(false)}
-        onFocus={() => setResizeHover(true)}
+        onFocus={(e) => {
+          setResizeHover(true);
+          onCanvasNavShellFocus?.();
+        }}
         onBlur={(e) => {
           const next = e.relatedTarget as globalThis.Node | null;
           if (!next || !e.currentTarget.contains(next)) {
             setResizeHover(false);
           }
         }}
+        onKeyDown={handleNavShellKeyDown}
         className={[
-          'rounded-lg border-2 shadow-md',
+          'rounded-lg border-2 shadow-md outline-none',
           allowResize ? 'w-full h-full overflow-auto' : 'max-w-[280px] overflow-hidden',
           !theme?.backgroundColor && 'bg-white dark:bg-slate-900',
           !theme?.border &&
@@ -236,6 +282,7 @@ function ClassNodeComponent({
           selected
             ? 'ring-2 ring-indigo-500 dark:ring-indigo-400 border-indigo-500 dark:border-indigo-400'
             : 'hover:border-slate-300 dark:hover:border-slate-600',
+          'focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500 dark:focus-visible:ring-indigo-400 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900',
         ].join(' ')}
         style={containerStyle}
       >
