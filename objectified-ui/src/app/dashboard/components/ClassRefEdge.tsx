@@ -42,21 +42,47 @@ const BROKEN_STROKE = 'var(--class-ref-edge-broken-stroke, rgb(220 38 38))';
 
 function resolveStrokeColor(
   edgeData: ClassRefEdgeData | undefined,
-  fallback: string
+  fallback: string,
+  sqlModeDistinctIdRef: boolean
 ): string {
   if (edgeData?.brokenRef) return BROKEN_STROKE;
-  if (edgeData?.refBinding === 'idRef') return ID_REF_STROKE;
+  if (sqlModeDistinctIdRef && edgeData?.refBinding === 'idRef') return ID_REF_STROKE;
   return fallback;
 }
 
 function resolveDashArray(
   refType: ClassRefType,
   edgeData: ClassRefEdgeData | undefined,
-  baseDash: string
+  baseDash: string,
+  sqlModeDistinctIdRef: boolean
 ): string {
   if (edgeData?.brokenRef) return '5 4';
-  if (edgeData?.refBinding === 'idRef') return '12 4';
+  if (sqlModeDistinctIdRef && edgeData?.refBinding === 'idRef') return '12 4';
   return baseDash;
+}
+
+/** Shift endpoints perpendicular to the chord so parallel edges separate (GitHub #233). */
+function offsetEndpoints(
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+  offsetPx: number
+): { sx: number; sy: number; tx: number; ty: number } {
+  if (!offsetPx) {
+    return { sx: sourceX, sy: sourceY, tx: targetX, ty: targetY };
+  }
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const len = Math.hypot(dx, dy) || 1;
+  const ox = (-dy / len) * offsetPx;
+  const oy = (dx / len) * offsetPx;
+  return {
+    sx: sourceX + ox,
+    sy: sourceY + oy,
+    tx: targetX + ox,
+    ty: targetY + oy,
+  };
 }
 
 function buildEdgeLabelText(edgeData: ClassRefEdgeData | undefined): string {
@@ -88,8 +114,11 @@ function ClassRefEdgeComponent({
   data,
   markerEnd,
   markerStart,
+  selected = false,
 }: EdgeProps<Edge<ClassRefEdgeData>>) {
   const canvasSettings = useCanvasSettingsOptional();
+  const sqlModeDistinctIdRef = data?.sqlModeDistinctIdRef === true;
+
   const pathType: CanvasEdgePathType =
     canvasSettings?.settings?.edgePathType ?? 'smoothstep';
   const edgeLabelMode: CanvasEdgeLabelMode =
@@ -108,21 +137,30 @@ function ClassRefEdgeComponent({
   const srcPos = sourcePosition ?? Position.Bottom;
   const tgtPos = targetPosition ?? Position.Top;
 
+  const parallelOffset = edgeData?.parallelOffset ?? 0;
+  const { sx, sy, tx, ty } = offsetEndpoints(
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    parallelOffset
+  );
+
   let path: string;
   let labelX: number;
   let labelY: number;
 
   if (pathType === 'straight') {
-    const straight = getStraightPath({ sourceX, sourceY, targetX, targetY });
+    const straight = getStraightPath({ sourceX: sx, sourceY: sy, targetX: tx, targetY: ty });
     path = straight[0];
-    labelX = (sourceX + targetX) / 2;
-    labelY = (sourceY + targetY) / 2;
+    labelX = (sx + tx) / 2;
+    labelY = (sy + ty) / 2;
   } else if (pathType === 'bezier') {
     const bezier = getBezierPath({
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
+      sourceX: sx,
+      sourceY: sy,
+      targetX: tx,
+      targetY: ty,
       sourcePosition: srcPos,
       targetPosition: tgtPos,
     });
@@ -131,10 +169,10 @@ function ClassRefEdgeComponent({
     labelY = bezier[2];
   } else if (pathType === 'orthogonal') {
     const step = getSmoothStepPath({
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
+      sourceX: sx,
+      sourceY: sy,
+      targetX: tx,
+      targetY: ty,
       sourcePosition: srcPos,
       targetPosition: tgtPos,
       borderRadius: 0,
@@ -144,10 +182,10 @@ function ClassRefEdgeComponent({
     labelY = step[2];
   } else {
     const smooth = getSmoothStepPath({
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
+      sourceX: sx,
+      sourceY: sy,
+      targetX: tx,
+      targetY: ty,
       sourcePosition: srcPos,
       targetPosition: tgtPos,
       borderRadius: 8,
@@ -157,12 +195,18 @@ function ClassRefEdgeComponent({
     labelY = smooth[2];
   }
 
-  const strokeColor = resolveStrokeColor(edgeData, themeStroke);
-  const dash = resolveDashArray(refType, edgeData, styleConfig.strokeDasharray);
+  const strokeColor = resolveStrokeColor(edgeData, themeStroke, sqlModeDistinctIdRef);
+  const dash = resolveDashArray(
+    refType,
+    edgeData,
+    styleConfig.strokeDasharray,
+    sqlModeDistinctIdRef
+  );
   let strokeWidth =
     styleConfig.strokeWidth +
     (relationshipKind === 'composition' ? 1 : 0) +
-    (relationshipKind === 'aggregation' ? 0.5 : 0);
+    (relationshipKind === 'aggregation' ? 0.5 : 0) +
+    (selected ? 1.25 : 0);
 
   if (highContrast) {
     strokeWidth = Math.max(strokeWidth + 1, 2.5);
@@ -173,6 +217,7 @@ function ClassRefEdgeComponent({
     strokeWidth,
     strokeDasharray: dash === 'none' ? undefined : dash,
     fill: 'none',
+    filter: selected ? 'drop-shadow(0 0 2px rgb(99 102 241 / 0.85))' : undefined,
   };
 
   const labelText = buildEdgeLabelText(edgeData);

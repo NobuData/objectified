@@ -5,6 +5,7 @@
 import {
   buildClassRefEdges,
   buildDesignCanvasRefLayer,
+  assignParallelOffsetsToRefEdges,
   getCardinalityLabel,
   isBrokenRefPlaceholderNodeId,
   parseClassNameFromRef,
@@ -54,6 +55,10 @@ describe('buildClassRefEdges', () => {
     expect(edges[0].type).toBe('classRef');
     expect(edges[0].data?.refType).toBe('direct');
     expect(edges[0].data?.label).toBe('customer');
+    expect(edges[0].data?.edit).toEqual({
+      sourceClassId: 'c2',
+      propertyName: 'customer',
+    });
   });
 
   it('uses refType from property data when present', () => {
@@ -363,6 +368,37 @@ describe('buildClassRefEdges', () => {
     expect(edges).toHaveLength(1);
     expect(edges[0].data?.refBinding).toBe('idRef');
     expect(edges[0].data?.relationshipKind).toBe('association');
+  });
+
+  it('assigns parallel offsets for multiple edges between the same nodes (GitHub #233)', () => {
+    const classes: StudioClass[] = [
+      { id: 'a', name: 'A', properties: [] },
+      {
+        id: 'b',
+        name: 'B',
+        properties: [
+          { name: 'r1', data: { $ref: '#/components/schemas/A' } },
+          { name: 'r2', data: { $ref: '#/components/schemas/A', refType: 'optional' } },
+        ],
+      },
+    ];
+    const edges = buildClassRefEdges(classes);
+    expect(edges).toHaveLength(2);
+    const offsets = edges.map((e) => e.data?.parallelOffset ?? 0).sort((x, y) => x - y);
+    expect(offsets).toEqual([-8, 8]);
+  });
+
+  it('assignParallelOffsetsToRefEdges is stable for a single edge', () => {
+    const { canvasEdges } = buildDesignCanvasRefLayer([
+      { id: 'a', name: 'A', properties: [] },
+      {
+        id: 'b',
+        name: 'B',
+        properties: [{ name: 'x', data: { $ref: '#/components/schemas/A' } }],
+      },
+    ]);
+    const again = assignParallelOffsetsToRefEdges(canvasEdges);
+    expect(again[0]?.data?.parallelOffset).toBeUndefined();
   });
 
   it('adds inheritance edge from class schema allOf $ref (GitHub #232)', () => {
