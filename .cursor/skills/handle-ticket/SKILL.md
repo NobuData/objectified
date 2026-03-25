@@ -27,6 +27,7 @@ When the user invokes **handle-ticket** with an issue number (for example `/hand
 - If the change is **large or risky** and the issue alone is not enough to proceed safely, **outline a short plan** in the chat (and optionally in the PR later), then execute after alignment or per issue instructions.
 - If code becomes too large or unmanageable for your context, split the code into separate modules, helper functions, or utility classes.
 - Keep the implementation simple.  The simpler the better, making the code easy to read and understand.
+- Create comprehensive test cases for all new and changed functionality.
 - Don't Repeat Yourself.
 
 ## 4. Verify from repository root
@@ -42,6 +43,9 @@ When the user invokes **handle-ticket** with an issue number (for example `/hand
 - Make sure that values for colors and positioning are not hard-coded, but used as a Tailwind CSS style and reused.
 - Documentation in the code must be well written and succinct.
 - Check code for potential reuse and branch that code out into separate modules where appropriate.
+- Tests should have no warnings or errors.
+- Tests should not have suppressions of any kind.
+- Tests should be thorough.
 - Don't Repeat Yourself.
 
 ## 6. Commit and push
