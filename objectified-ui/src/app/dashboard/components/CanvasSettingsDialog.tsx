@@ -28,6 +28,7 @@ import {
   type CanvasEdgePathType,
   type CanvasEdgeLabelMode,
   type NodePropertyDisplayMode,
+  type CanvasResizeHandleVisibility,
 } from '@lib/studio/canvasSettings';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import type { CanvasVersionNodeThemePrefs } from '@lib/studio/canvasNodeThemeResolve';
@@ -80,6 +81,15 @@ const EDGE_LABEL_OPTIONS: { value: CanvasEdgeLabelMode; label: string }[] = [
   { value: 'always', label: 'Always' },
 ];
 const UNDO_DEPTH_OPTIONS = [20, 50, 100, 200] as const;
+const ALIGNMENT_SNAP_PX_OPTIONS = [4, 8, 12, 16] as const;
+
+const RESIZE_HANDLE_OPTIONS: {
+  value: CanvasResizeHandleVisibility;
+  label: string;
+}[] = [
+  { value: 'always', label: 'Always when selected' },
+  { value: 'hover', label: 'When selected and hovering' },
+];
 
 const PROPERTY_DISPLAY_OPTIONS: { value: NodePropertyDisplayMode; label: string }[] = [
   { value: 'full', label: 'Full' },
@@ -158,9 +168,10 @@ export default function CanvasSettingsDialog({
                 id="canvas-settings-description"
                 className="text-sm text-slate-500 dark:text-slate-400 mt-1"
               >
-                Configure grid, background, edges, routing, animation, controls,
-                minimap, and search history. Most visual changes are reflected
-                in the preview; save to apply to the design canvas.
+                Configure grid, alignment, gestures, node resize limits, edges,
+                routing, animation, controls, minimap, and search history. Most
+                visual changes are reflected in the preview; save to apply to the
+                design canvas.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -293,6 +304,264 @@ export default function CanvasSettingsDialog({
                     <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
                   </Switch.Root>
                 </div>
+                <div className="flex items-center justify-between gap-3">
+                  <Label.Root
+                    htmlFor="canvas-settings-snap-align"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Snap to peers
+                  </Label.Root>
+                  <Switch.Root
+                    id="canvas-settings-snap-align"
+                    checked={draft.snapToAlignment}
+                    onCheckedChange={(checked) =>
+                      updateDraft({ snapToAlignment: checked })
+                    }
+                    className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                  >
+                    <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                  </Switch.Root>
+                </div>
+                <div className="space-y-1.5">
+                  <Label.Root
+                    htmlFor="canvas-settings-align-px"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Alignment distance
+                  </Label.Root>
+                  <Select.Root
+                    value={String(draft.alignmentSnapPx)}
+                    onValueChange={(v) =>
+                      updateDraft({ alignmentSnapPx: Number(v) })
+                    }
+                  >
+                    <Select.Trigger
+                      id="canvas-settings-align-px"
+                      className="flex h-9 w-full items-center justify-between rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
+                    >
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="h-4 w-4" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
+                        <Select.Viewport>
+                          {ALIGNMENT_SNAP_PX_OPTIONS.map((px) => (
+                            <Select.Item
+                              key={px}
+                              value={String(px)}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{px}px</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
+              </div>
+
+              <div className="space-y-2 border-t border-slate-200 dark:border-slate-700 pt-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Gestures
+                </span>
+                <div className="flex items-center justify-between gap-3">
+                  <Label.Root
+                    htmlFor="canvas-settings-scroll-pan"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Scroll to pan
+                  </Label.Root>
+                  <Switch.Root
+                    id="canvas-settings-scroll-pan"
+                    checked={draft.canvasScrollPan}
+                    onCheckedChange={(checked) =>
+                      updateDraft({ canvasScrollPan: checked })
+                    }
+                    className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                  >
+                    <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                  </Switch.Root>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Trackpad/touch scroll pans the viewport; hold ⌘/Ctrl and scroll to zoom
+                  (system shortcut). Pinch zoom works on touch screens.
+                </p>
+              </div>
+
+              <div className="space-y-2 border-t border-slate-200 dark:border-slate-700 pt-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Node resize
+                </span>
+                <div className="space-y-1.5">
+                  <Label.Root
+                    htmlFor="canvas-settings-resize-handles"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Resize handles
+                  </Label.Root>
+                  <Select.Root
+                    value={draft.resizeHandleVisibility}
+                    onValueChange={(v) =>
+                      updateDraft({
+                        resizeHandleVisibility: v as CanvasResizeHandleVisibility,
+                      })
+                    }
+                  >
+                    <Select.Trigger
+                      id="canvas-settings-resize-handles"
+                      className="flex h-9 w-full items-center justify-between rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
+                    >
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="h-4 w-4" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
+                        <Select.Viewport>
+                          {RESIZE_HANDLE_OPTIONS.map((opt) => (
+                            <Select.Item
+                              key={opt.value}
+                              value={opt.value}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{opt.label}</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label.Root className="text-xs text-slate-600 dark:text-slate-400">
+                      Class min W
+                    </Label.Root>
+                    <input
+                      type="number"
+                      min={120}
+                      max={1200}
+                      value={draft.classNodeMinWidth}
+                      onChange={(e) =>
+                        updateDraft({ classNodeMinWidth: Number(e.target.value) })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label.Root className="text-xs text-slate-600 dark:text-slate-400">
+                      Class max W
+                    </Label.Root>
+                    <input
+                      type="number"
+                      min={120}
+                      max={1200}
+                      value={draft.classNodeMaxWidth}
+                      onChange={(e) =>
+                        updateDraft({ classNodeMaxWidth: Number(e.target.value) })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label.Root className="text-xs text-slate-600 dark:text-slate-400">
+                      Class min H
+                    </Label.Root>
+                    <input
+                      type="number"
+                      min={40}
+                      max={1200}
+                      value={draft.classNodeMinHeight}
+                      onChange={(e) =>
+                        updateDraft({ classNodeMinHeight: Number(e.target.value) })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label.Root className="text-xs text-slate-600 dark:text-slate-400">
+                      Class max H
+                    </Label.Root>
+                    <input
+                      type="number"
+                      min={40}
+                      max={1200}
+                      value={draft.classNodeMaxHeight}
+                      onChange={(e) =>
+                        updateDraft({ classNodeMaxHeight: Number(e.target.value) })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label.Root className="text-xs text-slate-600 dark:text-slate-400">
+                      Group min W
+                    </Label.Root>
+                    <input
+                      type="number"
+                      min={80}
+                      max={2000}
+                      value={draft.groupNodeMinWidth}
+                      onChange={(e) =>
+                        updateDraft({ groupNodeMinWidth: Number(e.target.value) })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label.Root className="text-xs text-slate-600 dark:text-slate-400">
+                      Group max W
+                    </Label.Root>
+                    <input
+                      type="number"
+                      min={80}
+                      max={2000}
+                      value={draft.groupNodeMaxWidth}
+                      onChange={(e) =>
+                        updateDraft({ groupNodeMaxWidth: Number(e.target.value) })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label.Root className="text-xs text-slate-600 dark:text-slate-400">
+                      Group min H
+                    </Label.Root>
+                    <input
+                      type="number"
+                      min={60}
+                      max={1200}
+                      value={draft.groupNodeMinHeight}
+                      onChange={(e) =>
+                        updateDraft({ groupNodeMinHeight: Number(e.target.value) })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label.Root className="text-xs text-slate-600 dark:text-slate-400">
+                      Group max H
+                    </Label.Root>
+                    <input
+                      type="number"
+                      min={60}
+                      max={1200}
+                      value={draft.groupNodeMaxHeight}
+                      onChange={(e) =>
+                        updateDraft({ groupNodeMaxHeight: Number(e.target.value) })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-xs"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Bounds are normalized on save (min ≤ max, minimum span). Dragging and
+                  resizing still flow through the studio undo stack (⌘/Ctrl+Z).
+                </p>
               </div>
 
               <div className="flex items-center justify-between gap-3">
@@ -852,6 +1121,9 @@ export default function CanvasSettingsDialog({
                     fitView
                     snapToGrid={draft.snapToGrid}
                     snapGrid={[draft.gridSize, draft.gridSize]}
+                    panOnScroll={draft.canvasScrollPan}
+                    zoomOnScroll={true}
+                    zoomOnPinch={true}
                     defaultEdgeOptions={{ animated: draft.edgeAnimated }}
                     edgeTypes={edgeTypes}
                     className="bg-slate-50 dark:bg-slate-900/50"

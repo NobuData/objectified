@@ -15,7 +15,7 @@ export type LayoutDirection = 'TB' | 'LR';
  * Get width and height for a node for layout. Uses measured dimensions,
  * style dimensions, or defaults.
  */
-function getNodeDimensions(node: Node): { width: number; height: number } {
+export function getFlowNodeDimensions(node: Node): { width: number; height: number } {
   const m = node.measured;
   if (m && typeof m.width === 'number' && typeof m.height === 'number') {
     return { width: m.width, height: m.height };
@@ -56,7 +56,7 @@ export function getLayoutedNodes(
   g.setGraph({ rankdir: direction, nodesep: 40, ranksep: 60 });
 
   for (const node of classNodes) {
-    const { width, height } = getNodeDimensions(node);
+    const { width, height } = getFlowNodeDimensions(node);
     g.setNode(node.id, { width, height });
   }
   for (const edge of classEdges) {
@@ -68,7 +68,7 @@ export function getLayoutedNodes(
   const layoutedClassNodes: Node[] = classNodes.map((node) => {
     const nodeWithPosition = g.node(node.id);
     if (!nodeWithPosition) return node;
-    const { width, height } = getNodeDimensions(node);
+    const { width, height } = getFlowNodeDimensions(node);
     return {
       ...node,
       position: {

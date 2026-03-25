@@ -20,6 +20,9 @@ export type CanvasEdgeLabelMode = 'off' | 'hover' | 'always';
 /** How class properties are listed inside canvas nodes. Reference: GitHub #230. */
 export type NodePropertyDisplayMode = 'full' | 'compact' | 'hidden';
 
+/** When to show resize handles for selected nodes. Reference: GitHub #235. */
+export type CanvasResizeHandleVisibility = 'always' | 'hover';
+
 export interface CanvasSettings {
   showBackground: boolean;
   showControls: boolean;
@@ -39,6 +42,27 @@ export interface CanvasSettings {
   gridStyle: CanvasGridStyle;
   /** Grid: snap nodes to grid when dragging. */
   snapToGrid: boolean;
+  /** Snap dragged class/group nodes to alignment with peers (same coordinate space). Reference: GitHub #235. */
+  snapToAlignment: boolean;
+  /** Max distance (flow px) to snap to another node's edge or center. */
+  alignmentSnapPx: number;
+  /** Resize handles when a node is selected: always visible, or only while hovering the node. */
+  resizeHandleVisibility: CanvasResizeHandleVisibility;
+  /** Min/max class node dimensions (flow px). Enforced by NodeResizer. */
+  classNodeMinWidth: number;
+  classNodeMaxWidth: number;
+  classNodeMinHeight: number;
+  classNodeMaxHeight: number;
+  /** Min/max group node dimensions (flow px). */
+  groupNodeMinWidth: number;
+  groupNodeMaxWidth: number;
+  groupNodeMinHeight: number;
+  groupNodeMaxHeight: number;
+  /**
+   * When true, scroll / two-finger trackpad gesture pans the viewport (with modifier zoom per React Flow).
+   * Reference: GitHub #235.
+   */
+  canvasScrollPan: boolean;
   /** Edge path routing: straight, bezier, orthogonal (step), smoothstep (smart). */
   edgePathType: CanvasEdgePathType;
   /** Edge stroke color; empty string = use theme (--class-ref-edge-stroke). */
@@ -83,6 +107,18 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   gridSize: 16,
   gridStyle: 'dots',
   snapToGrid: true,
+  snapToAlignment: true,
+  alignmentSnapPx: 8,
+  resizeHandleVisibility: 'always',
+  classNodeMinWidth: 180,
+  classNodeMaxWidth: 400,
+  classNodeMinHeight: 48,
+  classNodeMaxHeight: 400,
+  groupNodeMinWidth: 120,
+  groupNodeMaxWidth: 800,
+  groupNodeMinHeight: 80,
+  groupNodeMaxHeight: 600,
+  canvasScrollPan: true,
   edgePathType: 'smoothstep',
   edgeStrokeColor: '',
   edgeLabelMode: 'hover',
@@ -100,6 +136,129 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
 interface StoredCanvasSettings {
   settings: CanvasSettings;
   savedAt: string;
+}
+
+function clampAlignmentSnapPx(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_CANVAS_SETTINGS.alignmentSnapPx;
+  }
+  return Math.min(32, Math.max(2, Math.round(value)));
+}
+
+function normalizeDimensionPair(
+  minRaw: unknown,
+  maxRaw: unknown,
+  defaults: { min: number; max: number },
+  bounds: { lo: number; hi: number }
+): { min: number; max: number } {
+  const d = defaults;
+  let min =
+    typeof minRaw === 'number' && Number.isFinite(minRaw)
+      ? Math.round(minRaw)
+      : d.min;
+  let max =
+    typeof maxRaw === 'number' && Number.isFinite(maxRaw)
+      ? Math.round(maxRaw)
+      : d.max;
+  min = Math.max(bounds.lo, Math.min(min, bounds.hi));
+  max = Math.max(bounds.lo, Math.min(max, bounds.hi));
+  if (min > max) {
+    const t = min;
+    min = max;
+    max = t;
+  }
+  const span = max - min;
+  if (span < 40) {
+    max = Math.min(bounds.hi, min + 40);
+    if (max <= min) min = Math.max(bounds.lo, max - 40);
+  }
+  return { min, max };
+}
+
+function normalizeInteractionSettings(
+  merged: Partial<CanvasSettings>
+): Pick<
+  CanvasSettings,
+  | 'snapToAlignment'
+  | 'alignmentSnapPx'
+  | 'resizeHandleVisibility'
+  | 'classNodeMinWidth'
+  | 'classNodeMaxWidth'
+  | 'classNodeMinHeight'
+  | 'classNodeMaxHeight'
+  | 'groupNodeMinWidth'
+  | 'groupNodeMaxWidth'
+  | 'groupNodeMinHeight'
+  | 'groupNodeMaxHeight'
+  | 'canvasScrollPan'
+> {
+  const snapToAlignment =
+    typeof merged.snapToAlignment === 'boolean'
+      ? merged.snapToAlignment
+      : DEFAULT_CANVAS_SETTINGS.snapToAlignment;
+  const alignmentSnapPx = clampAlignmentSnapPx(merged.alignmentSnapPx);
+  const resizeHandleVisibility: CanvasResizeHandleVisibility =
+    merged.resizeHandleVisibility === 'hover'
+      ? 'hover'
+      : merged.resizeHandleVisibility === 'always'
+        ? 'always'
+        : DEFAULT_CANVAS_SETTINGS.resizeHandleVisibility;
+  const canvasScrollPan =
+    typeof merged.canvasScrollPan === 'boolean'
+      ? merged.canvasScrollPan
+      : DEFAULT_CANVAS_SETTINGS.canvasScrollPan;
+
+  const cW = normalizeDimensionPair(
+    merged.classNodeMinWidth,
+    merged.classNodeMaxWidth,
+    {
+      min: DEFAULT_CANVAS_SETTINGS.classNodeMinWidth,
+      max: DEFAULT_CANVAS_SETTINGS.classNodeMaxWidth,
+    },
+    { lo: 120, hi: 1200 }
+  );
+  const cH = normalizeDimensionPair(
+    merged.classNodeMinHeight,
+    merged.classNodeMaxHeight,
+    {
+      min: DEFAULT_CANVAS_SETTINGS.classNodeMinHeight,
+      max: DEFAULT_CANVAS_SETTINGS.classNodeMaxHeight,
+    },
+    { lo: 40, hi: 1200 }
+  );
+  const gW = normalizeDimensionPair(
+    merged.groupNodeMinWidth,
+    merged.groupNodeMaxWidth,
+    {
+      min: DEFAULT_CANVAS_SETTINGS.groupNodeMinWidth,
+      max: DEFAULT_CANVAS_SETTINGS.groupNodeMaxWidth,
+    },
+    { lo: 80, hi: 2000 }
+  );
+  const gH = normalizeDimensionPair(
+    merged.groupNodeMinHeight,
+    merged.groupNodeMaxHeight,
+    {
+      min: DEFAULT_CANVAS_SETTINGS.groupNodeMinHeight,
+      max: DEFAULT_CANVAS_SETTINGS.groupNodeMaxHeight,
+    },
+    { lo: 60, hi: 1200 }
+  );
+
+  return {
+    snapToAlignment,
+    alignmentSnapPx,
+    resizeHandleVisibility,
+    canvasScrollPan,
+    classNodeMinWidth: cW.min,
+    classNodeMaxWidth: cW.max,
+    classNodeMinHeight: cH.min,
+    classNodeMaxHeight: cH.max,
+    groupNodeMinWidth: gW.min,
+    groupNodeMaxWidth: gW.max,
+    groupNodeMinHeight: gH.min,
+    groupNodeMaxHeight: gH.max,
+  };
 }
 
 function normalizeNodePropertyDisplay(
@@ -138,9 +297,11 @@ export function getCanvasSettings(): CanvasSettings {
       merged.edgeLabelMode === 'always'
         ? merged.edgeLabelMode
         : DEFAULT_CANVAS_SETTINGS.edgeLabelMode;
+    const interaction = normalizeInteractionSettings(merged);
 
     return {
       ...merged,
+      ...interaction,
       nodePropertyDisplay,
       simplifiedNodeView,
       edgeLabelMode,
@@ -163,8 +324,10 @@ export function saveCanvasSettings(settings: CanvasSettings): void {
   try {
     if (typeof localStorage === 'undefined') return;
     const nodePropertyDisplay = normalizeNodePropertyDisplay(settings);
+    const interaction = normalizeInteractionSettings(settings);
     const normalized: CanvasSettings = {
       ...settings,
+      ...interaction,
       nodePropertyDisplay,
       simplifiedNodeView: nodePropertyDisplay === 'hidden',
     };

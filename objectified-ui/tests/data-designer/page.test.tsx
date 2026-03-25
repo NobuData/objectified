@@ -40,6 +40,8 @@ jest.mock('@xyflow/react', () => ({
   MarkerType: { ArrowClosed: 'arrowclosed', Arrow: 'arrow' },
   useNodesState: () => [[], jest.fn(), jest.fn()],
   useEdgesState: () => [[], jest.fn(), jest.fn()],
+  useStore: (selector: (s: { width: number; height: number }) => unknown) =>
+    selector({ width: 800, height: 600 }),
   useReactFlow: () => ({
     screenToFlowPosition: (p: { x: number; y: number }) => p,
   }),
