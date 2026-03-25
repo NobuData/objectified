@@ -26,15 +26,26 @@ import {
   Info,
 } from 'lucide-react';
 import type { ClassNodeData } from '@lib/studio/types';
-import type { ClassNodeConfig } from '@lib/studio/canvasClassNodeConfig';
+import type {
+  ClassNodeConfig,
+  ClassNodeTheme,
+} from '@lib/studio/canvasClassNodeConfig';
+import type { NodePropertyDisplayMode } from '@lib/studio/canvasSettings';
 
 /** Extended data passed from DesignCanvas: config, resize, callback (GitHub #80, #82). */
 export interface ClassNodeDataExtended extends ClassNodeData {
   classNodeConfig?: ClassNodeConfig;
+  /**
+   * Display-only theme (tag/tenant auto + manual merge). Not persisted; avoids writing auto colors to localStorage.
+   * Reference: GitHub #230.
+   */
+  resolvedNodeTheme?: ClassNodeTheme;
   onConfigChange?: (classId: string, config: ClassNodeConfig) => void;
   /** When true, node can be resized via NodeResizer (GitHub #82). */
   allowResize?: boolean;
-  /** Hide property list for simplified canvas overview mode. */
+  /** Property list density (canvas setting). GitHub #230. */
+  propertyDisplayMode?: NodePropertyDisplayMode;
+  /** @deprecated Use propertyDisplayMode === 'hidden' */
   simplifiedView?: boolean;
   /** Increase node contrast for accessibility. */
   highContrast?: boolean;
@@ -65,8 +76,10 @@ function ClassNodeComponent({
     name,
     properties,
     classNodeConfig,
+    resolvedNodeTheme,
     onConfigChange,
     allowResize,
+    propertyDisplayMode = 'full',
     simplifiedView,
     highContrast,
     tags = [],
@@ -79,7 +92,10 @@ function ClassNodeComponent({
   const hasProperties = properties.length > 0;
   const defaultTagColor = '#94a3b8';
   const expanded = classNodeConfig?.propertiesExpanded !== false;
-  const theme = classNodeConfig?.theme;
+  const theme = resolvedNodeTheme ?? classNodeConfig?.theme;
+  const displayMode: NodePropertyDisplayMode =
+    simplifiedView === true ? 'hidden' : propertyDisplayMode;
+  const COMPACT_MAX = 5;
   const IconComponent = theme?.icon
     ? ICON_MAP[theme.icon.toLowerCase()]
     : null;
@@ -96,7 +112,7 @@ function ClassNodeComponent({
   if (theme?.backgroundColor) containerStyle.backgroundColor = theme.backgroundColor;
   if (theme?.border) {
     containerStyle.borderWidth = '2px';
-    containerStyle.borderStyle = 'solid';
+    containerStyle.borderStyle = theme.borderStyle ?? 'solid';
     containerStyle.borderColor = theme.border;
   }
 
@@ -251,16 +267,33 @@ function ClassNodeComponent({
             ))}
           </div>
         )}
-        {!simplifiedView && expanded && (
-          <ScrollArea.Root className="max-h-[240px]">
+        {displayMode !== 'hidden' && expanded && (
+          <ScrollArea.Root
+            className={displayMode === 'compact' ? 'max-h-[120px]' : 'max-h-[240px]'}
+          >
             <ScrollArea.Viewport className="w-full">
               <div className="px-3 py-2">
                 {hasProperties ? (
-                  <ul className="space-y-1 text-left">
-                    {properties.map((prop, idx) => (
+                  <ul
+                    className={[
+                      'text-left',
+                      displayMode === 'compact'
+                        ? 'grid grid-cols-1 gap-0.5'
+                        : 'space-y-1',
+                    ].join(' ')}
+                  >
+                    {(displayMode === 'compact'
+                      ? properties.slice(0, COMPACT_MAX)
+                      : properties
+                    ).map((prop, idx) => (
                       <li
                         key={prop.id ?? prop.localId ?? idx}
-                        className="text-xs text-slate-600 dark:text-slate-400 truncate font-mono"
+                        className={[
+                          'text-slate-600 dark:text-slate-400 truncate font-mono',
+                          displayMode === 'compact'
+                            ? 'text-[10px] leading-tight'
+                            : 'text-xs',
+                        ].join(' ')}
                       >
                         {prop.name}
                       </li>
@@ -271,6 +304,13 @@ function ClassNodeComponent({
                     No properties
                   </p>
                 )}
+                {displayMode === 'compact' &&
+                  hasProperties &&
+                  properties.length > COMPACT_MAX && (
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                      +{properties.length - COMPACT_MAX} more
+                    </p>
+                  )}
               </div>
             </ScrollArea.Viewport>
             <ScrollArea.Scrollbar

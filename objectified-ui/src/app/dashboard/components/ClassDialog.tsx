@@ -40,7 +40,10 @@ interface ClassDialogProps {
   /** Class names available for composition refs (allOf/oneOf/anyOf) and additionalProperties. */
   existingClassNames?: string[];
   /** Project tag names with optional colors (for pill display and picker). GitHub #100. */
-  tagDefinitions?: Record<string, { color?: string }>;
+  tagDefinitions?: Record<
+    string,
+    { color?: string; icon?: string; border?: string; borderStyle?: 'solid' | 'dashed' | 'dotted' }
+  >;
   onSave: (data: ClassFormData) => void;
   onClose: () => void;
 }
@@ -150,7 +153,10 @@ function TagPicker({
 }: {
   value: string[];
   onChange: (v: string[]) => void;
-  tagDefinitions: Record<string, { color?: string }>;
+  tagDefinitions: Record<
+    string,
+    { color?: string; icon?: string; border?: string; borderStyle?: 'solid' | 'dashed' | 'dotted' }
+  >;
   placeholder: string;
   inputId?: string;
   'aria-label': string;

@@ -147,6 +147,55 @@ describe('ClassNode', () => {
     expect(screen.queryByText('hiddenInSimplified')).not.toBeInTheDocument();
   });
 
+  it('compact mode shows five properties and +N more (GitHub #230)', () => {
+    render(
+      <ClassNode
+        {...makeProps({
+          name: 'Compact',
+          propertyDisplayMode: 'compact',
+          properties: Array.from({ length: 8 }, (_, i) => ({
+            id: `p${i}`,
+            name: `field${i}`,
+          })),
+        })}
+      />,
+    );
+    expect(screen.getByText('field4')).toBeInTheDocument();
+    expect(screen.queryByText('field5')).not.toBeInTheDocument();
+    expect(screen.getByText('+3 more')).toBeInTheDocument();
+  });
+
+  it('prefers resolvedNodeTheme for display over classNodeConfig.theme (GitHub #230)', () => {
+    const { container } = render(
+      <ClassNode
+        {...makeProps({
+          name: 'Merged',
+          classNodeConfig: {
+            theme: { backgroundColor: '#f0f0f0', border: '#333' },
+          },
+          resolvedNodeTheme: { backgroundColor: '#00ff00', border: '#ff0000' },
+        })}
+      />,
+    );
+    const wrapper = container.querySelector('div.rounded-lg') as HTMLElement;
+    expect(wrapper.style.backgroundColor).toMatch(/rgb\(0,\s*255,\s*0\)|#00ff00/i);
+    expect(wrapper.style.borderColor).toMatch(/#ff0000|rgb\(255,\s*0,\s*0\)/i);
+  });
+
+  it('applies borderStyle from theme (GitHub #230)', () => {
+    const { container } = render(
+      <ClassNode
+        {...makeProps({
+          classNodeConfig: {
+            theme: { border: '#000', borderStyle: 'dashed' },
+          },
+        })}
+      />,
+    );
+    const wrapper = container.querySelector('div.rounded-lg') as HTMLElement;
+    expect(wrapper.style.borderStyle).toBe('dashed');
+  });
+
   it('applies theme backgroundColor and border when classNodeConfig.theme is set (GitHub #80)', () => {
     const { container } = render(
       <ClassNode

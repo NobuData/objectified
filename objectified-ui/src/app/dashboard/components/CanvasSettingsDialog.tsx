@@ -26,7 +26,15 @@ import {
   type CanvasSettings,
   type CanvasGridStyle,
   type CanvasEdgePathType,
+  type NodePropertyDisplayMode,
 } from '@lib/studio/canvasSettings';
+import { useStudioOptional } from '@/app/contexts/StudioContext';
+import type { CanvasVersionNodeThemePrefs } from '@lib/studio/canvasNodeThemeResolve';
+import {
+  getCanvasVersionNodeThemePrefs,
+  saveCanvasVersionNodeThemePrefs,
+  DEFAULT_CANVAS_VERSION_NODE_THEME_PREFS,
+} from '@lib/studio/canvasVersionNodeTheme';
 import { gridStyleToBackgroundVariant } from '@/app/dashboard/utils/canvasStyleUtils';
 import { useSearchHistory } from '@/app/hooks/useSearchHistory';
 import ClassRefEdge from './ClassRefEdge';
@@ -61,6 +69,12 @@ const EDGE_PATH_OPTIONS: { value: CanvasEdgePathType; label: string }[] = [
 ];
 const UNDO_DEPTH_OPTIONS = [20, 50, 100, 200] as const;
 
+const PROPERTY_DISPLAY_OPTIONS: { value: NodePropertyDisplayMode; label: string }[] = [
+  { value: 'full', label: 'Full' },
+  { value: 'compact', label: 'Compact' },
+  { value: 'hidden', label: 'Hidden' },
+];
+
 const edgeTypes = { classRef: ClassRefEdge };
 
 export interface CanvasSettingsDialogProps {
@@ -73,14 +87,27 @@ export default function CanvasSettingsDialog({
   onOpenChange,
 }: CanvasSettingsDialogProps) {
   const context = useCanvasSettingsOptional();
+  const studio = useStudioOptional();
+  const versionId = studio?.state?.versionId ?? null;
   const settings = context?.settings ?? getCanvasSettings();
   const setSettings = context?.setSettings ?? ((s: CanvasSettings) => saveCanvasSettings(s));
   const [draft, setDraft] = useState<CanvasSettings>(settings);
+  const [versionNodePrefs, setVersionNodePrefs] =
+    useState<CanvasVersionNodeThemePrefs>(DEFAULT_CANVAS_VERSION_NODE_THEME_PREFS);
   const { entries: historyEntries, removeEntry, clearAll } = useSearchHistory();
 
   useEffect(() => {
     if (open) setDraft(settings);
   }, [open, settings]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (versionId) {
+      setVersionNodePrefs(getCanvasVersionNodeThemePrefs(versionId));
+    } else {
+      setVersionNodePrefs(DEFAULT_CANVAS_VERSION_NODE_THEME_PREFS);
+    }
+  }, [open, versionId]);
 
   const [nodes] = useNodesState(PREVIEW_NODES);
   const [edges] = useEdgesState(PREVIEW_EDGES);
@@ -92,6 +119,9 @@ export default function CanvasSettingsDialog({
 
   const handleSave = () => {
     setSettings(draft);
+    if (versionId) {
+      saveCanvasVersionNodeThemePrefs(versionId, versionNodePrefs);
+    }
     onOpenChange(false);
   };
 
@@ -380,24 +410,108 @@ export default function CanvasSettingsDialog({
                   <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
                 </Switch.Root>
               </div>
-              <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1.5">
                 <Label.Root
-                  htmlFor="canvas-settings-simplified-node-view"
+                  htmlFor="canvas-settings-property-display"
                   className="text-sm font-medium text-slate-700 dark:text-slate-300"
                 >
-                  Simplified node view
+                  Class property list
                 </Label.Root>
-                <Switch.Root
-                  id="canvas-settings-simplified-node-view"
-                  checked={draft.simplifiedNodeView}
-                  onCheckedChange={(checked) =>
-                    updateDraft({ simplifiedNodeView: checked })
-                  }
-                  className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                <Select.Root
+                  value={draft.nodePropertyDisplay}
+                  onValueChange={(value) => {
+                    const mode = value as NodePropertyDisplayMode;
+                    updateDraft({
+                      nodePropertyDisplay: mode,
+                      simplifiedNodeView: mode === 'hidden',
+                    });
+                  }}
                 >
-                  <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
-                </Switch.Root>
+                  <Select.Trigger
+                    id="canvas-settings-property-display"
+                    className="inline-flex items-center justify-between gap-2 w-full max-w-md px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    aria-label="Class property list density"
+                  >
+                    <Select.Value placeholder="Display mode" />
+                    <ChevronDown className="h-4 w-4 opacity-70 shrink-0" aria-hidden />
+                  </Select.Trigger>
+                  <Select.Portal>
+                    <Select.Content
+                      position="popper"
+                      className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-lg z-[10000] min-w-[var(--radix-select-trigger-width)]"
+                    >
+                      <Select.Viewport className="p-1">
+                        {PROPERTY_DISPLAY_OPTIONS.map((opt) => (
+                          <Select.Item
+                            key={opt.value}
+                            value={opt.value}
+                            className="px-3 py-2 text-sm text-slate-900 dark:text-slate-100 cursor-pointer outline-none data-[highlighted]:bg-slate-100 dark:data-[highlighted]:bg-slate-700 rounded"
+                          >
+                            <Select.ItemText>{opt.label}</Select.ItemText>
+                          </Select.Item>
+                        ))}
+                      </Select.Viewport>
+                    </Select.Content>
+                  </Select.Portal>
+                </Select.Root>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Full lists every property; compact shows a short list; hidden removes the list
+                  (same as the former simplified node view).
+                </p>
               </div>
+              {versionId && (
+                <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Class node theming (this version)
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Uses tag colors from the Tags panel and the tenant primary color from tenant
+                    settings. Stored per schema version on this device.
+                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label.Root
+                      htmlFor="canvas-settings-tag-node-colors"
+                      className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                    >
+                      Tag colors on nodes
+                    </Label.Root>
+                    <Switch.Root
+                      id="canvas-settings-tag-node-colors"
+                      checked={versionNodePrefs.applyTagColorsToNodes}
+                      onCheckedChange={(checked) =>
+                        setVersionNodePrefs((p) => ({
+                          ...p,
+                          applyTagColorsToNodes: checked,
+                        }))
+                      }
+                      className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                    >
+                      <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                    </Switch.Root>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label.Root
+                      htmlFor="canvas-settings-tenant-node-accent"
+                      className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                    >
+                      Tenant primary accent
+                    </Label.Root>
+                    <Switch.Root
+                      id="canvas-settings-tenant-node-accent"
+                      checked={versionNodePrefs.useTenantPrimaryAccent}
+                      onCheckedChange={(checked) =>
+                        setVersionNodePrefs((p) => ({
+                          ...p,
+                          useTenantPrimaryAccent: checked,
+                        }))
+                      }
+                      className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                    >
+                      <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                    </Switch.Root>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-3">
                 <Label.Root
                   htmlFor="canvas-settings-high-contrast"

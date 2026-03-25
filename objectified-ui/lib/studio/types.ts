@@ -116,8 +116,17 @@ export interface ClassNodeData {
   canvas_metadata?: ClassCanvasMetadata;
   /** Tag names for pill display (GitHub #100). */
   tags?: string[];
-  /** Tag name -> color for pill background. */
-  tagDefinitions?: Record<string, { color?: string }>;
+  /** Tag name -> color and optional node header icon (GitHub #230). */
+  tagDefinitions?: Record<
+    string,
+    {
+      color?: string;
+      /** Header icon id: box, circle, square, hexagon. */
+      icon?: string;
+      border?: string;
+      borderStyle?: 'solid' | 'dashed' | 'dotted';
+    }
+  >;
   /** Optional class description snippet for quick node summary. */
   description?: string;
   /** Number of incoming/outgoing class references touching this class. */

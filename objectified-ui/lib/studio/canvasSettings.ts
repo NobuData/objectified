@@ -14,6 +14,9 @@ export type CanvasGridStyle = 'dots' | 'lines' | 'cross';
 /** Edge path routing type. */
 export type CanvasEdgePathType = 'straight' | 'bezier' | 'orthogonal' | 'smoothstep';
 
+/** How class properties are listed inside canvas nodes. Reference: GitHub #230. */
+export type NodePropertyDisplayMode = 'full' | 'compact' | 'hidden';
+
 export interface CanvasSettings {
   showBackground: boolean;
   showControls: boolean;
@@ -39,8 +42,13 @@ export interface CanvasSettings {
   edgeStrokeColor: string;
   /** Animate edges. */
   edgeAnimated: boolean;
-  /** Hide property lists in nodes for faster high-level canvas overview. */
+  /**
+   * Hide property lists in nodes for faster high-level canvas overview.
+   * Kept in sync with `nodePropertyDisplay === 'hidden'` for backward compatibility.
+   */
   simplifiedNodeView: boolean;
+  /** Property list density in class nodes (GitHub #230). */
+  nodePropertyDisplay: NodePropertyDisplayMode;
   /** Increase contrast for nodes and edges for visibility/accessibility. */
   highContrastCanvas: boolean;
   /** Reduce canvas motion by disabling optional edge animation. */
@@ -74,6 +82,7 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   edgeStrokeColor: '',
   edgeAnimated: false,
   simplifiedNodeView: false,
+  nodePropertyDisplay: 'full',
   highContrastCanvas: false,
   reducedMotion: false,
   persistUndoStackInSession: false,
@@ -85,6 +94,20 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
 interface StoredCanvasSettings {
   settings: CanvasSettings;
   savedAt: string;
+}
+
+function normalizeNodePropertyDisplay(
+  merged: Partial<CanvasSettings>
+): NodePropertyDisplayMode {
+  /** Legacy stores only `simplifiedNodeView`; merged defaults still set `nodePropertyDisplay: 'full'`. */
+  if (merged.simplifiedNodeView === true) {
+    return 'hidden';
+  }
+  const raw = merged.nodePropertyDisplay;
+  if (raw === 'full' || raw === 'compact' || raw === 'hidden') {
+    return raw;
+  }
+  return 'full';
 }
 
 /**
@@ -101,8 +124,12 @@ export function getCanvasSettings(): CanvasSettings {
       ...DEFAULT_CANVAS_SETTINGS,
       ...data.settings,
     };
+    const nodePropertyDisplay = normalizeNodePropertyDisplay(merged);
+    const simplifiedNodeView = nodePropertyDisplay === 'hidden';
     return {
       ...merged,
+      nodePropertyDisplay,
+      simplifiedNodeView,
       maxUndoDepth:
         typeof merged.maxUndoDepth === 'number' &&
         Number.isFinite(merged.maxUndoDepth) &&
@@ -121,8 +148,14 @@ export function getCanvasSettings(): CanvasSettings {
 export function saveCanvasSettings(settings: CanvasSettings): void {
   try {
     if (typeof localStorage === 'undefined') return;
+    const nodePropertyDisplay = normalizeNodePropertyDisplay(settings);
+    const normalized: CanvasSettings = {
+      ...settings,
+      nodePropertyDisplay,
+      simplifiedNodeView: nodePropertyDisplay === 'hidden',
+    };
     const data: StoredCanvasSettings = {
-      settings,
+      settings: normalized,
       savedAt: new Date().toISOString(),
     };
     localStorage.setItem(CANVAS_SETTINGS_KEY, JSON.stringify(data));

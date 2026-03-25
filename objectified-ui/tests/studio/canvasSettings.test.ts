@@ -56,6 +56,7 @@ describe('DEFAULT_CANVAS_SETTINGS', () => {
     expect(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor).toBe('');
     expect(DEFAULT_CANVAS_SETTINGS.edgeAnimated).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.simplifiedNodeView).toBe(false);
+    expect(DEFAULT_CANVAS_SETTINGS.nodePropertyDisplay).toBe('full');
     expect(DEFAULT_CANVAS_SETTINGS.highContrastCanvas).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.reducedMotion).toBe(false);
     expect(DEFAULT_CANVAS_SETTINGS.persistUndoStackInSession).toBe(false);
@@ -106,6 +107,7 @@ describe('getCanvasSettings', () => {
     expect(result.edgeStrokeColor).toBe(DEFAULT_CANVAS_SETTINGS.edgeStrokeColor);
     expect(result.edgeAnimated).toBe(DEFAULT_CANVAS_SETTINGS.edgeAnimated);
     expect(result.simplifiedNodeView).toBe(DEFAULT_CANVAS_SETTINGS.simplifiedNodeView);
+    expect(result.nodePropertyDisplay).toBe(DEFAULT_CANVAS_SETTINGS.nodePropertyDisplay);
     expect(result.highContrastCanvas).toBe(DEFAULT_CANVAS_SETTINGS.highContrastCanvas);
     expect(result.reducedMotion).toBe(DEFAULT_CANVAS_SETTINGS.reducedMotion);
     expect(result.maxUndoDepth).toBe(DEFAULT_CANVAS_SETTINGS.maxUndoDepth);
@@ -163,6 +165,19 @@ describe('getCanvasSettings', () => {
     localStorageMock.getItem.mockReturnValueOnce(JSON.stringify({}));
     const result = getCanvasSettings();
     expect(result).toEqual(DEFAULT_CANVAS_SETTINGS);
+  });
+
+  it('maps legacy simplifiedNodeView true to nodePropertyDisplay hidden', () => {
+    localStorageMock.setItem(
+      'objectified:canvas:settings',
+      JSON.stringify({
+        settings: { simplifiedNodeView: true },
+        savedAt: new Date().toISOString(),
+      })
+    );
+    const result = getCanvasSettings();
+    expect(result.nodePropertyDisplay).toBe('hidden');
+    expect(result.simplifiedNodeView).toBe(true);
   });
 
   it('returns defaults when localStorage throws on read', () => {

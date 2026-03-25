@@ -65,6 +65,15 @@ import {
   saveClassNodeConfig,
   type ClassNodeConfig,
 } from '@lib/studio/canvasClassNodeConfig';
+import {
+  mergeClassNodeThemes,
+  resolveAutoClassNodeTheme,
+  DEFAULT_CANVAS_VERSION_NODE_THEME_PREFS,
+  type TagDefinitionForTheme,
+} from '@lib/studio/canvasNodeThemeResolve';
+import { getCanvasVersionNodeThemePrefs } from '@lib/studio/canvasVersionNodeTheme';
+import { parseTenantBrandingFromMetadata } from '@lib/ui/tenantBrandingMetadata';
+import type { ClassNodeDataExtended } from '@/app/dashboard/components/ClassNode';
 import { buildClassRefEdges } from '@lib/studio/canvasClassRefEdges';
 import { getLayoutQuality, type LayoutQualityResult } from '@lib/studio/layoutQuality';
 import {
@@ -140,6 +149,8 @@ export default function DesignCanvas() {
     Record<string, ClassNodeConfig>
   >({});
 
+  const [versionNodeThemeEpoch, setVersionNodeThemeEpoch] = useState(0);
+
   const [canvasClipboard, setCanvasClipboard] = useState<StudioClass[] | null>(
     null
   );
@@ -177,10 +188,43 @@ export default function DesignCanvas() {
 
   const tagDefinitions = useMemo(() => {
     const meta = studio?.state?.canvas_metadata as
-      | { tag_definitions?: Record<string, { color?: string }> }
+      | {
+          tag_definitions?: Record<string, TagDefinitionForTheme>;
+        }
       | undefined;
     return meta?.tag_definitions ?? {};
   }, [studio?.state?.canvas_metadata]);
+
+  const tenantPrimaryColor = useMemo(
+    () =>
+      parseTenantBrandingFromMetadata(
+        (workspace?.tenant?.metadata ?? null) as Record<string, unknown> | null
+      ).primaryColor,
+    [workspace?.tenant?.metadata]
+  );
+
+  const versionNodeThemePrefs = useMemo(() => {
+    if (!versionId) return DEFAULT_CANVAS_VERSION_NODE_THEME_PREFS;
+    return getCanvasVersionNodeThemePrefs(versionId);
+  }, [versionId, versionNodeThemeEpoch]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent<{ versionId?: string }>;
+      if (!versionId || ce.detail?.versionId === versionId) {
+        setVersionNodeThemeEpoch((n) => n + 1);
+      }
+    };
+    window.addEventListener(
+      'objectified:canvas-version-node-theme-changed',
+      handler as EventListener
+    );
+    return () =>
+      window.removeEventListener(
+        'objectified:canvas-version-node-theme-changed',
+        handler as EventListener
+      );
+  }, [versionId]);
 
   const classMutationStatusById = studio?.classMutationStatusById ?? EMPTY_CLASS_MUTATION_STATUS;
   const refEdges = useMemo(() => buildClassRefEdges(classes), [classes]);
@@ -603,18 +647,28 @@ export default function DesignCanvas() {
           },
         };
       }
+      const stored: ClassNodeConfig = {
+        ...allStoredConfigs[node.id],
+        ...configOverrides[node.id],
+      };
+      const nd = node.data as unknown as ClassNodeDataExtended;
+      const autoTheme = resolveAutoClassNodeTheme({
+        tags: nd.tags ?? [],
+        tagDefinitions: nd.tagDefinitions ?? {},
+        tenantPrimaryColor,
+        prefs: versionNodeThemePrefs,
+      });
+      const resolvedNodeTheme = mergeClassNodeThemes(autoTheme, stored.theme);
       return {
         ...node,
         data: {
           ...node.data,
-          classNodeConfig: {
-            ...allStoredConfigs[node.id],
-            ...configOverrides[node.id],
-          },
+          classNodeConfig: stored,
+          resolvedNodeTheme,
           onConfigChange,
           allowResize: !mutationLocked,
-            simplifiedView: canvasSettings.simplifiedNodeView,
-            highContrast: canvasSettings.highContrastCanvas,
+          propertyDisplayMode: canvasSettings.nodePropertyDisplay,
+          highContrast: canvasSettings.highContrastCanvas,
         },
       };
     });
@@ -625,8 +679,10 @@ export default function DesignCanvas() {
     onConfigChange,
     mutationLocked,
     canvasGroup,
-    canvasSettings.simplifiedNodeView,
+    canvasSettings.nodePropertyDisplay,
     canvasSettings.highContrastCanvas,
+    tenantPrimaryColor,
+    versionNodeThemePrefs,
   ]);
 
   // Debounce layout quality computation to avoid running an O(E²+N²) algorithm
