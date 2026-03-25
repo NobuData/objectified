@@ -53,7 +53,7 @@ export default function CanvasSelectionToolbar({
   const n = selectedClassIds.length;
 
   return (
-    <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white/95 dark:bg-slate-900/95 px-2 py-1.5 text-[11px] shadow-md">
+    <div className="pointer-events-auto nodrag nopan flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white/95 dark:bg-slate-900/95 px-2 py-1.5 text-[11px] shadow-md">
       <span className="px-1 font-medium tabular-nums text-slate-800 dark:text-slate-100">
         {n === 0 ? 'No selection' : `${n} selected`}
       </span>
