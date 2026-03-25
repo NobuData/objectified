@@ -69,6 +69,7 @@ import {
   mergeClassNodeThemes,
   resolveAutoClassNodeTheme,
   DEFAULT_CANVAS_VERSION_NODE_THEME_PREFS,
+  type TagDefinitionForTheme,
 } from '@lib/studio/canvasNodeThemeResolve';
 import { getCanvasVersionNodeThemePrefs } from '@lib/studio/canvasVersionNodeTheme';
 import { parseTenantBrandingFromMetadata } from '@lib/ui/tenantBrandingMetadata';
@@ -188,10 +189,7 @@ export default function DesignCanvas() {
   const tagDefinitions = useMemo(() => {
     const meta = studio?.state?.canvas_metadata as
       | {
-          tag_definitions?: Record<
-            string,
-            { color?: string; icon?: string; border?: string; borderStyle?: string }
-          >;
+          tag_definitions?: Record<string, TagDefinitionForTheme>;
         }
       | undefined;
     return meta?.tag_definitions ?? {};

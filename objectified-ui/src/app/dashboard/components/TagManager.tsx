@@ -11,6 +11,20 @@ export type TagDefinitions = Record<
 
 const DEFAULT_TAG_COLOR = '#94a3b8';
 
+/**
+ * Convert a tag name to a safe, valid HTML element id.
+ * Non-alphanumeric characters (except `-` and `_`) are encoded as `__<hex>__`
+ * (e.g., "My Tag" → "My__20__Tag"). The required `prefix` (e.g., "tag-icon")
+ * ensures the resulting id always begins with a valid letter character,
+ * so tag names starting with digits or hyphens produce valid DOM ids.
+ */
+function tagNameToSafeId(prefix: string, name: string): string {
+  const encoded = Array.from(name)
+    .map((c) => (/[A-Za-z0-9_-]/.test(c) ? c : `__${c.charCodeAt(0).toString(16)}__`))
+    .join('');
+  return `${prefix}-${encoded}`;
+}
+
 const NODE_ICON_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Default' },
   { value: 'box', label: 'Box' },
@@ -131,11 +145,11 @@ export default function TagManager({
                         : 'opacity-100',
                     ].join(' ')}
                   >
-                    <label className="sr-only" htmlFor={`tag-icon-${name}`}>
+                    <label className="sr-only" htmlFor={tagNameToSafeId('tag-icon', name)}>
                       Node icon for {name}
                     </label>
                     <select
-                      id={`tag-icon-${name}`}
+                      id={tagNameToSafeId('tag-icon', name)}
                       value={tagDefinitions[name]?.icon ?? ''}
                       onChange={(e) => setTagIcon(name, e.target.value)}
                       disabled={!canEdit}
