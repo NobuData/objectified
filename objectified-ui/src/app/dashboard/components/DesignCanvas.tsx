@@ -4,6 +4,7 @@
  * Reference: GitHub #96 — Delete classes from canvas (single/multi-select, confirm).
  * Reference: GitHub #97 — Copy/paste/duplicate for classes (and optional refs) in local state.
  * Reference: GitHub #231 — Node context menu, Enter/F2, long property lists, add-property from canvas.
+ * Reference: GitHub #232 — Edge labels, legend, SQL vs $ref styling, broken-ref placeholders, allOf inheritance.
  */
 'use client';
 
@@ -23,6 +24,7 @@ import {
   type OnMoveEnd,
   type Viewport,
   type Node,
+  type Edge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useDialogOptional } from '@/app/components/providers/DialogProvider';
@@ -75,7 +77,11 @@ import {
 import { getCanvasVersionNodeThemePrefs } from '@lib/studio/canvasVersionNodeTheme';
 import { parseTenantBrandingFromMetadata } from '@lib/ui/tenantBrandingMetadata';
 import type { ClassNodeDataExtended } from '@/app/dashboard/components/ClassNode';
-import { buildClassRefEdges } from '@lib/studio/canvasClassRefEdges';
+import {
+  buildDesignCanvasRefLayer,
+  isBrokenRefPlaceholderNodeId,
+  type ClassRefEdgeData,
+} from '@lib/studio/canvasClassRefEdges';
 import { getLayoutQuality, type LayoutQualityResult } from '@lib/studio/layoutQuality';
 import {
   getCircularDependencyEdgeIds,
@@ -88,6 +94,7 @@ import {
 } from '@lib/studio/schemaMetrics';
 import ClassNode from './ClassNode';
 import ClassRefEdge from './ClassRefEdge';
+import BrokenRefNode from './BrokenRefNode';
 import GroupNode from './GroupNode';
 import LayoutPreviewDialog from './LayoutPreviewDialog';
 import LayoutHintsOverlay from './LayoutHintsOverlay';
@@ -118,7 +125,7 @@ type CanvasViewportApi = Pick<
   'fitView' | 'setViewport' | 'zoomIn' | 'zoomOut'
 >;
 
-const nodeTypes = { class: ClassNode, group: GroupNode };
+const nodeTypes = { class: ClassNode, group: GroupNode, brokenRef: BrokenRefNode };
 const edgeTypes = { classRef: ClassRefEdge };
 
 function useResolvedCanvasSettings() {
@@ -138,6 +145,10 @@ export default function DesignCanvas() {
   const versionId = studio?.state?.versionId ?? null;
   const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
   const groups = useMemo(() => studio?.state?.groups ?? [], [studio?.state]);
+  const validClassIds = useMemo(
+    () => new Set(classes.map((c) => getStableClassId(c)).filter(Boolean)),
+    [classes]
+  );
   const canvasSettings = useResolvedCanvasSettings();
   const isReadOnly =
     studio?.state?.readOnly === true || workspace?.version?.published === true;
@@ -231,7 +242,10 @@ export default function DesignCanvas() {
   }, [versionId]);
 
   const classMutationStatusById = studio?.classMutationStatusById ?? EMPTY_CLASS_MUTATION_STATUS;
-  const refEdges = useMemo(() => buildClassRefEdges(classes), [classes]);
+  const { canvasEdges: refEdges, brokenRefPlaceholders } = useMemo(
+    () => buildDesignCanvasRefLayer(classes, groups),
+    [classes, groups]
+  );
   const classRefCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const edge of refEdges) {
@@ -307,8 +321,29 @@ export default function DesignCanvas() {
       return node;
     });
 
-    return [...groupNodes, ...classNodes];
-  }, [classes, groups, versionId, tagDefinitions, classMutationStatusById, classRefCounts]);
+    const brokenNodes: Node[] = brokenRefPlaceholders.map((p) => ({
+      id: p.id,
+      type: 'brokenRef' as const,
+      position: p.position,
+      data: {
+        sourceClassId: p.sourceClassId,
+        propertyName: p.propertyName,
+        hint: p.hint,
+      },
+      draggable: false,
+      selectable: true,
+    }));
+
+    return [...groupNodes, ...classNodes, ...brokenNodes];
+  }, [
+    classes,
+    groups,
+    versionId,
+    tagDefinitions,
+    classMutationStatusById,
+    classRefCounts,
+    brokenRefPlaceholders,
+  ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodesFromState);
   const [edges, setEdges, onEdgesChange] = useEdgesState(refEdges);
@@ -495,7 +530,7 @@ export default function DesignCanvas() {
               x: change.position.x,
               y: change.position.y,
             });
-          } else {
+          } else if (validClassIds.has(change.id)) {
             pending.classPositions.set(change.id, {
               x: change.position.x,
               y: change.position.y,
@@ -514,7 +549,7 @@ export default function DesignCanvas() {
             sawPersistableChange = true;
             if (groupIds.has(change.id)) {
               pending.groupDimensions.set(change.id, { width, height });
-            } else {
+            } else if (validClassIds.has(change.id)) {
               pending.classDimensions.set(change.id, { width, height });
             }
           }
@@ -528,7 +563,14 @@ export default function DesignCanvas() {
         schedulePendingNodeMutationFlush(sawTerminalChange);
       }
     },
-    [onNodesChange, studio, groups, mutationLocked, schedulePendingNodeMutationFlush]
+    [
+      onNodesChange,
+      studio,
+      groups,
+      mutationLocked,
+      schedulePendingNodeMutationFlush,
+      validClassIds,
+    ]
   );
 
   const canvasSearch = useCanvasSearchOptional();
@@ -562,6 +604,10 @@ export default function DesignCanvas() {
     const visibleG = visibleGroupIds ?? new Set<string>();
     return baseNodes.filter((node: Node) => {
       if (node.type === 'group') return visibleG.has(node.id);
+      if (node.type === 'brokenRef') {
+        const src = (node.data as { sourceClassId?: string }).sourceClassId;
+        return !!src && visibleC.has(src);
+      }
       return visibleC.has(node.id);
     });
   }, [baseNodes, visibleClassIds, visibleGroupIds, searchState]);
@@ -569,9 +615,12 @@ export default function DesignCanvas() {
   const filteredEdges = useMemo(() => {
     if (visibleClassIds === null) return edges;
     if (searchState && !isSearchActive(searchState)) return edges;
-    return edges.filter(
-      (e) => visibleClassIds.has(e.source) && visibleClassIds.has(e.target)
-    );
+    return edges.filter((e) => {
+      const srcOk = visibleClassIds.has(e.source);
+      const tgtOk =
+        visibleClassIds.has(e.target) || isBrokenRefPlaceholderNodeId(e.target);
+      return srcOk && tgtOk;
+    });
   }, [edges, visibleClassIds, searchState]);
 
   // --- Focus mode filtering (second pass, narrows search results) ---
@@ -613,15 +662,22 @@ export default function DesignCanvas() {
     if (!focusedClassIds || !focusedGroupIds) return filteredNodes;
     return filteredNodes.filter((node: Node) => {
       if (node.type === 'group') return focusedGroupIds.has(node.id);
+      if (node.type === 'brokenRef') {
+        const srcId = (node.data as { sourceClassId?: string } | undefined)?.sourceClassId;
+        return !!srcId && focusedClassIds.has(srcId);
+      }
       return focusedClassIds.has(node.id);
     });
   }, [filteredNodes, focusedClassIds, focusedGroupIds]);
 
   const focusFilteredEdges = useMemo(() => {
     if (!focusedClassIds) return filteredEdges;
-    return filteredEdges.filter(
-      (e) => focusedClassIds.has(e.source) && focusedClassIds.has(e.target)
-    );
+    return filteredEdges.filter((e) => {
+      if (isBrokenRefPlaceholderNodeId(e.target)) {
+        return focusedClassIds.has(e.source);
+      }
+      return focusedClassIds.has(e.source) && focusedClassIds.has(e.target);
+    });
   }, [filteredEdges, focusedClassIds]);
 
   // Escape key handler to exit focus mode.
@@ -667,6 +723,30 @@ export default function DesignCanvas() {
   const displayNodes = useMemo(() => {
     const allStoredConfigs = versionId ? getAllClassNodeConfigs(versionId) : {};
     return focusFilteredNodes.map((node: Node) => {
+      if (node.type === 'brokenRef') {
+        const d = node.data as {
+          sourceClassId?: string;
+          propertyName?: string;
+          hint?: string;
+        };
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            sourceClassId: d.sourceClassId ?? '',
+            propertyName: d.propertyName ?? '',
+            hint: d.hint ?? '',
+            onFixReference:
+              !mutationLocked && d.sourceClassId
+                ? (classId: string, propertyName: string) =>
+                    editClassRequest?.requestEditPropertyForClass(
+                      classId,
+                      propertyName
+                    )
+                : undefined,
+          },
+        };
+      }
       if (node.type === 'group') {
         return {
           ...node,
@@ -719,6 +799,7 @@ export default function DesignCanvas() {
     versionNodeThemePrefs,
     inlineRenameClassId,
     handleInlineRenameCommit,
+    editClassRequest,
   ]);
 
   // Debounce layout quality computation to avoid running an O(E²+N²) algorithm
@@ -736,13 +817,20 @@ export default function DesignCanvas() {
   }, [canvasSettings.showLayoutHints, displayNodes, focusFilteredEdges]);
 
   // Dependency overlay: selected class nodes, circular edges, upstream/downstream/path (GitHub #90).
+  // Broken-ref placeholder edges are excluded so they don't skew circular/depth/path calculations.
   const dependencyEdges: DependencyEdge[] = useMemo(
     () =>
-      focusFilteredEdges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-      })),
+      focusFilteredEdges
+        .filter(
+          (e) =>
+            !isBrokenRefPlaceholderNodeId(e.source) &&
+            !isBrokenRefPlaceholderNodeId(e.target)
+        )
+        .map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+        })),
     [focusFilteredEdges]
   );
   const selectedClassNodeIds = useMemo(
@@ -751,11 +839,6 @@ export default function DesignCanvas() {
         .filter((n) => n.type === 'class' && n.selected)
         .map((n) => n.id),
     [displayNodes]
-  );
-
-  const validClassIds = useMemo(
-    () => new Set(classes.map((c) => getStableClassId(c))),
-    [classes]
   );
 
   const selectedNodeId = selectedClassNodeIds[0] ?? null;
@@ -845,11 +928,33 @@ export default function DesignCanvas() {
       if (mutationLocked) return;
       if (node.type === 'group') {
         canvasGroup?.openGroupEditor(node.id);
+      } else if (node.type === 'brokenRef') {
+        const d = node.data as { sourceClassId?: string; propertyName?: string };
+        if (d.sourceClassId) {
+          editClassRequest?.requestEditPropertyForClass(
+            d.sourceClassId,
+            (d.propertyName ?? '').trim()
+          );
+        }
       } else {
         editClassRequest?.requestEditClass(node.id);
       }
     },
     [editClassRequest, canvasGroup, mutationLocked]
+  );
+
+  const handleEdgeClick = useCallback(
+    (_e: MouseEvent, edge: Edge) => {
+      if (mutationLocked) return;
+      const d = edge.data as ClassRefEdgeData | undefined;
+      if (d?.brokenRef && d.fix) {
+        editClassRequest?.requestEditPropertyForClass(
+          d.fix.sourceClassId,
+          d.fix.propertyName
+        );
+      }
+    },
+    [mutationLocked, editClassRequest]
   );
 
   const visibleClassNodeIds = useMemo(
@@ -1460,8 +1565,8 @@ export default function DesignCanvas() {
   );
 
   const highContrastClass = canvasSettings.highContrastCanvas
-    ? '[--class-ref-edge-stroke:rgb(15_23_42)] dark:[--class-ref-edge-stroke:rgb(248_250_252)]'
-    : '[--class-ref-edge-stroke:rgb(100_116_139)] dark:[--class-ref-edge-stroke:rgb(148_163_184)]';
+    ? '[--class-ref-edge-stroke:rgb(15_23_42)] dark:[--class-ref-edge-stroke:rgb(248_250_252)] [--class-ref-edge-id-stroke:rgb(99_102_241)] dark:[--class-ref-edge-id-stroke:rgb(165_180_252)] [--class-ref-edge-broken-stroke:rgb(220_38_38)] dark:[--class-ref-edge-broken-stroke:rgb(248_113_113)]'
+    : '[--class-ref-edge-stroke:rgb(100_116_139)] dark:[--class-ref-edge-stroke:rgb(148_163_184)] [--class-ref-edge-id-stroke:rgb(67_56_202)] dark:[--class-ref-edge-id-stroke:rgb(165_180_252)] [--class-ref-edge-broken-stroke:rgb(185_28_28)] dark:[--class-ref-edge-broken-stroke:rgb(248_113_113)]';
 
   return (
     <div
@@ -1480,6 +1585,7 @@ export default function DesignCanvas() {
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
+        onEdgeClick={handleEdgeClick}
         onNodeContextMenu={handleNodeContextMenu}
         onPaneContextMenu={
           canvasGroup?.paneContextMenuHandler
@@ -1530,6 +1636,46 @@ export default function DesignCanvas() {
         <PaneContextMenuRegistration />
         <ZoomToClassRegistration />
         <CanvasExportRegistration />
+        <div className="pointer-events-none absolute top-2 left-2 z-[10001] max-w-[240px] rounded-md border border-slate-200 dark:border-slate-600 bg-white/95 dark:bg-slate-900/95 px-2.5 py-2 text-[10px] leading-snug text-slate-700 dark:text-slate-200 shadow">
+          <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1.5">
+            Edge legend
+          </p>
+          <ul className="space-y-1 list-none m-0 p-0">
+            <li>
+              <span className="font-medium text-slate-800 dark:text-slate-100">
+                Inheritance
+              </span>{' '}
+              — open arrow, label «extends» (class{' '}
+              <code className="text-[9px]">allOf</code> / $ref)
+            </li>
+            <li>
+              <span className="font-medium text-slate-800 dark:text-slate-100">
+                Schema $ref
+              </span>{' '}
+              — default stroke; dashed = optional / weak link type
+            </li>
+            <li>
+              <span className="font-medium text-indigo-700 dark:text-indigo-300">
+                SQL / ID ref
+              </span>{' '}
+              — indigo tone, longer dashes (
+              <code className="text-[9px]">x-ref-storage: id</code>)
+            </li>
+            <li>
+              <span className="font-medium text-red-700 dark:text-red-300">
+                Broken ref
+              </span>{' '}
+              — red dashes; click edge or placeholder to edit property
+            </li>
+            <li>
+              <span className="font-medium text-slate-800 dark:text-slate-100">
+                Composition
+              </span>{' '}
+              — thicker line when{' '}
+              <code className="text-[9px]">x-relationship: composition</code>
+            </li>
+          </ul>
+        </div>
         {layoutQuality && (
           <LayoutHintsOverlay quality={layoutQuality} />
         )}
@@ -1658,6 +1804,31 @@ export default function DesignCanvas() {
                     }}
                   >
                     Delete group
+                  </button>
+                )}
+              </>
+            )}
+            {nodeContextMenu.node.type === 'brokenRef' && (
+              <>
+                {!mutationLocked && (
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => {
+                      const d = nodeContextMenu.node.data as {
+                        sourceClassId?: string;
+                        propertyName?: string;
+                      };
+                      if (d.sourceClassId) {
+                        editClassRequest?.requestEditPropertyForClass(
+                          d.sourceClassId,
+                          (d.propertyName ?? '').trim()
+                        );
+                      }
+                      setNodeContextMenu(null);
+                    }}
+                  >
+                    Fix reference…
                   </button>
                 )}
               </>

@@ -26,6 +26,7 @@ import {
   type CanvasSettings,
   type CanvasGridStyle,
   type CanvasEdgePathType,
+  type CanvasEdgeLabelMode,
   type NodePropertyDisplayMode,
 } from '@lib/studio/canvasSettings';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
@@ -50,7 +51,13 @@ const PREVIEW_EDGES = [
     source: 'a',
     target: 'b',
     type: 'classRef',
-    data: { refType: 'direct' as const },
+    data: {
+      refType: 'direct' as const,
+      refBinding: 'schemaRef' as const,
+      relationshipKind: 'association' as const,
+      label: 'role',
+      cardinalityLabel: '0..1',
+    },
     markerEnd: { type: MarkerType.ArrowClosed },
   },
 ];
@@ -66,6 +73,11 @@ const EDGE_PATH_OPTIONS: { value: CanvasEdgePathType; label: string }[] = [
   { value: 'bezier', label: 'Bezier' },
   { value: 'orthogonal', label: 'Orthogonal' },
   { value: 'smoothstep', label: 'Smooth step' },
+];
+const EDGE_LABEL_OPTIONS: { value: CanvasEdgeLabelMode; label: string }[] = [
+  { value: 'off', label: 'Hidden' },
+  { value: 'hover', label: 'On hover' },
+  { value: 'always', label: 'Always' },
 ];
 const UNDO_DEPTH_OPTIONS = [20, 50, 100, 200] as const;
 
@@ -700,6 +712,49 @@ export default function CanvasSettingsDialog({
                       </Select.Content>
                     </Select.Portal>
                   </Select.Root>
+                </div>
+                <div className="space-y-1.5">
+                  <Label.Root
+                    htmlFor="canvas-settings-edge-labels"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Edge labels
+                  </Label.Root>
+                  <Select.Root
+                    value={draft.edgeLabelMode}
+                    onValueChange={(v) =>
+                      updateDraft({ edgeLabelMode: v as CanvasEdgeLabelMode })
+                    }
+                  >
+                    <Select.Trigger
+                      id="canvas-settings-edge-labels"
+                      className="flex h-9 w-full items-center justify-between rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
+                    >
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="h-4 w-4" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
+                        <Select.Viewport>
+                          {EDGE_LABEL_OPTIONS.map((opt) => (
+                            <Select.Item
+                              key={opt.value}
+                              value={opt.value}
+                              className="rounded-md px-3 py-1.5 text-sm outline-none focus:bg-slate-100 dark:focus:bg-slate-700"
+                            >
+                              <Select.ItemText>{opt.label}</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Property names, cardinality, and relationship kind on reference edges (GitHub
+                    #232).
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label.Root

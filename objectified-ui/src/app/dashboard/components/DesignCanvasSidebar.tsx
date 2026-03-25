@@ -400,6 +400,9 @@ interface ClassListPanelProps {
   /** When set (e.g. canvas "Create reference"), open add-property dialog for this class. GitHub #231. */
   addPropertyClassIdRequest?: string | null;
   onConsumeAddPropertyRequest?: () => void;
+  /** When set (e.g. canvas broken-ref edge), open property editor for this property. GitHub #232. */
+  editPropertyRequest?: { classId: string; propertyName: string } | null;
+  onConsumeEditPropertyRequest?: () => void;
   /** When user selects a class in the list, zoom canvas to that node. GitHub #99. */
   onSelectClass?: (classId: string) => void;
   /** Tag name -> color for pill display in class dialog. GitHub #100. */
@@ -447,6 +450,8 @@ function ClassListPanel({
   onConsumeEditClassRequest,
   addPropertyClassIdRequest,
   onConsumeAddPropertyRequest,
+  editPropertyRequest,
+  onConsumeEditPropertyRequest,
   onSelectClass,
   tagDefinitions = {},
 }: ClassListPanelProps) {
@@ -498,6 +503,37 @@ function ClassListPanel({
   }, [
     addPropertyClassIdRequest,
     onConsumeAddPropertyRequest,
+    canEdit,
+    classes,
+  ]);
+
+  // Canvas broken reference → property dialog (GitHub #232).
+  useEffect(() => {
+    if (!editPropertyRequest || !onConsumeEditPropertyRequest) return;
+    if (canEdit) {
+      const { classId, propertyName } = editPropertyRequest;
+      const cls = classes.find((c) => getStableClassId(c) === classId);
+      if (cls) {
+        const props = cls.properties ?? [];
+        const idx = props.findIndex(
+          (p) => (p.name ?? '').trim() === propertyName.trim()
+        );
+        setExpandedIds((prev) => new Set(prev).add(classId));
+        if (idx >= 0) {
+          setEditingProp({
+            classId,
+            propIndex: idx,
+            prop: props[idx],
+          });
+        } else {
+          setEditingClass(cls);
+        }
+      }
+    }
+    onConsumeEditPropertyRequest();
+  }, [
+    editPropertyRequest,
+    onConsumeEditPropertyRequest,
     canEdit,
     classes,
   ]);
@@ -1382,6 +1418,10 @@ export default function DesignCanvasSidebar() {
               }
               onConsumeAddPropertyRequest={
                 editClassRequest?.clearAddPropertyRequest
+              }
+              editPropertyRequest={editClassRequest?.requestEditProperty ?? null}
+              onConsumeEditPropertyRequest={
+                editClassRequest?.clearEditPropertyRequest
               }
               onSelectClass={sidebarActions?.zoomToClass}
               tagDefinitions={tagDefinitions}

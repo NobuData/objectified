@@ -14,6 +14,9 @@ export type CanvasGridStyle = 'dots' | 'lines' | 'cross';
 /** Edge path routing type. */
 export type CanvasEdgePathType = 'straight' | 'bezier' | 'orthogonal' | 'smoothstep';
 
+/** When to show property / cardinality labels on ref edges (GitHub #232). */
+export type CanvasEdgeLabelMode = 'off' | 'hover' | 'always';
+
 /** How class properties are listed inside canvas nodes. Reference: GitHub #230. */
 export type NodePropertyDisplayMode = 'full' | 'compact' | 'hidden';
 
@@ -40,6 +43,8 @@ export interface CanvasSettings {
   edgePathType: CanvasEdgePathType;
   /** Edge stroke color; empty string = use theme (--class-ref-edge-stroke). */
   edgeStrokeColor: string;
+  /** Property / cardinality / relationship labels on edges. Reference: GitHub #232. */
+  edgeLabelMode: CanvasEdgeLabelMode;
   /** Animate edges. */
   edgeAnimated: boolean;
   /**
@@ -80,6 +85,7 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   snapToGrid: true,
   edgePathType: 'smoothstep',
   edgeStrokeColor: '',
+  edgeLabelMode: 'hover',
   edgeAnimated: false,
   simplifiedNodeView: false,
   nodePropertyDisplay: 'full',
@@ -126,10 +132,18 @@ export function getCanvasSettings(): CanvasSettings {
     };
     const nodePropertyDisplay = normalizeNodePropertyDisplay(merged);
     const simplifiedNodeView = nodePropertyDisplay === 'hidden';
+    const edgeLabelMode: CanvasEdgeLabelMode =
+      merged.edgeLabelMode === 'off' ||
+      merged.edgeLabelMode === 'hover' ||
+      merged.edgeLabelMode === 'always'
+        ? merged.edgeLabelMode
+        : DEFAULT_CANVAS_SETTINGS.edgeLabelMode;
+
     return {
       ...merged,
       nodePropertyDisplay,
       simplifiedNodeView,
+      edgeLabelMode,
       maxUndoDepth:
         typeof merged.maxUndoDepth === 'number' &&
         Number.isFinite(merged.maxUndoDepth) &&

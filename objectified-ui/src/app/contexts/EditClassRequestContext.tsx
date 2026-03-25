@@ -23,6 +23,13 @@ export interface EditClassRequestContextValue {
   requestAddPropertyClassId: string | null;
   requestAddPropertyForClass: (classId: string) => void;
   clearAddPropertyRequest: () => void;
+  /**
+   * When set, opens the class property editor for this class/property (e.g. broken ref fix on canvas).
+   * Reference: GitHub #232.
+   */
+  requestEditProperty: { classId: string; propertyName: string } | null;
+  requestEditPropertyForClass: (classId: string, propertyName: string) => void;
+  clearEditPropertyRequest: () => void;
 }
 
 const EditClassRequestContext =
@@ -35,6 +42,10 @@ export function EditClassRequestProvider({ children }: { children: ReactNode }) 
   const [requestAddPropertyClassId, setRequestAddPropertyClassId] = useState<
     string | null
   >(null);
+  const [requestEditProperty, setRequestEditProperty] = useState<{
+    classId: string;
+    propertyName: string;
+  } | null>(null);
 
   const requestEditClass = useCallback((classId: string) => {
     setRequestEditClassId(classId);
@@ -52,6 +63,17 @@ export function EditClassRequestProvider({ children }: { children: ReactNode }) 
     setRequestAddPropertyClassId(null);
   }, []);
 
+  const requestEditPropertyForClass = useCallback(
+    (classId: string, propertyName: string) => {
+      setRequestEditProperty({ classId, propertyName });
+    },
+    []
+  );
+
+  const clearEditPropertyRequest = useCallback(() => {
+    setRequestEditProperty(null);
+  }, []);
+
   const value = useMemo<EditClassRequestContextValue>(
     () => ({
       requestEditClassId,
@@ -60,6 +82,9 @@ export function EditClassRequestProvider({ children }: { children: ReactNode }) 
       requestAddPropertyClassId,
       requestAddPropertyForClass,
       clearAddPropertyRequest,
+      requestEditProperty,
+      requestEditPropertyForClass,
+      clearEditPropertyRequest,
     }),
     [
       requestEditClassId,
@@ -68,6 +93,9 @@ export function EditClassRequestProvider({ children }: { children: ReactNode }) 
       requestAddPropertyClassId,
       requestAddPropertyForClass,
       clearAddPropertyRequest,
+      requestEditProperty,
+      requestEditPropertyForClass,
+      clearEditPropertyRequest,
     ]
   );
 
