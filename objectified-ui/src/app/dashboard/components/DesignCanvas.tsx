@@ -629,6 +629,16 @@ export default function DesignCanvas() {
     if (!focusState || !isFocusModeActive(focusState)) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        const targetEl = e.target as HTMLElement | null;
+        if (
+          targetEl &&
+          (targetEl.tagName === 'INPUT' ||
+            targetEl.tagName === 'TEXTAREA' ||
+            targetEl.tagName === 'SELECT' ||
+            targetEl.isContentEditable)
+        ) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         focusMode?.exitFocusMode();
