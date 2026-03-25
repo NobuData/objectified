@@ -157,6 +157,13 @@ function ClassNodeComponent({
     });
   }, [id, classNodeConfig, expanded, onConfigChange]);
 
+  const rc = resizeConstraints ?? {
+    minWidth: 180,
+    maxWidth: 400,
+    minHeight: 48,
+    maxHeight: 400,
+  };
+
   const containerStyle: CSSProperties = {};
   if (theme?.backgroundColor) containerStyle.backgroundColor = theme.backgroundColor;
   if (theme?.border) {
@@ -164,6 +171,8 @@ function ClassNodeComponent({
     containerStyle.borderStyle = theme.borderStyle ?? 'solid';
     containerStyle.borderColor = theme.border;
   }
+  containerStyle.minWidth = rc.minWidth;
+  containerStyle.minHeight = rc.minHeight;
 
   const headerStyle: CSSProperties = {};
   if (theme?.backgroundColor) headerStyle.backgroundColor = theme.backgroundColor;
@@ -172,12 +181,6 @@ function ClassNodeComponent({
     allowResize === true &&
     selected &&
     (resizeHandleVisibility === 'always' || resizeHover);
-  const rc = resizeConstraints ?? {
-    minWidth: 180,
-    maxWidth: 400,
-    minHeight: 48,
-    maxHeight: 400,
-  };
   const statusBadges = [
     nodeStatus?.isDeprecated
       ? { key: 'deprecated', label: 'Deprecated', icon: CircleDashed }
@@ -224,7 +227,7 @@ function ClassNodeComponent({
           }
         }}
         className={[
-          'rounded-lg border-2 shadow-md min-w-[180px]',
+          'rounded-lg border-2 shadow-md',
           allowResize ? 'w-full h-full overflow-auto' : 'max-w-[280px] overflow-hidden',
           !theme?.backgroundColor && 'bg-white dark:bg-slate-900',
           !theme?.border &&
