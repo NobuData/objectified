@@ -1175,15 +1175,12 @@ export default function DesignCanvas() {
       }
 
       if (e.key === 'Escape') {
-        if (edges.some((ed) => ed.selected)) {
+        const hasSelectedEdges = edges.some((ed) => ed.selected);
+        const hasSelectedNodes = nodes.some((n) => n.selected);
+        if (hasSelectedEdges || hasSelectedNodes) {
           e.preventDefault();
-          clearSelectedEdges();
-          setLiveRegionMessage('Cleared edge selection');
-          return;
-        }
-        if (nodes.some((n) => n.selected)) {
-          e.preventDefault();
-          setNodes((cur) => cur.map((n) => ({ ...n, selected: false })));
+          if (hasSelectedEdges) clearSelectedEdges();
+          if (hasSelectedNodes) setNodes((cur) => cur.map((n) => ({ ...n, selected: false })));
           setLiveRegionMessage('Cleared selection');
           return;
         }
