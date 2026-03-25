@@ -129,7 +129,7 @@ function ClassNodeComponent({
   const [showAllProperties, setShowAllProperties] = useState(false);
   useEffect(() => {
     setShowAllProperties(false);
-  }, [properties.length, id]);
+  }, [id]);
   const IconComponent = theme?.icon
     ? ICON_MAP[theme.icon.toLowerCase()]
     : null;
