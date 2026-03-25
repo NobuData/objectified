@@ -692,6 +692,22 @@ export default function DesignCanvas() {
     return e as Edge<ClassRefEdgeData> | undefined;
   }, [focusFilteredEdges]);
 
+  /**
+   * Stamp `sqlModeDistinctIdRef` into each classRef edge's data based on the current
+   * schemaMode so that ClassRefEdge does not need to subscribe to the full StudioContext.
+   */
+  const sqlModeDistinctIdRef = schemaMode === 'sql';
+  const displayEdges = useMemo(
+    () =>
+      focusFilteredEdges.map((e) => {
+        if (e.type !== 'classRef') return e;
+        const d = e.data as ClassRefEdgeData | undefined;
+        if ((d?.sqlModeDistinctIdRef ?? false) === sqlModeDistinctIdRef) return e;
+        return { ...e, data: { ...(d as ClassRefEdgeData), sqlModeDistinctIdRef } };
+      }),
+    [focusFilteredEdges, sqlModeDistinctIdRef]
+  );
+
   const clearSelectedEdges = useCallback(() => {
     setEdges((cur) => cur.map((ed) => ({ ...ed, selected: false })));
   }, [setEdges]);
@@ -957,20 +973,6 @@ export default function DesignCanvas() {
       }
     },
     [editClassRequest, canvasGroup, mutationLocked]
-  );
-
-  const handleEdgeClick = useCallback(
-    (_e: MouseEvent, edge: Edge) => {
-      if (mutationLocked) return;
-      const d = edge.data as ClassRefEdgeData | undefined;
-      if (d?.brokenRef && d.fix) {
-        editClassRequest?.requestEditPropertyForClass(
-          d.fix.sourceClassId,
-          d.fix.propertyName
-        );
-      }
-    },
-    [mutationLocked, editClassRequest]
   );
 
   const handleEdgeDoubleClick = useCallback(
@@ -1628,11 +1630,10 @@ export default function DesignCanvas() {
       </p>
       <ReactFlow
         nodes={displayNodes}
-        edges={focusFilteredEdges}
+        edges={displayEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onNodeDoubleClick={handleNodeDoubleClick}
-        onEdgeClick={handleEdgeClick}
         onEdgeDoubleClick={handleEdgeDoubleClick}
         onNodeContextMenu={handleNodeContextMenu}
         onPaneContextMenu={

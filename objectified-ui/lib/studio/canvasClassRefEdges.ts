@@ -95,6 +95,11 @@ export interface ClassRefEdgeData extends Record<string, unknown> {
    * separate visually (GitHub #233).
    */
   parallelOffset?: number;
+  /**
+   * Stamped by DesignCanvas based on current schemaMode so ClassRefEdge does not
+   * need to subscribe to the full StudioContext (GitHub #233).
+   */
+  sqlModeDistinctIdRef?: boolean;
 }
 
 export interface BrokenRefPlaceholder {
