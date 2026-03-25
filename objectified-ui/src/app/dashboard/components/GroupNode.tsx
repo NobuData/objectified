@@ -6,10 +6,11 @@
  * Reference: GitHub #83 — Add ability to create groups in the react-flow canvas.
  */
 
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { NodeResizer, type Node, type NodeProps } from '@xyflow/react';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
+import type { CanvasResizeHandleVisibility } from '@lib/studio/canvasSettings';
 
 export interface GroupNodeData {
   label: string;
@@ -17,6 +18,13 @@ export interface GroupNodeData {
   groupMetadata?: GroupCanvasMetadata;
   /** When true, group can be resized when selected. */
   allowResize?: boolean;
+  resizeConstraints?: {
+    minWidth: number;
+    maxWidth: number;
+    minHeight: number;
+    maxHeight: number;
+  };
+  resizeHandleVisibility?: CanvasResizeHandleVisibility;
   /** Called when user requests edit (rename, color, style). */
   onEdit?: (groupId: string) => void;
 }
@@ -29,9 +37,18 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
     groupMetadata,
     allowResize,
     onEdit,
+    resizeConstraints,
+    resizeHandleVisibility = 'always',
   } = data;
 
+  const [resizeHover, setResizeHover] = useState(false);
   const style = groupMetadata?.style ?? {};
+  const rc = resizeConstraints ?? {
+    minWidth: 120,
+    maxWidth: 800,
+    minHeight: 80,
+    maxHeight: 600,
+  };
   const containerStyle: CSSProperties = {};
   if (style.backgroundColor) containerStyle.backgroundColor = String(style.backgroundColor);
   if (style.border) {
@@ -39,17 +56,21 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
     containerStyle.borderStyle = 'solid';
     containerStyle.borderColor = String(style.border);
   }
-
-  const showResizer = allowResize === true && selected;
+  containerStyle.minWidth = rc.minWidth;
+  containerStyle.minHeight = rc.minHeight;
+  const showResizeChrome =
+    allowResize === true &&
+    selected &&
+    (resizeHandleVisibility === 'always' || resizeHover);
 
   return (
     <>
-      {showResizer && (
+      {showResizeChrome && (
         <NodeResizer
-          minWidth={120}
-          minHeight={80}
-          maxWidth={800}
-          maxHeight={600}
+          minWidth={rc.minWidth}
+          minHeight={rc.minHeight}
+          maxWidth={rc.maxWidth}
+          maxHeight={rc.maxHeight}
           isVisible={true}
           lineClassName="!border-slate-400 dark:!border-slate-500"
           handleClassName="!w-2 !h-2 !border-2 !border-slate-400 dark:!border-slate-500 !bg-white dark:!bg-slate-800"
@@ -57,8 +78,10 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
       )}
       <div
         data-nodetype="group"
+        onMouseEnter={() => setResizeHover(true)}
+        onMouseLeave={() => setResizeHover(false)}
         className={[
-          'w-full h-full rounded-lg border-2 shadow-sm min-w-[120px] min-h-[80px]',
+          'w-full h-full rounded-lg border-2 shadow-sm',
           'bg-slate-50/95 dark:bg-slate-800/95 border-slate-300 dark:border-slate-600',
           selected && 'ring-2 ring-indigo-500 dark:ring-indigo-400 border-indigo-500 dark:border-indigo-400',
         ].join(' ')}

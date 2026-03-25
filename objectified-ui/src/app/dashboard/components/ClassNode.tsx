@@ -30,7 +30,10 @@ import type {
   ClassNodeConfig,
   ClassNodeTheme,
 } from '@lib/studio/canvasClassNodeConfig';
-import type { NodePropertyDisplayMode } from '@lib/studio/canvasSettings';
+import type {
+  NodePropertyDisplayMode,
+  CanvasResizeHandleVisibility,
+} from '@lib/studio/canvasSettings';
 
 /** Extended data passed from DesignCanvas: config, resize, callback (GitHub #80, #82). */
 export interface ClassNodeDataExtended extends ClassNodeData {
@@ -43,6 +46,15 @@ export interface ClassNodeDataExtended extends ClassNodeData {
   onConfigChange?: (classId: string, config: ClassNodeConfig) => void;
   /** When true, node can be resized via NodeResizer (GitHub #82). */
   allowResize?: boolean;
+  /** Min/max dimensions from canvas settings (GitHub #235). */
+  resizeConstraints?: {
+    minWidth: number;
+    maxWidth: number;
+    minHeight: number;
+    maxHeight: number;
+  };
+  /** When `hover`, show resize handles only while pointer is over the node (GitHub #235). */
+  resizeHandleVisibility?: CanvasResizeHandleVisibility;
   /** Property list density (canvas setting). GitHub #230. */
   propertyDisplayMode?: NodePropertyDisplayMode;
   /** @deprecated Use propertyDisplayMode === 'hidden' */
@@ -83,6 +95,8 @@ function ClassNodeComponent({
     resolvedNodeTheme,
     onConfigChange,
     allowResize,
+    resizeConstraints,
+    resizeHandleVisibility = 'always',
     propertyDisplayMode = 'full',
     simplifiedView,
     highContrast,
@@ -127,6 +141,7 @@ function ClassNodeComponent({
   /** GitHub #231 — cap full list height until user expands. */
   const FULL_LIST_INITIAL_MAX = 12;
   const [showAllProperties, setShowAllProperties] = useState(false);
+  const [resizeHover, setResizeHover] = useState(false);
   useEffect(() => {
     setShowAllProperties(false);
   }, [id]);
@@ -142,6 +157,13 @@ function ClassNodeComponent({
     });
   }, [id, classNodeConfig, expanded, onConfigChange]);
 
+  const rc = resizeConstraints ?? {
+    minWidth: 180,
+    maxWidth: 400,
+    minHeight: 48,
+    maxHeight: 400,
+  };
+
   const containerStyle: CSSProperties = {};
   if (theme?.backgroundColor) containerStyle.backgroundColor = theme.backgroundColor;
   if (theme?.border) {
@@ -149,11 +171,16 @@ function ClassNodeComponent({
     containerStyle.borderStyle = theme.borderStyle ?? 'solid';
     containerStyle.borderColor = theme.border;
   }
+  containerStyle.minWidth = rc.minWidth;
+  containerStyle.minHeight = rc.minHeight;
 
   const headerStyle: CSSProperties = {};
   if (theme?.backgroundColor) headerStyle.backgroundColor = theme.backgroundColor;
 
-  const showResizer = allowResize === true && selected;
+  const showResizeChrome =
+    allowResize === true &&
+    selected &&
+    (resizeHandleVisibility === 'always' || resizeHover);
   const statusBadges = [
     nodeStatus?.isDeprecated
       ? { key: 'deprecated', label: 'Deprecated', icon: CircleDashed }
@@ -173,12 +200,12 @@ function ClassNodeComponent({
 
   return (
     <>
-      {showResizer && (
+      {showResizeChrome && (
         <NodeResizer
-          minWidth={180}
-          minHeight={48}
-          maxWidth={400}
-          maxHeight={400}
+          minWidth={rc.minWidth}
+          minHeight={rc.minHeight}
+          maxWidth={rc.maxWidth}
+          maxHeight={rc.maxHeight}
           isVisible={true}
           lineClassName="!border-indigo-500 dark:!border-indigo-400"
           handleClassName="!w-2 !h-2 !border-2 !border-indigo-500 dark:!border-indigo-400 !bg-white dark:!bg-slate-800"
@@ -190,8 +217,17 @@ function ClassNodeComponent({
         className="!w-2 !h-2 !border-2 !border-slate-300 dark:!border-slate-600 !bg-white dark:!bg-slate-800"
       />
       <div
+        onMouseEnter={() => setResizeHover(true)}
+        onMouseLeave={() => setResizeHover(false)}
+        onFocus={() => setResizeHover(true)}
+        onBlur={(e) => {
+          const next = e.relatedTarget as globalThis.Node | null;
+          if (!next || !e.currentTarget.contains(next)) {
+            setResizeHover(false);
+          }
+        }}
         className={[
-          'rounded-lg border-2 shadow-md min-w-[180px]',
+          'rounded-lg border-2 shadow-md',
           allowResize ? 'w-full h-full overflow-auto' : 'max-w-[280px] overflow-hidden',
           !theme?.backgroundColor && 'bg-white dark:bg-slate-900',
           !theme?.border &&

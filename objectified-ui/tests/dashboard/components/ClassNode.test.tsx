@@ -21,7 +21,13 @@ jest.mock('@xyflow/react', () => ({
     maxHeight?: number;
   }) =>
     isVisible ? (
-      <div data-testid="node-resizer" data-min-width={minWidth} data-max-width={maxWidth} />
+      <div
+        data-testid="node-resizer"
+        data-min-width={minWidth}
+        data-max-width={maxWidth}
+        data-min-height={minHeight}
+        data-max-height={maxHeight}
+      />
     ) : null,
 }));
 
@@ -226,6 +232,49 @@ describe('ClassNode', () => {
 
   it('renders NodeResizer when allowResize is true and node is selected (GitHub #82)', () => {
     render(<ClassNode {...makeProps({ allowResize: true }, true)} />);
+    expect(screen.getByTestId('node-resizer')).toBeInTheDocument();
+  });
+
+  it('passes resizeConstraints to NodeResizer (GitHub #235)', () => {
+    render(
+      <ClassNode
+        {...makeProps(
+          {
+            allowResize: true,
+            resizeConstraints: {
+              minWidth: 200,
+              maxWidth: 500,
+              minHeight: 60,
+              maxHeight: 500,
+            },
+          },
+          true,
+        )}
+      />,
+    );
+    const r = screen.getByTestId('node-resizer');
+    expect(r).toHaveAttribute('data-min-width', '200');
+    expect(r).toHaveAttribute('data-max-width', '500');
+    expect(r).toHaveAttribute('data-min-height', '60');
+    expect(r).toHaveAttribute('data-max-height', '500');
+  });
+
+  it('hides NodeResizer when resizeHandleVisibility is hover until pointer enters (GitHub #235)', () => {
+    render(
+      <ClassNode
+        {...makeProps(
+          {
+            allowResize: true,
+            resizeHandleVisibility: 'hover',
+          },
+          true,
+        )}
+      />,
+    );
+    expect(screen.queryByTestId('node-resizer')).not.toBeInTheDocument();
+    const card = document.querySelector('div.rounded-lg.border-2.shadow-md');
+    expect(card).toBeTruthy();
+    fireEvent.mouseEnter(card!);
     expect(screen.getByTestId('node-resizer')).toBeInTheDocument();
   });
 

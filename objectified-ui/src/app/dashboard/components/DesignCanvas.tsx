@@ -7,6 +7,7 @@
  * Reference: GitHub #232 — Edge labels, legend, SQL vs $ref styling, broken-ref placeholders, allOf inheritance.
  * Reference: GitHub #233 — Edge selection detail panel, edit ref, parallel edge routing, SQL-mode ID ref styling.
  * Reference: GitHub #234 — Multi-select, box-select, select by group/tag, bulk actions, selection toolbar.
+ * Reference: GitHub #235 — Snap to grid/alignment, resize limits, undo for moves (studio stack), touch/trackpad gestures.
  */
 'use client';
 
@@ -116,11 +117,15 @@ import SelectedRefEdgePanel from './SelectedRefEdgePanel';
 
 import { classHasValidationErrors } from '@lib/studio/classValidation';
 import { getSchemaMode } from '@lib/studio/schemaMode';
+import { applyAlignmentToNodeChanges } from '@lib/studio/canvasAlignmentSnap';
+import AlignmentGuidesOverlay from './AlignmentGuidesOverlay';
 
 const defaultPosition = { x: 0, y: 0 };
 const NODE_MUTATION_DEBOUNCE_MS = 150;
 const LARGE_CANVAS_NODE_THRESHOLD = 100;
 const EMPTY_CLASS_MUTATION_STATUS: Record<string, ClassMutationStatus> = {};
+
+const EMPTY_ALIGNMENT_GUIDES = { verticalX: [] as number[], horizontalY: [] as number[] };
 
 function isClassDeprecated(cls: StudioClass): boolean {
   const schema = cls.schema as { deprecated?: unknown } | undefined;
@@ -162,6 +167,18 @@ export default function DesignCanvas() {
     [classes]
   );
   const canvasSettings = useResolvedCanvasSettings();
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(pointer: coarse)');
+    const apply = () => setCoarsePointer(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  const [alignmentGuides, setAlignmentGuides] = useState(EMPTY_ALIGNMENT_GUIDES);
+
   const isReadOnly =
     studio?.state?.readOnly === true || workspace?.version?.published === true;
   const tenantId = workspace?.tenant?.id ?? null;
@@ -362,6 +379,8 @@ export default function DesignCanvas() {
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodesFromState);
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
   const [edges, setEdges, onEdgesChange] = useEdgesState(refEdges);
 
   useEffect(() => {
@@ -526,13 +545,31 @@ export default function DesignCanvas() {
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      let effectiveChanges = changes;
+      if (!mutationLocked && canvasSettings.snapToAlignment) {
+        const { changes: nextChanges, guides } = applyAlignmentToNodeChanges(
+          changes,
+          nodesRef.current,
+          {
+            snapToAlignment: true,
+            alignmentThresholdPx: canvasSettings.alignmentSnapPx,
+            snapToGrid: canvasSettings.snapToGrid,
+            gridSize: canvasSettings.gridSize,
+          }
+        );
+        effectiveChanges = nextChanges;
+        setAlignmentGuides(guides);
+      } else {
+        setAlignmentGuides(EMPTY_ALIGNMENT_GUIDES);
+      }
+
       // In read-only mode, only allow selection and dimensions changes through so
       // the user can still click/select nodes and react-flow can measure intrinsic
       // node sizes. Destructive changes (remove) and position changes (drag) are
       // discarded before mutating local state.
       const allowedChanges = mutationLocked
-        ? changes.filter((c) => c.type === 'select' || c.type === 'dimensions')
-        : changes;
+        ? effectiveChanges.filter((c) => c.type === 'select' || c.type === 'dimensions')
+        : effectiveChanges;
 
       if (allowedChanges.length > 0) {
         onNodesChange(allowedChanges as Parameters<typeof onNodesChange>[0]);
@@ -544,7 +581,7 @@ export default function DesignCanvas() {
       let sawPersistableChange = false;
       const pending = pendingNodeMutationsRef.current;
 
-      for (const change of changes) {
+      for (const change of effectiveChanges) {
         if (change.type === 'position' && change.position != null) {
           sawPersistableChange = true;
           if (groupIds.has(change.id)) {
@@ -592,6 +629,10 @@ export default function DesignCanvas() {
       mutationLocked,
       schedulePendingNodeMutationFlush,
       validClassIds,
+      canvasSettings.snapToAlignment,
+      canvasSettings.alignmentSnapPx,
+      canvasSettings.snapToGrid,
+      canvasSettings.gridSize,
     ]
   );
 
@@ -810,6 +851,13 @@ export default function DesignCanvas() {
             ...node.data,
             allowResize: !mutationLocked,
             onEdit: canvasGroup?.openGroupEditor,
+            resizeConstraints: {
+              minWidth: canvasSettings.groupNodeMinWidth,
+              maxWidth: canvasSettings.groupNodeMaxWidth,
+              minHeight: canvasSettings.groupNodeMinHeight,
+              maxHeight: canvasSettings.groupNodeMaxHeight,
+            },
+            resizeHandleVisibility: canvasSettings.resizeHandleVisibility,
           },
         };
       }
@@ -833,6 +881,13 @@ export default function DesignCanvas() {
           resolvedNodeTheme,
           onConfigChange,
           allowResize: !mutationLocked,
+          resizeConstraints: {
+            minWidth: canvasSettings.classNodeMinWidth,
+            maxWidth: canvasSettings.classNodeMaxWidth,
+            minHeight: canvasSettings.classNodeMinHeight,
+            maxHeight: canvasSettings.classNodeMaxHeight,
+          },
+          resizeHandleVisibility: canvasSettings.resizeHandleVisibility,
           propertyDisplayMode: canvasSettings.nodePropertyDisplay,
           highContrast: canvasSettings.highContrastCanvas,
           inlineRenameActive:
@@ -851,6 +906,15 @@ export default function DesignCanvas() {
     canvasGroup,
     canvasSettings.nodePropertyDisplay,
     canvasSettings.highContrastCanvas,
+    canvasSettings.classNodeMinWidth,
+    canvasSettings.classNodeMaxWidth,
+    canvasSettings.classNodeMinHeight,
+    canvasSettings.classNodeMaxHeight,
+    canvasSettings.groupNodeMinWidth,
+    canvasSettings.groupNodeMaxWidth,
+    canvasSettings.groupNodeMinHeight,
+    canvasSettings.groupNodeMaxHeight,
+    canvasSettings.resizeHandleVisibility,
     tenantPrimaryColor,
     versionNodeThemePrefs,
     inlineRenameClassId,
@@ -1858,7 +1922,8 @@ export default function DesignCanvas() {
         nodesDraggable={!mutationLocked}
         nodesConnectable={!mutationLocked}
         elementsSelectable={true}
-        panOnDrag={[1, 2]}
+        panOnDrag={coarsePointer ? true : [1, 2]}
+        panOnScroll={canvasSettings.canvasScrollPan}
         zoomOnScroll={true}
         zoomOnPinch={true}
         zoomOnDoubleClick={!isReducedMotion}
@@ -1890,6 +1955,10 @@ export default function DesignCanvas() {
         <PaneContextMenuRegistration />
         <ZoomToClassRegistration />
         <CanvasExportRegistration />
+        <AlignmentGuidesOverlay
+          verticalX={alignmentGuides.verticalX}
+          horizontalY={alignmentGuides.horizontalY}
+        />
         <div className="pointer-events-none absolute top-2 left-2 z-[10001] max-w-[240px] rounded-md border border-slate-200 dark:border-slate-600 bg-white/95 dark:bg-slate-900/95 px-2.5 py-2 text-[10px] leading-snug text-slate-700 dark:text-slate-200 shadow">
           <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1.5">
             Edge legend
@@ -1939,7 +2008,8 @@ export default function DesignCanvas() {
                 Selection
               </span>{' '}
               — drag on empty canvas to box-select; Shift/Ctrl/Cmd+click to add
-              classes; Space+drag or middle/right mouse pans
+              classes; Space+drag, middle/right mouse, coarse-pointer drag, or scroll-pan
+              (in canvas settings) to pan; pinch to zoom on touch
             </li>
           </ul>
         </div>
