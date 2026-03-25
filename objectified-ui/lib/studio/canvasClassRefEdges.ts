@@ -6,7 +6,7 @@
  */
 
 import { MarkerType, type Edge } from '@xyflow/react';
-import type { StudioClass, StudioClassProperty } from './types';
+import type { StudioClass, StudioClassProperty, StudioGroup } from './types';
 import { getStableClassId } from './types';
 
 /** Ref type for edge styling (direct = solid, optional = dashed, weak = dotted, bidirectional = two-way). */
@@ -235,14 +235,18 @@ export function getRefTypeFromData(data: Record<string, unknown> | undefined): C
 
 function placeholderPosition(
   sourceCls: StudioClass,
-  placeholderIndex: number
+  placeholderIndex: number,
+  groupPositions: Map<string, { x: number; y: number }>
 ): { x: number; y: number } {
-  const base = sourceCls.canvas_metadata?.position ?? { x: 0, y: 0 };
+  const relPos = sourceCls.canvas_metadata?.position ?? { x: 0, y: 0 };
+  const groupId = sourceCls.canvas_metadata?.group;
+  const groupOffset = groupId ? (groupPositions.get(groupId) ?? { x: 0, y: 0 }) : { x: 0, y: 0 };
+  const base = { x: (relPos.x ?? 0) + groupOffset.x, y: (relPos.y ?? 0) + groupOffset.y };
   const angle = ((placeholderIndex * 47) % 360) * (Math.PI / 180);
   const dist = 150;
   return {
-    x: (base.x ?? 0) + Math.cos(angle) * dist,
-    y: (base.y ?? 0) + Math.sin(angle) * dist,
+    x: base.x + Math.cos(angle) * dist,
+    y: base.y + Math.sin(angle) * dist,
   };
 }
 
@@ -288,8 +292,19 @@ function pushInheritanceEdges(
 
 /**
  * Full ref layer for the design canvas (includes broken-ref placeholders and edges).
+ * Pass `groups` so that placeholder positions for grouped classes use absolute canvas coordinates.
  */
-export function buildDesignCanvasRefLayer(classes: StudioClass[]): DesignCanvasRefLayer {
+export function buildDesignCanvasRefLayer(
+  classes: StudioClass[],
+  groups?: StudioGroup[]
+): DesignCanvasRefLayer {
+  const groupPositions = new Map<string, { x: number; y: number }>();
+  if (groups) {
+    for (const g of groups) {
+      const pos = (g.metadata as { position?: { x: number; y: number } } | undefined)?.position;
+      if (pos) groupPositions.set(g.id, pos);
+    }
+  }
   const validIds = new Set<string>();
   for (const cls of classes) {
     const id = getStableClassId(cls);
@@ -395,7 +410,7 @@ export function buildDesignCanvasRefLayer(classes: StudioClass[]): DesignCanvasR
           'unknown target';
         brokenRefPlaceholders.push({
           id: orphanId,
-          position: placeholderPosition(cls, brokenOrdinal++),
+          position: placeholderPosition(cls, brokenOrdinal++, groupPositions),
           sourceClassId: sourceId,
           propertyName: propName,
           hint,

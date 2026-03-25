@@ -67,7 +67,7 @@ function buildEdgeLabelText(edgeData: ClassRefEdgeData | undefined): string {
   const card = edgeData.cardinalityLabel?.trim();
   if (card) parts.push(card);
   const kind = edgeData.relationshipKind;
-  if (kind && kind !== 'association') {
+  if (kind && kind !== 'association' && kind !== 'inheritance') {
     parts.push(kind);
   }
   return parts.join(' · ');

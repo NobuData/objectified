@@ -243,8 +243,8 @@ export default function DesignCanvas() {
 
   const classMutationStatusById = studio?.classMutationStatusById ?? EMPTY_CLASS_MUTATION_STATUS;
   const { canvasEdges: refEdges, brokenRefPlaceholders } = useMemo(
-    () => buildDesignCanvasRefLayer(classes),
-    [classes]
+    () => buildDesignCanvasRefLayer(classes, groups),
+    [classes, groups]
   );
   const classRefCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -662,15 +662,22 @@ export default function DesignCanvas() {
     if (!focusedClassIds || !focusedGroupIds) return filteredNodes;
     return filteredNodes.filter((node: Node) => {
       if (node.type === 'group') return focusedGroupIds.has(node.id);
+      if (node.type === 'brokenRef') {
+        const srcId = (node.data as { sourceClassId?: string } | undefined)?.sourceClassId;
+        return !!srcId && focusedClassIds.has(srcId);
+      }
       return focusedClassIds.has(node.id);
     });
   }, [filteredNodes, focusedClassIds, focusedGroupIds]);
 
   const focusFilteredEdges = useMemo(() => {
     if (!focusedClassIds) return filteredEdges;
-    return filteredEdges.filter(
-      (e) => focusedClassIds.has(e.source) && focusedClassIds.has(e.target)
-    );
+    return filteredEdges.filter((e) => {
+      if (isBrokenRefPlaceholderNodeId(e.target)) {
+        return focusedClassIds.has(e.source);
+      }
+      return focusedClassIds.has(e.source) && focusedClassIds.has(e.target);
+    });
   }, [filteredEdges, focusedClassIds]);
 
   // Escape key handler to exit focus mode.
@@ -810,13 +817,20 @@ export default function DesignCanvas() {
   }, [canvasSettings.showLayoutHints, displayNodes, focusFilteredEdges]);
 
   // Dependency overlay: selected class nodes, circular edges, upstream/downstream/path (GitHub #90).
+  // Broken-ref placeholder edges are excluded so they don't skew circular/depth/path calculations.
   const dependencyEdges: DependencyEdge[] = useMemo(
     () =>
-      focusFilteredEdges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-      })),
+      focusFilteredEdges
+        .filter(
+          (e) =>
+            !isBrokenRefPlaceholderNodeId(e.source) &&
+            !isBrokenRefPlaceholderNodeId(e.target)
+        )
+        .map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+        })),
     [focusFilteredEdges]
   );
   const selectedClassNodeIds = useMemo(
