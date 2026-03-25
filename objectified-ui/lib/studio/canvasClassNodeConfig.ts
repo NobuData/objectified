@@ -10,6 +10,8 @@ const CLASS_NODE_CONFIG_KEY_PREFIX = 'objectified:canvas:class-node-config:';
 export interface ClassNodeTheme {
   backgroundColor?: string;
   border?: string;
+  /** Border line style when `border` is set. */
+  borderStyle?: 'solid' | 'dashed' | 'dotted';
   /** Icon identifier for the node header (e.g. "box", "circle"). */
   icon?: string;
 }

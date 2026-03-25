@@ -4,9 +4,20 @@ import { useMemo, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 
-export type TagDefinitions = Record<string, { color?: string }>;
+export type TagDefinitions = Record<
+  string,
+  { color?: string; icon?: string; border?: string; borderStyle?: 'solid' | 'dashed' | 'dotted' }
+>;
 
 const DEFAULT_TAG_COLOR = '#94a3b8';
+
+const NODE_ICON_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Default' },
+  { value: 'box', label: 'Box' },
+  { value: 'circle', label: 'Circle' },
+  { value: 'square', label: 'Square' },
+  { value: 'hexagon', label: 'Hexagon' },
+];
 
 const PRESET_COLORS = [
   '#64748b',
@@ -54,6 +65,15 @@ export default function TagManager({
     setEditingColorFor(null);
   };
 
+  const setTagIcon = (name: string, icon: string) => {
+    const nextIcon = icon.trim().toLowerCase();
+    const prev = tagDefinitions[name] ?? {};
+    const next = { ...prev };
+    if (nextIcon) next.icon = nextIcon;
+    else delete next.icon;
+    onUpdateTagDefinitions({ ...tagDefinitions, [name]: next });
+  };
+
   const removeTagDefinition = (name: string) => {
     const next = { ...tagDefinitions };
     delete next[name];
@@ -67,7 +87,7 @@ export default function TagManager({
     }
     onUpdateTagDefinitions({
       ...tagDefinitions,
-      [trimmed]: { color: DEFAULT_TAG_COLOR },
+      [trimmed]: { color: DEFAULT_TAG_COLOR, icon: undefined },
     });
     setNewTagName('');
   };
@@ -103,8 +123,32 @@ export default function TagManager({
                   <span className="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate">
                     {name}
                   </span>
-                  {canEdit && (
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div
+                    className={[
+                      'flex items-center gap-1',
+                      canEdit
+                        ? 'opacity-0 group-hover:opacity-100 transition-opacity'
+                        : 'opacity-100',
+                    ].join(' ')}
+                  >
+                    <label className="sr-only" htmlFor={`tag-icon-${name}`}>
+                      Node icon for {name}
+                    </label>
+                    <select
+                      id={`tag-icon-${name}`}
+                      value={tagDefinitions[name]?.icon ?? ''}
+                      onChange={(e) => setTagIcon(name, e.target.value)}
+                      disabled={!canEdit}
+                      className="text-[11px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-1 py-0.5 max-w-[100px] disabled:opacity-70"
+                      aria-label={`Node icon for tag ${name}`}
+                    >
+                      {NODE_ICON_OPTIONS.map((opt) => (
+                        <option key={opt.label + opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    {canEdit && (
                       <Popover.Root
                         open={isEditing}
                         onOpenChange={(open) => setEditingColorFor(open ? name : null)}
@@ -178,6 +222,8 @@ export default function TagManager({
                           </Popover.Content>
                         </Popover.Portal>
                       </Popover.Root>
+                    )}
+                    {canEdit && (
                       <button
                         type="button"
                         onClick={() => removeTagDefinition(name)}
@@ -187,8 +233,8 @@ export default function TagManager({
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </li>
               );
             })}
