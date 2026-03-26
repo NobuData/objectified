@@ -9,6 +9,7 @@
  * Reference: GitHub #234 — Multi-select, box-select, select by group/tag, bulk actions, selection toolbar.
  * Reference: GitHub #235 — Snap to grid/alignment, resize limits, undo for moves (studio stack), touch/trackpad gestures.
  * Reference: GitHub #236 — Keyboard/screen reader: node/edge focus, pan/zoom keys, optional class list view.
+ * Reference: GitHub #237 — Groups: create from selection/tag, nesting, metadata, templates, drag in/out.
  */
 'use client';
 
@@ -56,7 +57,7 @@ import {
   getFocusedNodeIds,
   getFocusedGroupIds,
 } from '@lib/studio/canvasFocusMode';
-import { getStableClassId } from '@lib/studio/types';
+import { generateGroupId, getStableClassId } from '@lib/studio/types';
 import type { StudioClass, StudioGroup } from '@lib/studio/types';
 import {
   cloneClassesForPaste,
@@ -67,6 +68,18 @@ import {
   filterVisibleClassIdsByTag,
 } from '@lib/studio/canvasSelectionHelpers';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
+import {
+  sortGroupsParentsFirst,
+  getGroupAbsolutePosition,
+  getClassAbsoluteFlowPosition,
+  getFlowNodeAbsoluteOrigin,
+  getNodeAbsoluteCenter,
+  listGroupHitRects,
+  findInnermostGroupAtPoint,
+  getAbsoluteBoundsForClassNodes,
+  newGroupLayoutFromSelectionBounds,
+  getClassIdsWithTag,
+} from '@lib/studio/canvasGroupLayout';
 import {
   saveDefaultCanvasLayout,
   getDefaultCanvasLayout,
@@ -295,11 +308,16 @@ export default function DesignCanvas() {
     const saved = versionId ? getDefaultCanvasLayout(versionId) : [];
     const savedMap = new Map(saved.map((e) => [e.classId, e.position]));
 
-    const groupNodes: Node[] = groups.map((g: StudioGroup) => {
+    const sortedGroups = sortGroupsParentsFirst(groups);
+    const groupNodes: Node[] = sortedGroups.map((g: StudioGroup) => {
       const meta = (g.metadata ?? {}) as GroupCanvasMetadata;
       const pos = meta.position ?? defaultPosition;
       const dims = meta.dimensions ?? { width: 280, height: 160 };
       const style = meta.style ?? {};
+      const parentId =
+        meta.parentGroupId && groups.some((x) => x.id === meta.parentGroupId)
+          ? meta.parentGroupId
+          : undefined;
       return {
         id: g.id,
         type: 'group' as const,
@@ -310,6 +328,7 @@ export default function DesignCanvas() {
           height: dims.height ?? 160,
           ...style,
         },
+        ...(parentId ? { parentId, extent: 'parent' as const } : {}),
       };
     });
 
@@ -341,7 +360,7 @@ export default function DesignCanvas() {
             hasValidationErrors: classHasValidationErrors(cls),
           },
         },
-        ...(parentId ? { parentId, extent: 'parent' as const } : {}),
+        ...(parentId ? { parentId } : {}),
         ...(dimensions?.width != null || dimensions?.height != null
           ? {
               style: {
@@ -384,6 +403,8 @@ export default function DesignCanvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodesFromState);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
+  /** Set after `finalizeClassDragAfterDrop` is defined (GitHub #237). */
+  const finalizeClassDragRef = useRef<(classId: string) => void>(() => {});
   const [edges, setEdges, onEdgesChange] = useEdgesState(refEdges);
 
   useEffect(() => {
@@ -593,12 +614,18 @@ export default function DesignCanvas() {
               y: change.position.y,
             });
           } else if (validClassIds.has(change.id)) {
-            pending.classPositions.set(change.id, {
-              x: change.position.x,
-              y: change.position.y,
-            });
+            if (change.dragging === false) {
+              pending.classPositions.delete(change.id);
+              sawTerminalChange = true;
+              window.setTimeout(() => finalizeClassDragRef.current(change.id), 0);
+            } else {
+              pending.classPositions.set(change.id, {
+                x: change.position.x,
+                y: change.position.y,
+              });
+            }
           }
-          if (change.dragging === false) {
+          if (change.dragging === false && groupIds.has(change.id)) {
             sawTerminalChange = true;
           }
         }
@@ -985,6 +1012,11 @@ export default function DesignCanvas() {
         .filter((n) => n.type === 'class' && n.selected)
         .map((n) => n.id),
     [displayNodesBase]
+  );
+
+  const selectedClassesInGroupsCount = useMemo(
+    () => selectedClassNodeIds.filter((id) => Boolean(classToGroup.get(id))).length,
+    [selectedClassNodeIds, classToGroup]
   );
 
   const selectedNodeId = selectedClassNodeIds[0] ?? null;
@@ -1591,33 +1623,27 @@ export default function DesignCanvas() {
   const handleAddClassToGroup = useCallback(
     (classId: string, groupId: string) => {
       if (!studio?.applyChange || !versionId) return;
-      const group = groups.find((g) => g.id === groupId);
       const cls = classes.find((c) => getStableClassId(c) === classId);
-      if (!group || !cls) return;
-      const groupMeta = group.metadata as { position?: { x: number; y: number } } | undefined;
-      const groupPos = groupMeta?.position ?? { x: 0, y: 0 };
-      const classPos = cls.canvas_metadata?.position ?? { x: 0, y: 0 };
+      if (!cls || !groups.some((g) => g.id === groupId)) return;
+      let newRel = { x: 0, y: 0 };
       studio.applyChange((draft) => {
         const c = draft.classes.find((x) => getStableClassId(x) === classId);
         const g = draft.groups.find((x) => x.id === groupId);
         if (!c || !g) return;
-        const gPos = (g.metadata as { position?: { x: number; y: number } } | undefined)?.position ?? { x: 0, y: 0 };
+        const abs = getClassAbsoluteFlowPosition(c, draft.groups as StudioGroup[]);
+        const gAbs = getGroupAbsolutePosition(draft.groups as StudioGroup[], groupId);
+        newRel = { x: abs.x - gAbs.x, y: abs.y - gAbs.y };
         c.canvas_metadata = {
           ...c.canvas_metadata,
           group: groupId,
-          position: { x: classPos.x - gPos.x, y: classPos.y - gPos.y },
+          position: newRel,
         };
       });
-      const updatedMap = new Map([[classId, { x: classPos.x - groupPos.x, y: classPos.y - groupPos.y }]]);
       const allPositions = classes.map((c) => {
         const id = getStableClassId(c);
-        if (id === classId) {
-          const pos = updatedMap.get(id)!;
-          return { classId: id, position: pos };
-        }
         return {
           classId: id,
-          position: c.canvas_metadata?.position ?? defaultPosition,
+          position: id === classId ? newRel : (c.canvas_metadata?.position ?? defaultPosition),
         };
       });
       saveDefaultCanvasLayout(versionId, allPositions);
@@ -1631,24 +1657,21 @@ export default function DesignCanvas() {
       if (!studio?.applyChange || !versionId) return;
       const cls = classes.find((c) => getStableClassId(c) === classId);
       const groupId = cls?.canvas_metadata?.group;
-      if (!groupId) return;
-      const group = groups.find((g) => g.id === groupId);
-      const groupPos = (group?.metadata as { position?: { x: number; y: number } } | undefined)?.position ?? { x: 0, y: 0 };
-      const classPos = cls.canvas_metadata?.position ?? { x: 0, y: 0 };
-      const flowPos = { x: groupPos.x + classPos.x, y: groupPos.y + classPos.y };
+      if (!groupId || !cls) return;
+      const abs = getClassAbsoluteFlowPosition(cls, groups);
       studio.applyChange((draft) => {
         const c = draft.classes.find((x) => getStableClassId(x) === classId);
         if (!c) return;
         const meta = { ...c.canvas_metadata };
         delete meta.group;
-        meta.position = flowPos;
+        meta.position = { x: abs.x, y: abs.y };
         c.canvas_metadata = meta;
       });
       const allPositions = classes.map((c) => {
         const id = getStableClassId(c);
         return {
           classId: id,
-          position: id === classId ? flowPos : (c.canvas_metadata?.position ?? defaultPosition),
+          position: id === classId ? abs : (c.canvas_metadata?.position ?? defaultPosition),
         };
       });
       saveDefaultCanvasLayout(versionId, allPositions);
@@ -1676,9 +1699,7 @@ export default function DesignCanvas() {
       studio.applyChange((draft) => {
         const g = draft.groups.find((x) => x.id === groupId);
         if (!g) return;
-        const gPos =
-          (g.metadata as { position?: { x: number; y: number } } | undefined)
-            ?.position ?? { x: 0, y: 0 };
+        const gAbs = getGroupAbsolutePosition(draft.groups as StudioGroup[], groupId);
 
         for (const classId of classIds) {
           const c = draft.classes.find((x) => getStableClassId(x) === classId);
@@ -1687,19 +1708,8 @@ export default function DesignCanvas() {
           const currentGroup = meta.group;
           if (currentGroup === groupId) continue;
 
-          const rel = meta.position ?? { x: 0, y: 0 };
-          let absX = rel.x ?? 0;
-          let absY = rel.y ?? 0;
-          if (currentGroup) {
-            const prevG = draft.groups.find((x) => x.id === currentGroup);
-            const prevGPos =
-              (prevG?.metadata as { position?: { x: number; y: number } } | undefined)
-                ?.position ?? { x: 0, y: 0 };
-            absX = (prevGPos.x ?? 0) + (rel.x ?? 0);
-            absY = (prevGPos.y ?? 0) + (rel.y ?? 0);
-          }
-
-          const newRel = { x: absX - (gPos.x ?? 0), y: absY - (gPos.y ?? 0) };
+          const abs = getClassAbsoluteFlowPosition(c, draft.groups as StudioGroup[]);
+          const newRel = { x: abs.x - gAbs.x, y: abs.y - gAbs.y };
           meta.group = groupId;
           meta.position = newRel;
           c.canvas_metadata = meta;
@@ -1724,6 +1734,218 @@ export default function DesignCanvas() {
       );
     },
     [studio, groups, classes, versionId, mutationLocked]
+  );
+
+  const finalizeClassDragAfterDrop = useCallback(
+    (classId: string) => {
+      if (mutationLocked || !studio?.applyChange || !versionId) return;
+      const snap = nodesRef.current;
+      const cn = snap.find((n) => n.id === classId && n.type === 'class');
+      if (!cn) return;
+      const groupIdSet = new Set(groups.map((g) => g.id));
+      const groupNodes = snap.filter((n) => n.type === 'group');
+      const rects = listGroupHitRects(groups, groupNodes, snap);
+      const center = getNodeAbsoluteCenter(cn, snap);
+      const target = findInnermostGroupAtPoint(rects, center);
+      const current =
+        cn.parentId && groupIdSet.has(cn.parentId) ? cn.parentId : null;
+
+      const persistLayout = (pid: string, pos: { x: number; y: number }) => {
+        const allPositions = classes.map((c) => {
+          const id = getStableClassId(c);
+          return {
+            classId: id,
+            position:
+              id === pid ? pos : (c.canvas_metadata?.position ?? defaultPosition),
+          };
+        });
+        saveDefaultCanvasLayout(versionId, allPositions);
+      };
+
+      if (target === current) {
+        const rel = { x: cn.position.x ?? 0, y: cn.position.y ?? 0 };
+        studio.applyChange((draft) => {
+          const c = draft.classes.find((x) => getStableClassId(x) === classId);
+          if (!c) return;
+          c.canvas_metadata = { ...c.canvas_metadata, position: rel };
+        });
+        persistLayout(classId, rel);
+        return;
+      }
+
+      const abs = getFlowNodeAbsoluteOrigin(cn, snap);
+      if (target) {
+        const gAbs = getGroupAbsolutePosition(groups, target);
+        const rel = { x: abs.x - gAbs.x, y: abs.y - gAbs.y };
+        studio.applyChange((draft) => {
+          const c = draft.classes.find((x) => getStableClassId(x) === classId);
+          if (!c) return;
+          c.canvas_metadata = {
+            ...c.canvas_metadata,
+            group: target,
+            position: rel,
+          };
+        });
+        persistLayout(classId, rel);
+        setLiveRegionMessage(
+          current ? 'Moved class to another group' : 'Moved class into group'
+        );
+        return;
+      }
+
+      studio.applyChange((draft) => {
+        const c = draft.classes.find((x) => getStableClassId(x) === classId);
+        if (!c) return;
+        const meta = { ...c.canvas_metadata };
+        delete meta.group;
+        meta.position = { x: abs.x, y: abs.y };
+        c.canvas_metadata = meta;
+      });
+      persistLayout(classId, { x: abs.x, y: abs.y });
+      if (current) setLiveRegionMessage('Removed class from group');
+    },
+    [mutationLocked, studio, versionId, classes, groups, setLiveRegionMessage]
+  );
+
+  useEffect(() => {
+    finalizeClassDragRef.current = finalizeClassDragAfterDrop;
+  }, [finalizeClassDragAfterDrop]);
+
+  const handleCreateGroupFromSelection = useCallback(() => {
+    if (!studio?.applyChange || !versionId || mutationLocked) return;
+    if (selectedClassNodeIds.length === 0) return;
+    const snap = nodesRef.current;
+    const classNodes = snap.filter(
+      (n) => n.type === 'class' && selectedClassNodeIds.includes(n.id)
+    );
+    const b = getAbsoluteBoundsForClassNodes(classNodes, snap);
+    if (!b) return;
+    const layout = newGroupLayoutFromSelectionBounds(b);
+    const id = generateGroupId();
+    const layoutUpdates: { classId: string; position: { x: number; y: number } }[] =
+      [];
+    studio.applyChange((draft) => {
+      draft.groups.push({
+        id,
+        name: 'New group',
+        metadata: {
+          position: layout.position,
+          dimensions: layout.dimensions,
+          style: {},
+        },
+      });
+      const gAbs = getGroupAbsolutePosition(draft.groups as StudioGroup[], id);
+      for (const classId of selectedClassNodeIds) {
+        const c = draft.classes.find((x) => getStableClassId(x) === classId);
+        if (!c) continue;
+        const abs = getClassAbsoluteFlowPosition(c, draft.groups as StudioGroup[]);
+        const rel = { x: abs.x - gAbs.x, y: abs.y - gAbs.y };
+        c.canvas_metadata = { ...c.canvas_metadata, group: id, position: rel };
+        layoutUpdates.push({ classId, position: rel });
+      }
+    });
+    if (layoutUpdates.length === 0) return;
+    const uMap = new Map(layoutUpdates.map((e) => [e.classId, e.position]));
+    const allPositions = classes.map((c) => {
+      const cid = getStableClassId(c);
+      return {
+        classId: cid,
+        position: uMap.get(cid) ?? c.canvas_metadata?.position ?? defaultPosition,
+      };
+    });
+    saveDefaultCanvasLayout(versionId, allPositions);
+    setLiveRegionMessage('Created group from selection');
+  }, [
+    studio,
+    versionId,
+    mutationLocked,
+    selectedClassNodeIds,
+    classes,
+    setLiveRegionMessage,
+  ]);
+
+  const handleCreateGroupFromTag = useCallback(
+    (tagName: string) => {
+      if (!studio?.applyChange || !versionId || mutationLocked) return;
+      const ids = getClassIdsWithTag(classes, tagName);
+      if (ids.length === 0) return;
+      const snap = nodesRef.current;
+      const classNodes = snap.filter(
+        (n) => n.type === 'class' && ids.includes(n.id)
+      );
+      const b = getAbsoluteBoundsForClassNodes(classNodes, snap);
+      if (!b) return;
+      const layout = newGroupLayoutFromSelectionBounds(b);
+      const id = generateGroupId();
+      const layoutUpdates: { classId: string; position: { x: number; y: number } }[] =
+        [];
+      studio.applyChange((draft) => {
+        const tagLabel = tagName.trim();
+        draft.groups.push({
+          id,
+          name: `Tag: ${tagLabel}`,
+          metadata: {
+            position: layout.position,
+            dimensions: layout.dimensions,
+            style: {},
+            governanceTag: tagLabel,
+          },
+        });
+        const gAbs = getGroupAbsolutePosition(draft.groups as StudioGroup[], id);
+        for (const classId of ids) {
+          const c = draft.classes.find((x) => getStableClassId(x) === classId);
+          if (!c) continue;
+          const abs = getClassAbsoluteFlowPosition(c, draft.groups as StudioGroup[]);
+          const rel = { x: abs.x - gAbs.x, y: abs.y - gAbs.y };
+          c.canvas_metadata = { ...c.canvas_metadata, group: id, position: rel };
+          layoutUpdates.push({ classId, position: rel });
+        }
+      });
+      const uMap = new Map(layoutUpdates.map((e) => [e.classId, e.position]));
+      const allPositions = classes.map((c) => {
+        const cid = getStableClassId(c);
+        return {
+          classId: cid,
+          position: uMap.get(cid) ?? c.canvas_metadata?.position ?? defaultPosition,
+        };
+      });
+      saveDefaultCanvasLayout(versionId, allPositions);
+      setLiveRegionMessage(`Created group for tag ${tagName.trim()}`);
+    },
+    [studio, versionId, mutationLocked, classes, setLiveRegionMessage]
+  );
+
+  const handleBulkRemoveFromGroup = useCallback(
+    (classIds: string[]) => {
+      if (!studio?.applyChange || !versionId || mutationLocked || classIds.length === 0)
+        return;
+      const updates = new Map<string, { x: number; y: number }>();
+      studio.applyChange((draft) => {
+        for (const classId of classIds) {
+          const c = draft.classes.find((x) => getStableClassId(x) === classId);
+          if (!c?.canvas_metadata?.group) continue;
+          const abs = getClassAbsoluteFlowPosition(c, draft.groups as StudioGroup[]);
+          const meta = { ...c.canvas_metadata };
+          delete meta.group;
+          meta.position = abs;
+          c.canvas_metadata = meta;
+          updates.set(classId, abs);
+        }
+      });
+      if (updates.size === 0) return;
+      const allPositions = classes.map((c) => {
+        const id = getStableClassId(c);
+        return {
+          classId: id,
+          position: updates.get(id) ?? c.canvas_metadata?.position ?? defaultPosition,
+        };
+      });
+      saveDefaultCanvasLayout(versionId, allPositions);
+      setLiveRegionMessage(
+        `Removed ${updates.size} class${updates.size === 1 ? '' : 'es'} from group`
+      );
+    },
+    [studio, classes, versionId, mutationLocked, setLiveRegionMessage]
   );
 
   const applyClassIdSelection = useCallback(
@@ -2322,6 +2544,7 @@ export default function DesignCanvas() {
         >
           <CanvasSelectionToolbar
             selectedClassIds={selectedClassNodeIds}
+            selectedClassesInGroupsCount={selectedClassesInGroupsCount}
             groups={groups}
             availableTagNames={availableTagNames}
             mutationLocked={mutationLocked}
@@ -2333,6 +2556,11 @@ export default function DesignCanvas() {
             onBulkMoveToGroup={(gid) =>
               handleBulkAddClassesToGroup(selectedClassNodeIds, gid)
             }
+            onCreateGroupFromSelection={handleCreateGroupFromSelection}
+            onBulkRemoveFromGroup={() =>
+              handleBulkRemoveFromGroup(selectedClassNodeIds)
+            }
+            onCreateGroupFromTag={handleCreateGroupFromTag}
             onBulkDelete={() => void handleDeleteClassesFromCanvas(selectedClassNodeIds)}
             onBulkDuplicate={() => handleDuplicateClasses(selectedClassNodeIds)}
             onBulkExportJson={handleExportSelectionJson}

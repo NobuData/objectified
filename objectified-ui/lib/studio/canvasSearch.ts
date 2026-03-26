@@ -5,6 +5,7 @@
 
 import type { StudioClass, StudioGroup } from './types';
 import { getStableClassId } from './types';
+import { expandGroupIdsWithAncestors } from './canvasGroupLayout';
 
 /** Filter by schema composition type (class = no composition, allOf/oneOf/anyOf = has that key). */
 export type SearchFilterType = 'all' | 'class' | 'allOf' | 'oneOf' | 'anyOf';
@@ -156,12 +157,12 @@ export function getVisibleGroupIds(
     const hasVisibleChild = Array.from(visibleClassIds).some(
       (cid) => classToGroup.get(cid) === gid
     );
-    return hasVisibleChild ? new Set([gid]) : new Set();
+    return hasVisibleChild ? expandGroupIdsWithAncestors(groups, new Set([gid])) : new Set();
   }
   const groupIdsWithVisibleChildren = new Set<string>();
   for (const cid of visibleClassIds) {
     const gid = classToGroup.get(cid);
     if (gid) groupIdsWithVisibleChildren.add(gid);
   }
-  return groupIdsWithVisibleChildren;
+  return expandGroupIdsWithAncestors(groups, groupIdsWithVisibleChildren);
 }

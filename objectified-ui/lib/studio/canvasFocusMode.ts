@@ -5,6 +5,7 @@
  */
 
 import type { StudioGroup } from './types';
+import { expandGroupIdsWithAncestors } from './canvasGroupLayout';
 
 /** Focus mode state. */
 export interface FocusModeState {
@@ -98,6 +99,6 @@ export function getFocusedGroupIds(
     const gid = classToGroup.get(nodeId);
     if (gid && knownGroupIds.has(gid)) visibleGroupIds.add(gid);
   }
-  return visibleGroupIds;
+  return expandGroupIdsWithAncestors(groups, visibleGroupIds);
 }
 

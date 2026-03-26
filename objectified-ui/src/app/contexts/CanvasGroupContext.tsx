@@ -17,7 +17,11 @@ import {
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
 import { generateGroupId } from '@lib/studio/types';
-import GroupDialog from '@/app/dashboard/components/GroupDialog';
+import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
+import { getGroupAbsolutePosition } from '@lib/studio/canvasGroupLayout';
+import GroupDialog, {
+  type GroupDialogSavePayload,
+} from '@/app/dashboard/components/GroupDialog';
 
 /** Minimal event shape we need; avoids React Flow event type mismatch. */
 export interface PaneContextMenuEvent {
@@ -90,14 +94,26 @@ export function CanvasGroupProvider({ children }: { children: ReactNode }) {
   }, [editGroupId, studio?.state?.groups]);
 
   const handleGroupSave = useCallback(
-    (name: string, style: Record<string, string | number>) => {
+    (payload: GroupDialogSavePayload) => {
       if (!editGroupId || !studio?.applyChange) return;
       studio.applyChange((draft) => {
         const g = draft.groups.find((x) => x.id === editGroupId);
-        if (g) {
-          g.name = name;
-          g.metadata = { ...g.metadata, style };
-        }
+        if (!g) return;
+        g.name = payload.name;
+        const prevMeta = (g.metadata ?? {}) as GroupCanvasMetadata;
+        const meta: GroupCanvasMetadata = {
+          ...prevMeta,
+          style: payload.style,
+        };
+        if (payload.parentGroupId) meta.parentGroupId = payload.parentGroupId;
+        else delete meta.parentGroupId;
+        if (payload.description) meta.description = payload.description;
+        else delete meta.description;
+        if (payload.owner) meta.owner = payload.owner;
+        else delete meta.owner;
+        if (payload.governanceTag) meta.governanceTag = payload.governanceTag;
+        else delete meta.governanceTag;
+        g.metadata = meta as Record<string, unknown>;
       });
       setEditGroupId(null);
     },
@@ -123,6 +139,21 @@ export function CanvasGroupProvider({ children }: { children: ReactNode }) {
       });
       if (!ok || !studio?.applyChange) return false;
       studio.applyChange((draft) => {
+        const gAbs = getGroupAbsolutePosition(draft.groups, groupId);
+        for (const h of draft.groups) {
+          if (h.id === groupId) continue;
+          const hm = (h.metadata ?? {}) as GroupCanvasMetadata;
+          if (hm.parentGroupId !== groupId) continue;
+          const rel = hm.position ?? { x: 0, y: 0 };
+          h.metadata = {
+            ...h.metadata,
+            parentGroupId: undefined,
+            position: {
+              x: gAbs.x + (rel.x ?? 0),
+              y: gAbs.y + (rel.y ?? 0),
+            },
+          } as Record<string, unknown>;
+        }
         draft.groups = draft.groups.filter((g) => g.id !== groupId);
         draft.classes = draft.classes.filter((c) => c.canvas_metadata?.group !== groupId);
       });
@@ -169,6 +200,7 @@ export function CanvasGroupProvider({ children }: { children: ReactNode }) {
       <GroupDialog
         open={editGroupId !== null}
         group={editGroup}
+        allGroups={studio?.state?.groups ?? []}
         onSave={handleGroupSave}
         onDelete={handleGroupDeleteFromDialog}
         onClose={closeGroupEditor}

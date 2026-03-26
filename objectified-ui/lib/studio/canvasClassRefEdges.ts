@@ -8,6 +8,7 @@
 import { MarkerType, type Edge } from '@xyflow/react';
 import type { StudioClass, StudioClassProperty, StudioGroup } from './types';
 import { getStableClassId } from './types';
+import { buildGroupAbsoluteOriginMap } from './canvasGroupLayout';
 
 /** Ref type for edge styling (direct = solid, optional = dashed, weak = dotted, bidirectional = two-way). */
 export type ClassRefType = 'direct' | 'optional' | 'weak' | 'bidirectional';
@@ -322,10 +323,8 @@ export function buildDesignCanvasRefLayer(
 ): DesignCanvasRefLayer {
   const groupPositions = new Map<string, { x: number; y: number }>();
   if (groups) {
-    for (const g of groups) {
-      const pos = (g.metadata as { position?: { x: number; y: number } } | undefined)?.position;
-      if (pos) groupPositions.set(g.id, pos);
-    }
+    const abs = buildGroupAbsoluteOriginMap(groups);
+    abs.forEach((v, k) => groupPositions.set(k, v));
   }
   const validIds = new Set<string>();
   for (const cls of classes) {

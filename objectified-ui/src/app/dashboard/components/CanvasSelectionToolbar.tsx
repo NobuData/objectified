@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Canvas selection count and bulk actions (GitHub #234).
+ * Canvas selection count and bulk actions (GitHub #234, #237).
  */
 
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -10,6 +10,8 @@ import { ChevronDown } from 'lucide-react';
 
 export interface CanvasSelectionToolbarProps {
   selectedClassIds: string[];
+  /** How many selected classes are currently in a canvas group (GitHub #237). */
+  selectedClassesInGroupsCount?: number;
   groups: StudioGroup[];
   availableTagNames: string[];
   mutationLocked: boolean;
@@ -19,6 +21,9 @@ export interface CanvasSelectionToolbarProps {
   onSelectByTag: (tagName: string) => void;
   onClearSelection: () => void;
   onBulkMoveToGroup: (groupId: string) => void;
+  onCreateGroupFromSelection?: () => void;
+  onBulkRemoveFromGroup?: () => void;
+  onCreateGroupFromTag?: (tagName: string) => void;
   onBulkDelete: () => void;
   onBulkDuplicate: () => void;
   onBulkExportJson: () => void;
@@ -36,6 +41,7 @@ const subTriggerClass =
 
 export default function CanvasSelectionToolbar({
   selectedClassIds,
+  selectedClassesInGroupsCount = 0,
   groups,
   availableTagNames,
   mutationLocked,
@@ -45,6 +51,9 @@ export default function CanvasSelectionToolbar({
   onSelectByTag,
   onClearSelection,
   onBulkMoveToGroup,
+  onCreateGroupFromSelection,
+  onBulkRemoveFromGroup,
+  onCreateGroupFromTag,
   onBulkDelete,
   onBulkDuplicate,
   onBulkExportJson,
@@ -157,6 +166,45 @@ export default function CanvasSelectionToolbar({
                         onSelect={() => onBulkMoveToGroup(g.id)}
                       >
                         {g.name}
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.SubContent>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Sub>
+            ) : null}
+            {!mutationLocked && onCreateGroupFromSelection ? (
+              <DropdownMenu.Item
+                className={menuItemClass}
+                disabled={n === 0}
+                onSelect={() => onCreateGroupFromSelection()}
+              >
+                Create group from selection
+              </DropdownMenu.Item>
+            ) : null}
+            {!mutationLocked && onBulkRemoveFromGroup ? (
+              <DropdownMenu.Item
+                className={menuItemClass}
+                disabled={selectedClassesInGroupsCount === 0}
+                onSelect={() => onBulkRemoveFromGroup()}
+              >
+                Remove from group
+              </DropdownMenu.Item>
+            ) : null}
+            {!mutationLocked && onCreateGroupFromTag && availableTagNames.length > 0 ? (
+              <DropdownMenu.Sub>
+                <DropdownMenu.SubTrigger className={subTriggerClass}>
+                  Create group from tag
+                  <ChevronDown className="h-3.5 w-3.5 -rotate-90 opacity-70" aria-hidden />
+                </DropdownMenu.SubTrigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.SubContent className={submenuContentClass} sideOffset={4}>
+                    {availableTagNames.map((tagName) => (
+                      <DropdownMenu.Item
+                        key={tagName}
+                        className={menuItemClass}
+                        onSelect={() => onCreateGroupFromTag(tagName)}
+                      >
+                        {tagName}
                       </DropdownMenu.Item>
                     ))}
                   </DropdownMenu.SubContent>

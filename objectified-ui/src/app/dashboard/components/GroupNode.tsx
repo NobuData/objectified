@@ -8,6 +8,7 @@
 
 import { memo, useCallback, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { CSSProperties } from 'react';
+import { Box, Circle, Hexagon, Square } from 'lucide-react';
 import { NodeResizer, type Node, type NodeProps } from '@xyflow/react';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
 import type { CanvasResizeHandleVisibility } from '@lib/studio/canvasSettings';
@@ -62,9 +63,29 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
   if (style.backgroundColor) containerStyle.backgroundColor = String(style.backgroundColor);
   if (style.border) {
     containerStyle.borderWidth = '2px';
-    containerStyle.borderStyle = 'solid';
+    const bs = style.borderStyle;
+    containerStyle.borderStyle =
+      bs === 'dashed' || bs === 'dotted' ? String(bs) : 'solid';
     containerStyle.borderColor = String(style.border);
   }
+  const headerIcon = String(style.headerIcon ?? '');
+  const HeaderGlyph =
+    headerIcon === 'box'
+      ? Box
+      : headerIcon === 'circle'
+        ? Circle
+        : headerIcon === 'square'
+          ? Square
+          : headerIcon === 'hexagon'
+            ? Hexagon
+            : null;
+  const detail = [
+    groupMetadata?.description?.trim(),
+    groupMetadata?.owner ? `Owner: ${groupMetadata.owner}` : '',
+    groupMetadata?.governanceTag ? `Tag: ${groupMetadata.governanceTag}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   containerStyle.minWidth = rc.minWidth;
   containerStyle.minHeight = rc.minHeight;
   const showResizeChrome =
@@ -111,7 +132,10 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
         data-canvas-nav-node={id}
         tabIndex={canvasNavShellTabIndex}
         role="group"
-        aria-label={`Group ${label?.trim() ? label : 'Untitled'}`}
+        aria-label={`Group ${label?.trim() ? label : 'Untitled'}${
+          detail ? `. ${detail}` : ''
+        }`}
+        title={detail || undefined}
         onMouseEnter={() => setResizeHover(true)}
         onMouseLeave={() => setResizeHover(false)}
         onFocus={() => onCanvasNavShellFocus?.()}
@@ -128,11 +152,15 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
           type="button"
           tabIndex={-1}
           onClick={() => onEdit?.(id)}
-          className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 truncate rounded-t-md hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors"
-          title="Rename, color, style"
+          onDoubleClick={() => onEdit?.(id)}
+          className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 truncate rounded-t-md hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors inline-flex items-center gap-2"
+          title="Rename, color, style (double-click)"
           aria-label={`Edit group ${label?.trim() ? label : 'Untitled'} (rename, color, style)`}
         >
-          {label || 'Group'}
+          {HeaderGlyph ? (
+            <HeaderGlyph className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+          ) : null}
+          <span className="truncate">{label || 'Group'}</span>
         </button>
       </div>
     </>
