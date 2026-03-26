@@ -58,8 +58,8 @@ export default function CanvasSearchBar() {
   const visibleCount = useMemo(() => {
     if (!search) return null;
     if (!isSearchActive(search.state)) return null;
-    return getVisibleClassIds(classes, search.state).size;
-  }, [search, classes]);
+    return getVisibleClassIds(classes, search.state, groups).size;
+  }, [search, classes, groups]);
 
   const showNoMatches =
     visibleCount === 0 &&
@@ -356,8 +356,8 @@ export default function CanvasSearchBar() {
         </Popover.Root>
 
         <Select.Root
-          value={state.searchFilterTag ?? '__all_tags__'}
-          onValueChange={(v) => setFilterTag(v === '__all_tags__' ? null : v)}
+          value={state.searchFilterTag ?? '\x00'}
+          onValueChange={(v) => setFilterTag(v === '\x00' ? null : v)}
         >
           <Select.Trigger className={triggerClass} aria-label="Filter by tag">
             <Select.Value placeholder="All tags" />
@@ -368,7 +368,7 @@ export default function CanvasSearchBar() {
           <Select.Portal>
             <Select.Content className={contentClass} position="popper" sideOffset={4}>
               <Select.Viewport>
-                <Select.Item value="__all_tags__" className={itemClass}>
+                <Select.Item value={'\x00'} className={itemClass}>
                   <Select.ItemText>All tags</Select.ItemText>
                 </Select.Item>
                 {tagChoices.map((t) => (

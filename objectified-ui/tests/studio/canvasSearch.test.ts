@@ -258,6 +258,27 @@ describe('canvasSearch', () => {
       expect(classMatchesSearch(ungrouped, state)).toBe(false);
     });
 
+    it('includes classes in descendant groups when a parent group is selected', () => {
+      const groups: StudioGroup[] = [
+        { id: 'parent', name: 'Parent', metadata: {} },
+        { id: 'child', name: 'Child', metadata: { parentGroupId: 'parent' } },
+        { id: 'grandchild', name: 'Grandchild', metadata: { parentGroupId: 'child' } },
+      ];
+      const inParent = makeClass({ name: 'A', canvas_metadata: { group: 'parent' } });
+      const inChild = makeClass({ name: 'B', canvas_metadata: { group: 'child' } });
+      const inGrandchild = makeClass({ name: 'C', canvas_metadata: { group: 'grandchild' } });
+      const inOther = makeClass({ name: 'D', canvas_metadata: { group: 'other' } });
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        searchFilterGroups: ['parent'],
+      };
+      // All three levels of nesting should be visible when selecting the parent group.
+      expect(classMatchesSearch(inParent, state, groups)).toBe(true);
+      expect(classMatchesSearch(inChild, state, groups)).toBe(true);
+      expect(classMatchesSearch(inGrandchild, state, groups)).toBe(true);
+      expect(classMatchesSearch(inOther, state, groups)).toBe(false);
+    });
+
     it('filters by hasProperties', () => {
       const withProps = makeClass({ name: 'E', properties: [{ name: 'p1' }] });
       const noProps = makeClass({ name: 'F', properties: [] });
@@ -431,6 +452,27 @@ describe('canvasSearch', () => {
       const visible = getVisibleGroupIds(groups, state, visibleClassIds, classToGroup);
       expect(visible.has('g1')).toBe(true);
       expect(visible.has('g2')).toBe(true);
+    });
+
+    it('shows parent and descendant group nodes when filtering by a parent group with nested classes', () => {
+      const nested: StudioGroup[] = [
+        { id: 'root', name: 'Root', metadata: {} },
+        { id: 'mid', name: 'Mid', metadata: { parentGroupId: 'root' } },
+        { id: 'leaf', name: 'Leaf', metadata: { parentGroupId: 'mid' } },
+      ];
+      // c1 lives in 'leaf' (a grandchild of 'root')
+      const cg = new Map<string, string>([['c1', 'leaf']]);
+      const visibleClassIds = new Set(['c1']);
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        searchFilterGroups: ['root'],
+      };
+      const visible = getVisibleGroupIds(nested, state, visibleClassIds, cg);
+      // All three group nodes must be visible: root (selected), mid and leaf (descendants), plus
+      // ancestors of root (none in this case).
+      expect(visible.has('root')).toBe(true);
+      expect(visible.has('mid')).toBe(true);
+      expect(visible.has('leaf')).toBe(true);
     });
   });
 });
