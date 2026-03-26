@@ -133,7 +133,7 @@ import CanvasSelectionToolbar from './CanvasSelectionToolbar';
 import CanvasClassListView from './CanvasClassListView';
 import SelectedRefEdgePanel from './SelectedRefEdgePanel';
 
-import { classHasValidationErrors } from '@lib/studio/classValidation';
+import { classHasValidationErrors, isStudioClassDeprecated } from '@lib/studio/classValidation';
 import { getSchemaMode } from '@lib/studio/schemaMode';
 import { applyAlignmentToNodeChanges } from '@lib/studio/canvasAlignmentSnap';
 import AlignmentGuidesOverlay from './AlignmentGuidesOverlay';
@@ -145,10 +145,6 @@ const EMPTY_CLASS_MUTATION_STATUS: Record<string, ClassMutationStatus> = {};
 
 const EMPTY_ALIGNMENT_GUIDES = { verticalX: [] as number[], horizontalY: [] as number[] };
 
-function isClassDeprecated(cls: StudioClass): boolean {
-  const schema = cls.schema as { deprecated?: unknown } | undefined;
-  return Boolean(schema?.deprecated === true);
-}
 type CanvasViewportApi = Pick<
   {
     fitView: (...args: any[]) => any;
@@ -365,7 +361,7 @@ export default function DesignCanvas() {
           description: cls.description,
           refCount: classRefCounts.get(id) ?? 0,
           nodeStatus: {
-            isDeprecated: isClassDeprecated(cls),
+            isDeprecated: isStudioClassDeprecated(cls),
             isNew: classMutationStatusById[id] === 'new',
             isModified: classMutationStatusById[id] === 'modified',
             hasValidationErrors: classHasValidationErrors(cls),

@@ -10,19 +10,36 @@ import {
 } from 'react';
 import {
   defaultCanvasSearchState,
+  normalizeCanvasSearchState,
   type CanvasSearchState,
   type SearchFilterType,
+  type QueryFieldCombineMode,
+  type StructuralFilterCombineMode,
 } from '@lib/studio/canvasSearch';
 
 export interface CanvasSearchContextValue {
   state: CanvasSearchState;
   setState: (state: CanvasSearchState) => void;
+  patchState: (partial: Partial<CanvasSearchState>) => void;
+  clearSearch: () => void;
   setQuery: (canvasSearchQuery: string) => void;
   setUseRegex: (useRegex: boolean) => void;
+  setCaseSensitive: (caseSensitive: boolean) => void;
   setFilterType: (searchFilterType: SearchFilterType) => void;
   setFilterGroup: (searchFilterGroup: string | null) => void;
+  setFilterTag: (searchFilterTag: string | null) => void;
   setHasProperties: (hasProperties: boolean | null) => void;
   setPropertyNameFilter: (propertyNameFilter: string) => void;
+  setRequireValidationErrors: (requireValidationErrors: boolean | null) => void;
+  setRequireDeprecated: (requireDeprecated: boolean | null) => void;
+  setStructuralFilterMode: (structuralFilterMode: StructuralFilterCombineMode) => void;
+  setQueryFieldCombineMode: (queryFieldCombineMode: QueryFieldCombineMode) => void;
+  setSearchInName: (v: boolean) => void;
+  setSearchInDescription: (v: boolean) => void;
+  setSearchInPropertyNames: (v: boolean) => void;
+  setSearchInPropertyTypes: (v: boolean) => void;
+  setSearchInTags: (v: boolean) => void;
+  setSearchInAnnotations: (v: boolean) => void;
 }
 
 const CanvasSearchContext = createContext<CanvasSearchContextValue | null>(null);
@@ -30,12 +47,24 @@ const CanvasSearchContext = createContext<CanvasSearchContextValue | null>(null)
 export function CanvasSearchProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CanvasSearchState>(defaultCanvasSearchState);
 
+  const patchState = useCallback((partial: Partial<CanvasSearchState>) => {
+    setState((prev) => normalizeCanvasSearchState({ ...prev, ...partial }));
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    setState(defaultCanvasSearchState);
+  }, []);
+
   const setQuery = useCallback((canvasSearchQuery: string) => {
     setState((prev) => ({ ...prev, canvasSearchQuery }));
   }, []);
 
   const setUseRegex = useCallback((useRegex: boolean) => {
     setState((prev) => ({ ...prev, useRegex }));
+  }, []);
+
+  const setCaseSensitive = useCallback((caseSensitive: boolean) => {
+    setState((prev) => ({ ...prev, caseSensitive }));
   }, []);
 
   const setFilterType = useCallback((searchFilterType: SearchFilterType) => {
@@ -46,6 +75,10 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, searchFilterGroup }));
   }, []);
 
+  const setFilterTag = useCallback((searchFilterTag: string | null) => {
+    setState((prev) => ({ ...prev, searchFilterTag }));
+  }, []);
+
   const setHasProperties = useCallback((hasProperties: boolean | null) => {
     setState((prev) => ({ ...prev, hasProperties }));
   }, []);
@@ -54,25 +87,96 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, propertyNameFilter }));
   }, []);
 
+  const setRequireValidationErrors = useCallback((requireValidationErrors: boolean | null) => {
+    setState((prev) => ({ ...prev, requireValidationErrors }));
+  }, []);
+
+  const setRequireDeprecated = useCallback((requireDeprecated: boolean | null) => {
+    setState((prev) => ({ ...prev, requireDeprecated }));
+  }, []);
+
+  const setStructuralFilterMode = useCallback(
+    (structuralFilterMode: StructuralFilterCombineMode) => {
+      setState((prev) => ({ ...prev, structuralFilterMode }));
+    },
+    []
+  );
+
+  const setQueryFieldCombineMode = useCallback((queryFieldCombineMode: QueryFieldCombineMode) => {
+    setState((prev) => ({ ...prev, queryFieldCombineMode }));
+  }, []);
+
+  const setSearchInName = useCallback((searchInName: boolean) => {
+    setState((prev) => ({ ...prev, searchInName }));
+  }, []);
+
+  const setSearchInDescription = useCallback((searchInDescription: boolean) => {
+    setState((prev) => ({ ...prev, searchInDescription }));
+  }, []);
+
+  const setSearchInPropertyNames = useCallback((searchInPropertyNames: boolean) => {
+    setState((prev) => ({ ...prev, searchInPropertyNames }));
+  }, []);
+
+  const setSearchInPropertyTypes = useCallback((searchInPropertyTypes: boolean) => {
+    setState((prev) => ({ ...prev, searchInPropertyTypes }));
+  }, []);
+
+  const setSearchInTags = useCallback((searchInTags: boolean) => {
+    setState((prev) => ({ ...prev, searchInTags }));
+  }, []);
+
+  const setSearchInAnnotations = useCallback((searchInAnnotations: boolean) => {
+    setState((prev) => ({ ...prev, searchInAnnotations }));
+  }, []);
+
   const value = useMemo<CanvasSearchContextValue>(
     () => ({
       state,
-      setState,
+      setState: (s) => setState(normalizeCanvasSearchState(s)),
+      patchState,
+      clearSearch,
       setQuery,
       setUseRegex,
+      setCaseSensitive,
       setFilterType,
       setFilterGroup,
+      setFilterTag,
       setHasProperties,
       setPropertyNameFilter,
+      setRequireValidationErrors,
+      setRequireDeprecated,
+      setStructuralFilterMode,
+      setQueryFieldCombineMode,
+      setSearchInName,
+      setSearchInDescription,
+      setSearchInPropertyNames,
+      setSearchInPropertyTypes,
+      setSearchInTags,
+      setSearchInAnnotations,
     }),
     [
       state,
+      patchState,
+      clearSearch,
       setQuery,
       setUseRegex,
+      setCaseSensitive,
       setFilterType,
       setFilterGroup,
+      setFilterTag,
       setHasProperties,
       setPropertyNameFilter,
+      setRequireValidationErrors,
+      setRequireDeprecated,
+      setStructuralFilterMode,
+      setQueryFieldCombineMode,
+      setSearchInName,
+      setSearchInDescription,
+      setSearchInPropertyNames,
+      setSearchInPropertyTypes,
+      setSearchInTags,
+      setSearchInAnnotations,
     ]
   );
 
