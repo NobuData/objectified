@@ -388,7 +388,7 @@ function GroupsListPanel({
       >
         <button
           type="button"
-          onClick={() => onFocusGroup(g.id)}
+          onClick={(e) => onFocusGroup(g.id, e.metaKey || e.ctrlKey)}
           className="flex-1 min-w-0 text-left focus:outline-none"
           aria-label={`Focus and zoom to group ${g.name} on canvas (${countLabel})`}
         >

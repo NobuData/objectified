@@ -13,3 +13,9 @@ export function classHasValidationErrors(cls: StudioClass): boolean {
   }
   return false;
 }
+
+/** True when the class schema marks it deprecated (OpenAPI `deprecated`). */
+export function isStudioClassDeprecated(cls: StudioClass): boolean {
+  const schema = cls.schema as { deprecated?: unknown } | undefined;
+  return Boolean(schema?.deprecated === true);
+}

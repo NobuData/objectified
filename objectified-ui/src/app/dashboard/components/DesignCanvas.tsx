@@ -135,7 +135,7 @@ import CanvasSelectionToolbar from './CanvasSelectionToolbar';
 import CanvasClassListView from './CanvasClassListView';
 import SelectedRefEdgePanel from './SelectedRefEdgePanel';
 
-import { classHasValidationErrors } from '@lib/studio/classValidation';
+import { classHasValidationErrors, isStudioClassDeprecated } from '@lib/studio/classValidation';
 import { getSchemaMode } from '@lib/studio/schemaMode';
 import { applyAlignmentToNodeChanges } from '@lib/studio/canvasAlignmentSnap';
 import AlignmentGuidesOverlay from './AlignmentGuidesOverlay';
@@ -147,10 +147,6 @@ const EMPTY_CLASS_MUTATION_STATUS: Record<string, ClassMutationStatus> = {};
 
 const EMPTY_ALIGNMENT_GUIDES = { verticalX: [] as number[], horizontalY: [] as number[] };
 
-function isClassDeprecated(cls: StudioClass): boolean {
-  const schema = cls.schema as { deprecated?: unknown } | undefined;
-  return Boolean(schema?.deprecated === true);
-}
 type CanvasViewportApi = Pick<
   {
     fitView: (...args: any[]) => any;
@@ -367,7 +363,7 @@ export default function DesignCanvas() {
           description: cls.description,
           refCount: classRefCounts.get(id) ?? 0,
           nodeStatus: {
-            isDeprecated: isClassDeprecated(cls),
+            isDeprecated: isStudioClassDeprecated(cls),
             isNew: classMutationStatusById[id] === 'new',
             isModified: classMutationStatusById[id] === 'modified',
             hasValidationErrors: classHasValidationErrors(cls),
@@ -684,8 +680,8 @@ export default function DesignCanvas() {
 
   const visibleClassIds = useMemo(
     () =>
-      searchState ? getVisibleClassIds(classes, searchState) : null,
-    [classes, searchState]
+      searchState ? getVisibleClassIds(classes, searchState, groups) : null,
+    [classes, searchState, groups]
   );
   const classToGroup = useMemo(() => {
     const m = new Map<string, string>();
@@ -2781,7 +2777,10 @@ export default function DesignCanvas() {
                       className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                       onClick={async () => {
                         const succeeded = await canvasGroup?.ungroupGroup(nodeContextMenu.node.id);
-                        if (succeeded && focusState?.focusGroupId === nodeContextMenu.node.id) {
+                        if (
+                          succeeded &&
+                          focusState?.focusGroupIds?.includes(nodeContextMenu.node.id)
+                        ) {
                           focusMode?.exitFocusMode();
                         }
                         setNodeContextMenu(null);
@@ -2794,7 +2793,10 @@ export default function DesignCanvas() {
                       className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                       onClick={async () => {
                         const succeeded = await canvasGroup?.archiveGroup(nodeContextMenu.node.id);
-                        if (succeeded && focusState?.focusGroupId === nodeContextMenu.node.id) {
+                        if (
+                          succeeded &&
+                          focusState?.focusGroupIds?.includes(nodeContextMenu.node.id)
+                        ) {
                           focusMode?.exitFocusMode();
                         }
                         setNodeContextMenu(null);
@@ -2807,7 +2809,10 @@ export default function DesignCanvas() {
                       className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                       onClick={async () => {
                         const succeeded = await canvasGroup?.deleteGroupAndAllClasses(nodeContextMenu.node.id);
-                        if (succeeded && focusState?.focusGroupId === nodeContextMenu.node.id) {
+                        if (
+                          succeeded &&
+                          focusState?.focusGroupIds?.includes(nodeContextMenu.node.id)
+                        ) {
                           focusMode?.exitFocusMode();
                         }
                         setNodeContextMenu(null);

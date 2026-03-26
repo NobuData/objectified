@@ -1,11 +1,12 @@
 /**
- * Unit tests for canvas search state and filter logic. GitHub #85.
+ * Unit tests for canvas search state and filter logic. GitHub #85, #241.
  */
 
 import type { StudioClass, StudioGroup } from '@lib/studio/types';
 import {
   defaultCanvasSearchState,
   isSearchActive,
+  normalizeCanvasSearchState,
   classMatchesSearch,
   getVisibleClassIds,
   getVisibleGroupIds,
@@ -27,10 +28,42 @@ describe('canvasSearch', () => {
     it('has empty query and neutral filters', () => {
       expect(defaultCanvasSearchState.canvasSearchQuery).toBe('');
       expect(defaultCanvasSearchState.useRegex).toBe(false);
+      expect(defaultCanvasSearchState.caseSensitive).toBe(false);
+      expect(defaultCanvasSearchState.searchInName).toBe(true);
+      expect(defaultCanvasSearchState.searchInDescription).toBe(false);
       expect(defaultCanvasSearchState.searchFilterType).toBe('all');
       expect(defaultCanvasSearchState.searchFilterGroups).toEqual([]);
+      expect(defaultCanvasSearchState.searchFilterTag).toBeNull();
       expect(defaultCanvasSearchState.hasProperties).toBeNull();
       expect(defaultCanvasSearchState.propertyNameFilter).toBe('');
+      expect(defaultCanvasSearchState.requireValidationErrors).toBeNull();
+      expect(defaultCanvasSearchState.requireDeprecated).toBeNull();
+      expect(defaultCanvasSearchState.structuralFilterMode).toBe('and');
+    });
+  });
+
+  describe('normalizeCanvasSearchState', () => {
+    it('fills missing #241 fields from persisted partial state', () => {
+      const legacy = {
+        canvasSearchQuery: 'x',
+        useRegex: false,
+        searchFilterType: 'all',
+        searchFilterGroups: [],
+        hasProperties: null,
+        propertyNameFilter: '',
+      } as Record<string, unknown>;
+      const n = normalizeCanvasSearchState(legacy);
+      expect(n.searchFilterTag).toBeNull();
+      expect(n.requireValidationErrors).toBeNull();
+      expect(n.caseSensitive).toBe(false);
+      expect(n.searchInName).toBe(true);
+    });
+
+    it('migrates legacy searchFilterGroup to searchFilterGroups', () => {
+      const n = normalizeCanvasSearchState({
+        searchFilterGroup: 'g-old',
+      } as unknown as Partial<CanvasSearchState>);
+      expect(n.searchFilterGroups).toEqual(['g-old']);
     });
   });
 
@@ -43,12 +76,27 @@ describe('canvasSearch', () => {
       expect(isSearchActive({ ...defaultCanvasSearchState, canvasSearchQuery: 'foo' })).toBe(true);
     });
 
+    it('returns false for text-only options when query is empty', () => {
+      expect(
+        isSearchActive({
+          ...defaultCanvasSearchState,
+          searchInDescription: true,
+          useRegex: true,
+          caseSensitive: true,
+        })
+      ).toBe(false);
+    });
+
     it('returns true when searchFilterType is not all', () => {
       expect(isSearchActive({ ...defaultCanvasSearchState, searchFilterType: 'class' })).toBe(true);
     });
 
     it('returns true when searchFilterGroups is non-empty', () => {
       expect(isSearchActive({ ...defaultCanvasSearchState, searchFilterGroups: ['g1'] })).toBe(true);
+    });
+
+    it('returns true when searchFilterTag is set', () => {
+      expect(isSearchActive({ ...defaultCanvasSearchState, searchFilterTag: 'urgent' })).toBe(true);
     });
 
     it('returns true when hasProperties is set', () => {
@@ -58,6 +106,13 @@ describe('canvasSearch', () => {
 
     it('returns true when propertyNameFilter is set', () => {
       expect(isSearchActive({ ...defaultCanvasSearchState, propertyNameFilter: 'id' })).toBe(true);
+    });
+
+    it('returns true when validation or deprecated filters are set', () => {
+      expect(
+        isSearchActive({ ...defaultCanvasSearchState, requireValidationErrors: true })
+      ).toBe(true);
+      expect(isSearchActive({ ...defaultCanvasSearchState, requireDeprecated: true })).toBe(true);
     });
 
     it('returns false when canvasSearchQuery is only whitespace', () => {
@@ -79,6 +134,44 @@ describe('canvasSearch', () => {
       expect(classMatchesSearch(cls, { ...state, canvasSearchQuery: 'xyz' })).toBe(false);
     });
 
+    it('respects caseSensitive for substring', () => {
+      const cls = makeClass({ name: 'Apple' });
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        canvasSearchQuery: 'app',
+        caseSensitive: true,
+      };
+      expect(classMatchesSearch(cls, state)).toBe(false);
+      expect(classMatchesSearch(cls, { ...state, canvasSearchQuery: 'App' })).toBe(true);
+    });
+
+    it('searches description when enabled', () => {
+      const cls = makeClass({ name: 'X', description: 'North wind' });
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        canvasSearchQuery: 'wind',
+        searchInName: false,
+        searchInDescription: true,
+      };
+      expect(classMatchesSearch(cls, state)).toBe(true);
+      expect(classMatchesSearch({ ...cls, description: '' }, state)).toBe(false);
+    });
+
+    it('requires all selected fields when matchAll', () => {
+      const cls = makeClass({ name: 'Alpha', description: 'Alpha' });
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        canvasSearchQuery: 'Alpha',
+        searchInName: true,
+        searchInDescription: true,
+        queryFieldCombineMode: 'matchAll',
+      };
+      expect(classMatchesSearch(cls, state)).toBe(true);
+      expect(
+        classMatchesSearch({ ...cls, description: 'Other' }, state)
+      ).toBe(false);
+    });
+
     it('filters by regex when useRegex is true', () => {
       const cls = makeClass({ name: 'UserProfile' });
       const state: CanvasSearchState = {
@@ -88,6 +181,36 @@ describe('canvasSearch', () => {
       };
       expect(classMatchesSearch(cls, state)).toBe(true);
       expect(classMatchesSearch(makeClass({ name: 'AdminUser' }), state)).toBe(false);
+    });
+
+    it('matches property types blob', () => {
+      const cls = makeClass({
+        name: 'P',
+        properties: [
+          {
+            name: 'id',
+            data: { type: 'string', format: 'uuid' },
+          },
+        ],
+      });
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        canvasSearchQuery: 'uuid',
+        searchInName: false,
+        searchInPropertyTypes: true,
+      };
+      expect(classMatchesSearch(cls, state)).toBe(true);
+    });
+
+    it('filters by tag on class', () => {
+      const tagged = makeClass({ name: 'T', tags: ['v1', 'core'] });
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        canvasSearchQuery: '',
+        searchFilterTag: 'v1',
+      };
+      expect(classMatchesSearch(tagged, state)).toBe(true);
+      expect(classMatchesSearch(makeClass({ name: 'U', tags: [] }), state)).toBe(false);
     });
 
     it('filters by searchFilterType class (no composition)', () => {
@@ -102,10 +225,18 @@ describe('canvasSearch', () => {
       const allOfCls = makeClass({ name: 'X', schema: { allOf: [{}] } });
       const oneOfCls = makeClass({ name: 'Y', schema: { oneOf: [{}] } });
       const anyOfCls = makeClass({ name: 'Z', schema: { anyOf: [{}] } });
-      expect(classMatchesSearch(allOfCls, { ...defaultCanvasSearchState, searchFilterType: 'allOf' })).toBe(true);
-      expect(classMatchesSearch(oneOfCls, { ...defaultCanvasSearchState, searchFilterType: 'oneOf' })).toBe(true);
-      expect(classMatchesSearch(anyOfCls, { ...defaultCanvasSearchState, searchFilterType: 'anyOf' })).toBe(true);
-      expect(classMatchesSearch(allOfCls, { ...defaultCanvasSearchState, searchFilterType: 'oneOf' })).toBe(false);
+      expect(classMatchesSearch(allOfCls, { ...defaultCanvasSearchState, searchFilterType: 'allOf' })).toBe(
+        true
+      );
+      expect(classMatchesSearch(oneOfCls, { ...defaultCanvasSearchState, searchFilterType: 'oneOf' })).toBe(
+        true
+      );
+      expect(classMatchesSearch(anyOfCls, { ...defaultCanvasSearchState, searchFilterType: 'anyOf' })).toBe(
+        true
+      );
+      expect(classMatchesSearch(allOfCls, { ...defaultCanvasSearchState, searchFilterType: 'oneOf' })).toBe(
+        false
+      );
     });
 
     it('filters by searchFilterGroups (any of)', () => {
@@ -127,13 +258,36 @@ describe('canvasSearch', () => {
       expect(classMatchesSearch(ungrouped, state)).toBe(false);
     });
 
+    it('includes classes in descendant groups when a parent group is selected', () => {
+      const groups: StudioGroup[] = [
+        { id: 'parent', name: 'Parent', metadata: {} },
+        { id: 'child', name: 'Child', metadata: { parentGroupId: 'parent' } },
+        { id: 'grandchild', name: 'Grandchild', metadata: { parentGroupId: 'child' } },
+      ];
+      const inParent = makeClass({ name: 'A', canvas_metadata: { group: 'parent' } });
+      const inChild = makeClass({ name: 'B', canvas_metadata: { group: 'child' } });
+      const inGrandchild = makeClass({ name: 'C', canvas_metadata: { group: 'grandchild' } });
+      const inOther = makeClass({ name: 'D', canvas_metadata: { group: 'other' } });
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        searchFilterGroups: ['parent'],
+      };
+      // All three levels of nesting should be visible when selecting the parent group.
+      expect(classMatchesSearch(inParent, state, groups)).toBe(true);
+      expect(classMatchesSearch(inChild, state, groups)).toBe(true);
+      expect(classMatchesSearch(inGrandchild, state, groups)).toBe(true);
+      expect(classMatchesSearch(inOther, state, groups)).toBe(false);
+    });
+
     it('filters by hasProperties', () => {
       const withProps = makeClass({ name: 'E', properties: [{ name: 'p1' }] });
       const noProps = makeClass({ name: 'F', properties: [] });
       expect(classMatchesSearch(withProps, { ...defaultCanvasSearchState, hasProperties: true })).toBe(true);
       expect(classMatchesSearch(noProps, { ...defaultCanvasSearchState, hasProperties: true })).toBe(false);
       expect(classMatchesSearch(noProps, { ...defaultCanvasSearchState, hasProperties: false })).toBe(true);
-      expect(classMatchesSearch(withProps, { ...defaultCanvasSearchState, hasProperties: false })).toBe(false);
+      expect(classMatchesSearch(withProps, { ...defaultCanvasSearchState, hasProperties: false })).toBe(
+        false
+      );
     });
 
     it('filters by propertyNameFilter', () => {
@@ -143,7 +297,58 @@ describe('canvasSearch', () => {
       });
       const state: CanvasSearchState = { ...defaultCanvasSearchState, propertyNameFilter: 'email' };
       expect(classMatchesSearch(withEmail, state)).toBe(true);
-      expect(classMatchesSearch(makeClass({ name: 'H', properties: [{ name: 'phone' }] }), state)).toBe(false);
+      expect(classMatchesSearch(makeClass({ name: 'H', properties: [{ name: 'phone' }] }), state)).toBe(
+        false
+      );
+    });
+
+    it('filters by validation errors', () => {
+      const bad = makeClass({ name: '' });
+      const good = makeClass({ name: 'Ok' });
+      expect(
+        classMatchesSearch(bad, { ...defaultCanvasSearchState, requireValidationErrors: true })
+      ).toBe(true);
+      expect(
+        classMatchesSearch(good, { ...defaultCanvasSearchState, requireValidationErrors: true })
+      ).toBe(false);
+      expect(
+        classMatchesSearch(good, { ...defaultCanvasSearchState, requireValidationErrors: false })
+      ).toBe(true);
+      expect(
+        classMatchesSearch(bad, { ...defaultCanvasSearchState, requireValidationErrors: false })
+      ).toBe(false);
+    });
+
+    it('filters by deprecated flag', () => {
+      const dep = makeClass({ name: 'D', schema: { deprecated: true } });
+      const live = makeClass({ name: 'L', schema: {} });
+      expect(classMatchesSearch(dep, { ...defaultCanvasSearchState, requireDeprecated: true })).toBe(true);
+      expect(classMatchesSearch(live, { ...defaultCanvasSearchState, requireDeprecated: true })).toBe(false);
+      expect(classMatchesSearch(live, { ...defaultCanvasSearchState, requireDeprecated: false })).toBe(true);
+      expect(classMatchesSearch(dep, { ...defaultCanvasSearchState, requireDeprecated: false })).toBe(false);
+    });
+
+    it('combines structural filters with OR', () => {
+      const inG = makeClass({
+        name: 'InG',
+        canvas_metadata: { group: 'g1' },
+        schema: {},
+      });
+      const depOnly = makeClass({
+        name: 'Dep',
+        schema: { deprecated: true },
+      });
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        searchFilterGroups: ['g1'],
+        requireDeprecated: true,
+        structuralFilterMode: 'or',
+      };
+      expect(classMatchesSearch(inG, state)).toBe(true);
+      expect(classMatchesSearch(depOnly, state)).toBe(true);
+      state.structuralFilterMode = 'and';
+      expect(classMatchesSearch(inG, state)).toBe(false);
+      expect(classMatchesSearch(depOnly, state)).toBe(false);
     });
   });
 
@@ -196,7 +401,7 @@ describe('canvasSearch', () => {
       );
       expect(visible.has('g1')).toBe(true);
       expect(visible.has('g2')).toBe(true);
-      expect(visible.has('g3')).toBe(true); // empty group must still be visible
+      expect(visible.has('g3')).toBe(true);
     });
 
     it('returns only groups with at least one visible class when search is active', () => {
@@ -247,6 +452,27 @@ describe('canvasSearch', () => {
       const visible = getVisibleGroupIds(groups, state, visibleClassIds, classToGroup);
       expect(visible.has('g1')).toBe(true);
       expect(visible.has('g2')).toBe(true);
+    });
+
+    it('shows parent and descendant group nodes when filtering by a parent group with nested classes', () => {
+      const nested: StudioGroup[] = [
+        { id: 'root', name: 'Root', metadata: {} },
+        { id: 'mid', name: 'Mid', metadata: { parentGroupId: 'root' } },
+        { id: 'leaf', name: 'Leaf', metadata: { parentGroupId: 'mid' } },
+      ];
+      // c1 lives in 'leaf' (a grandchild of 'root')
+      const cg = new Map<string, string>([['c1', 'leaf']]);
+      const visibleClassIds = new Set(['c1']);
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        searchFilterGroups: ['root'],
+      };
+      const visible = getVisibleGroupIds(nested, state, visibleClassIds, cg);
+      // All three group nodes must be visible: root (selected), mid and leaf (descendants), plus
+      // ancestors of root (none in this case).
+      expect(visible.has('root')).toBe(true);
+      expect(visible.has('mid')).toBe(true);
+      expect(visible.has('leaf')).toBe(true);
     });
   });
 });
