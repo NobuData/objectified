@@ -7,6 +7,7 @@
  */
 
 const SEARCH_HISTORY_KEY = 'objectified:canvas:searchHistory';
+const SEARCH_HISTORY_SYNC_ENABLED_KEY = 'objectified:canvas:searchHistorySyncEnabled';
 
 /** Maximum number of history entries retained. */
 export const MAX_HISTORY_ENTRIES = 50;
@@ -58,6 +59,20 @@ function saveSearchHistory(entries: SearchHistoryEntry[]): void {
 }
 
 /**
+ * Persist a provided list of search history entries (e.g. after an account
+ * sync merge) applying the same cap and field-sanitization as the normal add
+ * path so that the stored list never exceeds MAX_HISTORY_ENTRIES and never
+ * contains entries with non-string fields.
+ * This is a no-op when localStorage is unavailable.
+ */
+export function saveSearchHistoryEntries(entries: SearchHistoryEntry[]): void {
+  const sanitized = entries
+    .filter((e) => typeof e?.query === 'string' && typeof e?.savedAt === 'string')
+    .slice(0, MAX_HISTORY_ENTRIES);
+  saveSearchHistory(sanitized);
+}
+
+/**
  * Add a query to the search history. Duplicate queries are moved to the front
  * (most recent). The list is capped at MAX_HISTORY_ENTRIES.
  * Blank/whitespace-only queries are ignored.
@@ -103,5 +118,28 @@ export function removeSearchHistoryEntry(query: string): SearchHistoryEntry[] {
 export function clearSearchHistory(): SearchHistoryEntry[] {
   saveSearchHistory([]);
   return [];
+}
+
+/**
+ * Whether search history should be synced to the signed-in user's account (when supported).
+ * Stored locally so the UI can keep the setting even when offline.
+ */
+export function getSearchHistorySyncEnabled(): boolean {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    const raw = localStorage.getItem(SEARCH_HISTORY_SYNC_ENABLED_KEY);
+    return raw === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setSearchHistorySyncEnabled(enabled: boolean): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(SEARCH_HISTORY_SYNC_ENABLED_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Ignore localStorage errors
+  }
 }
 

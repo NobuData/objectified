@@ -23,6 +23,7 @@ export default function CanvasSearchMatchBridge({
   orderedRef.current = orderedMatchIds;
   const searchRef = useRef<CanvasSearchContextValue | null>(canvasSearch);
   searchRef.current = canvasSearch;
+  const lastSelectedIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!canvasSearch) return;
@@ -59,15 +60,41 @@ export default function CanvasSearchMatchBridge({
   useEffect(() => {
     if (!canvasSearch) return;
     const idx = canvasSearch.activeSearchMatchIndex;
-    if (idx < 0) return;
-    const id = idx < orderedMatchIds.length ? orderedMatchIds[idx] : null;
-    if (!id) return;
-    rf.setNodes((nodes) =>
-      nodes.map((n) => ({
-        ...n,
-        selected: n.id === id,
-      }))
-    );
+    const id = idx >= 0 && idx < orderedMatchIds.length ? orderedMatchIds[idx] : null;
+    const prevId = lastSelectedIdRef.current;
+    lastSelectedIdRef.current = id;
+
+    if (!id && !prevId) return;
+
+    if (!id && prevId) {
+      const prevNode = rf.getNode(prevId);
+      if (!prevNode?.selected) return;
+      rf.setNodes((nodes) =>
+        nodes.map((n) => (n.id === prevId ? { ...n, selected: false } : n))
+      );
+      return;
+    }
+
+    if (id) {
+      const nextNode = rf.getNode(id);
+      const prevNode = prevId ? rf.getNode(prevId) : null;
+      const nextAlreadySelected = !!nextNode?.selected;
+      const prevNeedsClear = !!(prevId && prevId !== id && prevNode?.selected);
+      if (nextAlreadySelected && !prevNeedsClear) return;
+      rf.setNodes((nodes) =>
+        nodes.map((n) => {
+          if (n.id === id) {
+            if (n.selected) return n;
+            return { ...n, selected: true };
+          }
+          if (prevId && prevId !== id && n.id === prevId) {
+            if (!n.selected) return n;
+            return { ...n, selected: false };
+          }
+          return n;
+        })
+      );
+    }
   }, [canvasSearch, canvasSearch?.activeSearchMatchIndex, orderedMatchIds, rf]);
 
   return null;
