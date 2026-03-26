@@ -748,6 +748,12 @@ export default function DesignCanvas() {
     [focusFilteredNodes]
   );
 
+  /** Precomputed index map for O(1) lookup in displayNodes and navigation handlers. */
+  const canvasNavigableNodeIndexMap = useMemo(
+    () => new Map(canvasNavigableNodeIds.map((id, idx) => [id, idx])),
+    [canvasNavigableNodeIds]
+  );
+
   const visibleFlowClassIds = useMemo(
     () => focusFilteredNodes.filter((n) => n.type === 'class').map((n) => n.id),
     [focusFilteredNodes]
@@ -1103,11 +1109,6 @@ export default function DesignCanvas() {
     [mutationLocked, editClassRequest]
   );
 
-  const visibleClassNodeIds = useMemo(
-    () => displayNodesBase.filter((n) => n.type === 'class').map((n) => n.id),
-    [displayNodesBase]
-  );
-
   const [keyboardFocusIndex, setKeyboardFocusIndex] = useState(-1);
   const [classListOpen, setClassListOpen] = useState(false);
 
@@ -1143,9 +1144,9 @@ export default function DesignCanvas() {
     const selected = nodes.filter((n) => n.selected);
     if (selected.length !== 1) return;
     const id = selected[0].id;
-    const idx = canvasNavigableNodeIds.indexOf(id);
+    const idx = canvasNavigableNodeIndexMap.get(id) ?? -1;
     if (idx >= 0) setKeyboardFocusIndex(idx);
-  }, [nodes, canvasNavigableNodeIds]);
+  }, [nodes, canvasNavigableNodeIndexMap]);
 
   const focusNavigableNodeByIndex = useCallback(
     (index: number, source: 'arrow' | 'tab' = 'arrow') => {
@@ -1206,10 +1207,10 @@ export default function DesignCanvas() {
           selected: n.id === nodeId,
         }))
       );
-      const idx = canvasNavigableNodeIds.indexOf(nodeId);
+      const idx = canvasNavigableNodeIndexMap.get(nodeId) ?? -1;
       if (idx >= 0) setKeyboardFocusIndex(idx);
     },
-    [canvasNavigableNodeIds, setNodes, clearSelectedEdges]
+    [canvasNavigableNodeIndexMap, setNodes, clearSelectedEdges]
   );
 
   const onCanvasNavShellEnterClass = useCallback(
@@ -1230,6 +1231,12 @@ export default function DesignCanvas() {
     [mutationLocked, canvasGroup]
   );
 
+  /** Precomputed classId→name map for O(1) edge label lookups. */
+  const classIdToNameMap = useMemo(
+    () => new Map(classes.map((c) => [getStableClassId(c), c.name ?? ''])),
+    [classes]
+  );
+
   const handleEdgeA11yFocus = useCallback(
     (edgeId: string) => {
       setNodes((cur) => cur.map((n) => ({ ...n, selected: false })));
@@ -1238,10 +1245,8 @@ export default function DesignCanvas() {
       );
       setKeyboardFocusIndex(-1);
       const edge = edges.find((e) => e.id === edgeId);
-      const srcName =
-        classes.find((c) => getStableClassId(c) === edge?.source)?.name ?? 'source';
-      const tgtName =
-        classes.find((c) => getStableClassId(c) === edge?.target)?.name ?? 'target';
+      const srcName = classIdToNameMap.get(edge?.source ?? '') ?? 'source';
+      const tgtName = classIdToNameMap.get(edge?.target ?? '') ?? 'target';
       const d = edge?.data as ClassRefEdgeData | undefined;
       setLiveRegionMessage(
         d?.label?.trim()
@@ -1249,12 +1254,12 @@ export default function DesignCanvas() {
           : `Selected edge from ${srcName} to ${tgtName}`
       );
     },
-    [setNodes, setEdges, edges, classes]
+    [setNodes, setEdges, edges, classIdToNameMap]
   );
 
   const displayNodes = useMemo(() => {
     return displayNodesBase.map((node) => {
-      const navIdx = canvasNavigableNodeIds.indexOf(node.id);
+      const navIdx = canvasNavigableNodeIndexMap.get(node.id) ?? -1;
       const shellTab =
         navIdx >= 0 && navIdx === keyboardFocusIndex ? 0 : -1;
       const shellA11y = {
@@ -1295,7 +1300,7 @@ export default function DesignCanvas() {
     });
   }, [
     displayNodesBase,
-    canvasNavigableNodeIds,
+    canvasNavigableNodeIndexMap,
     keyboardFocusIndex,
     handleCanvasNavShellFocusById,
     navigateCanvasNavFromDelta,
@@ -1308,10 +1313,8 @@ export default function DesignCanvas() {
     return displayEdges.map((e) => {
       if (e.type !== 'classRef') return e;
       const d = e.data as ClassRefEdgeData | undefined;
-      const srcName =
-        classes.find((c) => getStableClassId(c) === e.source)?.name ?? 'source';
-      const tgtName =
-        classes.find((c) => getStableClassId(c) === e.target)?.name ?? 'target';
+      const srcName = classIdToNameMap.get(e.source) ?? 'source';
+      const tgtName = classIdToNameMap.get(e.target) ?? 'target';
       const mid = [d?.label, d?.cardinalityLabel].filter(Boolean).join(' · ');
       const a11yEdgeLabel = mid
         ? `Reference from ${srcName} to ${tgtName}: ${mid}`
@@ -1326,7 +1329,7 @@ export default function DesignCanvas() {
         },
       };
     });
-  }, [displayEdges, classes, classRefEdgeCount, handleEdgeA11yFocus]);
+  }, [displayEdges, classIdToNameMap, classRefEdgeCount, handleEdgeA11yFocus]);
 
   const selectedNodeIds = useMemo(
     () => displayNodesBase.filter((n) => n.selected).map((n) => n.id),
@@ -1407,11 +1410,11 @@ export default function DesignCanvas() {
           selected: n.type === 'class' && n.id === classId,
         }))
       );
-      const idx = canvasNavigableNodeIds.indexOf(classId);
+      const idx = canvasNavigableNodeIndexMap.get(classId) ?? -1;
       if (idx >= 0) setKeyboardFocusIndex(idx);
       focusCanvasNavElement(classId);
     },
-    [canvasNavigableNodeIds, setNodes, clearSelectedEdges, focusCanvasNavElement]
+    [canvasNavigableNodeIndexMap, setNodes, clearSelectedEdges, focusCanvasNavElement]
   );
 
   const handleCanvasKeyDown = useCallback(
@@ -2251,8 +2254,9 @@ export default function DesignCanvas() {
               <span className="font-medium text-slate-800 dark:text-slate-100">
                 Keyboard
               </span>{' '}
-              — with the canvas region focused, arrow keys pan; Tab moves between
-              nodes; optional class list (top-right) syncs selection with the diagram
+              — with the canvas region focused, arrow keys pan; Tab moves focus into
+              a node, and arrow keys on the node shell move between nodes; optional
+              class list (top-right) syncs selection with the diagram
             </li>
           </ul>
         </div>

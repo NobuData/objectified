@@ -57,7 +57,7 @@ function BrokenRefNodeComponent({
     <div
       data-canvas-nav-node={id}
       tabIndex={canvasNavShellTabIndex}
-      role="group"
+      role="button"
       aria-label={`Broken reference: ${data.hint}. Property ${data.propertyName || 'unnamed'}. Press Enter or Space to open the editor.`}
       className={`rounded-md border border-red-400/90 bg-red-50/95 px-2 py-1.5 shadow-sm dark:border-red-500/60 dark:bg-red-950/50 max-w-[160px] cursor-pointer outline-none ${
         selected ? 'ring-2 ring-red-500 ring-offset-1 ring-offset-white dark:ring-offset-slate-900' : ''
