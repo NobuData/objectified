@@ -116,7 +116,8 @@ describe('ClassNode', () => {
   it('does not apply the selected ring class when selected is false', () => {
     const { container } = render(<ClassNode {...makeProps({}, false)} />);
     const wrapper = container.querySelector('div.rounded-lg');
-    expect(wrapper?.className).not.toContain('ring-2');
+    // Selected state uses consecutive ring-2 ring-indigo-500; focus-visible uses focus-visible:ring-2 (GitHub #236).
+    expect(wrapper?.className).not.toContain('ring-2 ring-indigo-500');
   });
 
   it('renders target and source handles', () => {
