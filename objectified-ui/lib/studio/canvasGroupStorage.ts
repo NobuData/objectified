@@ -20,6 +20,8 @@ export interface GroupCanvasMetadata {
   governanceTag?: string;
   description?: string;
   owner?: string;
+  /** When true, only the header strip is shown on the canvas to save space (GitHub #238). */
+  collapsed?: boolean;
 }
 
 interface CanvasGroupsStorage {

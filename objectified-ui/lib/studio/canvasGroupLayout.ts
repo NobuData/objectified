@@ -143,6 +143,19 @@ export function getStrictDescendantGroupIds(
   return out;
 }
 
+/**
+ * `rootGroupId` and every nested child group under it.
+ * Used for focus/zoom on a subtree (GitHub #238).
+ */
+export function collectGroupDescendants(
+  groups: StudioGroup[],
+  rootGroupId: string
+): Set<string> {
+  const s = getStrictDescendantGroupIds(groups, rootGroupId);
+  s.add(rootGroupId);
+  return s;
+}
+
 /** True if setting `parentGroupId` on `groupId` would create a cycle. */
 export function wouldCreateGroupParentCycle(
   groups: StudioGroup[],
