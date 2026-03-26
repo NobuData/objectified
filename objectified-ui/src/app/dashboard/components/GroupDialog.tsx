@@ -28,9 +28,15 @@ export interface GroupDialogProps {
   open: boolean;
   group: StudioGroup | null;
   allGroups: StudioGroup[];
+  /** When true, danger actions are disabled. */
+  readOnly?: boolean;
   onSave: (payload: GroupDialogSavePayload) => void;
-  /** Called when user clicks Delete group. Return true if group was deleted (dialog should close), false to keep it open. */
-  onDelete?: () => Promise<boolean>;
+  /** Ungroup: remove frame, keep classes. Return false to keep dialog open. */
+  onUngroup?: () => Promise<boolean>;
+  /** Archive: hide from canvas. Return false to keep dialog open. */
+  onArchive?: () => Promise<boolean>;
+  /** Delete group and all direct member classes. Return false to keep dialog open. */
+  onDeleteAllClasses?: () => Promise<boolean>;
   onClose: () => void;
 }
 
@@ -83,8 +89,11 @@ export default function GroupDialog({
   open,
   group,
   allGroups,
+  readOnly = false,
   onSave,
-  onDelete,
+  onUngroup,
+  onArchive,
+  onDeleteAllClasses,
   onClose,
 }: GroupDialogProps) {
   const [name, setName] = useState('');
@@ -370,22 +379,48 @@ export default function GroupDialog({
               </p>
             )}
           </div>
-          <div className="flex justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-700 shrink-0">
-            <div>
-              {onDelete && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const deleted = await onDelete();
-                    if (deleted !== false) onClose();
-                  }}
-                  className="px-4 py-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm font-medium"
-                >
-                  Delete group
-                </button>
-              )}
-            </div>
-            <div className="flex gap-2">
+          <div className="flex flex-col gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 shrink-0">
+            {!readOnly && (onUngroup || onArchive || onDeleteAllClasses) && (
+              <div className="flex flex-wrap gap-2">
+                {onUngroup && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const done = await onUngroup();
+                      if (done !== false) onClose();
+                    }}
+                    className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm"
+                  >
+                    Ungroup
+                  </button>
+                )}
+                {onArchive && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const done = await onArchive();
+                      if (done !== false) onClose();
+                    }}
+                    className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm"
+                  >
+                    Archive
+                  </button>
+                )}
+                {onDeleteAllClasses && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const done = await onDeleteAllClasses();
+                      if (done !== false) onClose();
+                    }}
+                    className="px-3 py-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm font-medium"
+                  >
+                    Delete group and classes…
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={onClose}
@@ -396,7 +431,8 @@ export default function GroupDialog({
               <button
                 type="button"
                 onClick={handleSave}
-                className="px-4 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors text-sm font-medium"
+                disabled={readOnly}
+                className="px-4 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors text-sm font-medium disabled:opacity-50 disabled:pointer-events-none"
               >
                 Save
               </button>
