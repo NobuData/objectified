@@ -70,6 +70,7 @@ import {
   filterVisibleClassIdsByTag,
 } from '@lib/studio/canvasSelectionHelpers';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
+import { getArchivedSubtreeGroupIds } from '@lib/studio/canvasGroupArchive';
 import {
   sortGroupsParentsFirst,
   collectGroupDescendants,
@@ -728,6 +729,42 @@ export default function DesignCanvas() {
     });
   }, [edges, visibleClassIds, searchState]);
 
+  const archivedHiddenGroupIds = useMemo(
+    () => getArchivedSubtreeGroupIds(groups),
+    [groups]
+  );
+
+  const searchAndArchiveFilteredNodes = useMemo(() => {
+    return filteredNodes.filter((node: Node) => {
+      if (node.type === 'group') return !archivedHiddenGroupIds.has(node.id);
+      if (node.type === 'class') {
+        const gid = classToGroup.get(node.id);
+        if (!gid) return true;
+        return !archivedHiddenGroupIds.has(gid);
+      }
+      if (node.type === 'brokenRef') {
+        const src = (node.data as { sourceClassId?: string }).sourceClassId;
+        if (!src) return true;
+        const gid = classToGroup.get(src);
+        if (!gid) return true;
+        return !archivedHiddenGroupIds.has(gid);
+      }
+      return true;
+    });
+  }, [filteredNodes, archivedHiddenGroupIds, classToGroup]);
+
+  const searchAndArchiveFilteredEdges = useMemo(() => {
+    return filteredEdges.filter((e) => {
+      const srcG = classToGroup.get(e.source);
+      if (srcG && archivedHiddenGroupIds.has(srcG)) return false;
+      if (!isBrokenRefPlaceholderNodeId(e.target)) {
+        const tgtG = classToGroup.get(e.target);
+        if (tgtG && archivedHiddenGroupIds.has(tgtG)) return false;
+      }
+      return true;
+    });
+  }, [filteredEdges, classToGroup, archivedHiddenGroupIds]);
+
   // --- Focus mode filtering (second pass, narrows search results) ---
   const focusState = focusMode?.state ?? null;
 
@@ -750,11 +787,11 @@ export default function DesignCanvas() {
   const focusedClassIds = useMemo(() => {
     if (!focusStartNodeIds) return null;
     return getFocusedNodeIds(
-      filteredEdges,
+      searchAndArchiveFilteredEdges,
       focusStartNodeIds,
       focusState?.focusModeDegree ?? 1
     );
-  }, [focusStartNodeIds, filteredEdges, focusState?.focusModeDegree]);
+  }, [focusStartNodeIds, searchAndArchiveFilteredEdges, focusState?.focusModeDegree]);
 
   const focusedGroupIds = useMemo(() => {
     if (!focusedClassIds) return null;
@@ -768,8 +805,8 @@ export default function DesignCanvas() {
   }, [focusedClassIds, groups, classToGroup, focusState?.focusGroupIds]);
 
   const focusFilteredNodes = useMemo(() => {
-    if (!focusedClassIds || !focusedGroupIds) return filteredNodes;
-    return filteredNodes.filter((node: Node) => {
+    if (!focusedClassIds || !focusedGroupIds) return searchAndArchiveFilteredNodes;
+    return searchAndArchiveFilteredNodes.filter((node: Node) => {
       if (node.type === 'group') return focusedGroupIds.has(node.id);
       if (node.type === 'brokenRef') {
         const srcId = (node.data as { sourceClassId?: string } | undefined)?.sourceClassId;
@@ -777,7 +814,7 @@ export default function DesignCanvas() {
       }
       return focusedClassIds.has(node.id);
     });
-  }, [filteredNodes, focusedClassIds, focusedGroupIds]);
+  }, [searchAndArchiveFilteredNodes, focusedClassIds, focusedGroupIds]);
 
   /** DOM / keyboard order for roving tabindex on class, group, and broken-ref nodes (GitHub #236). */
   const canvasNavigableNodeIds = useMemo(
@@ -807,14 +844,14 @@ export default function DesignCanvas() {
   );
 
   const focusFilteredEdges = useMemo(() => {
-    if (!focusedClassIds) return filteredEdges;
-    return filteredEdges.filter((e) => {
+    if (!focusedClassIds) return searchAndArchiveFilteredEdges;
+    return searchAndArchiveFilteredEdges.filter((e) => {
       if (isBrokenRefPlaceholderNodeId(e.target)) {
         return focusedClassIds.has(e.source);
       }
       return focusedClassIds.has(e.source) && focusedClassIds.has(e.target);
     });
-  }, [filteredEdges, focusedClassIds]);
+  }, [searchAndArchiveFilteredEdges, focusedClassIds]);
 
   const classRefEdgeCount = useMemo(
     () => focusFilteredEdges.filter((e) => e.type === 'classRef').length,
@@ -2738,16 +2775,47 @@ export default function DesignCanvas() {
                   Focus on group
                 </button>
                 {!mutationLocked && (
-                  <button
-                    type="button"
-                    className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    onClick={async () => {
-                      await canvasGroup?.deleteGroup(nodeContextMenu.node.id);
-                      setNodeContextMenu(null);
-                    }}
-                  >
-                    Delete group
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={async () => {
+                        const succeeded = await canvasGroup?.ungroupGroup(nodeContextMenu.node.id);
+                        if (succeeded && focusState?.focusGroupId === nodeContextMenu.node.id) {
+                          focusMode?.exitFocusMode();
+                        }
+                        setNodeContextMenu(null);
+                      }}
+                    >
+                      Ungroup
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={async () => {
+                        const succeeded = await canvasGroup?.archiveGroup(nodeContextMenu.node.id);
+                        if (succeeded && focusState?.focusGroupId === nodeContextMenu.node.id) {
+                          focusMode?.exitFocusMode();
+                        }
+                        setNodeContextMenu(null);
+                      }}
+                    >
+                      Archive group
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={async () => {
+                        const succeeded = await canvasGroup?.deleteGroupAndAllClasses(nodeContextMenu.node.id);
+                        if (succeeded && focusState?.focusGroupId === nodeContextMenu.node.id) {
+                          focusMode?.exitFocusMode();
+                        }
+                        setNodeContextMenu(null);
+                      }}
+                    >
+                      Delete group and classes…
+                    </button>
+                  </>
                 )}
               </>
             )}
