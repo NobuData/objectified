@@ -22,6 +22,8 @@ export interface GroupCanvasMetadata {
   owner?: string;
   /** When true, only the header strip is shown on the canvas to save space (GitHub #238). */
   collapsed?: boolean;
+  /** When true, group and its contents are hidden from the canvas until restored (GitHub #239). */
+  archived?: boolean;
 }
 
 interface CanvasGroupsStorage {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as ContextMenu from '@radix-ui/react-context-menu';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Search,
   Plus,
@@ -15,6 +16,7 @@ import {
   Trash2,
   ArrowUp,
   ArrowDown,
+  MoreVertical,
 } from 'lucide-react';
 import {
   getRestClientOptions,
@@ -33,6 +35,8 @@ import {
   type StudioGroup,
   type StudioProperty,
 } from '@lib/studio/types';
+import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
+import { getArchivedSubtreeGroupIds } from '@lib/studio/canvasGroupArchive';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useEditClassRequestOptional } from '@/app/contexts/EditClassRequestContext';
@@ -304,7 +308,14 @@ interface GroupsListPanelProps {
   /** Plain click focuses one group; Ctrl/Cmd+click adds to multi-group focus (GitHub #240). */
   onFocusGroup: (groupId: string, additive: boolean) => void;
   onReorderGroup: (groupId: string, direction: 'up' | 'down') => void;
-  onDeleteGroup: (groupId: string) => Promise<void>;
+  onUngroup: (groupId: string) => Promise<void>;
+  onArchive: (groupId: string) => Promise<void>;
+  onDeleteGroupAndClasses: (groupId: string) => Promise<void>;
+  onRestoreArchived: (groupId: string) => Promise<void>;
+}
+
+function groupMeta(g: StudioGroup): GroupCanvasMetadata {
+  return (g.metadata ?? {}) as GroupCanvasMetadata;
 }
 
 function GroupsListPanel({
@@ -313,9 +324,14 @@ function GroupsListPanel({
   canEdit,
   onFocusGroup,
   onReorderGroup,
-  onDeleteGroup,
+  onUngroup,
+  onArchive,
+  onDeleteGroupAndClasses,
+  onRestoreArchived,
 }: GroupsListPanelProps) {
   const [query, setQuery] = useState('');
+
+  const archivedHiddenIds = useMemo(() => getArchivedSubtreeGroupIds(groups), [groups]);
 
   const memberCountByGroupId = useMemo(() => {
     const m = new Map<string, number>();
@@ -327,18 +343,124 @@ function GroupsListPanel({
     return m;
   }, [classes]);
 
-  const filtered = useMemo(
-    () =>
-      groups.filter((g) =>
-        query.trim() ? g.name.toLowerCase().includes(query.toLowerCase()) : true
-      ),
-    [groups, query]
+  const activeGroups = useMemo(
+    () => groups.filter((g) => !archivedHiddenIds.has(g.id)),
+    [groups, archivedHiddenIds]
+  );
+
+  const archivedRoots = useMemo(
+    () => groups.filter((g) => groupMeta(g).archived === true),
+    [groups]
+  );
+
+  const matchesQuery = (g: StudioGroup) =>
+    query.trim() ? g.name.toLowerCase().includes(query.toLowerCase()) : true;
+
+  const filteredActive = useMemo(
+    () => activeGroups.filter(matchesQuery),
+    [activeGroups, query]
+  );
+
+  const filteredArchived = useMemo(
+    () => archivedRoots.filter(matchesQuery),
+    [archivedRoots, query]
   );
 
   const groupIndexMap = useMemo(
     () => new Map(groups.map((g, i) => [g.id, i])),
     [groups]
   );
+
+  const dropdownContentClass =
+    'min-w-[220px] py-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl z-[10005]';
+
+  const dropdownItemClass =
+    'px-3 py-2 text-sm text-slate-700 dark:text-slate-200 cursor-pointer outline-none hover:bg-slate-100 dark:hover:bg-slate-800';
+
+  const renderActiveRow = (g: StudioGroup) => {
+    const fullIdx = groupIndexMap.get(g.id) ?? -1;
+    const n = memberCountByGroupId.get(g.id) ?? 0;
+    const countLabel = `${n} ${n === 1 ? 'class' : 'classes'}`;
+    return (
+      <li
+        key={g.id}
+        className="flex items-center gap-0.5 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 group"
+      >
+        <button
+          type="button"
+          onClick={() => onFocusGroup(g.id)}
+          className="flex-1 min-w-0 text-left focus:outline-none"
+          aria-label={`Focus and zoom to group ${g.name} on canvas (${countLabel})`}
+        >
+          <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 truncate hover:text-indigo-600 dark:hover:text-indigo-400">
+            {g.name}
+          </span>
+          <span className="block text-xs text-slate-500 dark:text-slate-400">{countLabel}</span>
+        </button>
+        {canEdit && fullIdx >= 0 && (
+          <div className="flex flex-col shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={() => onReorderGroup(g.id, 'up')}
+              disabled={fullIdx <= 0}
+              className="p-0.5 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none"
+              aria-label={`Move group ${g.name} earlier (behind)`}
+            >
+              <ArrowUp className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onReorderGroup(g.id, 'down')}
+              disabled={fullIdx >= groups.length - 1}
+              className="p-0.5 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none"
+              aria-label={`Move group ${g.name} later (in front)`}
+            >
+              <ArrowDown className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+        {canEdit && (
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0"
+                aria-label={`Group actions for ${g.name}`}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className={dropdownContentClass} sideOffset={4} align="end">
+                <DropdownMenu.Item
+                  className={dropdownItemClass}
+                  onSelect={() => void onUngroup(g.id)}
+                >
+                  Ungroup
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className={dropdownItemClass}
+                  onSelect={() => void onArchive(g.id)}
+                >
+                  Archive
+                </DropdownMenu.Item>
+                <DropdownMenu.Separator className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
+                <DropdownMenu.Item
+                  className={`${dropdownItemClass} text-red-600 dark:text-red-400`}
+                  onSelect={() => void onDeleteGroupAndClasses(g.id)}
+                >
+                  Delete group and classes…
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        )}
+      </li>
+    );
+  };
+
+  const emptyActive = activeGroups.length === 0;
+  const emptyArchived = archivedRoots.length === 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -360,69 +482,70 @@ function GroupsListPanel({
         </p>
       </div>
       <div className="flex-1 overflow-auto min-h-0">
-        {filtered.length === 0 ? (
+        {emptyActive && emptyArchived ? (
           <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
             {query.trim() ? 'No groups match your search.' : 'No groups yet.'}
           </p>
         ) : (
-          <ul className="p-2 space-y-0.5">
-            {filtered.map((g) => {
-              const fullIdx = groupIndexMap.get(g.id) ?? -1;
-              const n = memberCountByGroupId.get(g.id) ?? 0;
-              const countLabel = `${n} ${n === 1 ? 'class' : 'classes'}`;
-              return (
-                <li
-                  key={g.id}
-                  className="flex items-center gap-0.5 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 group"
-                >
-                  <button
-                    type="button"
-                    onClick={(e) => onFocusGroup(g.id, e.ctrlKey || e.metaKey)}
-                    className="flex-1 min-w-0 text-left focus:outline-none"
-                    aria-label={`Focus and zoom to group ${g.name} on canvas (${countLabel})`}
-                    title="Click to focus. Ctrl or ⌘-click to add another group to focus."
-                  >
-                    <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 truncate hover:text-indigo-600 dark:hover:text-indigo-400">
-                      {g.name}
-                    </span>
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">{countLabel}</span>
-                  </button>
-                  {canEdit && fullIdx >= 0 && (
-                    <div className="flex flex-col shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        onClick={() => onReorderGroup(g.id, 'up')}
-                        disabled={fullIdx <= 0}
-                        className="p-0.5 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none"
-                        aria-label={`Move group ${g.name} earlier (behind)`}
-                      >
-                        <ArrowUp className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onReorderGroup(g.id, 'down')}
-                        disabled={fullIdx >= groups.length - 1}
-                        className="p-0.5 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none"
-                        aria-label={`Move group ${g.name} later (in front)`}
-                      >
-                        <ArrowDown className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => onDeleteGroup(g.id)}
-                      className="p-1 rounded text-slate-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0"
-                      aria-label={`Delete group ${g.name}`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <div className="flex flex-col gap-4 p-2">
+            {!emptyActive && (
+              <div>
+                <h3 className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  On canvas
+                </h3>
+                {filteredActive.length === 0 ? (
+                  <p className="px-2 py-2 text-sm text-slate-500 dark:text-slate-400">
+                    No active groups match your search.
+                  </p>
+                ) : (
+                  <ul className="space-y-0.5">{filteredActive.map(renderActiveRow)}</ul>
+                )}
+              </div>
+            )}
+            {!emptyArchived && (
+              <div>
+                <h3 className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Archived
+                </h3>
+                {filteredArchived.length === 0 ? (
+                  <p className="px-2 py-2 text-sm text-slate-500 dark:text-slate-400">
+                    No archived groups match your search.
+                  </p>
+                ) : (
+                  <ul className="space-y-0.5">
+                    {filteredArchived.map((g) => {
+                      const n = memberCountByGroupId.get(g.id) ?? 0;
+                      const countLabel = `${n} ${n === 1 ? 'class' : 'classes'}`;
+                      return (
+                        <li
+                          key={g.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/50"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 truncate">
+                              {g.name}
+                            </span>
+                            <span className="block text-xs text-slate-500 dark:text-slate-400">
+                              {countLabel}
+                            </span>
+                          </div>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => void onRestoreArchived(g.id)}
+                              className="shrink-0 px-2 py-1 rounded-md text-xs font-medium border border-slate-200 dark:border-slate-600 text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            >
+                              Restore
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -1567,7 +1690,18 @@ export default function DesignCanvasSidebar() {
               canEdit={!isReadOnly}
               onFocusGroup={handleFocusGroupOnCanvas}
               onReorderGroup={handleReorderStudioGroup}
-              onDeleteGroup={(groupId) => canvasGroup?.deleteGroup(groupId) ?? Promise.resolve()}
+              onUngroup={async (groupId) => {
+                await canvasGroup?.ungroupGroup(groupId);
+              }}
+              onArchive={async (groupId) => {
+                await canvasGroup?.archiveGroup(groupId);
+              }}
+              onDeleteGroupAndClasses={async (groupId) => {
+                await canvasGroup?.deleteGroupAndAllClasses(groupId);
+              }}
+              onRestoreArchived={(groupId) =>
+                canvasGroup?.restoreArchivedGroup(groupId) ?? Promise.resolve()
+              }
             />
           ) : (
             <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
