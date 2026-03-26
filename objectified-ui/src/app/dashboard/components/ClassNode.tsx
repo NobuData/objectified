@@ -80,6 +80,8 @@ export interface ClassNodeDataExtended extends ClassNodeData {
   onCanvasNavShellEnter?: () => void;
   /** GitHub #242 — search: dim non-matching nodes when display mode is dim. */
   canvasSearchDimmed?: boolean;
+  /** GitHub #244 — focus: dim non-focused nodes when focus display mode is fade. */
+  canvasFocusDimmed?: boolean;
   canvasSearchNavHighlight?: boolean;
 }
 
@@ -129,6 +131,7 @@ function ClassNodeComponent({
     onNavigateCanvasNav,
     onCanvasNavShellEnter,
     canvasSearchDimmed = false,
+    canvasFocusDimmed = false,
     canvasSearchNavHighlight = false,
   } = data as ClassNodeDataExtended;
 
@@ -284,7 +287,7 @@ function ClassNodeComponent({
           !theme?.border &&
             'border-slate-200 dark:border-slate-700',
           highContrast && 'border-slate-900 dark:border-slate-100 shadow-lg',
-          canvasSearchDimmed && 'opacity-[0.38]',
+          (canvasSearchDimmed || canvasFocusDimmed) && 'opacity-[0.38]',
           selected
             ? 'ring-2 ring-indigo-500 dark:ring-indigo-400 border-indigo-500 dark:border-indigo-400'
             : 'hover:border-slate-300 dark:hover:border-slate-600',

@@ -58,8 +58,12 @@ import {
 } from '@lib/studio/canvasSearch';
 import {
   isFocusModeActive,
-  getFocusedNodeIds,
+  getFocusedNodeIdsWithDirection,
   getFocusedGroupIds,
+  getNodesOnAllPathsCapped,
+  getNodesOnShortestPath,
+  type FocusDirection,
+  type FocusModeState,
 } from '@lib/studio/canvasFocusMode';
 import { generateGroupId, getStableClassId } from '@lib/studio/types';
 import type { StudioClass, StudioGroup } from '@lib/studio/types';
@@ -719,6 +723,9 @@ export default function DesignCanvas() {
   const focusStartNodeIds = useMemo(() => {
     if (!focusState || !isFocusModeActive(focusState)) return null;
     if (focusState.focusNodeId) return new Set([focusState.focusNodeId]);
+    if (focusState.focusNodeIds && focusState.focusNodeIds.length > 0) {
+      return new Set(focusState.focusNodeIds);
+    }
     if (focusState.focusGroupIds.length > 0) {
       const ids = new Set<string>();
       for (const anchorId of focusState.focusGroupIds) {
@@ -734,12 +741,18 @@ export default function DesignCanvas() {
 
   const focusedClassIdsPreSearch = useMemo(() => {
     if (!focusStartNodeIds) return null;
-    return getFocusedNodeIds(
+    return getFocusedNodeIdsWithDirection(
       archiveOnlyFilteredEdges,
       focusStartNodeIds,
-      focusState?.focusModeDegree ?? 1
+      focusState?.focusModeDegree ?? 1,
+      focusState?.focusDirection ?? 'both'
     );
-  }, [focusStartNodeIds, archiveOnlyFilteredEdges, focusState?.focusModeDegree]);
+  }, [
+    focusStartNodeIds,
+    archiveOnlyFilteredEdges,
+    focusState?.focusModeDegree,
+    focusState?.focusDirection,
+  ]);
 
   const canvasMatchClassIds = useMemo(() => {
     if (!visibleClassIds) return new Set<string>();
@@ -840,12 +853,18 @@ export default function DesignCanvas() {
   // --- Focus mode filtering (second pass, narrows search results) ---
   const focusedClassIds = useMemo(() => {
     if (!focusStartNodeIds) return null;
-    return getFocusedNodeIds(
+    return getFocusedNodeIdsWithDirection(
       searchAndArchiveFilteredEdges,
       focusStartNodeIds,
-      focusState?.focusModeDegree ?? 1
+      focusState?.focusModeDegree ?? 1,
+      focusState?.focusDirection ?? 'both'
     );
-  }, [focusStartNodeIds, searchAndArchiveFilteredEdges, focusState?.focusModeDegree]);
+  }, [
+    focusStartNodeIds,
+    searchAndArchiveFilteredEdges,
+    focusState?.focusModeDegree,
+    focusState?.focusDirection,
+  ]);
 
   const focusedGroupIds = useMemo(() => {
     if (!focusedClassIds) return null;
@@ -858,8 +877,10 @@ export default function DesignCanvas() {
     return ids;
   }, [focusedClassIds, groups, classToGroup, focusState?.focusGroupIds]);
 
+  const focusDisplayMode = focusState?.focusDisplayMode ?? 'hide';
   const focusFilteredNodes = useMemo(() => {
     if (!focusedClassIds || !focusedGroupIds) return searchAndArchiveFilteredNodes;
+    if (focusDisplayMode === 'fade') return searchAndArchiveFilteredNodes;
     return searchAndArchiveFilteredNodes.filter((node: Node) => {
       if (node.type === 'group') return focusedGroupIds.has(node.id);
       if (node.type === 'brokenRef') {
@@ -868,7 +889,12 @@ export default function DesignCanvas() {
       }
       return focusedClassIds.has(node.id);
     });
-  }, [searchAndArchiveFilteredNodes, focusedClassIds, focusedGroupIds]);
+  }, [
+    searchAndArchiveFilteredNodes,
+    focusedClassIds,
+    focusedGroupIds,
+    focusDisplayMode,
+  ]);
 
   /** DOM / keyboard order for roving tabindex on class, group, and broken-ref nodes (GitHub #236). */
   const canvasNavigableNodeIds = useMemo(
@@ -941,13 +967,14 @@ export default function DesignCanvas() {
 
   const focusFilteredEdges = useMemo(() => {
     if (!focusedClassIds) return searchAndArchiveFilteredEdges;
+    if (focusDisplayMode === 'fade') return searchAndArchiveFilteredEdges;
     return searchAndArchiveFilteredEdges.filter((e) => {
       if (isBrokenRefPlaceholderNodeId(e.target)) {
         return focusedClassIds.has(e.source);
       }
       return focusedClassIds.has(e.source) && focusedClassIds.has(e.target);
     });
-  }, [searchAndArchiveFilteredEdges, focusedClassIds]);
+  }, [searchAndArchiveFilteredEdges, focusedClassIds, focusDisplayMode]);
 
   const classRefEdgeCount = useMemo(
     () => focusFilteredEdges.filter((e) => e.type === 'classRef').length,
@@ -969,6 +996,11 @@ export default function DesignCanvas() {
       searchState &&
       isSearchActive(searchState) &&
       searchState.searchMatchDisplayMode === 'dimNonMatches';
+    const focusDim =
+      Boolean(focusState) &&
+      isFocusModeActive(focusState!) &&
+      (focusState!.focusDisplayMode ?? 'hide') === 'fade' &&
+      focusedClassIds !== null;
     return focusFilteredEdges.map((e) => {
       if (e.type !== 'classRef') return e;
       const d = e.data as ClassRefEdgeData | undefined;
@@ -979,20 +1011,36 @@ export default function DesignCanvas() {
           isBrokenRefPlaceholderNodeId(e.target) || canvasMatchClassIds.has(e.target);
         searchDimmed = !srcHit && !tgtHit;
       }
+      let focusDimmed = false;
+      if (focusDim) {
+        const srcOk = focusedClassIds!.has(e.source);
+        const tgtOk =
+          isBrokenRefPlaceholderNodeId(e.target) || focusedClassIds!.has(e.target);
+        focusDimmed = !(srcOk && tgtOk);
+      }
       const nextData: ClassRefEdgeData = {
         ...(d as ClassRefEdgeData),
         sqlModeDistinctIdRef,
         searchDimmed,
+        focusDimmed,
       };
       if (
         (d?.sqlModeDistinctIdRef ?? false) === sqlModeDistinctIdRef &&
-        (d?.searchDimmed ?? false) === searchDimmed
+        (d?.searchDimmed ?? false) === searchDimmed &&
+        (d?.focusDimmed ?? false) === focusDimmed
       ) {
         return e;
       }
       return { ...e, data: nextData };
     });
-  }, [focusFilteredEdges, sqlModeDistinctIdRef, searchState, canvasMatchClassIds]);
+  }, [
+    focusFilteredEdges,
+    sqlModeDistinctIdRef,
+    searchState,
+    canvasMatchClassIds,
+    focusState,
+    focusedClassIds,
+  ]);
 
   const clearSelectedEdges = useCallback(() => {
     setEdges((cur) => cur.map((ed) => ({ ...ed, selected: false })));
@@ -1058,6 +1106,12 @@ export default function DesignCanvas() {
       Boolean(searchState) &&
       isSearchActive(searchState!) &&
       searchState!.searchMatchDisplayMode === 'dimNonMatches';
+    const focusDim =
+      Boolean(focusState) &&
+      isFocusModeActive(focusState!) &&
+      (focusState!.focusDisplayMode ?? 'hide') === 'fade' &&
+      focusedClassIds !== null &&
+      focusedGroupIds !== null;
     const navIdx = canvasSearch?.activeSearchMatchIndex ?? -1;
     const activeNavId =
       navIdx >= 0 && navIdx < orderedSearchMatchNodeIds.length
@@ -1080,6 +1134,7 @@ export default function DesignCanvas() {
             hint: d.hint ?? '',
             canvasSearchDimmed:
               searchDim && !(src && canvasMatchClassIds.has(src)),
+            canvasFocusDimmed: focusDim && !(src && focusedClassIds!.has(src)),
             canvasSearchNavHighlight: activeNavId === node.id,
             onFixReference:
               !mutationLocked && d.sourceClassId
@@ -1113,6 +1168,7 @@ export default function DesignCanvas() {
               searchDim &&
               searchHighlightGroupIds !== null &&
               !searchHighlightGroupIds.has(node.id),
+            canvasFocusDimmed: focusDim && !focusedGroupIds!.has(node.id),
             canvasSearchNavHighlight: false,
           },
         };
@@ -1151,6 +1207,7 @@ export default function DesignCanvas() {
           onInlineRenameCommit: handleInlineRenameCommit,
           onInlineRenameCancel: () => setInlineRenameClassId(null),
           canvasSearchDimmed: searchDim && !canvasMatchClassIds.has(node.id),
+          canvasFocusDimmed: focusDim && !focusedClassIds!.has(node.id),
           canvasSearchNavHighlight: activeNavId === node.id,
         },
       };
@@ -1158,6 +1215,9 @@ export default function DesignCanvas() {
   }, [
     focusFilteredNodes,
     searchState,
+    focusState,
+    focusedClassIds,
+    focusedGroupIds,
     canvasSearch?.activeSearchMatchIndex,
     orderedSearchMatchNodeIds,
     canvasMatchClassIds,
@@ -1232,6 +1292,96 @@ export default function DesignCanvas() {
 
   const selectedNodeId = selectedClassNodeIds[0] ?? null;
   const selectedNodeId2 = selectedClassNodeIds[1] ?? null;
+
+  const handleFocusSelectionNeighbors = useCallback(
+    (opts: { degree: number; direction: FocusDirection }) => {
+      if (!focusMode) return;
+      if (selectedClassNodeIds.length === 0) return;
+      focusMode.setDirection(opts.direction);
+      focusMode.setDegree(Math.max(1, Math.min(5, opts.degree)));
+      focusMode.enterFocusOnNodes(selectedClassNodeIds);
+    },
+    [focusMode, selectedClassNodeIds]
+  );
+
+  const handleFocusByGroup = useCallback(
+    (groupId: string) => {
+      if (!focusMode) return;
+      if (!groupId) return;
+      focusMode.enterFocusOnGroup(groupId);
+      requestAnimationFrame(() => sidebarActions?.zoomToGroup(groupId));
+    },
+    [focusMode, sidebarActions]
+  );
+
+  const handleFocusByTag = useCallback(
+    (tagName: string) => {
+      if (!focusMode) return;
+      const trimmed = tagName.trim();
+      if (!trimmed) return;
+      const ids = getClassIdsWithTag(classes, trimmed).filter((id) => {
+        const gid = classToGroup.get(id);
+        return !gid || !archivedHiddenGroupIds.has(gid);
+      });
+      if (ids.length === 0) return;
+      focusMode.enterFocusOnNodes(ids);
+    },
+    [focusMode, classes, classToGroup, archivedHiddenGroupIds]
+  );
+
+  const handleFocusOnPathBetweenSelected = useCallback(
+    (opts: { mode: 'shortest' | 'all' }) => {
+      if (!focusMode) return;
+      if (selectedClassNodeIds.length !== 2) return;
+      const [fromId, toId] = selectedClassNodeIds;
+      if (!fromId || !toId) return;
+
+      const pathEdges = searchAndArchiveFilteredEdges
+        .filter((e) => !isBrokenRefPlaceholderNodeId(e.target))
+        .map((e) => ({ source: e.source, target: e.target }));
+
+      let nodes: string[] = [];
+      if (opts.mode === 'shortest') {
+        nodes = getNodesOnShortestPath(pathEdges, fromId, toId, 'downstream') ?? [];
+      } else {
+        nodes = Array.from(
+          getNodesOnAllPathsCapped(pathEdges, fromId, toId, 'downstream', {
+            maxDepth: 20,
+            maxPaths: 50,
+          })
+        );
+      }
+      if (nodes.length === 0) return;
+      focusMode.setDirection('downstream');
+      focusMode.setDegree(0);
+      focusMode.enterFocusOnNodes(nodes);
+    },
+    [focusMode, selectedClassNodeIds, searchAndArchiveFilteredEdges]
+  );
+
+  const handleApplySavedFocusView = useCallback(
+    (state: FocusModeState) => {
+      if (!focusMode) return;
+      focusMode.setDegree(Math.max(0, Math.min(5, state.focusModeDegree ?? 1)));
+      focusMode.setDirection(state.focusDirection ?? 'both');
+      focusMode.setDisplayMode(state.focusDisplayMode ?? 'hide');
+      if (state.focusGroupIds && state.focusGroupIds.length > 0) {
+        focusMode.enterFocusOnGroups(state.focusGroupIds);
+        return;
+      }
+      if (state.focusNodeIds && state.focusNodeIds.length > 0) {
+        focusMode.enterFocusOnNodes(state.focusNodeIds);
+        return;
+      }
+      if (state.focusNodeId) {
+        focusMode.enterFocusOnNode(state.focusNodeId);
+        return;
+      }
+      focusMode.exitFocusMode();
+    },
+    [focusMode]
+  );
+
   const [liveRegionMessage, setLiveRegionMessage] = useState('');
   const circularEdgeIds = useMemo(
     () =>
@@ -2803,6 +2953,20 @@ export default function DesignCanvas() {
             onBulkDuplicate={() => handleDuplicateClasses(selectedClassNodeIds)}
             onBulkExportJson={handleExportSelectionJson}
             onBulkExportImage={() => void handleExportSelectionImage()}
+            focusActive={Boolean(focusState && isFocusModeActive(focusState))}
+            focusDegree={focusState?.focusModeDegree ?? 1}
+            focusDirection={focusState?.focusDirection ?? 'both'}
+            focusDisplayMode={focusState?.focusDisplayMode ?? 'hide'}
+            onFocusSelectionNeighbors={handleFocusSelectionNeighbors}
+            onFocusPathBetweenSelected={handleFocusOnPathBetweenSelected}
+            onFocusByGroup={handleFocusByGroup}
+            onFocusByTag={handleFocusByTag}
+            onFocusSetDegree={(deg) => focusMode?.setDegree(Math.max(0, Math.min(5, deg)))}
+            onFocusSetDirection={(dir) => focusMode?.setDirection(dir)}
+            onFocusSetDisplayMode={(mode) => focusMode?.setDisplayMode(mode)}
+            onExitFocusMode={() => focusMode?.exitFocusMode()}
+            focusStateSnapshot={focusState}
+            onApplySavedFocusView={handleApplySavedFocusView}
           />
         </Panel>
         {canvasSettings.showControls && (

@@ -17,18 +17,26 @@ import {
 import {
   defaultFocusModeState,
   type FocusModeState,
+  type FocusDirection,
+  type FocusDisplayMode,
 } from '@lib/studio/canvasFocusMode';
 
 export interface CanvasFocusModeContextValue {
   state: FocusModeState;
   /** Enter focus mode anchored on a single node id. */
   enterFocusOnNode: (nodeId: string) => void;
+  /** Enter focus mode anchored on a set of node ids (union). GitHub #244. */
+  enterFocusOnNodes: (nodeIds: string[]) => void;
   /** Enter focus mode anchored on all members of a group. */
   enterFocusOnGroup: (groupId: string) => void;
   /** Focus on the union of several groups (multi-group focus). GitHub #240. */
   enterFocusOnGroups: (groupIds: string[]) => void;
   /** Change the neighbor degree (N-hops). */
   setDegree: (degree: number) => void;
+  /** Change the edge direction used for neighbor expansion. GitHub #244. */
+  setDirection: (direction: FocusDirection) => void;
+  /** Change how non-focused nodes are shown. GitHub #244. */
+  setDisplayMode: (mode: FocusDisplayMode) => void;
   /** Exit focus mode entirely. */
   exitFocusMode: () => void;
 }
@@ -48,6 +56,18 @@ export function CanvasFocusModeProvider({
       ...prev,
       focusModeEnabled: true,
       focusNodeId: nodeId,
+      focusNodeIds: [],
+      focusGroupIds: [],
+    }));
+  }, []);
+
+  const enterFocusOnNodes = useCallback((nodeIds: string[]) => {
+    const uniq = [...new Set(nodeIds.filter(Boolean))];
+    setState((prev) => ({
+      ...prev,
+      focusModeEnabled: true,
+      focusNodeId: null,
+      focusNodeIds: uniq,
       focusGroupIds: [],
     }));
   }, []);
@@ -58,6 +78,7 @@ export function CanvasFocusModeProvider({
       ...prev,
       focusModeEnabled: true,
       focusNodeId: null,
+      focusNodeIds: [],
       focusGroupIds: uniq,
     }));
   }, []);
@@ -76,11 +97,26 @@ export function CanvasFocusModeProvider({
     }));
   }, []);
 
+  const setDirection = useCallback((direction: FocusDirection) => {
+    setState((prev) => ({
+      ...prev,
+      focusDirection: direction,
+    }));
+  }, []);
+
+  const setDisplayMode = useCallback((mode: FocusDisplayMode) => {
+    setState((prev) => ({
+      ...prev,
+      focusDisplayMode: mode,
+    }));
+  }, []);
+
   const exitFocusMode = useCallback(() => {
     setState((prev) => ({
       ...prev,
       focusModeEnabled: false,
       focusNodeId: null,
+      focusNodeIds: [],
       focusGroupIds: [],
     }));
   }, []);
@@ -89,17 +125,23 @@ export function CanvasFocusModeProvider({
     () => ({
       state,
       enterFocusOnNode,
+      enterFocusOnNodes,
       enterFocusOnGroup,
       enterFocusOnGroups,
       setDegree,
+      setDirection,
+      setDisplayMode,
       exitFocusMode,
     }),
     [
       state,
       enterFocusOnNode,
+      enterFocusOnNodes,
       enterFocusOnGroup,
       enterFocusOnGroups,
       setDegree,
+      setDirection,
+      setDisplayMode,
       exitFocusMode,
     ]
   );

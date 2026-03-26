@@ -37,6 +37,8 @@ export interface GroupNodeData {
   onCanvasNavShellEnter?: () => void;
   /** GitHub #242 */
   canvasSearchDimmed?: boolean;
+  /** GitHub #244 — focus: dim non-focused nodes when focus display mode is fade. */
+  canvasFocusDimmed?: boolean;
   canvasSearchNavHighlight?: boolean;
 }
 
@@ -56,6 +58,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
     onNavigateCanvasNav,
     onCanvasNavShellEnter,
     canvasSearchDimmed = false,
+    canvasFocusDimmed = false,
     canvasSearchNavHighlight = false,
   } = data;
 
@@ -163,7 +166,7 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
         className={[
           'w-full h-full rounded-lg border-2 shadow-sm outline-none flex flex-col',
           'bg-slate-50/95 dark:bg-slate-800/95 border-slate-300 dark:border-slate-600',
-          canvasSearchDimmed && 'opacity-[0.38]',
+          (canvasSearchDimmed || canvasFocusDimmed) && 'opacity-[0.38]',
           selected && 'ring-2 ring-indigo-500 dark:ring-indigo-400 border-indigo-500 dark:border-indigo-400',
           canvasSearchNavHighlight && 'ring-2 ring-amber-500 dark:ring-amber-400',
           'focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500 dark:focus-visible:ring-indigo-400 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900',

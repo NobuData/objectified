@@ -213,7 +213,7 @@ function ClassRefEdgeComponent({
     strokeWidth = Math.max(strokeWidth + 1, 2.5);
   }
 
-  const edgeDim = edgeData?.searchDimmed === true;
+  const edgeDim = edgeData?.searchDimmed === true || edgeData?.focusDimmed === true;
   const edgeStyle = {
     stroke: strokeColor,
     strokeWidth,
