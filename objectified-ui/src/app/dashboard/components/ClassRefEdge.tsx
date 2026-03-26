@@ -213,11 +213,13 @@ function ClassRefEdgeComponent({
     strokeWidth = Math.max(strokeWidth + 1, 2.5);
   }
 
+  const edgeDim = edgeData?.searchDimmed === true;
   const edgeStyle = {
     stroke: strokeColor,
     strokeWidth,
     strokeDasharray: dash === 'none' ? undefined : dash,
     fill: 'none',
+    opacity: edgeDim ? 0.35 : 1,
     filter: selected ? 'drop-shadow(0 0 2px rgb(99 102 241 / 0.85))' : undefined,
   };
 

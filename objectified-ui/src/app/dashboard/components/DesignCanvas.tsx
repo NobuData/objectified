@@ -52,6 +52,8 @@ import { getNextKeyboardFocusIndex } from '@/app/dashboard/utils/canvasKeyboardN
 import {
   getVisibleClassIds,
   getVisibleGroupIds,
+  getSearchHighlightGroupIds,
+  intersectClassIds,
   isSearchActive,
 } from '@lib/studio/canvasSearch';
 import {
@@ -129,6 +131,7 @@ import DependencyOverlay from './DependencyOverlay';
 import SchemaMetricsPanel from './SchemaMetricsPanel';
 import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 import ZoomToClassRegistration from './ZoomToClassRegistration';
+import CanvasSearchMatchBridge from './CanvasSearchMatchBridge';
 import ZoomToGroupRegistration from './ZoomToGroupRegistration';
 import CanvasExportRegistration from './CanvasExportRegistration';
 import CanvasSelectionToolbar from './CanvasSelectionToolbar';
@@ -677,6 +680,7 @@ export default function DesignCanvas() {
 
   const canvasSearch = useCanvasSearchOptional();
   const searchState = canvasSearch?.state ?? null;
+  const focusState = focusMode?.state ?? null;
 
   const visibleClassIds = useMemo(
     () =>
@@ -691,10 +695,81 @@ export default function DesignCanvas() {
     }
     return m;
   }, [classes]);
+
+  const archivedHiddenGroupIds = useMemo(
+    () => getArchivedSubtreeGroupIds(groups),
+    [groups]
+  );
+
+  /** Archive-only edge set so focus subgraph can be computed before search narrowing (GitHub #242). */
+  const archiveOnlyFilteredEdges = useMemo(
+    () =>
+      edges.filter((e) => {
+        const srcG = classToGroup.get(e.source);
+        if (srcG && archivedHiddenGroupIds.has(srcG)) return false;
+        if (!isBrokenRefPlaceholderNodeId(e.target)) {
+          const tgtG = classToGroup.get(e.target);
+          if (tgtG && archivedHiddenGroupIds.has(tgtG)) return false;
+        }
+        return true;
+      }),
+    [edges, classToGroup, archivedHiddenGroupIds]
+  );
+
+  const focusStartNodeIds = useMemo(() => {
+    if (!focusState || !isFocusModeActive(focusState)) return null;
+    if (focusState.focusNodeId) return new Set([focusState.focusNodeId]);
+    if (focusState.focusGroupIds.length > 0) {
+      const ids = new Set<string>();
+      for (const anchorId of focusState.focusGroupIds) {
+        const subtree = collectGroupDescendants(groups, anchorId);
+        for (const [classId, groupId] of classToGroup) {
+          if (groupId && subtree.has(groupId)) ids.add(classId);
+        }
+      }
+      return ids;
+    }
+    return null;
+  }, [focusState, classToGroup, groups]);
+
+  const focusedClassIdsPreSearch = useMemo(() => {
+    if (!focusStartNodeIds) return null;
+    return getFocusedNodeIds(
+      archiveOnlyFilteredEdges,
+      focusStartNodeIds,
+      focusState?.focusModeDegree ?? 1
+    );
+  }, [focusStartNodeIds, archiveOnlyFilteredEdges, focusState?.focusModeDegree]);
+
+  const canvasMatchClassIds = useMemo(() => {
+    if (!visibleClassIds) return new Set<string>();
+    if (!searchState || !isSearchActive(searchState)) return visibleClassIds;
+    if (
+      searchState.searchInFocusOnly &&
+      focusState &&
+      isFocusModeActive(focusState) &&
+      focusedClassIdsPreSearch
+    ) {
+      return intersectClassIds(visibleClassIds, focusedClassIdsPreSearch);
+    }
+    return visibleClassIds;
+  }, [
+    visibleClassIds,
+    searchState,
+    focusState,
+    focusedClassIdsPreSearch,
+  ]);
+
   const visibleGroupIds = useMemo(() => {
     if (!searchState || !visibleClassIds) return null;
-    return getVisibleGroupIds(groups, searchState, visibleClassIds, classToGroup);
-  }, [groups, searchState, visibleClassIds, classToGroup]);
+    return getVisibleGroupIds(groups, searchState, canvasMatchClassIds, classToGroup);
+  }, [groups, searchState, visibleClassIds, canvasMatchClassIds, classToGroup]);
+
+  const searchHighlightGroupIds = useMemo(() => {
+    if (!searchState || !isSearchActive(searchState)) return null;
+    if (searchState.searchMatchDisplayMode !== 'dimNonMatches') return null;
+    return getSearchHighlightGroupIds(groups, canvasMatchClassIds, classToGroup);
+  }, [searchState, groups, canvasMatchClassIds, classToGroup]);
 
   const baseNodes =
     classes.length > 0 || groups.length > 0 ? nodes : initialNodesFromState;
@@ -702,7 +777,10 @@ export default function DesignCanvas() {
   const filteredNodes = useMemo(() => {
     if (visibleClassIds === null && visibleGroupIds === null) return baseNodes;
     if (searchState && !isSearchActive(searchState)) return baseNodes;
-    const visibleC = visibleClassIds ?? new Set<string>();
+    if (searchState?.searchMatchDisplayMode === 'dimNonMatches') {
+      return baseNodes;
+    }
+    const visibleC = canvasMatchClassIds ?? new Set<string>();
     const visibleG = visibleGroupIds ?? new Set<string>();
     return baseNodes.filter((node: Node) => {
       if (node.type === 'group') return visibleG.has(node.id);
@@ -712,23 +790,21 @@ export default function DesignCanvas() {
       }
       return visibleC.has(node.id);
     });
-  }, [baseNodes, visibleClassIds, visibleGroupIds, searchState]);
+  }, [baseNodes, visibleClassIds, visibleGroupIds, searchState, canvasMatchClassIds]);
 
   const filteredEdges = useMemo(() => {
     if (visibleClassIds === null) return edges;
     if (searchState && !isSearchActive(searchState)) return edges;
+    if (searchState?.searchMatchDisplayMode === 'dimNonMatches') {
+      return edges;
+    }
     return edges.filter((e) => {
-      const srcOk = visibleClassIds.has(e.source);
+      const srcOk = canvasMatchClassIds.has(e.source);
       const tgtOk =
-        visibleClassIds.has(e.target) || isBrokenRefPlaceholderNodeId(e.target);
+        canvasMatchClassIds.has(e.target) || isBrokenRefPlaceholderNodeId(e.target);
       return srcOk && tgtOk;
     });
-  }, [edges, visibleClassIds, searchState]);
-
-  const archivedHiddenGroupIds = useMemo(
-    () => getArchivedSubtreeGroupIds(groups),
-    [groups]
-  );
+  }, [edges, visibleClassIds, searchState, canvasMatchClassIds]);
 
   const searchAndArchiveFilteredNodes = useMemo(() => {
     return filteredNodes.filter((node: Node) => {
@@ -762,24 +838,6 @@ export default function DesignCanvas() {
   }, [filteredEdges, classToGroup, archivedHiddenGroupIds]);
 
   // --- Focus mode filtering (second pass, narrows search results) ---
-  const focusState = focusMode?.state ?? null;
-
-  const focusStartNodeIds = useMemo(() => {
-    if (!focusState || !isFocusModeActive(focusState)) return null;
-    if (focusState.focusNodeId) return new Set([focusState.focusNodeId]);
-    if (focusState.focusGroupIds.length > 0) {
-      const ids = new Set<string>();
-      for (const anchorId of focusState.focusGroupIds) {
-        const subtree = collectGroupDescendants(groups, anchorId);
-        for (const [classId, groupId] of classToGroup) {
-          if (groupId && subtree.has(groupId)) ids.add(classId);
-        }
-      }
-      return ids;
-    }
-    return null;
-  }, [focusState, classToGroup, groups]);
-
   const focusedClassIds = useMemo(() => {
     if (!focusStartNodeIds) return null;
     return getFocusedNodeIds(
@@ -830,6 +888,36 @@ export default function DesignCanvas() {
     [canvasNavigableNodeIds]
   );
 
+  /** Canvas node ids for search match stepping (class + broken-ref), in visual order (GitHub #242). */
+  const orderedSearchMatchNodeIds = useMemo(() => {
+    if (!searchState || !isSearchActive(searchState)) return [];
+    const match = canvasMatchClassIds;
+    const ids: string[] = [];
+    for (const n of focusFilteredNodes) {
+      if (n.type === 'class' && match.has(n.id)) ids.push(n.id);
+      if (n.type === 'brokenRef') {
+        const src = (n.data as { sourceClassId?: string } | undefined)?.sourceClassId;
+        if (src && match.has(src)) ids.push(n.id);
+      }
+    }
+    return ids;
+  }, [focusFilteredNodes, searchState, canvasMatchClassIds]);
+
+  useEffect(() => {
+    if (!canvasSearch) return;
+    canvasSearch.setSearchMatchClassCount(canvasMatchClassIds.size);
+  }, [canvasSearch, canvasMatchClassIds]);
+
+  useEffect(() => {
+    if (!canvasSearch) return;
+    canvasSearch.setSearchMatchNavTotal(orderedSearchMatchNodeIds.length);
+  }, [canvasSearch, orderedSearchMatchNodeIds.length]);
+
+  const orderedMatchNavKey = orderedSearchMatchNodeIds.join('\x1e');
+  useEffect(() => {
+    canvasSearch?.resetActiveSearchMatch();
+  }, [orderedMatchNavKey, canvasSearch]);
+
   const visibleFlowClassIds = useMemo(
     () => focusFilteredNodes.filter((n) => n.type === 'class').map((n) => n.id),
     [focusFilteredNodes]
@@ -864,16 +952,35 @@ export default function DesignCanvas() {
    * schemaMode so that ClassRefEdge does not need to subscribe to the full StudioContext.
    */
   const sqlModeDistinctIdRef = schemaMode === 'sql';
-  const displayEdges = useMemo(
-    () =>
-      focusFilteredEdges.map((e) => {
-        if (e.type !== 'classRef') return e;
-        const d = e.data as ClassRefEdgeData | undefined;
-        if ((d?.sqlModeDistinctIdRef ?? false) === sqlModeDistinctIdRef) return e;
-        return { ...e, data: { ...(d as ClassRefEdgeData), sqlModeDistinctIdRef } };
-      }),
-    [focusFilteredEdges, sqlModeDistinctIdRef]
-  );
+  const displayEdges = useMemo(() => {
+    const dim =
+      searchState &&
+      isSearchActive(searchState) &&
+      searchState.searchMatchDisplayMode === 'dimNonMatches';
+    return focusFilteredEdges.map((e) => {
+      if (e.type !== 'classRef') return e;
+      const d = e.data as ClassRefEdgeData | undefined;
+      let searchDimmed = false;
+      if (dim) {
+        const srcHit = canvasMatchClassIds.has(e.source);
+        const tgtHit =
+          isBrokenRefPlaceholderNodeId(e.target) || canvasMatchClassIds.has(e.target);
+        searchDimmed = !srcHit && !tgtHit;
+      }
+      const nextData: ClassRefEdgeData = {
+        ...(d as ClassRefEdgeData),
+        sqlModeDistinctIdRef,
+        searchDimmed,
+      };
+      if (
+        (d?.sqlModeDistinctIdRef ?? false) === sqlModeDistinctIdRef &&
+        (d as ClassRefEdgeData).searchDimmed === searchDimmed
+      ) {
+        return e;
+      }
+      return { ...e, data: nextData };
+    });
+  }, [focusFilteredEdges, sqlModeDistinctIdRef, searchState, canvasMatchClassIds]);
 
   const clearSelectedEdges = useCallback(() => {
     setEdges((cur) => cur.map((ed) => ({ ...ed, selected: false })));
@@ -935,6 +1042,15 @@ export default function DesignCanvas() {
 
   const displayNodesBase = useMemo(() => {
     const allStoredConfigs = versionId ? getAllClassNodeConfigs(versionId) : {};
+    const searchDim =
+      Boolean(searchState) &&
+      isSearchActive(searchState!) &&
+      searchState!.searchMatchDisplayMode === 'dimNonMatches';
+    const navIdx = canvasSearch?.activeSearchMatchIndex ?? -1;
+    const activeNavId =
+      navIdx >= 0 && navIdx < orderedSearchMatchNodeIds.length
+        ? orderedSearchMatchNodeIds[navIdx]!
+        : null;
     return focusFilteredNodes.map((node: Node) => {
       if (node.type === 'brokenRef') {
         const d = node.data as {
@@ -942,13 +1058,17 @@ export default function DesignCanvas() {
           propertyName?: string;
           hint?: string;
         };
+        const src = d.sourceClassId ?? '';
         return {
           ...node,
           data: {
             ...node.data,
-            sourceClassId: d.sourceClassId ?? '',
+            sourceClassId: src,
             propertyName: d.propertyName ?? '',
             hint: d.hint ?? '',
+            canvasSearchDimmed:
+              searchDim && !(src && canvasMatchClassIds.has(src)),
+            canvasSearchNavHighlight: activeNavId === node.id,
             onFixReference:
               !mutationLocked && d.sourceClassId
                 ? (classId: string, propertyName: string) =>
@@ -977,6 +1097,11 @@ export default function DesignCanvas() {
               maxHeight: canvasSettings.groupNodeMaxHeight,
             },
             resizeHandleVisibility: canvasSettings.resizeHandleVisibility,
+            canvasSearchDimmed:
+              searchDim &&
+              searchHighlightGroupIds !== null &&
+              !searchHighlightGroupIds.has(node.id),
+            canvasSearchNavHighlight: false,
           },
         };
       }
@@ -1013,11 +1138,18 @@ export default function DesignCanvas() {
             !mutationLocked && inlineRenameClassId === node.id,
           onInlineRenameCommit: handleInlineRenameCommit,
           onInlineRenameCancel: () => setInlineRenameClassId(null),
+          canvasSearchDimmed: searchDim && !canvasMatchClassIds.has(node.id),
+          canvasSearchNavHighlight: activeNavId === node.id,
         },
       };
     });
   }, [
     focusFilteredNodes,
+    searchState,
+    canvasSearch?.activeSearchMatchIndex,
+    orderedSearchMatchNodeIds,
+    canvasMatchClassIds,
+    searchHighlightGroupIds,
     versionId,
     configOverrides,
     onConfigChange,
@@ -2504,6 +2636,10 @@ export default function DesignCanvas() {
         )}
         <PaneContextMenuRegistration />
         <ZoomToClassRegistration />
+        <CanvasSearchMatchBridge
+          orderedMatchIds={orderedSearchMatchNodeIds}
+          animateViewport={animateViewport}
+        />
         <ZoomToGroupRegistration groups={groups} classes={classes} />
         <CanvasExportRegistration />
         <AlignmentGuidesOverlay

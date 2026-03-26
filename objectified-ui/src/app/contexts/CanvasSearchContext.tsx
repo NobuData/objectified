@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -15,6 +16,7 @@ import {
   type SearchFilterType,
   type QueryFieldCombineMode,
   type StructuralFilterCombineMode,
+  type SearchMatchDisplayMode,
 } from '@lib/studio/canvasSearch';
 
 export interface CanvasSearchContextValue {
@@ -42,12 +44,38 @@ export interface CanvasSearchContextValue {
   setSearchInPropertyTypes: (v: boolean) => void;
   setSearchInTags: (v: boolean) => void;
   setSearchInAnnotations: (v: boolean) => void;
+  setSearchMatchDisplayMode: (mode: SearchMatchDisplayMode) => void;
+  setSearchInFocusOnly: (v: boolean) => void;
+  /** Match navigation (GitHub #242): index into ordered canvas matches, or -1 if none / cleared. */
+  activeSearchMatchIndex: number;
+  setActiveSearchMatchIndex: (i: number) => void;
+  stepActiveSearchMatch: (delta: 1 | -1) => void;
+  resetActiveSearchMatch: () => void;
+  /** Class ids matching current search (may differ from nav list when only node-order is needed). */
+  searchMatchClassCount: number;
+  setSearchMatchClassCount: (n: number) => void;
+  /** Count of navigable match nodes on canvas (classes + broken-ref nodes in walk order). */
+  searchMatchNavTotal: number;
+  setSearchMatchNavTotal: (n: number) => void;
+  /** Registered by canvas React Flow (GitHub #242). */
+  registerSearchZoomHandlers: (
+    handlers: { fitActive: () => void; fitAll: () => void } | null
+  ) => void;
+  fitActiveSearchMatchOnCanvas: () => void;
+  fitAllSearchMatchesOnCanvas: () => void;
 }
 
 const CanvasSearchContext = createContext<CanvasSearchContextValue | null>(null);
 
 export function CanvasSearchProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CanvasSearchState>(defaultCanvasSearchState);
+  const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1);
+  const [searchMatchClassCount, setSearchMatchClassCount] = useState(0);
+  const [searchMatchNavTotal, setSearchMatchNavTotalState] = useState(0);
+  const searchMatchNavTotalRef = useRef(0);
+  const searchZoomHandlersRef = useRef<{ fitActive: () => void; fitAll: () => void } | null>(
+    null
+  );
 
   const patchState = useCallback((partial: Partial<CanvasSearchState>) => {
     setState((prev) => normalizeCanvasSearchState({ ...prev, ...partial }));
@@ -55,6 +83,32 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
 
   const clearSearch = useCallback(() => {
     setState(defaultCanvasSearchState);
+    setActiveSearchMatchIndex(-1);
+    setSearchMatchClassCount(0);
+    searchMatchNavTotalRef.current = 0;
+    setSearchMatchNavTotalState(0);
+  }, []);
+
+  const setSearchMatchNavTotal = useCallback((n: number) => {
+    searchMatchNavTotalRef.current = n;
+    setSearchMatchNavTotalState(n);
+    setActiveSearchMatchIndex((idx) => (idx >= n ? -1 : idx));
+  }, []);
+
+  const resetActiveSearchMatch = useCallback(() => {
+    setActiveSearchMatchIndex(-1);
+  }, []);
+
+  const stepActiveSearchMatch = useCallback((delta: 1 | -1) => {
+    const n = searchMatchNavTotalRef.current;
+    if (n <= 0) {
+      setActiveSearchMatchIndex(-1);
+      return;
+    }
+    setActiveSearchMatchIndex((prev) => {
+      if (prev < 0) return delta > 0 ? 0 : n - 1;
+      return (prev + delta + n * 10) % n;
+    });
   }, []);
 
   const setQuery = useCallback((canvasSearchQuery: string) => {
@@ -145,6 +199,29 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, searchInAnnotations }));
   }, []);
 
+  const setSearchMatchDisplayMode = useCallback((searchMatchDisplayMode: SearchMatchDisplayMode) => {
+    setState((prev) => ({ ...prev, searchMatchDisplayMode }));
+  }, []);
+
+  const setSearchInFocusOnly = useCallback((searchInFocusOnly: boolean) => {
+    setState((prev) => ({ ...prev, searchInFocusOnly }));
+  }, []);
+
+  const registerSearchZoomHandlers = useCallback(
+    (handlers: { fitActive: () => void; fitAll: () => void } | null) => {
+      searchZoomHandlersRef.current = handlers;
+    },
+    []
+  );
+
+  const fitActiveSearchMatchOnCanvas = useCallback(() => {
+    searchZoomHandlersRef.current?.fitActive();
+  }, []);
+
+  const fitAllSearchMatchesOnCanvas = useCallback(() => {
+    searchZoomHandlersRef.current?.fitAll();
+  }, []);
+
   const value = useMemo<CanvasSearchContextValue>(
     () => ({
       state,
@@ -171,6 +248,19 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
       setSearchInPropertyTypes,
       setSearchInTags,
       setSearchInAnnotations,
+      setSearchMatchDisplayMode,
+      setSearchInFocusOnly,
+      activeSearchMatchIndex,
+      setActiveSearchMatchIndex,
+      stepActiveSearchMatch,
+      resetActiveSearchMatch,
+      searchMatchClassCount,
+      setSearchMatchClassCount,
+      searchMatchNavTotal,
+      setSearchMatchNavTotal,
+      registerSearchZoomHandlers,
+      fitActiveSearchMatchOnCanvas,
+      fitAllSearchMatchesOnCanvas,
     }),
     [
       state,
@@ -196,6 +286,17 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
       setSearchInPropertyTypes,
       setSearchInTags,
       setSearchInAnnotations,
+      setSearchMatchDisplayMode,
+      setSearchInFocusOnly,
+      activeSearchMatchIndex,
+      stepActiveSearchMatch,
+      resetActiveSearchMatch,
+      searchMatchClassCount,
+      searchMatchNavTotal,
+      setSearchMatchNavTotal,
+      registerSearchZoomHandlers,
+      fitActiveSearchMatchOnCanvas,
+      fitAllSearchMatchesOnCanvas,
     ]
   );
 

@@ -13,6 +13,8 @@ export interface BrokenRefNodeData extends Record<string, unknown> {
   canvasNavShellTabIndex?: 0 | -1;
   onCanvasNavShellFocus?: () => void;
   onNavigateCanvasNav?: (delta: 1 | -1) => void;
+  canvasSearchDimmed?: boolean;
+  canvasSearchNavHighlight?: boolean;
 }
 
 function BrokenRefNodeComponent({
@@ -24,6 +26,8 @@ function BrokenRefNodeComponent({
     canvasNavShellTabIndex = -1,
     onCanvasNavShellFocus,
     onNavigateCanvasNav,
+    canvasSearchDimmed = false,
+    canvasSearchNavHighlight = false,
   } = data;
 
   const invokeFix = useCallback(() => {
@@ -60,8 +64,14 @@ function BrokenRefNodeComponent({
       role="button"
       aria-label={`Broken reference: ${data.hint}. Property ${data.propertyName || 'unnamed'}. Press Enter or Space to open the editor.`}
       className={`rounded-md border border-red-400/90 bg-red-50/95 px-2 py-1.5 shadow-sm dark:border-red-500/60 dark:bg-red-950/50 max-w-[160px] cursor-pointer outline-none ${
-        selected ? 'ring-2 ring-red-500 ring-offset-1 ring-offset-white dark:ring-offset-slate-900' : ''
-      } focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-600 dark:focus-visible:ring-red-400 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900`}
+        canvasSearchDimmed ? 'opacity-[0.38] ' : ''
+      }${
+        selected ? 'ring-2 ring-red-500 ring-offset-1 ring-offset-white dark:ring-offset-slate-900 ' : ''
+      }${
+        canvasSearchNavHighlight
+          ? 'ring-2 ring-amber-500 dark:ring-amber-400 ring-offset-1 ring-offset-white dark:ring-offset-slate-900 '
+          : ''
+      }focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-600 dark:focus-visible:ring-red-400 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900`}
       onClick={(e) => {
         e.stopPropagation();
         invokeFix();

@@ -10,6 +10,8 @@ import {
   classMatchesSearch,
   getVisibleClassIds,
   getVisibleGroupIds,
+  intersectClassIds,
+  getSearchHighlightGroupIds,
   type CanvasSearchState,
 } from '@lib/studio/canvasSearch';
 
@@ -39,6 +41,8 @@ describe('canvasSearch', () => {
       expect(defaultCanvasSearchState.requireValidationErrors).toBeNull();
       expect(defaultCanvasSearchState.requireDeprecated).toBeNull();
       expect(defaultCanvasSearchState.structuralFilterMode).toBe('and');
+      expect(defaultCanvasSearchState.searchMatchDisplayMode).toBe('hideNonMatches');
+      expect(defaultCanvasSearchState.searchInFocusOnly).toBe(false);
     });
   });
 
@@ -64,6 +68,35 @@ describe('canvasSearch', () => {
         searchFilterGroup: 'g-old',
       } as unknown as Partial<CanvasSearchState>);
       expect(n.searchFilterGroups).toEqual(['g-old']);
+    });
+
+    it('normalizes #242 display and focus-only flags', () => {
+      expect(normalizeCanvasSearchState({ searchMatchDisplayMode: 'dimNonMatches' as const }).searchMatchDisplayMode).toBe(
+        'dimNonMatches'
+      );
+      expect(normalizeCanvasSearchState({ searchInFocusOnly: true }).searchInFocusOnly).toBe(true);
+      expect(normalizeCanvasSearchState({}).searchInFocusOnly).toBe(false);
+    });
+  });
+
+  describe('intersectClassIds', () => {
+    it('returns intersection', () => {
+      const a = new Set(['x', 'y']);
+      const b = new Set(['y', 'z']);
+      expect(Array.from(intersectClassIds(a, b)).sort()).toEqual(['y']);
+    });
+  });
+
+  describe('getSearchHighlightGroupIds', () => {
+    it('includes ancestor groups of matching classes', () => {
+      const groups: StudioGroup[] = [
+        { id: 'root', name: 'Root', metadata: {} },
+        { id: 'child', name: 'Child', metadata: { parentGroupId: 'root' } },
+      ];
+      const classToGroup = new Map<string, string>([['c1', 'child']]);
+      const hl = getSearchHighlightGroupIds(groups, new Set(['c1']), classToGroup);
+      expect(hl.has('child')).toBe(true);
+      expect(hl.has('root')).toBe(true);
     });
   });
 
