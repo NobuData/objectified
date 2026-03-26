@@ -14,6 +14,7 @@ import {
   addSearchHistoryEntry,
   removeSearchHistoryEntry,
   clearSearchHistory,
+  saveSearchHistoryEntries,
   type SearchHistoryEntry,
   getSearchHistorySyncEnabled,
   setSearchHistorySyncEnabled,
@@ -75,6 +76,11 @@ function mergeEntries(local: SearchHistoryEntry[], remote: SearchHistoryEntry[])
   return Array.from(byLower.values()).sort((a, b) => isoTimeMs(b.savedAt) - isoTimeMs(a.savedAt));
 }
 
+// Helper: should account sync be disabled based on this error?
+function shouldDisableSync(error: unknown): boolean {
+  return isRestApiError(error) && (error.statusCode === 401 || error.statusCode === 404);
+}
+
 async function fetchAccountHistory(): Promise<SearchHistoryEntry[] | null> {
   try {
     const me = await getMe();
@@ -84,32 +90,33 @@ async function fetchAccountHistory(): Promise<SearchHistoryEntry[] | null> {
     const entries = normalizeEntryList(obj?.entries);
     return entries;
   } catch (e: unknown) {
-    if (isRestApiError(e)) {
-      // Not signed in / endpoint not available / forbidden: treat as unsupported.
-      if (e.statusCode === 401 || e.statusCode === 403 || e.statusCode === 404) return null;
+    if (shouldDisableSync(e)) {
+      // Re-throw so the caller (useEffect) can disable sync and avoid retries.
+      throw e;
     }
+    // For other errors (403, network failures, etc.) treat as unsupported and
+    // return null so the local-only history continues to work.
     return null;
   }
 }
 
 async function saveAccountHistory(entries: SearchHistoryEntry[]): Promise<void> {
-  try {
-    const me = await getMe();
-    const meta = (me.metadata ?? {}) as Record<string, unknown>;
-    const nextMeta: Record<string, unknown> = {
-      ...meta,
-      [ACCOUNT_HISTORY_METADATA_KEY]: { entries },
-    };
-    await updateMe({ metadata: nextMeta });
-  } catch {
-    // Best-effort only.
-  }
+  const me = await getMe();
+  const meta = (me.metadata ?? {}) as Record<string, unknown>;
+  const nextMeta: Record<string, unknown> = {
+    ...meta,
+    [ACCOUNT_HISTORY_METADATA_KEY]: { entries },
+  };
+  await updateMe({ metadata: nextMeta });
 }
 
 export function useSearchHistory(): UseSearchHistoryReturn {
   const [entries, setEntries] = useState<SearchHistoryEntry[]>(getSearchHistory);
   const [syncEnabled, setSyncEnabledState] = useState<boolean>(getSearchHistorySyncEnabled);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Gate: true once the initial account fetch+merge has completed so the save
+  // effect never fires a write before we have merged remote data.
+  const hydratedFromAccountRef = useRef<boolean>(false);
 
   const addEntry = useCallback((query: string) => {
     const updated = addSearchHistoryEntry(query);
@@ -131,39 +138,75 @@ export function useSearchHistory(): UseSearchHistoryReturn {
   }, []);
 
   const setSyncEnabled = useCallback((enabled: boolean) => {
+    if (!enabled) {
+      // Reset the hydration gate so that if the user re-enables sync later the
+      // fetch effect will run again before any save is attempted.
+      hydratedFromAccountRef.current = false;
+    }
     setSearchHistorySyncEnabled(enabled);
     setSyncEnabledState(enabled);
   }, []);
 
+  // Fetch + merge remote history when sync is enabled.
   useEffect(() => {
     if (!syncEnabled) return;
     let cancelled = false;
     (async () => {
-      const remote = await fetchAccountHistory();
-      if (cancelled || !remote) return;
-      const local = getSearchHistory();
-      const merged = mergeEntries(local, remote);
-      // Persist merged list locally so the UI and other tabs stay consistent.
-      localStorage.setItem('objectified:canvas:searchHistory', JSON.stringify({ entries: merged }));
-      setEntries(merged);
+      try {
+        const remote = await fetchAccountHistory();
+        if (cancelled || !remote) return;
+        const local = getSearchHistory();
+        const merged = mergeEntries(local, remote);
+        // Use the shared persistence helper so the cap and sanitization rules
+        // are applied consistently with the rest of the search history module.
+        saveSearchHistoryEntries(merged);
+        setEntries(merged);
+      } catch (error: unknown) {
+        if (shouldDisableSync(error)) {
+          // Account sync is not supported or the user is signed out; disable
+          // syncing to avoid repeated failing network calls.
+          setSyncEnabled(false);
+          return;
+        }
+        // For other transient errors ignore so we don't spam failing requests.
+      } finally {
+        if (!cancelled) {
+          hydratedFromAccountRef.current = true;
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [syncEnabled]);
+  }, [syncEnabled, setSyncEnabled]);
 
+  // Debounced save back to the account whenever entries change.
   useEffect(() => {
     if (!syncEnabled) return;
+    // Do not write to the account before the initial remote merge has finished;
+    // otherwise a fast local change could overwrite the remote history.
+    if (!hydratedFromAccountRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
-      void saveAccountHistory(entries);
+      void (async () => {
+        try {
+          await saveAccountHistory(entries);
+        } catch (error: unknown) {
+          if (shouldDisableSync(error)) {
+            // Account sync is not supported or the user is signed out; disable
+            // syncing to avoid repeated failing network calls.
+            setSyncEnabled(false);
+          }
+          // For other transient errors ignore.
+        }
+      })();
     }, SAVE_DEBOUNCE_MS);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     };
-  }, [entries, syncEnabled]);
+  }, [entries, syncEnabled, setSyncEnabled]);
 
   return { entries, addEntry, removeEntry, clearAll, refresh, syncEnabled, setSyncEnabled };
 }

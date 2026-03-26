@@ -59,6 +59,20 @@ function saveSearchHistory(entries: SearchHistoryEntry[]): void {
 }
 
 /**
+ * Persist a provided list of search history entries (e.g. after an account
+ * sync merge) applying the same cap and field-sanitization as the normal add
+ * path so that the stored list never exceeds MAX_HISTORY_ENTRIES and never
+ * contains entries with non-string fields.
+ * This is a no-op when localStorage is unavailable.
+ */
+export function saveSearchHistoryEntries(entries: SearchHistoryEntry[]): void {
+  const sanitized = entries
+    .filter((e) => typeof e?.query === 'string' && typeof e?.savedAt === 'string')
+    .slice(0, MAX_HISTORY_ENTRIES);
+  saveSearchHistory(sanitized);
+}
+
+/**
  * Add a query to the search history. Duplicate queries are moved to the front
  * (most recent). The list is capped at MAX_HISTORY_ENTRIES.
  * Blank/whitespace-only queries are ignored.
