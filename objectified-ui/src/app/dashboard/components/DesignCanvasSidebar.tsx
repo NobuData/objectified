@@ -334,6 +334,11 @@ function GroupsListPanel({
     [groups, query]
   );
 
+  const groupIndexMap = useMemo(
+    () => new Map(groups.map((g, i) => [g.id, i])),
+    [groups]
+  );
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-2 border-b border-slate-200 dark:border-slate-700 shrink-0">
@@ -360,7 +365,7 @@ function GroupsListPanel({
         ) : (
           <ul className="p-2 space-y-0.5">
             {filtered.map((g) => {
-              const fullIdx = groups.findIndex((x) => x.id === g.id);
+              const fullIdx = groupIndexMap.get(g.id) ?? -1;
               const n = memberCountByGroupId.get(g.id) ?? 0;
               const countLabel = `${n} ${n === 1 ? 'class' : 'classes'}`;
               return (
@@ -380,7 +385,7 @@ function GroupsListPanel({
                     <span className="block text-xs text-slate-500 dark:text-slate-400">{countLabel}</span>
                   </button>
                   {canEdit && fullIdx >= 0 && (
-                    <div className="flex flex-col shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex flex-col shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                       <button
                         type="button"
                         onClick={() => onReorderGroup(g.id, 'up')}
@@ -405,7 +410,7 @@ function GroupsListPanel({
                     <button
                       type="button"
                       onClick={() => onDeleteGroup(g.id)}
-                      className="p-1 rounded text-slate-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      className="p-1 rounded text-slate-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0"
                       aria-label={`Delete group ${g.name}`}
                     >
                       <Trash2 className="h-3 w-3" />

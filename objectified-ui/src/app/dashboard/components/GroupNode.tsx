@@ -118,9 +118,14 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
       if (e.key === 'Enter') {
         e.preventDefault();
         onCanvasNavShellEnter?.();
+        return;
+      }
+      if (e.key === ' ' && onToggleCollapse) {
+        e.preventDefault();
+        onToggleCollapse(id);
       }
     },
-    [onNavigateCanvasNav, onCanvasNavShellEnter]
+    [onNavigateCanvasNav, onCanvasNavShellEnter, onToggleCollapse, id]
   );
 
   return (
@@ -143,7 +148,8 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
         role="group"
         aria-label={`Group ${label?.trim() ? label : 'Untitled'}${
           detail ? `. ${detail}` : ''
-        }`}
+        }${onToggleCollapse ? `. Press Space to ${collapsed ? 'expand' : 'collapse'}` : ''}`}
+        aria-keyshortcuts={onToggleCollapse ? 'Space' : undefined}
         title={detail || undefined}
         onMouseEnter={() => setResizeHover(true)}
         onMouseLeave={() => setResizeHover(false)}
