@@ -913,7 +913,10 @@ export default function DesignCanvas() {
     canvasSearch.setSearchMatchNavTotal(orderedSearchMatchNodeIds.length);
   }, [canvasSearch, orderedSearchMatchNodeIds.length]);
 
-  const orderedMatchNavKey = orderedSearchMatchNodeIds.join('\x1e');
+  const orderedMatchNavKey = useMemo(
+    () => orderedSearchMatchNodeIds.join('\x1e'),
+    [orderedSearchMatchNodeIds]
+  );
   useEffect(() => {
     canvasSearch?.resetActiveSearchMatch();
   }, [orderedMatchNavKey, canvasSearch]);
@@ -974,7 +977,7 @@ export default function DesignCanvas() {
       };
       if (
         (d?.sqlModeDistinctIdRef ?? false) === sqlModeDistinctIdRef &&
-        (d as ClassRefEdgeData).searchDimmed === searchDimmed
+        (d?.searchDimmed ?? false) === searchDimmed
       ) {
         return e;
       }
