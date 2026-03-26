@@ -78,6 +78,9 @@ export interface ClassNodeDataExtended extends ClassNodeData {
   onCanvasNavShellFocus?: () => void;
   onNavigateCanvasNav?: (delta: 1 | -1) => void;
   onCanvasNavShellEnter?: () => void;
+  /** GitHub #242 — search: dim non-matching nodes when display mode is dim. */
+  canvasSearchDimmed?: boolean;
+  canvasSearchNavHighlight?: boolean;
 }
 
 /** Node type for react-flow; data satisfies Record<string, unknown>. */
@@ -125,6 +128,8 @@ function ClassNodeComponent({
     onCanvasNavShellFocus,
     onNavigateCanvasNav,
     onCanvasNavShellEnter,
+    canvasSearchDimmed = false,
+    canvasSearchNavHighlight = false,
   } = data as ClassNodeDataExtended;
 
   const [renameDraft, setRenameDraft] = useState(name ?? '');
@@ -279,9 +284,11 @@ function ClassNodeComponent({
           !theme?.border &&
             'border-slate-200 dark:border-slate-700',
           highContrast && 'border-slate-900 dark:border-slate-100 shadow-lg',
+          canvasSearchDimmed && 'opacity-[0.38]',
           selected
             ? 'ring-2 ring-indigo-500 dark:ring-indigo-400 border-indigo-500 dark:border-indigo-400'
             : 'hover:border-slate-300 dark:hover:border-slate-600',
+          canvasSearchNavHighlight && 'ring-2 ring-amber-500 dark:ring-amber-400',
           'focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500 dark:focus-visible:ring-indigo-400 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900',
         ].join(' ')}
         style={containerStyle}

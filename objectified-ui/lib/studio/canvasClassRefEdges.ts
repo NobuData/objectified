@@ -105,6 +105,8 @@ export interface ClassRefEdgeData extends Record<string, unknown> {
   a11yEdgeLabel?: string;
   a11yAllowTabStop?: boolean;
   onEdgeA11yFocus?: (edgeId: string) => void;
+  /** GitHub #242 — fade edge when both endpoints are non-matching during dim search mode. */
+  searchDimmed?: boolean;
 }
 
 export interface BrokenRefPlaceholder {

@@ -22,6 +22,13 @@ export type QueryFieldCombineMode = 'matchAny' | 'matchAll';
 /** How active structural filters combine. */
 export type StructuralFilterCombineMode = 'and' | 'or';
 
+/**
+ * How non-matching canvas nodes are shown while search is active (GitHub #242).
+ * - hideNonMatches: remove non-matches from the canvas (legacy behavior).
+ * - dimNonMatches: keep all nodes; fade nodes that do not match the current search.
+ */
+export type SearchMatchDisplayMode = 'hideNonMatches' | 'dimNonMatches';
+
 export interface CanvasSearchState {
   /** Text query; matched against enabled scopes (name, description, …). */
   canvasSearchQuery: string;
@@ -59,6 +66,16 @@ export interface CanvasSearchState {
   requireDeprecated: boolean | null;
   /** How non-neutral structural filters are combined. */
   structuralFilterMode: StructuralFilterCombineMode;
+  /**
+   * Whether to hide non-matches or only dim them (GitHub #242).
+   * Ignored when search is inactive.
+   */
+  searchMatchDisplayMode: SearchMatchDisplayMode;
+  /**
+   * When focus mode is on, limit matches to classes inside the current focus subgraph
+   * (computed from archive-filtered edges before search-driven hiding; GitHub #242).
+   */
+  searchInFocusOnly: boolean;
 }
 
 export const defaultCanvasSearchState: CanvasSearchState = {
@@ -80,6 +97,8 @@ export const defaultCanvasSearchState: CanvasSearchState = {
   requireValidationErrors: null,
   requireDeprecated: null,
   structuralFilterMode: 'and',
+  searchMatchDisplayMode: 'hideNonMatches',
+  searchInFocusOnly: false,
 };
 
 function normalizeSearchFilterGroups(raw: Partial<CanvasSearchState>): string[] {
@@ -173,6 +192,12 @@ export function normalizeCanvasSearchState(
         : defaultCanvasSearchState.requireDeprecated,
     structuralFilterMode:
       raw.structuralFilterMode === 'or' ? 'or' : 'and',
+    searchMatchDisplayMode:
+      raw.searchMatchDisplayMode === 'dimNonMatches' ? 'dimNonMatches' : 'hideNonMatches',
+    searchInFocusOnly:
+      typeof raw.searchInFocusOnly === 'boolean'
+        ? raw.searchInFocusOnly
+        : defaultCanvasSearchState.searchInFocusOnly,
   };
 }
 
@@ -531,4 +556,31 @@ export function getVisibleGroupIds(
     if (gid) groupIdsWithVisibleChildren.add(gid);
   }
   return expandGroupIdsWithAncestors(groups, groupIdsWithVisibleChildren);
+}
+
+/** Intersection of two class-id sets (GitHub #242: search-in-focus-only). */
+export function intersectClassIds(a: Set<string>, b: Set<string>): Set<string> {
+  const out = new Set<string>();
+  for (const id of a) {
+    if (b.has(id)) out.add(id);
+  }
+  return out;
+}
+
+/**
+ * Group nodes that contain at least one matching class (including ancestor groups).
+ * Used to dim group frames in “dim non-matches” search mode (GitHub #242).
+ */
+export function getSearchHighlightGroupIds(
+  groups: StudioGroup[],
+  matchClassIds: Set<string>,
+  classToGroup: Map<string, string>
+): Set<string> {
+  const leaf = new Set<string>();
+  for (const cid of matchClassIds) {
+    const g = classToGroup.get(cid);
+    if (g) leaf.add(g);
+  }
+  if (leaf.size === 0) return new Set();
+  return expandGroupIdsWithAncestors(groups, leaf);
 }

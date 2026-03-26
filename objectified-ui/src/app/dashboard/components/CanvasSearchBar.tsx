@@ -10,16 +10,28 @@ import * as Checkbox from '@radix-ui/react-checkbox';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Search, ChevronDown, X, Trash2, Clock, Check, BookmarkPlus, ChevronRight } from 'lucide-react';
+import {
+  Search,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Trash2,
+  Clock,
+  Check,
+  BookmarkPlus,
+} from 'lucide-react';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
+import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useSearchHistory } from '@/app/hooks/useSearchHistory';
 import { useSavedCanvasSearches } from '@/app/hooks/useSavedCanvasSearches';
 import {
   isSearchActive,
-  getVisibleClassIds,
   type SearchFilterType,
+  type SearchMatchDisplayMode,
 } from '@lib/studio/canvasSearch';
+import { isFocusModeActive } from '@lib/studio/canvasFocusMode';
 import type { StudioClass } from '@lib/studio/types';
 
 const triggerClass =
@@ -39,8 +51,12 @@ function collectDistinctTags(classes: StudioClass[]): string[] {
   return Array.from(s).sort((a, b) => a.localeCompare(b));
 }
 
+const iconBtnClass =
+  'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-indigo-500';
+
 export default function CanvasSearchBar() {
   const search = useCanvasSearchOptional();
+  const focusMode = useCanvasFocusModeOptional();
   const studio = useStudioOptional();
   const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state?.classes]);
   const groups = useMemo(() => studio?.state?.groups ?? [], [studio?.state?.groups]);
@@ -55,11 +71,15 @@ export default function CanvasSearchBar() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const focusActive = Boolean(
+    focusMode?.state && isFocusModeActive(focusMode.state)
+  );
+
   const visibleCount = useMemo(() => {
     if (!search) return null;
     if (!isSearchActive(search.state)) return null;
-    return getVisibleClassIds(classes, search.state, groups).size;
-  }, [search, classes, groups]);
+    return search.searchMatchClassCount;
+  }, [search, search?.searchMatchClassCount]);
 
   const showNoMatches =
     visibleCount === 0 &&
@@ -151,7 +171,14 @@ export default function CanvasSearchBar() {
     setSearchInPropertyTypes,
     setSearchInTags,
     setSearchInAnnotations,
+    setSearchMatchDisplayMode,
+    setSearchInFocusOnly,
     clearSearch,
+    stepActiveSearchMatch,
+    activeSearchMatchIndex,
+    searchMatchNavTotal,
+    fitActiveSearchMatchOnCanvas,
+    fitAllSearchMatchesOnCanvas,
   } = search;
 
   const groupFilterSummary =
@@ -177,6 +204,18 @@ export default function CanvasSearchBar() {
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setHistoryOpen(true)}
             onBlur={handleBlur}
+            onKeyDown={(e) => {
+              if (!isSearchActive(state) || searchMatchNavTotal <= 0) return;
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                stepActiveSearchMatch(e.shiftKey ? -1 : 1);
+                return;
+              }
+              if (e.key === 'F3') {
+                e.preventDefault();
+                stepActiveSearchMatch(e.shiftKey ? -1 : 1);
+              }
+            }}
             className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             aria-label="Canvas search query"
           />
@@ -232,6 +271,98 @@ export default function CanvasSearchBar() {
             {visibleCount} {visibleCount === 1 ? 'class' : 'classes'}
           </span>
         )}
+
+        {isSearchActive(state) && searchMatchNavTotal > 0 ? (
+          <div
+            className="flex flex-wrap items-center gap-1"
+            role="group"
+            aria-label="Search match navigation"
+          >
+            <button
+              type="button"
+              className={iconBtnClass}
+              aria-label="Previous search match on canvas"
+              onClick={() => stepActiveSearchMatch(-1)}
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </button>
+            <span className="text-xs tabular-nums text-slate-600 dark:text-slate-400 min-w-[3.25rem] text-center">
+              {activeSearchMatchIndex < 0 ? '—' : activeSearchMatchIndex + 1}/{searchMatchNavTotal}
+            </span>
+            <button
+              type="button"
+              className={iconBtnClass}
+              aria-label="Next search match on canvas"
+              onClick={() => stepActiveSearchMatch(1)}
+            >
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onClick={() => fitActiveSearchMatchOnCanvas()}
+            >
+              Zoom match
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onClick={() => fitAllSearchMatchesOnCanvas()}
+            >
+              Fit all matches
+            </button>
+          </div>
+        ) : null}
+
+        <Select.Root
+          value={state.searchMatchDisplayMode}
+          onValueChange={(v) =>
+            setSearchMatchDisplayMode(v as SearchMatchDisplayMode)
+          }
+        >
+          <Select.Trigger
+            className={triggerClass}
+            aria-label="How to show non-matching nodes while search is active"
+          >
+            <Select.Value />
+            <Select.Icon>
+              <ChevronDown className="h-4 w-4 shrink-0" />
+            </Select.Icon>
+          </Select.Trigger>
+          <Select.Portal>
+            <Select.Content className={contentClass} position="popper" sideOffset={4}>
+              <Select.Viewport>
+                <Select.Item value="hideNonMatches" className={itemClass}>
+                  <Select.ItemText>Hide non-matches</Select.ItemText>
+                </Select.Item>
+                <Select.Item value="dimNonMatches" className={itemClass}>
+                  <Select.ItemText>Dim non-matches</Select.ItemText>
+                </Select.Item>
+              </Select.Viewport>
+            </Select.Content>
+          </Select.Portal>
+        </Select.Root>
+
+        <label
+          className={`${scopeCheckboxClass} ${!focusActive ? 'opacity-50' : ''}`}
+          title={
+            focusActive
+              ? undefined
+              : 'Turn on focus mode on the canvas to limit matches to the focused subgraph'
+          }
+        >
+          <Checkbox.Root
+            className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+            checked={state.searchInFocusOnly}
+            disabled={!focusActive}
+            onCheckedChange={(c) => setSearchInFocusOnly(c === true)}
+          >
+            <Checkbox.Indicator>
+              <Check className="h-3 w-3 text-white" strokeWidth={3} />
+            </Checkbox.Indicator>
+          </Checkbox.Root>
+          <span>In focus only</span>
+        </label>
 
         <div className="flex items-center gap-2">
           <Switch.Root
