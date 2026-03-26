@@ -152,9 +152,8 @@ function GroupNodeComponent({ id, data, selected }: NodeProps<GroupNodeType>) {
           type="button"
           tabIndex={-1}
           onClick={() => onEdit?.(id)}
-          onDoubleClick={() => onEdit?.(id)}
           className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 truncate rounded-t-md hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors inline-flex items-center gap-2"
-          title="Rename, color, style (double-click)"
+          title="Rename, color, style"
           aria-label={`Edit group ${label?.trim() ? label : 'Untitled'} (rename, color, style)`}
         >
           {HeaderGlyph ? (

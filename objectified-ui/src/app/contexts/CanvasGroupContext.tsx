@@ -16,7 +16,7 @@ import {
 } from 'react';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useDialog } from '@/app/components/providers/DialogProvider';
-import { generateGroupId } from '@lib/studio/types';
+import { generateGroupId, type StudioGroup } from '@lib/studio/types';
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
 import { getGroupAbsolutePosition } from '@lib/studio/canvasGroupLayout';
 import GroupDialog, {
@@ -105,7 +105,20 @@ export function CanvasGroupProvider({ children }: { children: ReactNode }) {
           ...prevMeta,
           style: payload.style,
         };
-        if (payload.parentGroupId) meta.parentGroupId = payload.parentGroupId;
+        const prevParentId = prevMeta.parentGroupId;
+        const newParentId = payload.parentGroupId || undefined;
+        // When the parent changes, convert the stored position so the group
+        // stays at the same absolute location on the canvas instead of jumping.
+        if (prevParentId !== newParentId) {
+          const absPos = getGroupAbsolutePosition(draft.groups as StudioGroup[], editGroupId);
+          if (newParentId) {
+            const parentAbsPos = getGroupAbsolutePosition(draft.groups as StudioGroup[], newParentId);
+            meta.position = { x: absPos.x - parentAbsPos.x, y: absPos.y - parentAbsPos.y };
+          } else {
+            meta.position = absPos;
+          }
+        }
+        if (newParentId) meta.parentGroupId = newParentId;
         else delete meta.parentGroupId;
         if (payload.description) meta.description = payload.description;
         else delete meta.description;
