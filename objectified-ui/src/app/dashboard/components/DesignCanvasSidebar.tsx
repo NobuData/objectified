@@ -299,18 +299,32 @@ function PropertiesListPanel({
 
 interface GroupsListPanelProps {
   groups: StudioGroup[];
+  classes: StudioClass[];
   canEdit: boolean;
   onFocusGroup: (groupId: string) => void;
+  onReorderGroup: (groupId: string, direction: 'up' | 'down') => void;
   onDeleteGroup: (groupId: string) => Promise<void>;
 }
 
 function GroupsListPanel({
   groups,
+  classes,
   canEdit,
   onFocusGroup,
+  onReorderGroup,
   onDeleteGroup,
 }: GroupsListPanelProps) {
   const [query, setQuery] = useState('');
+
+  const memberCountByGroupId = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of classes) {
+      const gid = c.canvas_metadata?.group;
+      if (!gid) continue;
+      m.set(gid, (m.get(gid) ?? 0) + 1);
+    }
+    return m;
+  }, [classes]);
 
   const filtered = useMemo(
     () =>
@@ -318,6 +332,11 @@ function GroupsListPanel({
         query.trim() ? g.name.toLowerCase().includes(query.toLowerCase()) : true
       ),
     [groups, query]
+  );
+
+  const groupIndexMap = useMemo(
+    () => new Map(groups.map((g, i) => [g.id, i])),
+    [groups]
   );
 
   return (
@@ -334,6 +353,9 @@ function GroupsListPanel({
             aria-label="Search groups"
           />
         </div>
+        <p className="mt-1.5 px-1 text-xs text-slate-500 dark:text-slate-400">
+          Order sets stack priority on the canvas (later = in front). Focus includes nested groups.
+        </p>
       </div>
       <div className="flex-1 overflow-auto min-h-0">
         {filtered.length === 0 ? (
@@ -342,31 +364,61 @@ function GroupsListPanel({
           </p>
         ) : (
           <ul className="p-2 space-y-0.5">
-            {filtered.map((g) => (
-              <li
-                key={g.id}
-                className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 group"
-              >
-                <button
-                  type="button"
-                  onClick={() => onFocusGroup(g.id)}
-                  className="flex-1 text-left text-sm font-medium text-slate-700 dark:text-slate-200 truncate hover:text-indigo-600 dark:hover:text-indigo-400 focus:outline-none"
-                  aria-label={`Focus on group ${g.name} on canvas`}
+            {filtered.map((g) => {
+              const fullIdx = groupIndexMap.get(g.id) ?? -1;
+              const n = memberCountByGroupId.get(g.id) ?? 0;
+              const countLabel = `${n} ${n === 1 ? 'class' : 'classes'}`;
+              return (
+                <li
+                  key={g.id}
+                  className="flex items-center gap-0.5 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 group"
                 >
-                  {g.name}
-                </button>
-                {canEdit && (
                   <button
                     type="button"
-                    onClick={() => onDeleteGroup(g.id)}
-                    className="p-1 rounded text-slate-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label={`Delete group ${g.name}`}
+                    onClick={() => onFocusGroup(g.id)}
+                    className="flex-1 min-w-0 text-left focus:outline-none"
+                    aria-label={`Focus and zoom to group ${g.name} on canvas (${countLabel})`}
                   >
-                    <Trash2 className="h-3 w-3" />
+                    <span className="block text-sm font-medium text-slate-700 dark:text-slate-200 truncate hover:text-indigo-600 dark:hover:text-indigo-400">
+                      {g.name}
+                    </span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">{countLabel}</span>
                   </button>
-                )}
-              </li>
-            ))}
+                  {canEdit && fullIdx >= 0 && (
+                    <div className="flex flex-col shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={() => onReorderGroup(g.id, 'up')}
+                        disabled={fullIdx <= 0}
+                        className="p-0.5 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none"
+                        aria-label={`Move group ${g.name} earlier (behind)`}
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onReorderGroup(g.id, 'down')}
+                        disabled={fullIdx >= groups.length - 1}
+                        className="p-0.5 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none"
+                        aria-label={`Move group ${g.name} later (in front)`}
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteGroup(g.id)}
+                      className="p-1 rounded text-slate-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0"
+                      aria-label={`Delete group ${g.name}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -1072,6 +1124,32 @@ export default function DesignCanvasSidebar() {
     },
     [studio]
   );
+
+  const handleFocusGroupOnCanvas = useCallback(
+    (groupId: string) => {
+      focusMode?.enterFocusOnGroup(groupId);
+      requestAnimationFrame(() => sidebarActions?.zoomToGroup(groupId));
+    },
+    [focusMode, sidebarActions]
+  );
+
+  const handleReorderStudioGroup = useCallback(
+    (groupId: string, direction: 'up' | 'down') => {
+      if (!studio?.applyChange || isReadOnly) return;
+      studio.applyChange((draft) => {
+        const idx = draft.groups.findIndex((g) => g.id === groupId);
+        if (idx < 0) return;
+        const j = direction === 'up' ? idx - 1 : idx + 1;
+        if (j < 0 || j >= draft.groups.length) return;
+        const arr = draft.groups;
+        const tmp = arr[idx]!;
+        arr[idx] = arr[j]!;
+        arr[j] = tmp;
+      });
+    },
+    [studio, isReadOnly]
+  );
+
   const propertiesItems = useStudioData
     ? studioProperties.map((p) => p.name).sort((a, b) => a.localeCompare(b))
     : propertyNames;
@@ -1471,8 +1549,10 @@ export default function DesignCanvasSidebar() {
           ) : useStudioData ? (
             <GroupsListPanel
               groups={studio?.state?.groups ?? []}
+              classes={studioClasses}
               canEdit={!isReadOnly}
-              onFocusGroup={(groupId) => focusMode?.enterFocusOnGroup(groupId)}
+              onFocusGroup={handleFocusGroupOnCanvas}
+              onReorderGroup={handleReorderStudioGroup}
               onDeleteGroup={(groupId) => canvasGroup?.deleteGroup(groupId) ?? Promise.resolve()}
             />
           ) : (

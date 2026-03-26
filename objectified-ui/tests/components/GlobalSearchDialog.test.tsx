@@ -63,6 +63,9 @@ interface MockStudio {
 
 interface MockCanvasSidebarActions {
   zoomToClass: jest.Mock;
+  zoomToGroup: jest.Mock;
+  registerZoomToClass: jest.Mock;
+  registerZoomToGroup: jest.Mock;
 }
 
 interface MockFocusMode {
@@ -266,7 +269,12 @@ describe('GlobalSearchDialog', () => {
   it('invokes zoomToClass and enterFocusOnNode when selecting a class result', async () => {
     const mockZoomToClass = jest.fn();
     const mockEnterFocusOnNode = jest.fn();
-    mockCanvasSidebarActions = { zoomToClass: mockZoomToClass };
+    mockCanvasSidebarActions = {
+      zoomToClass: mockZoomToClass,
+      zoomToGroup: jest.fn(),
+      registerZoomToClass: jest.fn(),
+      registerZoomToGroup: jest.fn(),
+    };
     mockFocusMode = { enterFocusOnNode: mockEnterFocusOnNode };
     mockStudio = {
       state: {

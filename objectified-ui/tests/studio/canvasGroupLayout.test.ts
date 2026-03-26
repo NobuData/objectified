@@ -6,11 +6,24 @@ import {
   wouldCreateGroupParentCycle,
   expandGroupIdsWithAncestors,
   getStrictDescendantGroupIds,
+  collectGroupDescendants,
   getClassIdsWithTag,
   newGroupLayoutFromSelectionBounds,
 } from '@lib/studio/canvasGroupLayout';
 
 describe('canvasGroupLayout', () => {
+  describe('collectGroupDescendants', () => {
+    it('includes root and nested groups', () => {
+      const groups: StudioGroup[] = [
+        { id: 'root', name: 'R', metadata: {} },
+        { id: 'child', name: 'C', metadata: { parentGroupId: 'root' } },
+        { id: 'other', name: 'O', metadata: {} },
+      ];
+      const s = collectGroupDescendants(groups, 'root');
+      expect(Array.from(s).sort()).toEqual(['child', 'root']);
+    });
+  });
+
   describe('sortGroupsParentsFirst', () => {
     it('orders parent before child', () => {
       const groups: StudioGroup[] = [

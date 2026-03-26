@@ -43,6 +43,7 @@ import { useCanvasGroupOptional } from '@/app/contexts/CanvasGroupContext';
 import { useCanvasLayoutOptional } from '@/app/contexts/CanvasLayoutContext';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
+import { useCanvasSidebarActionsOptional } from '@/app/contexts/CanvasSidebarActionsContext';
 import { useCanvasExportOptional } from '@/app/contexts/CanvasExportContext';
 import { getCanvasSettings } from '@lib/studio/canvasSettings';
 import { gridStyleToBackgroundVariant } from '@/app/dashboard/utils/canvasStyleUtils';
@@ -70,6 +71,7 @@ import {
 import type { GroupCanvasMetadata } from '@lib/studio/canvasGroupStorage';
 import {
   sortGroupsParentsFirst,
+  collectGroupDescendants,
   getGroupAbsolutePosition,
   getClassAbsoluteFlowPosition,
   getFlowNodeAbsoluteOrigin,
@@ -125,6 +127,7 @@ import DependencyOverlay from './DependencyOverlay';
 import SchemaMetricsPanel from './SchemaMetricsPanel';
 import PaneContextMenuRegistration from './PaneContextMenuRegistration';
 import ZoomToClassRegistration from './ZoomToClassRegistration';
+import ZoomToGroupRegistration from './ZoomToGroupRegistration';
 import CanvasExportRegistration from './CanvasExportRegistration';
 import CanvasSelectionToolbar from './CanvasSelectionToolbar';
 import CanvasClassListView from './CanvasClassListView';
@@ -160,6 +163,9 @@ type CanvasViewportApi = Pick<
 const nodeTypes = { class: ClassNode, group: GroupNode, brokenRef: BrokenRefNode };
 const edgeTypes = { classRef: ClassRefEdge };
 
+/** Collapsed group frame height on canvas (header strip only; GitHub #238). */
+const COLLAPSED_GROUP_HEADER_PX = 40;
+
 function useResolvedCanvasSettings() {
   const context = useCanvasSettingsOptional();
   if (context) return context.settings;
@@ -174,6 +180,7 @@ export default function DesignCanvas() {
   const canvasGroup = useCanvasGroupOptional();
   const canvasLayout = useCanvasLayoutOptional();
   const focusMode = useCanvasFocusModeOptional();
+  const sidebarActions = useCanvasSidebarActionsOptional();
   const canvasExport = useCanvasExportOptional();
   const versionId = studio?.state?.versionId ?? null;
   const classes = useMemo(() => studio?.state?.classes ?? [], [studio?.state]);
@@ -314,18 +321,22 @@ export default function DesignCanvas() {
       const pos = meta.position ?? defaultPosition;
       const dims = meta.dimensions ?? { width: 280, height: 160 };
       const style = meta.style ?? {};
+      const collapsed = meta.collapsed === true;
       const parentId =
         meta.parentGroupId && groups.some((x) => x.id === meta.parentGroupId)
           ? meta.parentGroupId
           : undefined;
+      const groupZ = Math.max(0, groups.findIndex((x) => x.id === g.id)) + 1;
+      const fullH = dims.height ?? 160;
       return {
         id: g.id,
         type: 'group' as const,
         position: { x: pos.x ?? 0, y: pos.y ?? 0 },
         data: { label: g.name, groupMetadata: meta },
+        zIndex: groupZ,
         style: {
           width: dims.width ?? 280,
-          height: dims.height ?? 160,
+          height: collapsed ? COLLAPSED_GROUP_HEADER_PX : fullH,
           ...style,
         },
         ...(parentId ? { parentId, extent: 'parent' as const } : {}),
@@ -723,15 +734,15 @@ export default function DesignCanvas() {
     if (!focusState || !isFocusModeActive(focusState)) return null;
     if (focusState.focusNodeId) return new Set([focusState.focusNodeId]);
     if (focusState.focusGroupId) {
-      // Collect all class ids that belong to the focused group.
+      const subtree = collectGroupDescendants(groups, focusState.focusGroupId);
       const ids = new Set<string>();
       for (const [classId, groupId] of classToGroup) {
-        if (groupId === focusState.focusGroupId) ids.add(classId);
+        if (groupId && subtree.has(groupId)) ids.add(classId);
       }
       return ids;
     }
     return null;
-  }, [focusState, classToGroup]);
+  }, [focusState, classToGroup, groups]);
 
   const focusedClassIds = useMemo(() => {
     if (!focusStartNodeIds) return null;
@@ -870,6 +881,20 @@ export default function DesignCanvas() {
     [studio, mutationLocked, classes]
   );
 
+  const handleToggleGroupCollapse = useCallback(
+    (groupId: string) => {
+      if (!studio?.applyChange || mutationLocked) return;
+      studio.applyChange((draft) => {
+        const g = draft.groups.find((x) => x.id === groupId);
+        if (!g) return;
+        const meta = { ...(g.metadata ?? {}) } as GroupCanvasMetadata;
+        meta.collapsed = !meta.collapsed;
+        g.metadata = { ...meta } as Record<string, unknown>;
+      });
+    },
+    [studio, mutationLocked]
+  );
+
   const displayNodesBase = useMemo(() => {
     const allStoredConfigs = versionId ? getAllClassNodeConfigs(versionId) : {};
     return focusFilteredNodes.map((node: Node) => {
@@ -898,12 +923,15 @@ export default function DesignCanvas() {
         };
       }
       if (node.type === 'group') {
+        const gd = node.data as { groupMetadata?: GroupCanvasMetadata };
+        const collapsed = gd.groupMetadata?.collapsed === true;
         return {
           ...node,
           data: {
             ...node.data,
-            allowResize: !mutationLocked,
+            allowResize: !mutationLocked && !collapsed,
             onEdit: canvasGroup?.openGroupEditor,
+            onToggleCollapse: !mutationLocked ? handleToggleGroupCollapse : undefined,
             resizeConstraints: {
               minWidth: canvasSettings.groupNodeMinWidth,
               maxWidth: canvasSettings.groupNodeMaxWidth,
@@ -972,6 +1000,7 @@ export default function DesignCanvas() {
     versionNodeThemePrefs,
     inlineRenameClassId,
     handleInlineRenameCommit,
+    handleToggleGroupCollapse,
     editClassRequest,
   ]);
 
@@ -2415,6 +2444,7 @@ export default function DesignCanvas() {
         )}
         <PaneContextMenuRegistration />
         <ZoomToClassRegistration />
+        <ZoomToGroupRegistration groups={groups} classes={classes} />
         <CanvasExportRegistration />
         <AlignmentGuidesOverlay
           verticalX={alignmentGuides.verticalX}
@@ -2668,7 +2698,9 @@ export default function DesignCanvas() {
                   type="button"
                   className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                   onClick={() => {
-                    focusMode?.enterFocusOnGroup(nodeContextMenu.node.id);
+                    const gid = nodeContextMenu.node.id;
+                    focusMode?.enterFocusOnGroup(gid);
+                    requestAnimationFrame(() => sidebarActions?.zoomToGroup(gid));
                     setNodeContextMenu(null);
                   }}
                 >

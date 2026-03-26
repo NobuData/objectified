@@ -1,8 +1,9 @@
 'use client';
 
 /**
- * Context for sidebar-driven canvas actions: zoom to class node.
+ * Context for sidebar-driven canvas actions: zoom to class or group on the canvas.
  * Reference: GitHub #99 — Add sidebar updates for the Classes in the Canvas.
+ * GitHub #238 — zoom to group (including members).
  */
 
 import {
@@ -19,6 +20,9 @@ export interface CanvasSidebarActionsContextValue {
   zoomToClass: (classId: string) => void;
   /** Register the zoom handler (called from DesignCanvas inside ReactFlow). */
   registerZoomToClass: (handler: ((classId: string) => void) | null) => void;
+  /** Zoom to fit a group and its member nodes (GitHub #238). */
+  zoomToGroup: (groupId: string) => void;
+  registerZoomToGroup: (handler: ((groupId: string) => void) | null) => void;
 }
 
 const CanvasSidebarActionsContext =
@@ -30,9 +34,14 @@ export function CanvasSidebarActionsProvider({
   children: ReactNode;
 }) {
   const zoomRef = useRef<((classId: string) => void) | null>(null);
+  const zoomGroupRef = useRef<((groupId: string) => void) | null>(null);
 
   const zoomToClass = useCallback((classId: string) => {
     zoomRef.current?.(classId);
+  }, []);
+
+  const zoomToGroup = useCallback((groupId: string) => {
+    zoomGroupRef.current?.(groupId);
   }, []);
 
   const registerZoomToClass = useCallback(
@@ -42,9 +51,21 @@ export function CanvasSidebarActionsProvider({
     []
   );
 
+  const registerZoomToGroup = useCallback(
+    (handler: ((groupId: string) => void) | null) => {
+      zoomGroupRef.current = handler;
+    },
+    []
+  );
+
   const value = useMemo<CanvasSidebarActionsContextValue>(
-    () => ({ zoomToClass, registerZoomToClass }),
-    [zoomToClass, registerZoomToClass]
+    () => ({
+      zoomToClass,
+      registerZoomToClass,
+      zoomToGroup,
+      registerZoomToGroup,
+    }),
+    [zoomToClass, registerZoomToClass, zoomToGroup, registerZoomToGroup]
   );
 
   return (
