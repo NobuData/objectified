@@ -14,6 +14,8 @@ export interface BrokenRefNodeData extends Record<string, unknown> {
   onCanvasNavShellFocus?: () => void;
   onNavigateCanvasNav?: (delta: 1 | -1) => void;
   canvasSearchDimmed?: boolean;
+  /** GitHub #244 — focus: dim non-focused nodes when focus display mode is fade. */
+  canvasFocusDimmed?: boolean;
   canvasSearchNavHighlight?: boolean;
 }
 
@@ -27,6 +29,7 @@ function BrokenRefNodeComponent({
     onCanvasNavShellFocus,
     onNavigateCanvasNav,
     canvasSearchDimmed = false,
+    canvasFocusDimmed = false,
     canvasSearchNavHighlight = false,
   } = data;
 
@@ -64,7 +67,7 @@ function BrokenRefNodeComponent({
       role="button"
       aria-label={`Broken reference: ${data.hint}. Property ${data.propertyName || 'unnamed'}. Press Enter or Space to open the editor.`}
       className={`rounded-md border border-red-400/90 bg-red-50/95 px-2 py-1.5 shadow-sm dark:border-red-500/60 dark:bg-red-950/50 max-w-[160px] cursor-pointer outline-none ${
-        canvasSearchDimmed ? 'opacity-[0.38] ' : ''
+        canvasSearchDimmed || canvasFocusDimmed ? 'opacity-[0.38] ' : ''
       }${
         selected ? 'ring-2 ring-red-500 ring-offset-1 ring-offset-white dark:ring-offset-slate-900 ' : ''
       }${

@@ -107,6 +107,8 @@ export interface ClassRefEdgeData extends Record<string, unknown> {
   onEdgeA11yFocus?: (edgeId: string) => void;
   /** GitHub #242 — fade edge when both endpoints are non-matching during dim search mode. */
   searchDimmed?: boolean;
+  /** GitHub #244 — fade edge when focus display mode is fade and edge is out of focus. */
+  focusDimmed?: boolean;
 }
 
 export interface BrokenRefPlaceholder {

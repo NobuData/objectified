@@ -6,7 +6,10 @@ import {
   defaultFocusModeState,
   isFocusModeActive,
   getFocusedNodeIds,
+  getFocusedNodeIdsWithDirection,
   getFocusedGroupIds,
+  getNodesOnShortestPath,
+  getNodesOnAllPathsCapped,
   type FocusModeState,
   type FocusEdge,
 } from '@lib/studio/canvasFocusMode';
@@ -18,7 +21,10 @@ describe('canvasFocusMode', () => {
       expect(defaultFocusModeState.focusModeEnabled).toBe(false);
       expect(defaultFocusModeState.focusModeDegree).toBe(1);
       expect(defaultFocusModeState.focusNodeId).toBeNull();
+      expect(defaultFocusModeState.focusNodeIds).toEqual([]);
       expect(defaultFocusModeState.focusGroupIds).toEqual([]);
+      expect(defaultFocusModeState.focusDirection).toBe('both');
+      expect(defaultFocusModeState.focusDisplayMode).toBe('hide');
     });
   });
 
@@ -40,6 +46,15 @@ describe('canvasFocusMode', () => {
         ...defaultFocusModeState,
         focusModeEnabled: true,
         focusNodeId: 'node-1',
+      };
+      expect(isFocusModeActive(state)).toBe(true);
+    });
+
+    it('returns true when enabled with multiple node anchors', () => {
+      const state: FocusModeState = {
+        ...defaultFocusModeState,
+        focusModeEnabled: true,
+        focusNodeIds: ['node-1', 'node-2'],
       };
       expect(isFocusModeActive(state)).toBe(true);
     });
@@ -136,6 +151,62 @@ describe('canvasFocusMode', () => {
     it('starting from middle node with degree 1', () => {
       const result = getFocusedNodeIds(edges, new Set(['B']), 1);
       expect(result).toEqual(new Set(['A', 'B', 'C']));
+    });
+  });
+
+  describe('getFocusedNodeIdsWithDirection', () => {
+    // Graph: A -> B -> C and D -> B
+    const edges: FocusEdge[] = [
+      { source: 'A', target: 'B' },
+      { source: 'B', target: 'C' },
+      { source: 'D', target: 'B' },
+    ];
+
+    it('downstream follows source->target', () => {
+      const result = getFocusedNodeIdsWithDirection(edges, new Set(['B']), 1, 'downstream');
+      expect(result).toEqual(new Set(['B', 'C']));
+    });
+
+    it('upstream follows target->source', () => {
+      const result = getFocusedNodeIdsWithDirection(edges, new Set(['B']), 1, 'upstream');
+      expect(result).toEqual(new Set(['A', 'B', 'D']));
+    });
+
+    it('both behaves like undirected traversal', () => {
+      const result = getFocusedNodeIdsWithDirection(edges, new Set(['B']), 1, 'both');
+      expect(result).toEqual(new Set(['A', 'B', 'C', 'D']));
+    });
+  });
+
+  describe('path helpers', () => {
+    // Graph: A -> B -> D, A -> C -> D
+    const edges: FocusEdge[] = [
+      { source: 'A', target: 'B' },
+      { source: 'B', target: 'D' },
+      { source: 'A', target: 'C' },
+      { source: 'C', target: 'D' },
+    ];
+
+    it('getNodesOnShortestPath returns a directed shortest path when it exists', () => {
+      const path = getNodesOnShortestPath(edges, 'A', 'D', 'downstream');
+      expect(path).not.toBeNull();
+      expect(path![0]).toBe('A');
+      expect(path![path!.length - 1]).toBe('D');
+      // Length should be 3 nodes (2 edges) on this graph.
+      expect(path!.length).toBe(3);
+    });
+
+    it('getNodesOnShortestPath returns null when no path exists', () => {
+      const path = getNodesOnShortestPath(edges, 'D', 'A', 'downstream');
+      expect(path).toBeNull();
+    });
+
+    it('getNodesOnAllPathsCapped returns union of nodes across paths', () => {
+      const nodes = getNodesOnAllPathsCapped(edges, 'A', 'D', 'downstream', {
+        maxDepth: 10,
+        maxPaths: 10,
+      });
+      expect(nodes).toEqual(new Set(['A', 'B', 'C', 'D']));
     });
   });
 
