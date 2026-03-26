@@ -207,6 +207,22 @@ describe('canvasSearch', () => {
       expect(visible.has('g1')).toBe(true);
     });
 
+    it('includes ancestor groups for nested group filter (GitHub #237)', () => {
+      const nested: StudioGroup[] = [
+        { id: 'g1', name: 'Outer', metadata: {} },
+        { id: 'g2', name: 'Inner', metadata: { parentGroupId: 'g1' } },
+      ];
+      const cg = new Map<string, string>([['c1', 'g2']]);
+      const visibleClassIds = new Set(['c1']);
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        searchFilterGroup: 'g2',
+      };
+      const visible = getVisibleGroupIds(nested, state, visibleClassIds, cg);
+      expect(visible.has('g1')).toBe(true);
+      expect(visible.has('g2')).toBe(true);
+    });
+
     it('returns empty when searchFilterGroup is set but group has no visible child', () => {
       const visibleClassIds = new Set(['c3']);
       const state: CanvasSearchState = { ...defaultCanvasSearchState, searchFilterGroup: 'g1' };

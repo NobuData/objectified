@@ -14,6 +14,12 @@ export interface GroupCanvasMetadata {
   position?: { x: number; y: number };
   dimensions?: { width?: number; height?: number };
   style?: Record<string, string | number>;
+  /** When set, this group is drawn inside the parent group (React Flow parentId). GitHub #237. */
+  parentGroupId?: string;
+  /** Optional governance / filter label (not class tags). */
+  governanceTag?: string;
+  description?: string;
+  owner?: string;
 }
 
 interface CanvasGroupsStorage {
