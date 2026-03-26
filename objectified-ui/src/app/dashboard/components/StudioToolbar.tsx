@@ -24,6 +24,8 @@ import {
   Settings2,
   Group,
   Network,
+  ChevronsDown,
+  ChevronsUp,
   FileDown,
   ChevronDown,
   Code2,
@@ -191,6 +193,29 @@ export default function StudioToolbar() {
   const hasSchemaWrite = tenantPerms.permissions?.is_tenant_admin || tenantPerms.has('schema:write');
   const permissionReadOnly = !tenantPerms.loading && !hasSchemaWrite;
   const mutationLocked = tenantPerms.loading || isReadOnly || permissionReadOnly;
+
+  const expandAllGroups = useCallback(() => {
+    if (!studio?.applyChange || !studio.state || mutationLocked) return;
+    studio.applyChange((draft) => {
+      for (const g of draft.groups) {
+        const meta = { ...(g.metadata ?? {}) } as Record<string, unknown>;
+        meta.collapsed = false;
+        g.metadata = meta;
+      }
+    });
+  }, [studio, mutationLocked]);
+
+  const collapseAllGroups = useCallback(() => {
+    if (!studio?.applyChange || !studio.state || mutationLocked) return;
+    studio.applyChange((draft) => {
+      for (const g of draft.groups) {
+        const meta = { ...(g.metadata ?? {}) } as Record<string, unknown>;
+        meta.collapsed = true;
+        g.metadata = meta;
+      }
+    });
+  }, [studio, mutationLocked]);
+
   const canCommitPushMerge = !mutationLocked && hasSchemaWrite;
   const historyRollbackAllowed =
     !tenantPerms.loading && hasSchemaWrite && workspace?.version?.published !== true;
@@ -1140,9 +1165,37 @@ export default function StudioToolbar() {
         disabled={!showGitToolbar || mutationLocked}
         className={btnBase}
         aria-label="Auto layout"
-        title="Preview and apply auto layout (dagre) to class nodes"
+        title="Preview and apply auto layout (dagre); optional layout-by-group in preview"
       >
         <Network className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={expandAllGroups}
+        disabled={
+          !showGitToolbar ||
+          mutationLocked ||
+          (studio?.state?.groups?.length ?? 0) === 0
+        }
+        className={btnBase}
+        aria-label="Expand all groups on canvas"
+        title="Expand all group frames on the canvas"
+      >
+        <ChevronsDown className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={collapseAllGroups}
+        disabled={
+          !showGitToolbar ||
+          mutationLocked ||
+          (studio?.state?.groups?.length ?? 0) === 0
+        }
+        className={btnBase}
+        aria-label="Collapse all groups on canvas"
+        title="Collapse all group frames to the header strip"
+      >
+        <ChevronsUp className="h-4 w-4" />
       </button>
       <button
         type="button"

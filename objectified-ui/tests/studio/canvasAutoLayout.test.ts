@@ -6,6 +6,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import {
   getLayoutedNodes,
+  getLayoutedNodesByGroup,
   layoutPreviewNodes,
   type LayoutDirection,
 } from '@lib/studio/canvasAutoLayout';
@@ -104,6 +105,27 @@ describe('getLayoutedNodes', () => {
     const a = result.find((n) => n.id === 'a');
     const b = result.find((n) => n.id === 'b');
     expect(a?.position?.x).toBeLessThanOrEqual(b?.position?.x ?? 0);
+  });
+});
+
+describe('getLayoutedNodesByGroup', () => {
+  it('lays out members inside a group and positions the root group', () => {
+    const nodes: Node[] = [
+      node('root', { x: 0, y: 0 }),
+      node('b', { x: 10, y: 10 }, 'class', 'g1'),
+      node('c', { x: 20, y: 20 }, 'class', 'g1'),
+      node('g1', { x: 200, y: 200 }, 'group'),
+    ];
+    const edges: Edge[] = [edge('b', 'c'), edge('root', 'b')];
+    const result = getLayoutedNodesByGroup(nodes, edges, 'TB');
+    expect(result).toHaveLength(4);
+    const b = result.find((n) => n.id === 'b');
+    const c = result.find((n) => n.id === 'c');
+    const g = result.find((n) => n.id === 'g1');
+    expect(b?.position).toBeDefined();
+    expect(c?.position).toBeDefined();
+    expect(g?.position).toBeDefined();
+    expect(typeof (g?.style as { width?: number })?.width).toBe('number');
   });
 });
 

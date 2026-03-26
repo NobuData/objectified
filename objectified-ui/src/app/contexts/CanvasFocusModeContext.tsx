@@ -25,6 +25,8 @@ export interface CanvasFocusModeContextValue {
   enterFocusOnNode: (nodeId: string) => void;
   /** Enter focus mode anchored on all members of a group. */
   enterFocusOnGroup: (groupId: string) => void;
+  /** Focus on the union of several groups (multi-group focus). GitHub #240. */
+  enterFocusOnGroups: (groupIds: string[]) => void;
   /** Change the neighbor degree (N-hops). */
   setDegree: (degree: number) => void;
   /** Exit focus mode entirely. */
@@ -46,18 +48,26 @@ export function CanvasFocusModeProvider({
       ...prev,
       focusModeEnabled: true,
       focusNodeId: nodeId,
-      focusGroupId: null,
+      focusGroupIds: [],
     }));
   }, []);
 
-  const enterFocusOnGroup = useCallback((groupId: string) => {
+  const enterFocusOnGroups = useCallback((groupIds: string[]) => {
+    const uniq = [...new Set(groupIds.filter(Boolean))];
     setState((prev) => ({
       ...prev,
       focusModeEnabled: true,
       focusNodeId: null,
-      focusGroupId: groupId,
+      focusGroupIds: uniq,
     }));
   }, []);
+
+  const enterFocusOnGroup = useCallback(
+    (groupId: string) => {
+      enterFocusOnGroups([groupId]);
+    },
+    [enterFocusOnGroups]
+  );
 
   const setDegree = useCallback((degree: number) => {
     setState((prev) => ({
@@ -71,7 +81,7 @@ export function CanvasFocusModeProvider({
       ...prev,
       focusModeEnabled: false,
       focusNodeId: null,
-      focusGroupId: null,
+      focusGroupIds: [],
     }));
   }, []);
 
@@ -80,10 +90,18 @@ export function CanvasFocusModeProvider({
       state,
       enterFocusOnNode,
       enterFocusOnGroup,
+      enterFocusOnGroups,
       setDegree,
       exitFocusMode,
     }),
-    [state, enterFocusOnNode, enterFocusOnGroup, setDegree, exitFocusMode]
+    [
+      state,
+      enterFocusOnNode,
+      enterFocusOnGroup,
+      enterFocusOnGroups,
+      setDegree,
+      exitFocusMode,
+    ]
   );
 
   return (

@@ -305,7 +305,8 @@ interface GroupsListPanelProps {
   groups: StudioGroup[];
   classes: StudioClass[];
   canEdit: boolean;
-  onFocusGroup: (groupId: string) => void;
+  /** Plain click focuses one group; Ctrl/Cmd+click adds to multi-group focus (GitHub #240). */
+  onFocusGroup: (groupId: string, additive: boolean) => void;
   onReorderGroup: (groupId: string, direction: 'up' | 'down') => void;
   onUngroup: (groupId: string) => Promise<void>;
   onArchive: (groupId: string) => Promise<void>;
@@ -477,6 +478,7 @@ function GroupsListPanel({
         </div>
         <p className="mt-1.5 px-1 text-xs text-slate-500 dark:text-slate-400">
           Order sets stack priority on the canvas (later = in front). Focus includes nested groups.
+          Use Ctrl/⌘-click to combine multiple groups in focus mode.
         </p>
       </div>
       <div className="flex-1 overflow-auto min-h-0">
@@ -1250,8 +1252,19 @@ export default function DesignCanvasSidebar() {
   );
 
   const handleFocusGroupOnCanvas = useCallback(
-    (groupId: string) => {
-      focusMode?.enterFocusOnGroup(groupId);
+    (groupId: string, additive: boolean) => {
+      const canMerge =
+        additive &&
+        focusMode?.state.focusModeEnabled &&
+        !focusMode.state.focusNodeId &&
+        focusMode.state.focusGroupIds.length > 0;
+      if (canMerge && focusMode) {
+        const next = new Set(focusMode.state.focusGroupIds);
+        next.add(groupId);
+        focusMode.enterFocusOnGroups([...next]);
+      } else {
+        focusMode?.enterFocusOnGroup(groupId);
+      }
       requestAnimationFrame(() => sidebarActions?.zoomToGroup(groupId));
     },
     [focusMode, sidebarActions]

@@ -1,6 +1,6 @@
 /**
  * Canvas search state and filter logic. GitHub #85 — Add search functionality to the canvas.
- * Reference: canvasSearchQuery, searchFilterType, searchFilterGroup.
+ * Reference: canvasSearchQuery, searchFilterType, searchFilterGroups (GitHub #240).
  */
 
 import type { StudioClass, StudioGroup } from './types';
@@ -17,8 +17,8 @@ export interface CanvasSearchState {
   useRegex: boolean;
   /** Filter by type: all, class (no composition), or schema key (allOf/oneOf/anyOf). */
   searchFilterType: SearchFilterType;
-  /** When set, show only classes in this group (and the group node). */
-  searchFilterGroup: string | null;
+  /** When non-empty, show only classes in any of these groups (and those group nodes). GitHub #240. */
+  searchFilterGroups: string[];
   /** When true: only classes with at least one property. When false: only classes with no properties. When null: any. */
   hasProperties: boolean | null;
   /** When non-empty, only classes that have a property whose name matches (case-insensitive substring or regex). */
@@ -29,7 +29,7 @@ export const defaultCanvasSearchState: CanvasSearchState = {
   canvasSearchQuery: '',
   useRegex: false,
   searchFilterType: 'all',
-  searchFilterGroup: null,
+  searchFilterGroups: [],
   hasProperties: null,
   propertyNameFilter: '',
 };
@@ -42,7 +42,7 @@ export function isSearchActive(state: CanvasSearchState): boolean {
   return (
     state.canvasSearchQuery.trim().length > 0 ||
     state.searchFilterType !== 'all' ||
-    state.searchFilterGroup !== null ||
+    state.searchFilterGroups.length > 0 ||
     state.hasProperties !== null ||
     state.propertyNameFilter.trim().length > 0
   );
@@ -112,9 +112,9 @@ export function classMatchesSearch(
 
   if (!matchesCompiledQuery(cls.name ?? '', queryStr, queryRegex)) return false;
   if (!matchesSchemaType(cls, state.searchFilterType)) return false;
-  if (state.searchFilterGroup != null) {
+  if (state.searchFilterGroups.length > 0) {
     const groupId = (cls.canvas_metadata as { group?: string } | undefined)?.group;
-    if (groupId !== state.searchFilterGroup) return false;
+    if (!groupId || !state.searchFilterGroups.includes(groupId)) return false;
   }
   if (!matchesHasProperties(cls, state.hasProperties)) return false;
   if (!matchesPropertyNameFilter(cls, propFilterStr, propFilterRegex)) return false;
@@ -152,12 +152,15 @@ export function getVisibleGroupIds(
   if (!isSearchActive(state)) {
     return new Set(groups.map((g) => g.id));
   }
-  if (state.searchFilterGroup != null) {
-    const gid = state.searchFilterGroup;
-    const hasVisibleChild = Array.from(visibleClassIds).some(
-      (cid) => classToGroup.get(cid) === gid
-    );
-    return hasVisibleChild ? expandGroupIdsWithAncestors(groups, new Set([gid])) : new Set();
+  if (state.searchFilterGroups.length > 0) {
+    const allowed = new Set<string>();
+    for (const gid of state.searchFilterGroups) {
+      const hasVisibleChild = Array.from(visibleClassIds).some(
+        (cid) => classToGroup.get(cid) === gid
+      );
+      if (hasVisibleChild) allowed.add(gid);
+    }
+    return allowed.size > 0 ? expandGroupIdsWithAncestors(groups, allowed) : new Set();
   }
   const groupIdsWithVisibleChildren = new Set<string>();
   for (const cid of visibleClassIds) {

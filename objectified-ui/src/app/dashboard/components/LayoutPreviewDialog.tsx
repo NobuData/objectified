@@ -3,15 +3,21 @@
 /**
  * Layout preview dialog: shows auto-layout (dagre) result with Apply / Cancel.
  * Reference: GitHub #88 — layout preview then apply.
+ * Reference: GitHub #240 — optional layout-by-group strategy.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as Label from '@radix-ui/react-label';
 import { ReactFlow, Background, BackgroundVariant } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { X, Check, RotateCcw } from 'lucide-react';
 import type { Node, Edge } from '@xyflow/react';
-import { getLayoutedNodes, type LayoutDirection } from '@lib/studio/canvasAutoLayout';
+import {
+  getLayoutedNodes,
+  getLayoutedNodesByGroup,
+  type LayoutDirection,
+} from '@lib/studio/canvasAutoLayout';
 
 export interface LayoutPreviewDialogProps {
   open: boolean;
@@ -44,10 +50,18 @@ export default function LayoutPreviewDialog({
   direction = 'TB',
   onApply,
 }: LayoutPreviewDialogProps) {
-  const layoutedNodes = useMemo(
-    () => getLayoutedNodes(nodes, edges, direction),
-    [nodes, edges, direction]
-  );
+  const [layoutByGroup, setLayoutByGroup] = useState(false);
+
+  useEffect(() => {
+    if (open) setLayoutByGroup(false);
+  }, [open]);
+
+  const layoutedNodes = useMemo(() => {
+    if (layoutByGroup) {
+      return getLayoutedNodesByGroup(nodes, edges, direction);
+    }
+    return getLayoutedNodes(nodes, edges, direction);
+  }, [nodes, edges, direction, layoutByGroup]);
   const preview = useMemo(
     () => previewNodes(layoutedNodes),
     [layoutedNodes]
@@ -75,8 +89,9 @@ export default function LayoutPreviewDialog({
                 id="layout-preview-description"
                 className="text-sm text-slate-500 dark:text-slate-400 mt-1"
               >
-                Preview the dagre layout. Apply to update node positions on the
-                canvas and save as default layout for this version.
+                Preview auto-layout. Apply updates class positions (and group
+                frames when using layout by group) and saves the default layout
+                for this version.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -88,6 +103,25 @@ export default function LayoutPreviewDialog({
                 <X className="w-5 h-5 text-slate-500 dark:text-slate-400" />
               </button>
             </Dialog.Close>
+          </div>
+
+          <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-700 shrink-0">
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={layoutByGroup}
+                onChange={(e) => setLayoutByGroup(e.target.checked)}
+                className="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>
+                <Label.Root asChild>
+                  <span>Layout by group</span>
+                </Label.Root>
+                <span className="block text-xs text-slate-500 dark:text-slate-400 font-normal mt-0.5">
+                  Arrange top-level groups and ungrouped nodes, then dagre inside each group.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="flex-1 min-h-[320px] bg-slate-50 dark:bg-slate-900/50 rounded-b-xl overflow-hidden">

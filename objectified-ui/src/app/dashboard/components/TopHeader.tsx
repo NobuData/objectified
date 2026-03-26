@@ -59,8 +59,16 @@ export default function TopHeader() {
 
     if (focusMode?.state.focusModeEnabled && focusMode?.state.focusNodeId) {
       items.push({ label: focusedClassName ?? 'Class' });
-    } else if (focusMode?.state.focusModeEnabled && focusMode?.state.focusGroupId) {
-      items.push({ label: 'Group' });
+    } else if (
+      focusMode?.state.focusModeEnabled &&
+      focusMode?.state.focusGroupIds.length > 0
+    ) {
+      items.push({
+        label:
+          focusMode.state.focusGroupIds.length === 1
+            ? 'Group'
+            : `${focusMode.state.focusGroupIds.length} groups`,
+      });
     }
 
     return items;
@@ -69,7 +77,7 @@ export default function TopHeader() {
     workspace?.version?.name,
     focusMode?.state.focusModeEnabled,
     focusMode?.state.focusNodeId,
-    focusMode?.state.focusGroupId,
+    focusMode?.state.focusGroupIds,
     focusedClassName,
   ]);
 

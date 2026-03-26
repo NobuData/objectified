@@ -15,22 +15,22 @@ export interface FocusModeState {
   focusModeDegree: number;
   /** When non-null, focus is anchored on a single node by its id. */
   focusNodeId: string | null;
-  /** When non-null, focus is anchored on all members of a group. */
-  focusGroupId: string | null;
+  /** When non-empty, focus is anchored on all members of these groups (and nested). GitHub #240. */
+  focusGroupIds: string[];
 }
 
 export const defaultFocusModeState: FocusModeState = {
   focusModeEnabled: false,
   focusModeDegree: 1,
   focusNodeId: null,
-  focusGroupId: null,
+  focusGroupIds: [],
 };
 
 /** Returns true when focus mode is active (enabled and has an anchor). */
 export function isFocusModeActive(state: FocusModeState): boolean {
   return (
     state.focusModeEnabled &&
-    (state.focusNodeId !== null || state.focusGroupId !== null)
+    (state.focusNodeId !== null || state.focusGroupIds.length > 0)
   );
 }
 

@@ -28,7 +28,7 @@ describe('canvasSearch', () => {
       expect(defaultCanvasSearchState.canvasSearchQuery).toBe('');
       expect(defaultCanvasSearchState.useRegex).toBe(false);
       expect(defaultCanvasSearchState.searchFilterType).toBe('all');
-      expect(defaultCanvasSearchState.searchFilterGroup).toBeNull();
+      expect(defaultCanvasSearchState.searchFilterGroups).toEqual([]);
       expect(defaultCanvasSearchState.hasProperties).toBeNull();
       expect(defaultCanvasSearchState.propertyNameFilter).toBe('');
     });
@@ -47,8 +47,8 @@ describe('canvasSearch', () => {
       expect(isSearchActive({ ...defaultCanvasSearchState, searchFilterType: 'class' })).toBe(true);
     });
 
-    it('returns true when searchFilterGroup is set', () => {
-      expect(isSearchActive({ ...defaultCanvasSearchState, searchFilterGroup: 'g1' })).toBe(true);
+    it('returns true when searchFilterGroups is non-empty', () => {
+      expect(isSearchActive({ ...defaultCanvasSearchState, searchFilterGroups: ['g1'] })).toBe(true);
     });
 
     it('returns true when hasProperties is set', () => {
@@ -108,14 +108,22 @@ describe('canvasSearch', () => {
       expect(classMatchesSearch(allOfCls, { ...defaultCanvasSearchState, searchFilterType: 'oneOf' })).toBe(false);
     });
 
-    it('filters by searchFilterGroup', () => {
-      const inGroup = makeClass({
+    it('filters by searchFilterGroups (any of)', () => {
+      const inG1 = makeClass({
         name: 'C',
         canvas_metadata: { group: 'g1' },
       });
+      const inG2 = makeClass({
+        name: 'Cx',
+        canvas_metadata: { group: 'g2' },
+      });
       const ungrouped = makeClass({ name: 'D' });
-      const state: CanvasSearchState = { ...defaultCanvasSearchState, searchFilterGroup: 'g1' };
-      expect(classMatchesSearch(inGroup, state)).toBe(true);
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        searchFilterGroups: ['g1', 'g2'],
+      };
+      expect(classMatchesSearch(inG1, state)).toBe(true);
+      expect(classMatchesSearch(inG2, state)).toBe(true);
       expect(classMatchesSearch(ungrouped, state)).toBe(false);
     });
 
@@ -199,9 +207,9 @@ describe('canvasSearch', () => {
       expect(visible.has('g2')).toBe(true);
     });
 
-    it('returns only the selected group when searchFilterGroup is set and has visible child', () => {
+    it('returns only the selected group when searchFilterGroups is set and has visible child', () => {
       const visibleClassIds = new Set(['c1']);
-      const state: CanvasSearchState = { ...defaultCanvasSearchState, searchFilterGroup: 'g1' };
+      const state: CanvasSearchState = { ...defaultCanvasSearchState, searchFilterGroups: ['g1'] };
       const visible = getVisibleGroupIds(groups, state, visibleClassIds, classToGroup);
       expect(visible.size).toBe(1);
       expect(visible.has('g1')).toBe(true);
@@ -216,18 +224,29 @@ describe('canvasSearch', () => {
       const visibleClassIds = new Set(['c1']);
       const state: CanvasSearchState = {
         ...defaultCanvasSearchState,
-        searchFilterGroup: 'g2',
+        searchFilterGroups: ['g2'],
       };
       const visible = getVisibleGroupIds(nested, state, visibleClassIds, cg);
       expect(visible.has('g1')).toBe(true);
       expect(visible.has('g2')).toBe(true);
     });
 
-    it('returns empty when searchFilterGroup is set but group has no visible child', () => {
+    it('returns empty when searchFilterGroups is set but no filtered group has a visible child', () => {
       const visibleClassIds = new Set(['c3']);
-      const state: CanvasSearchState = { ...defaultCanvasSearchState, searchFilterGroup: 'g1' };
+      const state: CanvasSearchState = { ...defaultCanvasSearchState, searchFilterGroups: ['g1'] };
       const visible = getVisibleGroupIds(groups, state, visibleClassIds, classToGroup);
       expect(visible.size).toBe(0);
+    });
+
+    it('returns union of groups when multiple searchFilterGroups match visible classes', () => {
+      const visibleClassIds = new Set(['c1', 'c3']);
+      const state: CanvasSearchState = {
+        ...defaultCanvasSearchState,
+        searchFilterGroups: ['g1', 'g2'],
+      };
+      const visible = getVisibleGroupIds(groups, state, visibleClassIds, classToGroup);
+      expect(visible.has('g1')).toBe(true);
+      expect(visible.has('g2')).toBe(true);
     });
   });
 });

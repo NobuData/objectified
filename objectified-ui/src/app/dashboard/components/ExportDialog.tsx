@@ -12,6 +12,11 @@ import * as Select from '@radix-ui/react-select';
 import { X, Image, FileCode, Loader2, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useExportFunctions } from '@/app/hooks/useExportFunctions';
 import { useWorkspaceOptional } from '@/app/contexts/WorkspaceContext';
+import { useStudioOptional } from '@/app/contexts/StudioContext';
+import type { ImageExportScope } from '@/app/contexts/CanvasExportContext';
+import * as Popover from '@radix-ui/react-popover';
+import * as Checkbox from '@radix-ui/react-checkbox';
+import { Check } from 'lucide-react';
 
 export interface ExportDialogProps {
   open: boolean;
@@ -31,6 +36,13 @@ type DataFormat =
   | 'docs-html'
   | 'sql-ddl';
 type BackgroundOption = 'white' | 'transparent';
+
+const IMAGE_SCOPES: { value: ImageExportScope; label: string; hint: string }[] = [
+  { value: 'full', label: 'Full diagram', hint: 'Fit entire graph in view, then capture' },
+  { value: 'viewport', label: 'Current view', hint: 'Capture at the current pan/zoom' },
+  { value: 'selected', label: 'Selected nodes', hint: 'Only selected classes/groups and edges between them' },
+  { value: 'perGroup', label: 'One file per group', hint: 'Separate download for each top-level group (not for PDF print)' },
+];
 
 const IMAGE_FORMATS: { value: ImageFormat; label: string }[] = [
   { value: 'png', label: 'PNG' },
@@ -61,6 +73,8 @@ const selectTriggerClass =
 export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const exportFns = useExportFunctions();
   const workspace = useWorkspaceOptional();
+  const studio = useStudioOptional();
+  const studioGroups = useMemo(() => studio?.state?.groups ?? [], [studio?.state?.groups]);
   const tenantId = workspace?.tenant?.id ? String(workspace.tenant.id) : '';
   const brandingStorageKey = useMemo(
     () => (tenantId ? `objectified:docs:branding:${tenantId}` : 'objectified:docs:branding'),
@@ -72,6 +86,8 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
   const [dataFormat, setDataFormat] = useState<DataFormat>('mermaid');
   const [background, setBackground] = useState<BackgroundOption>('white');
   const [includeGroups, setIncludeGroups] = useState(true);
+  const [imageScope, setImageScope] = useState<ImageExportScope>('viewport');
+  const [dataRestrictGroupIds, setDataRestrictGroupIds] = useState<string[]>([]);
   const [includeGroupInfo, setIncludeGroupInfo] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [docsTitle, setDocsTitle] = useState('API Documentation');
@@ -89,6 +105,8 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
       setDataFormat('mermaid');
       setBackground('white');
       setIncludeGroups(true);
+      setImageScope('viewport');
+      setDataRestrictGroupIds([]);
       setIncludeGroupInfo(true);
       setExporting(null);
 
@@ -168,6 +186,19 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
     setDataFormat((prev) => (valid.includes(prev) ? prev : 'mermaid'));
   }, [exportFns.schemaMode]);
 
+  useEffect(() => {
+    if (imageFormat === 'pdf' && imageScope === 'perGroup') {
+      setImageScope('viewport');
+    }
+  }, [imageFormat, imageScope]);
+
+  const dataGroupFilterSummary =
+    dataRestrictGroupIds.length === 0
+      ? 'All classes'
+      : dataRestrictGroupIds.length === 1
+        ? studioGroups.find((g) => g.id === dataRestrictGroupIds[0])?.name ?? '1 group'
+        : `${dataRestrictGroupIds.length} groups`;
+
   const handleBack = () => {
     if (step === 2) setStep(1);
     else if (step === 3) setStep(2);
@@ -177,9 +208,11 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
     const label = imageFormat.toUpperCase();
     setExporting(label);
     try {
+      const scope = imageScope;
       const opts = {
         backgroundColor: background === 'transparent' ? 'transparent' : background,
         includeGroups,
+        scope,
       };
       const fns = {
         png: () => exportFns.exportAsPng(opts),
@@ -200,7 +233,11 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
     const label = dataFormat;
     setExporting(label);
     try {
-      const opts = { includeGroupInfo };
+      const opts = {
+        includeGroupInfo,
+        restrictToGroupIds:
+          dataRestrictGroupIds.length > 0 ? dataRestrictGroupIds : undefined,
+      };
       const docsOpts = {
         title: docsTitle,
         version: docsVersion,
@@ -409,6 +446,47 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                     Include group boxes in capture
                   </span>
                 </label>
+                <div>
+                  <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                    Capture scope
+                  </Label.Root>
+                  <Select.Root
+                    value={imageScope}
+                    onValueChange={(v) => setImageScope(v as ImageExportScope)}
+                  >
+                    <Select.Trigger className={selectTriggerClass} aria-label="Image capture scope">
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronRight className="w-4 h-4" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content
+                        className="overflow-hidden bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 shadow-lg"
+                        position="popper"
+                        sideOffset={4}
+                      >
+                        {IMAGE_SCOPES.map((s) => (
+                          <Select.Item
+                            key={s.value}
+                            value={s.value}
+                            disabled={imageFormat === 'pdf' && s.value === 'perGroup'}
+                            className="px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:bg-slate-100 dark:focus:bg-slate-700 focus:outline-none cursor-pointer data-[disabled]:opacity-40 data-[disabled]:pointer-events-none"
+                            title={s.hint}
+                          >
+                            <Select.ItemText>{s.label}</Select.ItemText>
+                          </Select.Item>
+                        ))}
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {IMAGE_SCOPES.find((s) => s.value === imageScope)?.hint}
+                    {imageFormat === 'pdf'
+                      ? ' PDF uses a print dialog; choose PNG for one download per group.'
+                      : ''}
+                  </p>
+                </div>
               </div>
             )}
 
@@ -455,6 +533,82 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                     Include group information in export
                   </span>
                 </label>
+
+                <div>
+                  <Label.Root className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                    Limit to groups (optional)
+                  </Label.Root>
+                  <Popover.Root>
+                    <Popover.Trigger asChild>
+                      <button
+                        type="button"
+                        className={selectTriggerClass}
+                        aria-label="Restrict data export to certain groups"
+                      >
+                        <span className="truncate text-left flex-1">{dataGroupFilterSummary}</span>
+                        <ChevronRight className="w-4 h-4 shrink-0" />
+                      </button>
+                    </Popover.Trigger>
+                    <Popover.Portal>
+                      <Popover.Content
+                        className="overflow-y-auto max-h-[min(280px,45vh)] w-[min(280px,85vw)] rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-lg z-[10003] p-2"
+                        sideOffset={4}
+                        align="start"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-2 px-1">
+                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            Export classes in…
+                          </span>
+                          {dataRestrictGroupIds.length > 0 ? (
+                            <button
+                              type="button"
+                              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                              onClick={() => setDataRestrictGroupIds([])}
+                            >
+                              Clear
+                            </button>
+                          ) : null}
+                        </div>
+                        {studioGroups.length === 0 ? (
+                          <p className="text-xs text-slate-500 dark:text-slate-400 px-1 py-2">
+                            No groups on this version.
+                          </p>
+                        ) : (
+                          <ul className="flex flex-col gap-0.5">
+                            {studioGroups.map((g) => {
+                              const checked = dataRestrictGroupIds.includes(g.id);
+                              return (
+                                <li key={g.id}>
+                                  <label className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer text-sm text-slate-800 dark:text-slate-200">
+                                    <Checkbox.Root
+                                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+                                      checked={checked}
+                                      onCheckedChange={() =>
+                                        setDataRestrictGroupIds((prev) =>
+                                          prev.includes(g.id)
+                                            ? prev.filter((x) => x !== g.id)
+                                            : [...prev, g.id]
+                                        )
+                                      }
+                                    >
+                                      <Checkbox.Indicator>
+                                        <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                                      </Checkbox.Indicator>
+                                    </Checkbox.Root>
+                                    <span className="truncate">{g.name}</span>
+                                  </label>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </Popover.Content>
+                    </Popover.Portal>
+                  </Popover.Root>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Nested groups under a selected group are included.
+                  </p>
+                </div>
 
                 {showDocsBrandingFields && (
                   <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-slate-50/50 dark:bg-slate-800/30">
@@ -559,12 +713,22 @@ export default function ExportDialog({ open, onOpenChange }: ExportDialogProps) 
                       Format: <strong className="text-slate-800 dark:text-slate-200">{imageFormat.toUpperCase()}</strong>
                       . Background: <strong className="text-slate-800 dark:text-slate-200">{background}</strong>.
                       Group boxes: <strong className="text-slate-800 dark:text-slate-200">{includeGroups ? 'Yes' : 'No'}</strong>.
+                      Scope:{' '}
+                      <strong className="text-slate-800 dark:text-slate-200">
+                        {IMAGE_SCOPES.find((s) => s.value === imageScope)?.label ?? imageScope}
+                      </strong>.
                     </>
                   )}
                   {exportType === 'data' && (
                     <>
                       Format: <strong className="text-slate-800 dark:text-slate-200">{dataFormats.find((f) => f.value === dataFormat)?.label ?? dataFormat}</strong>.
                       Group info: <strong className="text-slate-800 dark:text-slate-200">{includeGroupInfo ? 'Yes' : 'No'}</strong>.
+                      {dataRestrictGroupIds.length > 0 ? (
+                        <>
+                          {' '}
+                          Groups: <strong className="text-slate-800 dark:text-slate-200">{dataGroupFilterSummary}</strong>.
+                        </>
+                      ) : null}
                     </>
                   )}
                 </p>
