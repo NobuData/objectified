@@ -83,49 +83,51 @@ export function useExportFunctions(): ExportFunctions {
     [ctx?.imageExportApi, noop]
   );
 
+  const sg = ctx?.groups ?? [];
+
   const exportAsMermaidFn = useCallback(
     (opts?: ExportGraphOptions) => {
       if (!ctx?.classes?.length) return;
-      const content = exportAsMermaid(ctx.classes, opts);
+      const content = exportAsMermaid(ctx.classes, { ...opts, studioGroups: sg });
       downloadString(content, 'diagram.mmd', 'text/plain');
     },
-    [ctx?.classes]
+    [ctx?.classes, sg]
   );
 
   const exportAsPlantUMLFn = useCallback(
     (opts?: ExportGraphOptions) => {
       if (!ctx?.classes?.length) return;
-      const content = exportAsPlantUML(ctx.classes, opts);
+      const content = exportAsPlantUML(ctx.classes, { ...opts, studioGroups: sg });
       downloadString(content, 'diagram.puml', 'text/plain');
     },
-    [ctx?.classes]
+    [ctx?.classes, sg]
   );
 
   const exportAsDotFn = useCallback(
     (opts?: ExportGraphOptions) => {
       if (!ctx?.classes?.length) return;
-      const content = exportAsDot(ctx.classes, opts);
+      const content = exportAsDot(ctx.classes, { ...opts, studioGroups: sg });
       downloadString(content, 'graph.dot', 'text/plain');
     },
-    [ctx?.classes]
+    [ctx?.classes, sg]
   );
 
   const exportAsGraphMLFn = useCallback(
     (opts?: ExportGraphOptions) => {
       if (!ctx?.classes?.length) return;
-      const content = exportAsGraphML(ctx.classes, opts);
+      const content = exportAsGraphML(ctx.classes, { ...opts, studioGroups: sg });
       downloadString(content, 'graph.graphml', 'application/xml');
     },
-    [ctx?.classes]
+    [ctx?.classes, sg]
   );
 
   const exportAsJsonFn = useCallback(
     (opts?: ExportGraphOptions) => {
       if (!ctx?.classes?.length) return;
-      const content = exportAsJson(ctx.classes, opts);
+      const content = exportAsJson(ctx.classes, { ...opts, studioGroups: sg });
       downloadString(content, 'graph.json', 'application/json');
     },
-    [ctx?.classes]
+    [ctx?.classes, sg]
   );
 
   const exportAsOpenApiFn = useCallback(() => {

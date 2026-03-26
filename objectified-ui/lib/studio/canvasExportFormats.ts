@@ -3,9 +3,10 @@
  * Reference: GitHub #92, #93 — export dialog and export wizard (include groups).
  */
 
-import type { StudioClass, StudioClassProperty } from './types';
+import type { StudioClass, StudioClassProperty, StudioGroup } from './types';
 import { getStableClassId } from './types';
 import { buildClassRefEdges, parseClassNameFromRef } from './canvasClassRefEdges';
+import { collectGroupDescendants } from './canvasGroupLayout';
 
 export interface ExportGraphNode {
   id: string;
@@ -23,6 +24,10 @@ export interface ExportGraphEdge {
 export interface ExportGraphOptions {
   /** When true, include group id on nodes that belong to a group. */
   includeGroupInfo?: boolean;
+  /** When set, only classes whose canvas group is one of these ids (including nested under them when studioGroups is provided). GitHub #240. */
+  restrictToGroupIds?: string[];
+  /** Studio groups (needed to expand nested groups for restrictToGroupIds). */
+  studioGroups?: StudioGroup[];
 }
 
 export interface ExportOpenApiOptions {
@@ -52,8 +57,32 @@ function buildExportGraph(
   nodes: ExportGraphNode[];
   edges: ExportGraphEdge[];
 } {
+  let clsList = classes;
+  const rIds = options?.restrictToGroupIds;
+  const sg = options?.studioGroups;
+  if (rIds && rIds.length > 0) {
+    if (sg && sg.length > 0) {
+      const allowed = new Set<string>();
+      for (const gid of rIds) {
+        for (const d of collectGroupDescendants(sg, gid)) {
+          allowed.add(d);
+        }
+      }
+      clsList = classes.filter((c) => {
+        const g = (c.canvas_metadata as { group?: string } | undefined)?.group;
+        return g != null && allowed.has(g);
+      });
+    } else {
+      const allow = new Set(rIds);
+      clsList = classes.filter((c) => {
+        const g = (c.canvas_metadata as { group?: string } | undefined)?.group;
+        return g != null && allow.has(g);
+      });
+    }
+  }
+
   const includeGroupInfo = options?.includeGroupInfo ?? false;
-  const nodes: ExportGraphNode[] = classes.map((c) => {
+  const nodes: ExportGraphNode[] = clsList.map((c) => {
     const meta = c.canvas_metadata as { group?: string } | undefined;
     const node: ExportGraphNode = {
       id: getStableClassId(c),
@@ -62,7 +91,7 @@ function buildExportGraph(
     if (includeGroupInfo && meta?.group) node.groupId = meta.group;
     return node;
   });
-  const rfEdges = buildClassRefEdges(classes);
+  const rfEdges = buildClassRefEdges(clsList);
   const edges: ExportGraphEdge[] = rfEdges.map((e) => ({
     sourceId: e.source,
     targetId: e.target,

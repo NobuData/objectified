@@ -10,6 +10,7 @@
  * Reference: GitHub #235 — Snap to grid/alignment, resize limits, undo for moves (studio stack), touch/trackpad gestures.
  * Reference: GitHub #236 — Keyboard/screen reader: node/edge focus, pan/zoom keys, optional class list view.
  * Reference: GitHub #237 — Groups: create from selection/tag, nesting, metadata, templates, drag in/out.
+ * Reference: GitHub #240 — Multi-group focus, layout-by-group, export scopes, multi group canvas filter.
  */
 'use client';
 
@@ -733,11 +734,13 @@ export default function DesignCanvas() {
   const focusStartNodeIds = useMemo(() => {
     if (!focusState || !isFocusModeActive(focusState)) return null;
     if (focusState.focusNodeId) return new Set([focusState.focusNodeId]);
-    if (focusState.focusGroupId) {
-      const subtree = collectGroupDescendants(groups, focusState.focusGroupId);
+    if (focusState.focusGroupIds.length > 0) {
       const ids = new Set<string>();
-      for (const [classId, groupId] of classToGroup) {
-        if (groupId && subtree.has(groupId)) ids.add(classId);
+      for (const anchorId of focusState.focusGroupIds) {
+        const subtree = collectGroupDescendants(groups, anchorId);
+        for (const [classId, groupId] of classToGroup) {
+          if (groupId && subtree.has(groupId)) ids.add(classId);
+        }
       }
       return ids;
     }
@@ -756,11 +759,13 @@ export default function DesignCanvas() {
   const focusedGroupIds = useMemo(() => {
     if (!focusedClassIds) return null;
     const ids = getFocusedGroupIds(groups, focusedClassIds, classToGroup);
-    // Always include the focused group itself, even when it has no member classes,
-    // so the group node remains visible rather than the canvas going blank.
-    if (focusState?.focusGroupId) ids.add(focusState.focusGroupId);
+    // Always include focused anchor groups, even when they have no member classes,
+    // so group nodes remain visible rather than the canvas going blank.
+    if (focusState?.focusGroupIds?.length) {
+      for (const gid of focusState.focusGroupIds) ids.add(gid);
+    }
     return ids;
-  }, [focusedClassIds, groups, classToGroup, focusState?.focusGroupId]);
+  }, [focusedClassIds, groups, classToGroup, focusState?.focusGroupIds]);
 
   const focusFilteredNodes = useMemo(() => {
     if (!focusedClassIds || !focusedGroupIds) return filteredNodes;
@@ -2325,6 +2330,10 @@ export default function DesignCanvas() {
     (layoutedNodes: Node[]) => {
       if (!studio?.applyChange || !versionId) return;
       const positionMap = new Map<string, { x: number; y: number }>();
+      const groupLayout = new Map<
+        string,
+        { position: { x: number; y: number }; width?: number; height?: number }
+      >();
       for (const node of layoutedNodes) {
         if (node.type === 'class' && node.position) {
           positionMap.set(node.id, {
@@ -2332,11 +2341,17 @@ export default function DesignCanvas() {
             y: node.position.y,
           });
         }
+        if (node.type === 'group' && node.position) {
+          const st = node.style as { width?: number; height?: number } | undefined;
+          groupLayout.set(node.id, {
+            position: { x: node.position.x, y: node.position.y },
+            width: typeof st?.width === 'number' ? st.width : undefined,
+            height: typeof st?.height === 'number' ? st.height : undefined,
+          });
+        }
       }
       studio.applyChange((draft) => {
         for (const c of draft.classes) {
-          // Skip grouped classes — their positions are stored relative to the parent group
-          if ((c.canvas_metadata as { group?: string } | undefined)?.group) continue;
           const id = getStableClassId(c);
           const pos = positionMap.get(id);
           if (pos) {
@@ -2346,23 +2361,35 @@ export default function DesignCanvas() {
             };
           }
         }
+        for (const g of draft.groups) {
+          const gl = groupLayout.get(g.id);
+          if (!gl) continue;
+          const meta = { ...(g.metadata ?? {}) } as GroupCanvasMetadata;
+          meta.position = { ...gl.position };
+          if (gl.width != null && gl.height != null) {
+            meta.dimensions = {
+              ...(meta.dimensions ?? {}),
+              width: gl.width,
+              height: gl.height,
+            };
+          }
+          g.metadata = meta as Record<string, unknown>;
+        }
       });
-      const allPositions = classes
-        .filter((c) => !(c.canvas_metadata as { group?: string } | undefined)?.group)
-        .map((c) => {
-          const id = getStableClassId(c);
-          const pos =
-            positionMap.get(id) ??
-            c.canvas_metadata?.position ??
-            defaultPosition;
-          return { classId: id, position: pos };
-        });
+      const allPositions = classes.map((c) => {
+        const id = getStableClassId(c);
+        const pos =
+          positionMap.get(id) ?? c.canvas_metadata?.position ?? defaultPosition;
+        return { classId: id, position: pos };
+      });
       saveDefaultCanvasLayout(versionId, allPositions);
       const layoutedMap = new Map(layoutedNodes.map((l) => [l.id, l]));
       setNodes((current) =>
         current.map((n) => {
           const updated = layoutedMap.get(n.id);
-          return updated ? { ...n, position: updated.position } : n;
+          return updated
+            ? { ...n, position: updated.position, style: updated.style ?? n.style }
+            : n;
         })
       );
     },
@@ -2657,7 +2684,11 @@ export default function DesignCanvas() {
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[10002] flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-600 dark:bg-indigo-500 text-white text-sm shadow-lg">
           <span>
             Focus mode · {focusState.focusModeDegree}-degree
-            {focusState.focusGroupId ? ' · group' : ''}
+            {focusState.focusGroupIds.length > 0
+              ? focusState.focusGroupIds.length === 1
+                ? ' · group'
+                : ` · ${focusState.focusGroupIds.length} groups`
+              : ''}
           </span>
           <button
             type="button"

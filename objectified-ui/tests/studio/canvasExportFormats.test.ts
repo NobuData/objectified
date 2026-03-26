@@ -43,6 +43,20 @@ describe('canvasExportFormats', () => {
     it('returns only classDiagram when no classes', () => {
       expect(exportAsMermaid([])).toBe('classDiagram');
     });
+
+    it('restricts output to classes in restrictToGroupIds when studioGroups provided', () => {
+      const classesMulti: StudioClass[] = [
+        { id: 'in', name: 'InGroup', canvas_metadata: { group: 'g1' }, properties: [] },
+        { id: 'out', name: 'Outside', properties: [] },
+      ];
+      const groups = [{ id: 'g1', name: 'G1' }];
+      const out = exportAsMermaid(classesMulti, {
+        restrictToGroupIds: ['g1'],
+        studioGroups: groups,
+      });
+      expect(out).toContain('InGroup');
+      expect(out).not.toContain('Outside');
+    });
   });
 
   describe('exportAsPlantUML', () => {

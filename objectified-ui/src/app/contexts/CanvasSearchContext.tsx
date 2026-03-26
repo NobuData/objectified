@@ -20,7 +20,9 @@ export interface CanvasSearchContextValue {
   setQuery: (canvasSearchQuery: string) => void;
   setUseRegex: (useRegex: boolean) => void;
   setFilterType: (searchFilterType: SearchFilterType) => void;
-  setFilterGroup: (searchFilterGroup: string | null) => void;
+  setFilterGroups: (searchFilterGroups: string[]) => void;
+  toggleFilterGroup: (groupId: string) => void;
+  clearFilterGroups: () => void;
   setHasProperties: (hasProperties: boolean | null) => void;
   setPropertyNameFilter: (propertyNameFilter: string) => void;
 }
@@ -42,8 +44,21 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, searchFilterType }));
   }, []);
 
-  const setFilterGroup = useCallback((searchFilterGroup: string | null) => {
-    setState((prev) => ({ ...prev, searchFilterGroup }));
+  const setFilterGroups = useCallback((searchFilterGroups: string[]) => {
+    setState((prev) => ({ ...prev, searchFilterGroups: [...new Set(searchFilterGroups)] }));
+  }, []);
+
+  const toggleFilterGroup = useCallback((groupId: string) => {
+    setState((prev) => {
+      const cur = prev.searchFilterGroups;
+      const has = cur.includes(groupId);
+      const next = has ? cur.filter((id) => id !== groupId) : [...cur, groupId];
+      return { ...prev, searchFilterGroups: next };
+    });
+  }, []);
+
+  const clearFilterGroups = useCallback(() => {
+    setState((prev) => ({ ...prev, searchFilterGroups: [] }));
   }, []);
 
   const setHasProperties = useCallback((hasProperties: boolean | null) => {
@@ -61,7 +76,9 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
       setQuery,
       setUseRegex,
       setFilterType,
-      setFilterGroup,
+      setFilterGroups,
+      toggleFilterGroup,
+      clearFilterGroups,
       setHasProperties,
       setPropertyNameFilter,
     }),
@@ -70,7 +87,9 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
       setQuery,
       setUseRegex,
       setFilterType,
-      setFilterGroup,
+      setFilterGroups,
+      toggleFilterGroup,
+      clearFilterGroups,
       setHasProperties,
       setPropertyNameFilter,
     ]

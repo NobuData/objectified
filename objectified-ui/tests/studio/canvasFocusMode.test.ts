@@ -18,7 +18,7 @@ describe('canvasFocusMode', () => {
       expect(defaultFocusModeState.focusModeEnabled).toBe(false);
       expect(defaultFocusModeState.focusModeDegree).toBe(1);
       expect(defaultFocusModeState.focusNodeId).toBeNull();
-      expect(defaultFocusModeState.focusGroupId).toBeNull();
+      expect(defaultFocusModeState.focusGroupIds).toEqual([]);
     });
   });
 
@@ -48,7 +48,7 @@ describe('canvasFocusMode', () => {
       const state: FocusModeState = {
         ...defaultFocusModeState,
         focusModeEnabled: true,
-        focusGroupId: 'group-1',
+        focusGroupIds: ['group-1'],
       };
       expect(isFocusModeActive(state)).toBe(true);
     });

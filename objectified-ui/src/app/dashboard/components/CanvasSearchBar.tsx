@@ -5,7 +5,9 @@ import type { MouseEvent } from 'react';
 import * as Select from '@radix-ui/react-select';
 import * as Label from '@radix-ui/react-label';
 import * as Switch from '@radix-ui/react-switch';
-import { Search, ChevronDown, X, Trash2, Clock } from 'lucide-react';
+import * as Popover from '@radix-ui/react-popover';
+import * as Checkbox from '@radix-ui/react-checkbox';
+import { Search, ChevronDown, X, Trash2, Clock, Check } from 'lucide-react';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
 import { useSearchHistory } from '@/app/hooks/useSearchHistory';
@@ -86,7 +88,23 @@ export default function CanvasSearchBar() {
 
   if (!search) return null;
 
-  const { state, setQuery, setUseRegex, setFilterType, setFilterGroup, setHasProperties, setPropertyNameFilter } = search;
+  const {
+    state,
+    setQuery,
+    setUseRegex,
+    setFilterType,
+    toggleFilterGroup,
+    clearFilterGroups,
+    setHasProperties,
+    setPropertyNameFilter,
+  } = search;
+
+  const groupFilterSummary =
+    state.searchFilterGroups.length === 0
+      ? 'All groups'
+      : state.searchFilterGroups.length === 1
+        ? groups.find((g) => g.id === state.searchFilterGroups[0])?.name ?? '1 group'
+        : `${state.searchFilterGroups.length} groups`;
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 shrink-0">
@@ -185,31 +203,66 @@ export default function CanvasSearchBar() {
         </Select.Portal>
       </Select.Root>
 
-      <Select.Root
-        value={state.searchFilterGroup ?? '__all__'}
-        onValueChange={(v) => setFilterGroup(v === '__all__' ? null : v)}
-      >
-        <Select.Trigger className={triggerClass} aria-label="Filter by group">
-          <Select.Value placeholder="All groups" />
-          <Select.Icon>
+      <Popover.Root>
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            className={triggerClass}
+            aria-label="Filter canvas by group"
+            title="Show only classes in the selected groups (multi-select)"
+          >
+            <span className="truncate min-w-0">{groupFilterSummary}</span>
             <ChevronDown className="h-4 w-4 shrink-0" />
-          </Select.Icon>
-        </Select.Trigger>
-        <Select.Portal>
-          <Select.Content className={contentClass} position="popper" sideOffset={4}>
-            <Select.Viewport>
-              <Select.Item value="__all__" className={itemClass}>
-                <Select.ItemText>All groups</Select.ItemText>
-              </Select.Item>
-              {groups.map((g) => (
-                <Select.Item key={g.id} value={g.id} className={itemClass}>
-                  <Select.ItemText>{g.name}</Select.ItemText>
-                </Select.Item>
-              ))}
-            </Select.Viewport>
-          </Select.Content>
-        </Select.Portal>
-      </Select.Root>
+          </button>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
+            className={`${contentClass} w-[min(280px,85vw)] max-h-[min(320px,50vh)] overflow-y-auto p-2 z-[10003]`}
+            sideOffset={4}
+            align="start"
+          >
+            <div className="flex items-center justify-between gap-2 mb-2 px-1">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                Show classes in…
+              </span>
+              {state.searchFilterGroups.length > 0 ? (
+                <button
+                  type="button"
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                  onClick={clearFilterGroups}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+            {groups.length === 0 ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400 px-1 py-2">No groups yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-0.5">
+                {groups.map((g) => {
+                  const checked = state.searchFilterGroups.includes(g.id);
+                  return (
+                    <li key={g.id}>
+                      <label className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer text-sm text-slate-800 dark:text-slate-200">
+                        <Checkbox.Root
+                          className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+                          checked={checked}
+                          onCheckedChange={() => toggleFilterGroup(g.id)}
+                        >
+                          <Checkbox.Indicator>
+                            <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                          </Checkbox.Indicator>
+                        </Checkbox.Root>
+                        <span className="truncate">{g.name}</span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
 
       <Select.Root
         value={

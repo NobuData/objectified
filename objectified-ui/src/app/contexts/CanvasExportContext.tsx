@@ -12,8 +12,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { StudioClass } from '@lib/studio/types';
+import type { StudioClass, StudioGroup } from '@lib/studio/types';
 import { useStudioOptional } from '@/app/contexts/StudioContext';
+
+/** Raster / PDF capture scope (GitHub #240). */
+export type ImageExportScope = 'full' | 'viewport' | 'selected' | 'perGroup';
 
 /** Options for image export (GitHub #93 — export wizard). */
 export interface ImageExportOptions {
@@ -21,6 +24,8 @@ export interface ImageExportOptions {
   backgroundColor?: string;
   /** When false, group nodes are excluded from the capture. */
   includeGroups?: boolean;
+  /** What to capture: full diagram (fit view), current viewport, selection only, or one file per group. */
+  scope?: ImageExportScope;
 }
 
 export interface ImageExportApi {
@@ -34,6 +39,7 @@ export interface CanvasExportContextValue {
   imageExportApi: ImageExportApi | null;
   setImageExportApi: (api: ImageExportApi | null) => void;
   classes: StudioClass[];
+  groups: StudioGroup[];
 }
 
 const CanvasExportContext = createContext<CanvasExportContextValue | null>(null);
@@ -41,10 +47,11 @@ const CanvasExportContext = createContext<CanvasExportContextValue | null>(null)
 export function CanvasExportProvider({ children }: { children: ReactNode }) {
   const studio = useStudioOptional();
   const classes = studio?.state?.classes ?? [];
+  const groups = studio?.state?.groups ?? [];
   const [imageExportApi, setImageExportApi] = useState<ImageExportApi | null>(null);
   const value = useMemo<CanvasExportContextValue>(
-    () => ({ imageExportApi, setImageExportApi, classes }),
-    [imageExportApi, classes]
+    () => ({ imageExportApi, setImageExportApi, classes, groups }),
+    [imageExportApi, classes, groups]
   );
   return (
     <CanvasExportContext.Provider value={value}>
