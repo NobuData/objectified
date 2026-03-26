@@ -90,9 +90,19 @@ export default function CanvasExportRegistration() {
   const setImageExportApi = exportContext?.setImageExportApi;
   const classes = exportContext?.classes ?? [];
   const groups = exportContext?.groups ?? [];
+  const classesRef = useRef<StudioClass[]>(classes);
+  const groupsRef = useRef<StudioGroup[]>(groups);
   const rf = useReactFlow();
   const rfRef = useRef(rf);
   rfRef.current = rf;
+
+  useEffect(() => {
+    classesRef.current = classes;
+  }, [classes]);
+
+  useEffect(() => {
+    groupsRef.current = groups;
+  }, [groups]);
 
   const getFlowElement = useCallback((): HTMLElement | null => {
     const el = containerRef.current?.closest('.react-flow');
@@ -190,6 +200,8 @@ export default function CanvasExportRegistration() {
       const scope: ImageExportScope = options?.scope ?? 'viewport';
       const includeGroups = options?.includeGroups ?? true;
       const r = rfRef.current;
+      const currentClasses = classesRef.current;
+      const currentGroups = groupsRef.current;
       const allEdges = r.getEdges();
       const selectedIds = new Set(
         r.getNodes().filter((n) => n.selected).map((n) => n.id)
@@ -204,14 +216,14 @@ export default function CanvasExportRegistration() {
       const defaultName = `canvas-export.${format === 'pdf' ? 'png' : ext}`;
 
       if (scope === 'perGroup') {
-        if (groups.length === 0) {
+        if (currentGroups.length === 0) {
           const filter = buildDomFilter(includeGroups, null, null);
           if (format === 'pdf') await exportPdfWithFilter(options, filter);
           else await exportWithFilter(options, filter, defaultName);
           return;
         }
-        for (const g of groups) {
-          const allowed = allowedNodeIdsForGroupExport(g.id, classes, groups);
+        for (const g of currentGroups) {
+          const allowed = allowedNodeIdsForGroupExport(g.id, currentClasses, currentGroups);
           const edgeIds = new Set(
             allEdges
               .filter((e) => allowed.has(e.source) && allowed.has(e.target))
@@ -271,7 +283,7 @@ export default function CanvasExportRegistration() {
     return () => {
       setImageExportApi(null);
     };
-  }, [setImageExportApi, getFlowElement, classes, groups]);
+  }, [setImageExportApi, getFlowElement]);
 
   return (
     <div
