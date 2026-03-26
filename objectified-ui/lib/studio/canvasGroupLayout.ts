@@ -9,9 +9,6 @@ import { getStableClassId } from './types';
 import type { GroupCanvasMetadata } from './canvasGroupStorage';
 import { getFlowNodeDimensions } from './canvasAutoLayout';
 
-const DEFAULT_CLASS_W = 220;
-const DEFAULT_CLASS_H = 120;
-
 function metaOf(g: StudioGroup): GroupCanvasMetadata {
   return (g.metadata ?? {}) as GroupCanvasMetadata;
 }
