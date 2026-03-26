@@ -56,9 +56,9 @@ export interface CanvasGroupContextValue {
    * Delete a group and all classes directly in it (after strong confirmation).
    * Nested child groups are kept and re-parented to the canvas.
    */
-  deleteGroupAndAllClasses: (groupId: string) => Promise<void>;
+  deleteGroupAndAllClasses: (groupId: string) => Promise<boolean>;
   /** @deprecated Prefer deleteGroupAndAllClasses, ungroupGroup, or archiveGroup. */
-  deleteGroup: (groupId: string) => Promise<void>;
+  deleteGroup: (groupId: string) => Promise<boolean>;
   /** Remove the group frame; classes keep absolute positions. */
   ungroupGroup: (groupId: string) => Promise<boolean>;
   /** Hide group (and nested structure) from the canvas; restore from sidebar. */
@@ -121,7 +121,15 @@ export function CanvasGroupProvider({ children }: { children: ReactNode }) {
   }, [editGroupId, studio?.state?.groups]);
 
   const handleGroupSave = useCallback(
-    (payload: GroupDialogSavePayload) => {
+    async (payload: GroupDialogSavePayload) => {
+      if (readOnly) {
+        await alert({
+          title: 'Read-only',
+          message: 'Cannot change groups while viewing a read-only version.',
+          variant: 'warning',
+        });
+        return;
+      }
       if (!editGroupId || !studio?.applyChange) return;
       studio.applyChange((draft) => {
         const g = draft.groups.find((x) => x.id === editGroupId);
@@ -155,7 +163,7 @@ export function CanvasGroupProvider({ children }: { children: ReactNode }) {
       });
       setEditGroupId(null);
     },
-    [editGroupId, studio]
+    [editGroupId, studio, readOnly, alert]
   );
 
   const ungroupGroup = useCallback(
@@ -334,11 +342,11 @@ export function CanvasGroupProvider({ children }: { children: ReactNode }) {
   }, [editGroupId, studio?.state, handleDeleteAllClassesInGroup]);
 
   const deleteGroupAndAllClasses = useCallback(
-    async (groupId: string): Promise<void> => {
-      if (!studio?.state?.groups) return;
+    async (groupId: string): Promise<boolean> => {
+      if (!studio?.state?.groups) return false;
       const group = studio.state.groups.find((g) => g.id === groupId);
       const groupName = group?.name ?? 'group';
-      await handleDeleteAllClassesInGroup(groupId, groupName);
+      return handleDeleteAllClassesInGroup(groupId, groupName);
     },
     [studio?.state?.groups, handleDeleteAllClassesInGroup]
   );
