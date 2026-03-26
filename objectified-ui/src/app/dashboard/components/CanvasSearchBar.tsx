@@ -20,6 +20,7 @@ import {
   Clock,
   Check,
   BookmarkPlus,
+  Download,
 } from 'lucide-react';
 import { useCanvasSearchOptional } from '@/app/contexts/CanvasSearchContext';
 import { useCanvasFocusModeOptional } from '@/app/contexts/CanvasFocusModeContext';
@@ -53,6 +54,8 @@ function collectDistinctTags(classes: StudioClass[]): string[] {
 
 const iconBtnClass =
   'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-indigo-500';
+
+type ExportFormat = 'csv' | 'ids' | 'names';
 
 export default function CanvasSearchBar() {
   const search = useCanvasSearchOptional();
@@ -147,6 +150,63 @@ export default function CanvasSearchBar() {
     setSaveName('');
     setSaveDialogOpen(false);
   }, [saveName, savePreset, search]);
+
+  const exportRows = useMemo(() => {
+    if (!search) return [];
+    const ids = search.searchMatchClassIds;
+    if (!ids || ids.length === 0) return [];
+    const byId = new Map(classes.map((c) => [c.id, c]));
+    const rows = ids
+      .map((id) => {
+        const cls = byId.get(id);
+        const name = cls?.name ?? '';
+        return { id, name };
+      })
+      .filter((r) => r.id);
+    rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    return rows;
+  }, [search, classes]);
+
+  const writeToClipboard = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Clipboard may be blocked; fall back to a temporary textarea.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        document.body.removeChild(ta);
+      }
+    }
+  }, []);
+
+  const handleExport = useCallback(
+    async (format: ExportFormat) => {
+      if (exportRows.length === 0) return;
+      if (format === 'ids') {
+        await writeToClipboard(exportRows.map((r) => r.id).join('\n'));
+        return;
+      }
+      if (format === 'names') {
+        await writeToClipboard(exportRows.map((r) => r.name || r.id).join('\n'));
+        return;
+      }
+      const esc = (s: string) => `"${String(s).replaceAll('"', '""')}"`;
+      const header = ['id', 'name'].map(esc).join(',');
+      const lines = exportRows.map((r) => [r.id, r.name].map(esc).join(','));
+      await writeToClipboard([header, ...lines].join('\n'));
+    },
+    [exportRows, writeToClipboard]
+  );
 
   if (!search) return null;
 
@@ -700,6 +760,60 @@ export default function CanvasSearchBar() {
           <BookmarkPlus className="h-3.5 w-3.5" aria-hidden />
           Save
         </button>
+
+        {exportRows.length > 0 ? (
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                aria-label="Export current canvas search results"
+                title="Export current matches"
+              >
+                <Download className="h-3.5 w-3.5" aria-hidden />
+                Export
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                className={`${contentClass} min-w-[220px] p-1`}
+                sideOffset={4}
+                align="start"
+              >
+                <DropdownMenu.Item
+                  className="px-3 py-2 text-sm rounded-md outline-none cursor-pointer text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 data-[highlighted]:bg-slate-100 dark:data-[highlighted]:bg-slate-800"
+                  onSelect={() => handleExport('csv')}
+                >
+                  Copy CSV (id, name)
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className="px-3 py-2 text-sm rounded-md outline-none cursor-pointer text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 data-[highlighted]:bg-slate-100 dark:data-[highlighted]:bg-slate-800"
+                  onSelect={() => handleExport('names')}
+                >
+                  Copy names (one per line)
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className="px-3 py-2 text-sm rounded-md outline-none cursor-pointer text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 data-[highlighted]:bg-slate-100 dark:data-[highlighted]:bg-slate-800"
+                  onSelect={() => handleExport('ids')}
+                >
+                  Copy ids (one per line)
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 opacity-50 pointer-events-none"
+            aria-label="Export current canvas search results"
+            title="No matches to export"
+          >
+            <Download className="h-3.5 w-3.5" aria-hidden />
+            Export
+          </button>
+        )}
 
         <button
           type="button"

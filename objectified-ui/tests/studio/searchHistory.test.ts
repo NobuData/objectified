@@ -7,6 +7,8 @@ import {
   addSearchHistoryEntry,
   removeSearchHistoryEntry,
   clearSearchHistory,
+  getSearchHistorySyncEnabled,
+  setSearchHistorySyncEnabled,
   MAX_HISTORY_ENTRIES,
   type SearchHistoryEntry,
 } from '@lib/studio/searchHistory';
@@ -150,6 +152,25 @@ describe('searchHistory', () => {
       expect(raw).toBeTruthy();
       const data = JSON.parse(raw!);
       expect(data.entries).toEqual([]);
+    });
+  });
+
+  describe('searchHistory sync setting', () => {
+    it('defaults to false', () => {
+      expect(getSearchHistorySyncEnabled()).toBe(false);
+    });
+
+    it('persists enabled=true', () => {
+      setSearchHistorySyncEnabled(true);
+      expect(localStorage.getItem('objectified:canvas:searchHistorySyncEnabled')).toBe('true');
+      expect(getSearchHistorySyncEnabled()).toBe(true);
+    });
+
+    it('persists enabled=false', () => {
+      setSearchHistorySyncEnabled(true);
+      setSearchHistorySyncEnabled(false);
+      expect(localStorage.getItem('objectified:canvas:searchHistorySyncEnabled')).toBe('false');
+      expect(getSearchHistorySyncEnabled()).toBe(false);
     });
   });
 });

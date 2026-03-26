@@ -7,6 +7,7 @@
  */
 
 const SEARCH_HISTORY_KEY = 'objectified:canvas:searchHistory';
+const SEARCH_HISTORY_SYNC_ENABLED_KEY = 'objectified:canvas:searchHistorySyncEnabled';
 
 /** Maximum number of history entries retained. */
 export const MAX_HISTORY_ENTRIES = 50;
@@ -103,5 +104,28 @@ export function removeSearchHistoryEntry(query: string): SearchHistoryEntry[] {
 export function clearSearchHistory(): SearchHistoryEntry[] {
   saveSearchHistory([]);
   return [];
+}
+
+/**
+ * Whether search history should be synced to the signed-in user's account (when supported).
+ * Stored locally so the UI can keep the setting even when offline.
+ */
+export function getSearchHistorySyncEnabled(): boolean {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    const raw = localStorage.getItem(SEARCH_HISTORY_SYNC_ENABLED_KEY);
+    return raw === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setSearchHistorySyncEnabled(enabled: boolean): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(SEARCH_HISTORY_SYNC_ENABLED_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Ignore localStorage errors
+  }
 }
 

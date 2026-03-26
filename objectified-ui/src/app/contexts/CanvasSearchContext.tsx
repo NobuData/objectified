@@ -54,6 +54,9 @@ export interface CanvasSearchContextValue {
   /** Class ids matching current search (may differ from nav list when only node-order is needed). */
   searchMatchClassCount: number;
   setSearchMatchClassCount: (n: number) => void;
+  /** Class ids matching the current search state on-canvas (includes focus-only narrowing). */
+  searchMatchClassIds: string[];
+  setSearchMatchClassIds: (ids: string[]) => void;
   /** Count of navigable match nodes on canvas (classes + broken-ref nodes in walk order). */
   searchMatchNavTotal: number;
   setSearchMatchNavTotal: (n: number) => void;
@@ -71,6 +74,7 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CanvasSearchState>(defaultCanvasSearchState);
   const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1);
   const [searchMatchClassCount, setSearchMatchClassCount] = useState(0);
+  const [searchMatchClassIds, setSearchMatchClassIds] = useState<string[]>([]);
   const [searchMatchNavTotal, setSearchMatchNavTotalState] = useState(0);
   const searchMatchNavTotalRef = useRef(0);
   const searchZoomHandlersRef = useRef<{ fitActive: () => void; fitAll: () => void } | null>(
@@ -85,6 +89,7 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
     setState(defaultCanvasSearchState);
     setActiveSearchMatchIndex(-1);
     setSearchMatchClassCount(0);
+    setSearchMatchClassIds([]);
     searchMatchNavTotalRef.current = 0;
     setSearchMatchNavTotalState(0);
   }, []);
@@ -256,6 +261,8 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
       resetActiveSearchMatch,
       searchMatchClassCount,
       setSearchMatchClassCount,
+      searchMatchClassIds,
+      setSearchMatchClassIds,
       searchMatchNavTotal,
       setSearchMatchNavTotal,
       registerSearchZoomHandlers,
@@ -293,6 +300,7 @@ export function CanvasSearchProvider({ children }: { children: ReactNode }) {
       resetActiveSearchMatch,
       searchMatchClassCount,
       searchMatchNavTotal,
+      searchMatchClassIds,
       setSearchMatchNavTotal,
       registerSearchZoomHandlers,
       fitActiveSearchMatchOnCanvas,

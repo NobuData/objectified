@@ -908,6 +908,15 @@ export default function DesignCanvas() {
     canvasSearch.setSearchMatchClassCount(canvasMatchClassIds.size);
   }, [canvasSearch, canvasMatchClassIds]);
 
+  const searchMatchClassIdsKeyRef = useRef<string>('');
+  useEffect(() => {
+    if (!canvasSearch) return;
+    const key = Array.from(canvasMatchClassIds).join('\x1e');
+    if (searchMatchClassIdsKeyRef.current === key) return;
+    searchMatchClassIdsKeyRef.current = key;
+    canvasSearch.setSearchMatchClassIds(Array.from(canvasMatchClassIds));
+  }, [canvasSearch, canvasMatchClassIds]);
+
   useEffect(() => {
     if (!canvasSearch) return;
     canvasSearch.setSearchMatchNavTotal(orderedSearchMatchNodeIds.length);

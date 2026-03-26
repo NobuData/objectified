@@ -116,7 +116,13 @@ export default function CanvasSettingsDialog({
   const [draft, setDraft] = useState<CanvasSettings>(settings);
   const [versionNodePrefs, setVersionNodePrefs] =
     useState<CanvasVersionNodeThemePrefs>(DEFAULT_CANVAS_VERSION_NODE_THEME_PREFS);
-  const { entries: historyEntries, removeEntry, clearAll } = useSearchHistory();
+  const {
+    entries: historyEntries,
+    removeEntry,
+    clearAll,
+    syncEnabled: historySyncEnabled,
+    setSyncEnabled: setHistorySyncEnabled,
+  } = useSearchHistory();
 
   useEffect(() => {
     if (open) setDraft(settings);
@@ -1082,6 +1088,25 @@ export default function CanvasSettingsDialog({
                     </button>
                   )}
                 </div>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <Label.Root
+                    htmlFor="canvas-settings-search-history-sync"
+                    className="text-xs text-slate-600 dark:text-slate-400"
+                  >
+                    Sync to account (cross-device)
+                  </Label.Root>
+                  <Switch.Root
+                    id="canvas-settings-search-history-sync"
+                    checked={historySyncEnabled}
+                    onCheckedChange={(checked) => setHistorySyncEnabled(checked)}
+                    className="w-10 h-6 rounded-full bg-slate-200 dark:bg-slate-600 data-[state=checked]:bg-indigo-600 transition-colors"
+                  >
+                    <Switch.Thumb className="block w-5 h-5 rounded-full bg-white shadow transition-transform translate-x-0.5 data-[state=checked]:translate-x-5" />
+                  </Switch.Root>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                  When enabled, search history is saved to your profile when the API supports it.
+                </p>
                 {historyEntries.length === 0 ? (
                   <p className="text-xs text-slate-400 dark:text-slate-500 italic">
                     No search history yet.
