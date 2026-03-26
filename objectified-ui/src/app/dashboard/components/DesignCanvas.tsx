@@ -680,8 +680,8 @@ export default function DesignCanvas() {
 
   const visibleClassIds = useMemo(
     () =>
-      searchState ? getVisibleClassIds(classes, searchState) : null,
-    [classes, searchState]
+      searchState ? getVisibleClassIds(classes, searchState, groups) : null,
+    [classes, searchState, groups]
   );
   const classToGroup = useMemo(() => {
     const m = new Map<string, string>();

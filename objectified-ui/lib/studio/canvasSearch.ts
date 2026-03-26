@@ -6,7 +6,7 @@
 
 import type { StudioClass, StudioClassProperty, StudioGroup } from './types';
 import { getStableClassId } from './types';
-import { expandGroupIdsWithAncestors } from './canvasGroupLayout';
+import { collectGroupDescendants, expandGroupIdsWithAncestors } from './canvasGroupLayout';
 import {
   classHasValidationErrors,
   isStudioClassDeprecated,
@@ -300,16 +300,96 @@ function matchesTagFilter(cls: StudioClass, tag: string | null): boolean {
 
 function matchesMainQuery(cls: StudioClass, state: CanvasSearchState): boolean {
   const queryStr = state.canvasSearchQuery.trim();
+  const queryRegex = queryStr
+    ? buildCompiledRegex(state.canvasSearchQuery, state.useRegex, state.caseSensitive)
+    : null;
+  return matchesMainQueryWith(cls, state, queryStr, queryRegex);
+}
+
+type StructuralPredicate = (cls: StudioClass) => boolean;
+
+/**
+ * Pre-compiles structural filter predicates into a single reusable matcher.
+ *
+ * Improvements over the previous per-class approach:
+ *  - `searchFilterGroups` is expanded to include all descendant group ids via
+ *    `collectGroupDescendants`, so selecting a parent group includes classes in
+ *    nested/child groups (consistent with focus/zoom behavior).
+ *  - The allowed-group Set and the property-name RegExp are constructed once and
+ *    captured in the returned closure instead of being re-created on every class check.
+ *
+ * @param state  Already-normalised search state.
+ * @param groups Full group list from the canvas (required for descendant expansion).
+ */
+function buildCompiledStructuralMatcher(
+  state: CanvasSearchState,
+  groups: StudioGroup[]
+): (cls: StudioClass) => boolean {
+  const propFilterStr = state.propertyNameFilter.trim();
+  const propFilterRegex = propFilterStr
+    ? buildCompiledRegex(state.propertyNameFilter, state.useRegex, state.caseSensitive)
+    : null;
+
+  const preds: StructuralPredicate[] = [];
+
+  if (state.searchFilterType !== 'all') {
+    const ft = state.searchFilterType;
+    preds.push((cls) => matchesSchemaType(cls, ft));
+  }
+  if (state.searchFilterGroups.length > 0) {
+    // Expand each selected group to include all of its descendant groups so that
+    // filtering by a parent group shows classes in nested child groups as well.
+    const allowed = new Set<string>();
+    for (const gid of state.searchFilterGroups) {
+      for (const id of collectGroupDescendants(groups, gid)) {
+        allowed.add(id);
+      }
+    }
+    preds.push((cls) => {
+      const groupId = (cls.canvas_metadata as { group?: string } | undefined)?.group;
+      return !!groupId && allowed.has(groupId);
+    });
+  }
+  if (state.searchFilterTag !== null) {
+    const tag = state.searchFilterTag;
+    preds.push((cls) => matchesTagFilter(cls, tag));
+  }
+  if (state.hasProperties !== null) {
+    const hp = state.hasProperties;
+    preds.push((cls) => matchesHasProperties(cls, hp));
+  }
+  if (propFilterStr) {
+    preds.push((cls) =>
+      matchesPropertyNameFilter(cls, propFilterStr, propFilterRegex, state.caseSensitive)
+    );
+  }
+  if (state.requireValidationErrors !== null) {
+    const want = state.requireValidationErrors;
+    preds.push((cls) => classHasValidationErrors(cls) === want);
+  }
+  if (state.requireDeprecated !== null) {
+    const want = state.requireDeprecated;
+    preds.push((cls) => isStudioClassDeprecated(cls) === want);
+  }
+
+  if (preds.length === 0) return () => true;
+  if (state.structuralFilterMode === 'or') return (cls) => preds.some((p) => p(cls));
+  return (cls) => preds.every((p) => p(cls));
+}
+
+/**
+ * Variant of `matchesMainQuery` that accepts already-computed `queryStr` and `queryRegex`
+ * so they can be compiled once and reused across many class checks.
+ */
+function matchesMainQueryWith(
+  cls: StudioClass,
+  state: CanvasSearchState,
+  queryStr: string,
+  queryRegex: RegExp | null
+): boolean {
   if (!queryStr) return true;
 
-  const queryRegex = buildCompiledRegex(
-    state.canvasSearchQuery,
-    state.useRegex,
-    state.caseSensitive
-  );
-
   const props = cls.properties ?? [];
-
   const scopeChecks: boolean[] = [];
   let anyScope = false;
 
@@ -366,86 +446,48 @@ function matchesMainQuery(cls: StudioClass, state: CanvasSearchState): boolean {
   return scopeChecks.some(Boolean);
 }
 
-type StructuralPredicate = (cls: StudioClass) => boolean;
-
-function collectStructuralPredicates(state: CanvasSearchState): StructuralPredicate[] {
-  const propFilterStr = state.propertyNameFilter.trim();
-  const propFilterRegex = buildCompiledRegex(
-    state.propertyNameFilter,
-    state.useRegex,
-    state.caseSensitive
-  );
-
-  const preds: StructuralPredicate[] = [];
-
-  if (state.searchFilterType !== 'all') {
-    preds.push((cls) => matchesSchemaType(cls, state.searchFilterType));
-  }
-  if (state.searchFilterGroups.length > 0) {
-    const allowed = new Set(state.searchFilterGroups);
-    preds.push((cls) => {
-      const groupId = (cls.canvas_metadata as { group?: string } | undefined)?.group;
-      return !!groupId && allowed.has(groupId);
-    });
-  }
-  if (state.searchFilterTag !== null) {
-    const tag = state.searchFilterTag;
-    preds.push((cls) => matchesTagFilter(cls, tag));
-  }
-  if (state.hasProperties !== null) {
-    const hp = state.hasProperties;
-    preds.push((cls) => matchesHasProperties(cls, hp));
-  }
-  if (propFilterStr) {
-    preds.push((cls) =>
-      matchesPropertyNameFilter(cls, propFilterStr, propFilterRegex, state.caseSensitive)
-    );
-  }
-  if (state.requireValidationErrors !== null) {
-    const want = state.requireValidationErrors;
-    preds.push((cls) => classHasValidationErrors(cls) === want);
-  }
-  if (state.requireDeprecated !== null) {
-    const want = state.requireDeprecated;
-    preds.push((cls) => isStudioClassDeprecated(cls) === want);
-  }
-
-  return preds;
-}
-
-function matchesStructuralFilters(cls: StudioClass, state: CanvasSearchState): boolean {
-  const preds = collectStructuralPredicates(state);
-  if (preds.length === 0) return true;
-  if (state.structuralFilterMode === 'or') {
-    return preds.some((p) => p(cls));
-  }
-  return preds.every((p) => p(cls));
-}
-
 /**
  * Returns true if the class passes all search filters.
+ *
+ * For bulk filtering (many classes) prefer `getVisibleClassIds` which precompiles
+ * the matcher once and avoids per-class allocations.
  */
 export function classMatchesSearch(
   cls: StudioClass,
-  state: CanvasSearchState
+  state: CanvasSearchState,
+  groups?: StudioGroup[]
 ): boolean {
   const normalized = normalizeCanvasSearchState(state);
   if (!matchesMainQuery(cls, normalized)) return false;
-  if (!matchesStructuralFilters(cls, normalized)) return false;
-  return true;
+  const structuralMatcher = buildCompiledStructuralMatcher(normalized, groups ?? []);
+  return structuralMatcher(cls);
 }
 
 /**
  * Returns the set of class ids that pass the search filters.
+ *
+ * Normalises state once, precompiles the query regex and structural matcher once,
+ * then checks each class without any per-class allocations.
+ *
+ * @param groups Canvas groups — pass these to enable descendant group expansion.
  */
 export function getVisibleClassIds(
   classes: StudioClass[],
-  state: CanvasSearchState
+  state: CanvasSearchState,
+  groups?: StudioGroup[]
 ): Set<string> {
   const normalized = normalizeCanvasSearchState(state);
+  const queryStr = normalized.canvasSearchQuery.trim();
+  const queryRegex = queryStr
+    ? buildCompiledRegex(normalized.canvasSearchQuery, normalized.useRegex, normalized.caseSensitive)
+    : null;
+  const structuralMatcher = buildCompiledStructuralMatcher(normalized, groups ?? []);
   const visible = new Set<string>();
   for (const cls of classes) {
-    if (classMatchesSearch(cls, normalized)) {
+    if (
+      matchesMainQueryWith(cls, normalized, queryStr, queryRegex) &&
+      structuralMatcher(cls)
+    ) {
       visible.add(getStableClassId(cls));
     }
   }
@@ -456,7 +498,8 @@ export function getVisibleClassIds(
  * Returns the set of group ids that should be shown:
  * - When no search is active: all groups (including empty ones with no classes).
  * - When search is active with no group filter: only groups containing at least one visible class.
- * - Multi group filter (GitHub #240): union of selected groups that have a visible child.
+ * - Multi group filter (GitHub #240): union of selected groups (and their descendants) that
+ *   have at least one visible class anywhere in their subtree.
  */
 export function getVisibleGroupIds(
   groups: StudioGroup[],
@@ -471,10 +514,14 @@ export function getVisibleGroupIds(
   if (normalized.searchFilterGroups.length > 0) {
     const allowed = new Set<string>();
     for (const gid of normalized.searchFilterGroups) {
-      const hasVisibleChild = Array.from(visibleClassIds).some(
-        (cid) => classToGroup.get(cid) === gid
+      // Expand to the full subtree so nested group nodes are also shown.
+      const subtree = collectGroupDescendants(groups, gid);
+      const hasVisibleChild = Array.from(visibleClassIds).some((cid) =>
+        subtree.has(classToGroup.get(cid) ?? '')
       );
-      if (hasVisibleChild) allowed.add(gid);
+      if (hasVisibleChild) {
+        for (const id of subtree) allowed.add(id);
+      }
     }
     return allowed.size > 0 ? expandGroupIdsWithAncestors(groups, allowed) : new Set();
   }
