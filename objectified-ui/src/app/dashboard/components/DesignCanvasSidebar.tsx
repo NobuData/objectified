@@ -1683,9 +1683,9 @@ export default function DesignCanvasSidebar() {
               onArchive={async (groupId) => {
                 await canvasGroup?.archiveGroup(groupId);
               }}
-              onDeleteGroupAndClasses={(groupId) =>
-                canvasGroup?.deleteGroupAndAllClasses(groupId) ?? Promise.resolve()
-              }
+              onDeleteGroupAndClasses={async (groupId) => {
+                await canvasGroup?.deleteGroupAndAllClasses(groupId);
+              }}
               onRestoreArchived={(groupId) =>
                 canvasGroup?.restoreArchivedGroup(groupId) ?? Promise.resolve()
               }
